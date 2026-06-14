@@ -1630,10 +1630,16 @@ async function saveNewStaff() {
     const email = document.getElementById('newStaffEmail').value.trim() || null;
     const { error } = await sb.from('compliance_staff').insert({ full_name: name, pin, role, email, active: true });
     if (error) throw error;
+
+    // Sync email to clinicians table if email provided
+    if (email) {
+      const baseName = name.replace(/, (PT|PTA|OT|COTA|SLP|DPT|NP|RN|LPN)$/i, '').trim();
+      await sb.from('clinicians').update({ email }).eq('name', baseName);
+    }
+
     toast(`✓ ${name} added successfully`);
     hideAddStaff();
     loadStaffTable();
-    // Refresh the login dropdown
     await loadStaffList();
   } catch(e) {
     errEl.textContent = e.message.includes('unique') ? 'A staff member with that name already exists.' : 'Error saving: ' + e.message;
@@ -1675,8 +1681,16 @@ async function editEmail(id, name) {
   const newEmail = prompt(`Email address for ${name}:`, current?.email || '');
   if (newEmail === null) return; // cancelled
   try {
+    // Update compliance_staff
     await sb.from('compliance_staff').update({ email: newEmail || null, updated_at: new Date().toISOString() }).eq('id', id);
-    toast(`✓ Email updated for ${name}`);
+
+    // Sync back to clinicians table in eval tool
+    // Strip credentials from name to match clinicians table (e.g. "Evan Flanagan, PT" -> "Evan Flanagan")
+    const baseName = name.replace(/, (PT|PTA|OT|COTA|SLP|DPT|NP|RN|LPN)$/i, '').trim();
+    const { error: syncError } = await sb.from('clinicians').update({ email: newEmail || null }).eq('name', baseName);
+    if (syncError) console.warn('Clinicians sync warning:', syncError.message);
+
+    toast(`✓ Email updated for ${name} — synced to eval tool`);
     loadStaffTable();
     await loadStaffList();
   } catch(e) { toast('Error updating email: ' + e.message); }
