@@ -614,19 +614,38 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // Staff loaded dynamically from Supabase compliance_staff table
 let staffList = []; // { full_name, pin, role, active }
 
+// Fallback staff list used if Supabase staff table not yet created
+const FALLBACK_STAFF = [
+  { full_name: 'Stephen Mace, DPT',       pin: 'admin', role: 'admin' },
+  { full_name: 'Evan Flanagan, PT',        pin: '1234',  role: 'admin' },
+  { full_name: 'Kym Quigley (Admin)',      pin: 'admin', role: 'admin' },
+  { full_name: 'Kimberly Quigley, PTA',   pin: '1234',  role: 'clinician' },
+  { full_name: 'Lexie Henson, PTA',       pin: '1234',  role: 'clinician' },
+  { full_name: 'Tina Pierce, PTA',        pin: '1234',  role: 'clinician' },
+  { full_name: 'Johnathan Barber, PT',    pin: '1234',  role: 'clinician' },
+  { full_name: 'Cassidy Crouch, OT',      pin: '1234',  role: 'clinician' },
+  { full_name: 'Marquita Tarkington, OT', pin: '1234',  role: 'clinician' },
+  { full_name: 'Kym Crane, OT',           pin: '1234',  role: 'clinician' },
+  { full_name: 'Kasey Rideout, SLP',      pin: '1234',  role: 'clinician' },
+];
+
 async function loadStaffList() {
   try {
     const { data, error } = await sb.from('compliance_staff')
       .select('full_name, pin, role')
       .eq('active', true)
       .order('full_name');
-    if (error) throw error;
-    staffList = data || [];
+    // If table doesn't exist yet or returns error, use fallback
+    if (error || !data) throw new Error(error?.message || 'No data');
+    staffList = data.length > 0 ? data : FALLBACK_STAFF;
   } catch(e) {
-    console.warn('Could not load staff list:', e);
-    staffList = [];
+    console.warn('Staff table not ready — using fallback list:', e.message);
+    staffList = FALLBACK_STAFF;
   }
-  // Populate login dropdown
+  populateLoginDropdown();
+}
+
+function populateLoginDropdown() {
   const sel = document.getElementById('nameSelect');
   sel.innerHTML = '<option value="">— Choose your name —</option>';
   staffList.forEach(s => {
