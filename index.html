@@ -1633,7 +1633,7 @@ async function saveNewStaff() {
 
     // Sync email to clinicians table if email provided
     if (email) {
-      const baseName = name.replace(/, (PT|PTA|OT|COTA|SLP|DPT|NP|RN|LPN)$/i, '').trim();
+      const baseName = stripCredentials(name);
       await sb.from('clinicians').update({ email }).eq('name', baseName);
     }
 
@@ -1676,6 +1676,14 @@ async function changeRole(id, currentRole) {
   } catch(e) { toast('Error updating role'); }
 }
 
+function stripCredentials(fullName) {
+  // Remove credential suffix: "Evan Flanagan, PT" -> "Evan Flanagan"
+  return fullName
+    .replace(/,\s*(DPT|PT|PTA|OT|COTA|SLP|NP|RN|LPN|LCSW|MD|DO)\s*$/i, '')
+    .replace(/\s*\(Admin\)\s*$/i, '')
+    .trim();
+}
+
 async function editEmail(id, name) {
   const current = staffList.find(s => s.full_name === name);
   const newEmail = prompt(`Email address for ${name}:`, current?.email || '');
@@ -1685,12 +1693,19 @@ async function editEmail(id, name) {
     await sb.from('compliance_staff').update({ email: newEmail || null, updated_at: new Date().toISOString() }).eq('id', id);
 
     // Sync back to clinicians table in eval tool
-    // Strip credentials from name to match clinicians table (e.g. "Evan Flanagan, PT" -> "Evan Flanagan")
-    const baseName = name.replace(/, (PT|PTA|OT|COTA|SLP|DPT|NP|RN|LPN)$/i, '').trim();
-    const { error: syncError } = await sb.from('clinicians').update({ email: newEmail || null }).eq('name', baseName);
-    if (syncError) console.warn('Clinicians sync warning:', syncError.message);
-
-    toast(`✓ Email updated for ${name} — synced to eval tool`);
+    const baseName = stripCredentials(name);
+    const { data: syncData, error: syncError } = await sb.from('clinicians')
+      .update({ email: newEmail || null })
+      .eq('name', baseName)
+      .select();
+    if (syncError) {
+      console.warn('Clinicians sync warning:', syncError.message);
+      toast(`✓ Email updated for ${name} (eval tool sync failed)`);
+    } else if (syncData && syncData.length > 0) {
+      toast(`✓ Email updated for ${name} — synced to eval tool`);
+    } else {
+      toast(`✓ Email updated for ${name} (no matching eval tool record)`);
+    }
     loadStaffTable();
     await loadStaffList();
   } catch(e) { toast('Error updating email: ' + e.message); }
