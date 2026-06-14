@@ -1330,7 +1330,7 @@ function renderDash() {
     let badgeClass = 'badge-todo', badgeLabel = 'Not Started';
     if (comp) { badgeClass = 'badge-done'; badgeLabel = '✓ Completed'; }
 
-    return `<div class="module-card ${comp ? 'completed' : ''}" onclick="openModule('${m.id}')">
+    return `<div class="module-card ${comp ? 'completed' : ''}" onclick="openModule('${m.id.trim()}')">
       <div class="module-icon">${m.icon}</div>
       <div class="module-title">${m.title}</div>
       <div class="module-meta">${m.slides.length} slides · ${(m.quiz||[]).length} quiz question${(m.quiz||[]).length !== 1 ? 's' : ''}</div>
