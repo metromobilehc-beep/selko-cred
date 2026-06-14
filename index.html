@@ -582,10 +582,14 @@
 
         <!-- Add Staff Form -->
         <div id="addStaffForm" style="display:none;background:rgba(255,255,255,.05);border-radius:10px;padding:18px;margin-bottom:18px;">
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;flex-wrap:wrap;">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:10px;align-items:end;flex-wrap:wrap;">
             <div>
               <label style="color:var(--teal-light);font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Full Name</label>
               <input type="text" id="newStaffName" placeholder="Jane Smith, PT" style="width:100%;padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:13px;" />
+            </div>
+            <div>
+              <label style="color:var(--teal-light);font-size:12px;font-weight:600;display:block;margin-bottom:5px;">Email</label>
+              <input type="email" id="newStaffEmail" placeholder="jane@email.com" style="width:100%;padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:13px;" />
             </div>
             <div>
               <label style="color:var(--teal-light);font-size:12px;font-weight:600;display:block;margin-bottom:5px;">PIN</label>
@@ -609,7 +613,7 @@
         <div class="admin-table-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Role</th><th>Status</th><th>PIN</th><th>Actions</th>
+              <th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th>
             </tr></thead>
             <tbody id="staffTbody"></tbody>
           </table>
@@ -673,7 +677,7 @@ const FALLBACK_STAFF = [
 async function loadStaffList() {
   try {
     const { data, error } = await sb.from('compliance_staff')
-      .select('full_name, pin, role')
+      .select('full_name, pin, role, email')
       .eq('active', true)
       .order('full_name');
     // If table doesn't exist yet or returns error, use fallback
@@ -1568,7 +1572,7 @@ function switchAdminTab(tab) {
 async function loadStaffTable() {
   try {
     const { data } = await sb.from('compliance_staff')
-      .select('*').order('full_name');
+      .select('id, full_name, pin, role, email, active').order('full_name');
     const tbody = document.getElementById('staffTbody');
     if (!data || !data.length) {
       tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:20px;">No staff records found.</td></tr>';
@@ -1577,6 +1581,13 @@ async function loadStaffTable() {
     tbody.innerHTML = data.map(s => `
       <tr id="staffrow_${s.id}">
         <td>${s.full_name}</td>
+        <td>
+          ${s.email
+            ? `<span style="color:rgba(255,255,255,.7);font-size:12px;">${s.email}</span>`
+            : `<span style="color:rgba(255,255,255,.25);font-size:12px;font-style:italic;">not set</span>`
+          }
+          <button onclick="editEmail('${s.id}','${s.full_name.replace(/'/g,"\'")}')" style="margin-left:6px;padding:2px 7px;font-size:10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.5);cursor:pointer;">✏</button>
+        </td>
         <td><span style="color:${s.role === 'admin' ? 'var(--gold)' : 'var(--teal-light)'};font-weight:600;">${s.role}</span></td>
         <td><span style="color:${s.active ? '#5de0a0' : '#f08080'};font-weight:700;">${s.active ? '● Active' : '○ Inactive'}</span></td>
         <td><span style="color:rgba(255,255,255,.3);font-family:monospace;">••••••</span></td>
@@ -1600,6 +1611,7 @@ function showAddStaff() {
 function hideAddStaff() {
   document.getElementById('addStaffForm').style.display = 'none';
   document.getElementById('newStaffName').value = '';
+  document.getElementById('newStaffEmail').value = '';
   document.getElementById('newStaffPin').value = '';
   document.getElementById('addStaffError').style.display = 'none';
 }
@@ -1615,7 +1627,8 @@ async function saveNewStaff() {
   if (!pin || pin.length < 4) { errEl.textContent = 'PIN must be at least 4 characters.'; errEl.style.display = 'block'; return; }
 
   try {
-    const { error } = await sb.from('compliance_staff').insert({ full_name: name, pin, role, active: true });
+    const email = document.getElementById('newStaffEmail').value.trim() || null;
+    const { error } = await sb.from('compliance_staff').insert({ full_name: name, pin, role, email, active: true });
     if (error) throw error;
     toast(`✓ ${name} added successfully`);
     hideAddStaff();
@@ -1657,6 +1670,18 @@ async function changeRole(id, currentRole) {
   } catch(e) { toast('Error updating role'); }
 }
 
+async function editEmail(id, name) {
+  const current = staffList.find(s => s.full_name === name);
+  const newEmail = prompt(`Email address for ${name}:`, current?.email || '');
+  if (newEmail === null) return; // cancelled
+  try {
+    await sb.from('compliance_staff').update({ email: newEmail || null, updated_at: new Date().toISOString() }).eq('id', id);
+    toast(`✓ Email updated for ${name}`);
+    loadStaffTable();
+    await loadStaffList();
+  } catch(e) { toast('Error updating email: ' + e.message); }
+}
+
 async function deleteStaff(id, name) {
   if (!confirm(`Permanently delete ${name}?\n\nThis removes them from the staff list but keeps their training completion records.`)) return;
   try {
@@ -1676,14 +1701,31 @@ function showNotifyPanel() {
   sel.innerHTML = '';
   staffList.forEach(s => {
     const o = document.createElement('option');
-    o.value = s.full_name;
-    o.textContent = s.full_name;
+    o.value = s.email || '';
+    o.textContent = s.full_name + (s.email ? '' : ' (no email)');
     sel.appendChild(o);
   });
-  document.getElementById('notifyTarget').addEventListener('change', function() {
+  // Auto-populate all staff emails
+  autoPopulateEmails('all');
+  document.getElementById('notifyTarget').onchange = function() {
     document.getElementById('notifyIndividualWrap').style.display =
       this.value === 'individual' ? 'block' : 'none';
-  });
+    autoPopulateEmails(this.value);
+  };
+}
+
+function autoPopulateEmails(target) {
+  const emailField = document.getElementById('notifyEmails');
+  if (target === 'individual') {
+    const sel = document.getElementById('notifyIndividual');
+    emailField.value = sel.value || '';
+    sel.onchange = () => { emailField.value = sel.value || ''; };
+  } else {
+    // All staff with emails on file
+    const emails = staffList.filter(s => s.email).map(s => s.email);
+    emailField.value = emails.join('\n');
+    if (!emails.length) emailField.value = '';
+  }
 }
 
 function hideNotifyPanel() {
