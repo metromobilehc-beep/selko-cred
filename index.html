@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Metro Mobile Health Care — Compliance Training</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   :root {
     --navy: #1a2e4a;
@@ -527,6 +528,40 @@
           </select>
           <button class="export-btn" onclick="exportCSV()">⬇ Export CSV</button>
           <button class="export-btn" onclick="annualReset()" style="border-color:#f08080;color:#f08080;">🔄 Annual Reset</button>
+          <button class="export-btn" onclick="showNotifyPanel()" style="border-color:var(--teal-light);color:var(--teal-light);">📧 Notify Staff</button>
+        </div>
+
+        <!-- Email Notification Panel -->
+        <div id="notifyPanel" style="display:none;background:rgba(255,255,255,.05);border-radius:10px;padding:18px;margin-bottom:18px;">
+          <div style="color:var(--teal-light);font-size:13px;font-weight:700;margin-bottom:12px;">📧 Send Training Reminder</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+            <div>
+              <label style="color:rgba(255,255,255,.6);font-size:11px;font-weight:600;display:block;margin-bottom:5px;">SEND TO</label>
+              <select id="notifyTarget" class="admin-select" style="width:100%;">
+                <option value="all">All Active Staff</option>
+                <option value="incomplete">Incomplete Only (Annual)</option>
+                <option value="individual">Individual Staff Member</option>
+              </select>
+            </div>
+            <div id="notifyIndividualWrap" style="display:none;">
+              <label style="color:rgba(255,255,255,.6);font-size:11px;font-weight:600;display:block;margin-bottom:5px;">SELECT STAFF MEMBER</label>
+              <select id="notifyIndividual" class="admin-select" style="width:100%;"></select>
+            </div>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="color:rgba(255,255,255,.6);font-size:11px;font-weight:600;display:block;margin-bottom:5px;">CUSTOM MESSAGE (OPTIONAL)</label>
+            <textarea id="notifyMessage" placeholder="Add a personal note to the reminder email..." style="width:100%;padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:13px;resize:vertical;min-height:60px;"></textarea>
+          </div>
+          <div style="margin-bottom:12px;">
+            <label style="color:rgba(255,255,255,.6);font-size:11px;font-weight:600;display:block;margin-bottom:5px;">STAFF EMAIL ADDRESSES</label>
+            <textarea id="notifyEmails" placeholder="One email per line or comma separated..." style="width:100%;padding:8px 12px;border-radius:7px;border:1px solid rgba(255,255,255,.2);background:rgba(255,255,255,.08);color:#fff;font-size:13px;resize:vertical;min-height:80px;font-family:monospace;"></textarea>
+            <div style="color:rgba(255,255,255,.4);font-size:11px;margin-top:4px;">Enter the email addresses for staff you want to notify.</div>
+          </div>
+          <div id="notifyStatus" style="font-size:12px;margin-bottom:10px;display:none;"></div>
+          <div style="display:flex;gap:8px;">
+            <button onclick="sendReminders()" id="sendBtn" style="padding:8px 20px;background:var(--teal);color:#fff;border:none;border-radius:7px;font-size:13px;font-weight:700;cursor:pointer;">Send Reminders</button>
+            <button onclick="hideNotifyPanel()" style="padding:8px 14px;background:rgba(255,255,255,.1);color:#fff;border:none;border-radius:7px;font-size:13px;cursor:pointer;">Cancel</button>
+          </div>
         </div>
         <div class="admin-table-wrap">
           <table id="adminTable">
@@ -611,6 +646,11 @@
 const SUPABASE_URL = 'https://zxserlkhwkfoqiepurdr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── EMAILJS CONFIG ──
+const EMAILJS_SERVICE_ID  = 'service_wnhqs7e';
+const EMAILJS_TEMPLATE_ID = 'template_gq1z2x6';
+const EMAILJS_PUBLIC_KEY  = 'kc6pC-rqwD0xph-A0';
 
 // Staff loaded dynamically from Supabase compliance_staff table
 let staffList = []; // { full_name, pin, role, active }
@@ -1626,6 +1666,96 @@ async function deleteStaff(id, name) {
     loadStaffTable();
     await loadStaffList();
   } catch(e) { toast('Error deleting staff member: ' + e.message); }
+}
+
+// ── EMAIL NOTIFICATIONS ──────────────────────────────────
+function showNotifyPanel() {
+  document.getElementById('notifyPanel').style.display = 'block';
+  // Populate individual staff dropdown
+  const sel = document.getElementById('notifyIndividual');
+  sel.innerHTML = '';
+  staffList.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.full_name;
+    o.textContent = s.full_name;
+    sel.appendChild(o);
+  });
+  document.getElementById('notifyTarget').addEventListener('change', function() {
+    document.getElementById('notifyIndividualWrap').style.display =
+      this.value === 'individual' ? 'block' : 'none';
+  });
+}
+
+function hideNotifyPanel() {
+  document.getElementById('notifyPanel').style.display = 'none';
+  document.getElementById('notifyStatus').style.display = 'none';
+  document.getElementById('notifyEmails').value = '';
+  document.getElementById('notifyMessage').value = '';
+}
+
+async function sendReminders() {
+  const emailsRaw = document.getElementById('notifyEmails').value.trim();
+  const customMsg = document.getElementById('notifyMessage').value.trim();
+  const target = document.getElementById('notifyTarget').value;
+  const statusEl = document.getElementById('notifyStatus');
+  const sendBtn = document.getElementById('sendBtn');
+
+  if (!emailsRaw) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#f08080';
+    statusEl.textContent = 'Please enter at least one email address.';
+    return;
+  }
+
+  // Parse emails
+  const emails = emailsRaw.split(/[,\n]+/).map(e => e.trim()).filter(e => e.includes('@'));
+  if (!emails.length) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#f08080';
+    statusEl.textContent = 'No valid email addresses found.';
+    return;
+  }
+
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending…';
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'rgba(255,255,255,.6)';
+  statusEl.textContent = `Sending to ${emails.length} recipient(s)…`;
+
+  // Init EmailJS
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+
+  let sent = 0, failed = 0;
+  for (const email of emails) {
+    const name = email.split('@')[0];
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: email,
+        to_name: name,
+        track: target === 'newhire' ? 'New Hire' : 'Annual Compliance',
+        custom_message: customMsg || 'Please log in and complete your required compliance training modules.',
+        tool_url: 'https://metromobilehc-beep.github.io/mmhc-compliance-tool',
+        from_name: 'Metro Mobile Health Care',
+      });
+      sent++;
+      statusEl.textContent = `Sent ${sent} of ${emails.length}…`;
+    } catch(e) {
+      console.error('Email failed for', email, e);
+      failed++;
+    }
+  }
+
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send Reminders';
+
+  if (failed === 0) {
+    statusEl.style.color = '#5de0a0';
+    statusEl.textContent = `✓ Successfully sent to ${sent} staff member(s).`;
+    toast(`✓ Reminders sent to ${sent} staff member(s)`);
+  } else {
+    statusEl.style.color = '#f0c060';
+    statusEl.textContent = `Sent ${sent}, failed ${failed}. Check email addresses and try again.`;
+  }
 }
 
 async function annualReset() {
