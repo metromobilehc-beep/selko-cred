@@ -1361,8 +1361,6 @@ function goBack() {
 }
 
 function renderSlide() {
-  const prevSpeed = document.getElementById('speechSpeed');
-  if (prevSpeed) speechRate = parseFloat(prevSpeed.value);
   stopSpeech();
   const total = currentModule.slides.length + 1; // +1 for quiz
   const fill = Math.round((currentSlide / total) * 100);
@@ -1375,14 +1373,9 @@ function renderSlide() {
     body.innerHTML = `
       <div class="listen-bar">
         <button class="listen-btn" id="listenBtn" onclick="toggleListen()">🔊 Listen</button>
-        <select id="speechSpeed" onchange="onSpeedChange()" style="padding:5px 8px;border-radius:7px;border:1px solid rgba(42,143,160,.4);background:#fff;color:var(--navy);font-size:12px;font-weight:600;cursor:pointer;">
-          <option value="0.75">0.75×</option>
-          <option value="0.92" selected>1×</option>
-          <option value="1.2">1.25×</option>
-          <option value="1.5">1.5×</option>
-          <option value="1.75">1.75×</option>
-          <option value="2.0">2×</option>
-        </select>
+        <button onclick="adjustSpeed(-0.1)" title="Slower" style="padding:5px 10px;border-radius:7px;border:1px solid rgba(42,143,160,.4);background:#fff;color:var(--teal);font-size:14px;font-weight:700;cursor:pointer;line-height:1;">🐢</button>
+        <span id="speedLabel" style="font-size:12px;font-weight:700;color:var(--teal);min-width:32px;text-align:center;">1×</span>
+        <button onclick="adjustSpeed(0.1)" title="Faster" style="padding:5px 10px;border-radius:7px;border:1px solid rgba(42,143,160,.4);background:#fff;color:var(--teal);font-size:14px;font-weight:700;cursor:pointer;line-height:1;">🐇</button>
         <span class="listen-label" id="listenLabel">Tap to hear this slide read aloud</span>
         <div class="listen-progress" id="listenProgress"><div class="listen-progress-fill" id="listenProgressFill"></div></div>
       </div>
@@ -1548,9 +1541,11 @@ function stopSpeech() {
   clearInterval(progressTimer);
 }
 
-function onSpeedChange() {
-  const sel = document.getElementById('speechSpeed');
-  if (sel) speechRate = parseFloat(sel.value);
+function adjustSpeed(delta) {
+  // Range: 0.5 to 1.5, steps of 0.1
+  speechRate = Math.min(1.5, Math.max(0.5, Math.round((speechRate + delta) * 10) / 10));
+  const label = document.getElementById('speedLabel');
+  if (label) label.textContent = speechRate.toFixed(1).replace('.0', '') + '×';
   // If currently playing, restart at new speed
   if (speechPlaying) {
     stopSpeech();
