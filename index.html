@@ -494,7 +494,7 @@
 <!-- DASHBOARD -->
 <div id="dashScreen" class="screen">
 
-  <div class="dash-header">
+  <div class="dash-header" style="">
     <h1 id="dashGreeting">My Training Dashboard</h1>
     <p id="dashSub">Complete all required modules for your track. Annual training resets each January.</p>
   </div>
@@ -513,7 +513,6 @@
       <div style="display:flex;gap:8px;margin-bottom:20px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:12px;flex-wrap:wrap;">
         <button class="admin-tab-btn active" id="tabRecords" onclick="switchAdminTab('records')">📋 Compliance Records</button>
         <button class="admin-tab-btn" id="tabStaff" onclick="switchAdminTab('staff')">👥 Manage Staff</button>
-
       </div>
 
       <!-- RECORDS TAB -->
@@ -638,8 +637,6 @@
         </div>
       </div>
 
-      
-
     </div>
   </div>
 
@@ -663,3 +660,1772 @@
 
 
 <div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════
+// SUPABASE CONFIG — replace with your project values
+// ══════════════════════════════════════════════════════════════
+const SUPABASE_URL = 'https://zxserlkhwkfoqiepurdr.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ── EMAILJS CONFIG ──
+const EMAILJS_SERVICE_ID          = 'service_wnhqs7e';
+const EMAILJS_TEMPLATE_ID         = 'template_gq1z2x6';   // Staff reminder template
+const EMAILJS_DOC_TEMPLATE_ID     = 'template_547iwl7';   // Admin document notification template
+const EMAILJS_PUBLIC_KEY          = 'kc6pC-rqwD0xph-A0';
+
+// ── COMPANY CONFIG ─────────────────────────────────────────
+// White-label: change these values per client deployment
+const COMPANY_CONFIG = {
+  name:               'Metro Mobile Health Care',
+  adminEmails:        ['metromobilehc@gmail.com'],
+  toolUrl:            'https://metromobilehc-beep.github.io/mmhc-compliance-tool',
+  downloadWindowDays: 14,
+};
+
+// Staff loaded dynamically from Supabase compliance_staff table
+let staffList = []; // { full_name, pin, role, active }
+
+// Fallback staff list used if Supabase staff table not yet created
+const FALLBACK_STAFF = [
+  { full_name: 'Stephen Mace, DPT',       pin: 'admin', role: 'admin' },
+  { full_name: 'Evan Flanagan, PT',        pin: '1234',  role: 'admin' },
+  { full_name: 'Kym Quigley (Admin)',      pin: 'admin', role: 'admin' },
+  { full_name: 'Kimberly Quigley, PTA',   pin: '1234',  role: 'clinician' },
+  { full_name: 'Lexie Henson, PTA',       pin: '1234',  role: 'clinician' },
+  { full_name: 'Tina Pierce, PTA',        pin: '1234',  role: 'clinician' },
+  { full_name: 'Johnathan Barber, PT',    pin: '1234',  role: 'clinician' },
+  { full_name: 'Cassidy Crouch, OT',      pin: '1234',  role: 'clinician' },
+  { full_name: 'Marquita Tarkington, OT', pin: '1234',  role: 'clinician' },
+  { full_name: 'Kym Crane, OT',           pin: '1234',  role: 'clinician' },
+  { full_name: 'Kasey Rideout, SLP',      pin: '1234',  role: 'clinician' },
+];
+
+async function loadStaffList() {
+  try {
+    const { data, error } = await sb.from('compliance_staff')
+      .select('full_name, pin, role, email')
+      .eq('active', true)
+      .order('full_name');
+    // If table doesn't exist yet or returns error, use fallback
+    if (error || !data) throw new Error(error?.message || 'No data');
+    staffList = data.length > 0 ? data : FALLBACK_STAFF;
+  } catch(e) {
+    console.warn('Staff table not ready — using fallback list:', e.message);
+    staffList = FALLBACK_STAFF;
+  }
+  populateLoginDropdown();
+}
+
+function populateLoginDropdown() {
+  const sel = document.getElementById('nameSelect');
+  sel.innerHTML = '<option value="">— Choose your name —</option>';
+  staffList.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.full_name;
+    o.textContent = s.full_name;
+    sel.appendChild(o);
+  });
+}
+
+function isAdmin(name) {
+  const s = staffList.find(x => x.full_name === name);
+  return s && s.role === 'admin';
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODULE LIBRARY
+// ══════════════════════════════════════════════════════════════
+const MODULES = [
+
+  // ── NEW HIRE ──────────────────────────────────────────────
+  {
+    id: 'nh_hipaa',
+    track: ['newhire', 'annual'],
+    icon: '🔒',
+    title: 'HIPAA Comprehensive Training',
+    desc: 'Complete HIPAA training covering PHI, patient rights, permitted disclosures, breach response, social media, and home health-specific scenarios.',
+    passScore: 80,
+    slides: [
+      {
+        title: 'What is HIPAA and Why Does It Apply to You?',
+        content: `<p>The Health Insurance Portability and Accountability Act (HIPAA) was enacted in 1996 and establishes national standards for protecting patients' health information. As a Metro Mobile Health Care clinician, HIPAA applies to you every single day — in every patient home, every phone call, and every piece of documentation you create.</p>
+        <div class="callout">HIPAA applies to <strong>covered entities</strong> (health care providers, health plans, clearinghouses) and their <strong>business associates</strong>. Metro Mobile Health Care is a covered entity. You, as a workforce member, are bound by Metro's HIPAA obligations.</div>
+        <p>HIPAA has three main rules you must understand:</p>
+        <ul>
+          <li><strong>Privacy Rule</strong> — governs who can access and use patient health information</li>
+          <li><strong>Security Rule</strong> — governs how electronic PHI must be protected</li>
+          <li><strong>Breach Notification Rule</strong> — governs what must happen when PHI is compromised</li>
+        </ul>`
+      },
+      {
+        title: 'What is Protected Health Information (PHI)?',
+        content: `<p>PHI is any information that can be used to identify a patient AND relates to their health condition, care, or payment for care. HIPAA identifies <strong>18 specific identifiers</strong> that make health information "protected."</p>
+        <p>The 18 PHI identifiers include:</p>
+        <ul>
+          <li>Name, address, city, county, zip code</li>
+          <li>Dates (birth date, admission date, discharge date, date of death)</li>
+          <li>Phone numbers, fax numbers, email addresses</li>
+          <li>Social Security numbers, medical record numbers, account numbers</li>
+          <li>Health plan beneficiary numbers, certificate/license numbers</li>
+          <li>Vehicle identifiers, device identifiers, web URLs</li>
+          <li>IP addresses, biometric identifiers (fingerprints, voiceprints)</li>
+          <li>Full-face photographs and any comparable images</li>
+          <li>Any other unique identifying number or code</li>
+        </ul>
+        <div class="callout warn">Even <strong>de-identified</strong> information can become PHI if combined with other details. "My patient in Broken Arrow who had a stroke" may identify someone even without a name.</div>`
+      },
+      {
+        title: 'Electronic PHI (ePHI) and the Security Rule',
+        content: `<p>Electronic PHI (ePHI) is any PHI that is created, stored, transmitted, or received electronically. This includes:</p>
+        <ul>
+          <li>Patient records in agency EMRs (CareFicient, BIOS, HelloNote, PointCare, HCHB)</li>
+          <li>Emails or messages containing patient information</li>
+          <li>Photos of wounds or clinical documentation taken on a device</li>
+          <li>Voice recordings of clinical notes</li>
+          <li>Spreadsheets or documents containing patient lists</li>
+        </ul>
+        <p>The Security Rule requires three types of safeguards for ePHI:</p>
+        <ul>
+          <li><strong>Administrative:</strong> policies, training, access controls, risk assessments</li>
+          <li><strong>Physical:</strong> device security, screen locks, secure workstations</li>
+          <li><strong>Technical:</strong> encryption, automatic logoff, audit logs</li>
+        </ul>
+        <div class="callout">Agency EMRs log every access, every note opened, and every change made. These logs are auditable by the agency, Metro, and federal investigators.</div>`
+      },
+      {
+        title: 'The Minimum Necessary Standard',
+        content: `<p>HIPAA requires that you use, disclose, or request only the <strong>minimum amount of PHI necessary</strong> to accomplish the intended purpose. This is not just a best practice — it is a legal requirement.</p>
+        <p>In practice this means:</p>
+        <ul>
+          <li>Only open patient records for patients currently on your active caseload</li>
+          <li>Do not review clinical history beyond what is needed for your visit today</li>
+          <li>Do not share a patient\'s full chart when a summary will do</li>
+          <li>Do not copy or download patient records to personal devices</li>
+          <li>When communicating with agencies, share only clinically relevant details</li>
+        </ul>
+        <div class="callout warn">Curiosity is not a permissible reason to access PHI. Accessing records of a neighbor, family member, or former patient you are no longer treating is a HIPAA violation — even if you mean no harm.</div>`
+      },
+      {
+        title: 'Permitted Uses and Disclosures',
+        content: `<p>HIPAA does not prohibit all sharing of PHI — it regulates it. PHI may be used or disclosed without patient authorization for:</p>
+        <ul>
+          <li><strong>Treatment:</strong> sharing with other treating clinicians, ordering physicians, or care team members</li>
+          <li><strong>Payment:</strong> billing agencies for services rendered</li>
+          <li><strong>Health Care Operations:</strong> quality improvement, training, compliance audits</li>
+          <li><strong>Public Health Activities:</strong> reporting communicable diseases to health departments</li>
+          <li><strong>Mandatory Reporting:</strong> abuse, neglect, or exploitation reporting required by law</li>
+          <li><strong>Law Enforcement:</strong> only under specific legal requirements</li>
+        </ul>
+        <div class="callout">The <strong>Treatment, Payment, and Operations (TPO)</strong> exceptions cover most of your daily clinical work. When in doubt whether a disclosure is covered, ask Metro leadership before sharing.</div>`
+      },
+      {
+        title: 'When Authorization IS Required',
+        content: `<p>A written, signed patient authorization is required before disclosing PHI in situations not covered by TPO or other permitted exceptions. Common scenarios requiring authorization:</p>
+        <ul>
+          <li>Releasing records to the patient\'s attorney or insurance company (unless for payment)</li>
+          <li>Sharing information with a family member or caregiver the patient has not designated</li>
+          <li>Using a patient\'s story or image in marketing materials</li>
+          <li>Sharing information with an employer (even the patient\'s own employer)</li>
+          <li>Releasing records to a school or other non-treating entity</li>
+          <li>Research purposes beyond treatment</li>
+        </ul>
+        <div class="callout danger">A patient\'s family member calling to "check in" does not have an automatic right to PHI. Verify the patient has designated them as an authorized contact before disclosing anything.</div>`
+      },
+      {
+        title: 'Patient Rights Under HIPAA',
+        content: `<p>HIPAA grants patients specific rights regarding their health information. As a clinician, you must respect and support these rights:</p>
+        <ul>
+          <li><strong>Right to Access:</strong> Patients can request copies of their own records. Requests must be fulfilled within 30 days.</li>
+          <li><strong>Right to Amend:</strong> Patients can request corrections to their records if they believe information is inaccurate.</li>
+          <li><strong>Right to an Accounting of Disclosures:</strong> Patients can request a list of who their PHI has been shared with.</li>
+          <li><strong>Right to Restrict:</strong> Patients can request restrictions on certain uses or disclosures (though providers are not always required to agree).</li>
+          <li><strong>Right to Confidential Communications:</strong> Patients can request to receive communications in a specific way or location.</li>
+          <li><strong>Right to File a Complaint:</strong> Patients can file complaints with Metro or directly with the HHS Office for Civil Rights — without fear of retaliation.</li>
+        </ul>
+        <div class="callout warn">Never retaliate against a patient for exercising their HIPAA rights or filing a complaint. Retaliation is itself a HIPAA violation.</div>`
+      },
+      {
+        title: 'Home Health-Specific Privacy Challenges',
+        content: `<p>Home health creates unique privacy challenges that clinic-based providers don't face. Be aware of these specific scenarios:</p>
+        <ul>
+          <li><strong>Caregivers present during visits:</strong> Not all caregivers are authorized to receive PHI. Verify designation before discussing clinical information in their presence.</li>
+          <li><strong>Neighbors and visitors:</strong> Anyone who happens to be at the home during your visit has no right to PHI. Move to a private space or ask non-authorized individuals to step out.</li>
+          <li><strong>Phone calls during visits:</strong> Avoid taking calls involving other patients' PHI while in a patient\'s home. Others in the room can overhear.</li>
+          <li><strong>Documentation visible in the car:</strong> Never leave printed patient records, evaluations, or schedules visible in your vehicle.</li>
+          <li><strong>Scheduling conversations:</strong> Even confirming a patient\'s name and address in a public setting (gas station, restaurant) can constitute a disclosure.</li>
+        </ul>`
+      },
+      {
+        title: 'Mobile Devices and ePHI Security',
+        content: `<p>Your Metro-issued Samsung Galaxy Tab and any personal device used for work must be handled with strict security controls.</p>
+        <p><strong>Metro tablet requirements:</strong></p>
+        <ul>
+          <li>Auto-lock enabled — screen locks within 2 minutes of inactivity</li>
+          <li>Managed by Knox MDM — Metro can remotely wipe if lost or stolen</li>
+          <li>Work use only — no personal apps, social media, or family sharing</li>
+          <li>Never leave unattended in a vehicle, especially overnight</li>
+        </ul>
+        <p><strong>Personal device rules:</strong></p>
+        <ul>
+          <li>Do not save, forward, or store PHI on personal phones or personal email accounts</li>
+          <li>Do not use personal iCloud, Google Drive, or Dropbox to store patient information</li>
+          <li>Do not photograph patients, wounds, or clinical documents on a personal device without a signed authorization and agency approval</li>
+        </ul>
+        <div class="callout danger">Standard text messaging (SMS) is not HIPAA compliant. Never send PHI via regular text message. Use only agency-approved secure messaging platforms.</div>`
+      },
+      {
+        title: 'Social Media and HIPAA',
+        content: `<p>Social media is one of the fastest-growing sources of HIPAA violations in healthcare. The informal nature of social media creates a false sense of safety — but HIPAA applies fully to everything you post online.</p>
+        <p><strong>Never post:</strong></p>
+        <ul>
+          <li>Patient names, even with a positive intent ("So proud of my patient John for walking today!")</li>
+          <li>Information that could identify a patient — diagnosis + location + approximate age is enough</li>
+          <li>Photos from a patient\'s home, even if the patient is not in the photo</li>
+          <li>"Feel good" progress stories without a signed, HIPAA-compliant written authorization</li>
+          <li>Complaints about difficult patients, even without names — context can identify</li>
+        </ul>
+        <p><strong>Group chats and messaging apps:</strong></p>
+        <ul>
+          <li>Clinician group chats (WhatsApp, iMessage, Facebook Messenger) must never contain PHI</li>
+          <li>"Can anyone cover Mrs. Smith on Elm Street tomorrow?" in a group text is a HIPAA violation</li>
+          <li>Use ConnectTeam for Metro scheduling communication — reference visit IDs, not patient names</li>
+        </ul>`
+      },
+      {
+        title: 'What is a HIPAA Breach?',
+        content: `<p>A breach is the unauthorized acquisition, access, use, or disclosure of PHI in a manner that compromises the security or privacy of the information. Not every incident is a breach — but all incidents must be assessed.</p>
+        <p><strong>Examples of breaches:</strong></p>
+        <ul>
+          <li>Sending a clinical note or evaluation to the wrong patient contact or agency</li>
+          <li>Losing a device that contains unencrypted patient data</li>
+          <li>Leaving printed records where unauthorized individuals could view them</li>
+          <li>Unauthorized access to patient records by a non-treating clinician</li>
+          <li>Posting patient information on social media</li>
+          <li>Emailing PHI to a personal (non-secure) email account</li>
+        </ul>
+        <div class="callout warn">There is a <strong>presumption of breach</strong> unless Metro can demonstrate a low probability that PHI was compromised. When in doubt, it is a breach — report it.</div>`
+      },
+      {
+        title: 'Breach Notification Requirements',
+        content: `<p>When a breach occurs, HIPAA requires specific notifications within strict timeframes:</p>
+        <ul>
+          <li><strong>Affected individuals:</strong> Must be notified without unreasonable delay and within <strong>60 days</strong> of discovery</li>
+          <li><strong>HHS (Department of Health and Human Services):</strong> Must be notified within 60 days for breaches affecting 500+ individuals; smaller breaches reported annually</li>
+          <li><strong>Media:</strong> Required for breaches affecting 500+ residents in a state or jurisdiction</li>
+        </ul>
+        <p><strong>Your role in breach response:</strong></p>
+        <ol>
+          <li>Report any suspected breach to Stephen Mace or Evan Flanagan <strong>within 24 hours of discovery</strong></li>
+          <li>Do not attempt to investigate, remediate, or notify anyone on your own</li>
+          <li>Document exactly what happened, when, and who may have been affected</li>
+          <li>Preserve all evidence — do not delete emails, messages, or files related to the incident</li>
+        </ol>
+        <div class="callout danger">Attempting to cover up or delay reporting a breach is a separate and serious violation. Early reporting protects you as much as it protects the patient.</div>`
+      },
+      {
+        title: 'HIPAA Penalties — What is at Stake',
+        content: `<p>HIPAA violations carry significant civil and criminal penalties. The Office for Civil Rights (OCR) actively investigates complaints and conducts audits.</p>
+        <p><strong>Civil penalties (tiered by culpability):</strong></p>
+        <ul>
+          <li><strong>Did not know:</strong> $100–$50,000 per violation, up to $25,000/year per violation category</li>
+          <li><strong>Reasonable cause:</strong> $1,000–$50,000 per violation, up to $100,000/year</li>
+          <li><strong>Willful neglect, corrected:</strong> $10,000–$50,000 per violation, up to $250,000/year</li>
+          <li><strong>Willful neglect, not corrected:</strong> $50,000 per violation, up to $1.5 million/year</li>
+        </ul>
+        <p><strong>Criminal penalties:</strong></p>
+        <ul>
+          <li>Knowingly obtaining PHI: up to 1 year imprisonment</li>
+          <li>Obtaining PHI under false pretenses: up to 5 years imprisonment</li>
+          <li>Obtaining PHI for personal gain or malicious harm: up to 10 years imprisonment</li>
+        </ul>
+        <div class="callout">Individual workforce members can be held personally liable — penalties are not limited to the organization.</div>`
+      },
+      {
+        title: 'Real-World Scenarios — Test Your Knowledge',
+        content: `<p>Review these scenarios. Think about what the correct action is before moving to the quiz.</p>
+        <p><strong>Scenario A:</strong> You finish a visit and realize you left your printed schedule — which includes patient names, addresses, and visit times — on the patient\'s kitchen counter.</p>
+        <div class="callout warn">This is a potential breach. Report to Metro leadership immediately. The schedule contains PHI of multiple patients.</div>
+        <p><strong>Scenario B:</strong> A patient\'s adult son calls you directly to ask about his mother's progress. He says she told him it was okay to call you.</p>
+        <div class="callout warn">Verbal permission from the patient is not sufficient. Verify there is a signed authorization on file with the agency before disclosing any information. Offer to have the patient call you directly instead.</div>
+        <p><strong>Scenario C:</strong> A fellow Metro clinician texts you asking for a patient\'s phone number because they are covering the visit tomorrow.</p>
+        <div class="callout warn">Do not send PHI via standard text. Ask the clinician to get the contact information through ConnectTeam or directly from the agency scheduler.</div>`
+      },
+      {
+        title: 'Metro-Specific HIPAA Contacts and Resources',
+        content: `<p>Metro Mobile Health Care takes HIPAA compliance seriously. Here is who to contact and what to do:</p>
+        <p><strong>Report a breach or suspected violation:</strong></p>
+        <ul>
+          <li>Stephen Mace, DPT — <strong>within 24 hours</strong> of discovery</li>
+          <li>Evan Flanagan, PT — backup contact if Stephen is unavailable</li>
+          <li>Do not delay reporting out of fear of consequences — good-faith reporting is protected</li>
+        </ul>
+        <p><strong>Questions about whether something is permitted:</strong></p>
+        <ul>
+          <li>When in doubt, don't disclose — ask Metro leadership first</li>
+          <li>The safer choice is always to protect the information until you have clarity</li>
+        </ul>
+        <p><strong>Patient complaints:</strong></p>
+        <ul>
+          <li>Patients have the right to file complaints with Metro or directly with HHS OCR at <strong>hhs.gov/ocr</strong></li>
+          <li>If a patient expresses concern about privacy, take it seriously and report it to Metro immediately</li>
+        </ul>
+        <div class="callout">This training fulfills the annual HIPAA education requirement under 45 CFR §164.530(b). Your signed attestation upon completion is your compliance record.</div>`
+      }
+    ],
+    quiz: [
+      {
+        q: 'Which of the following is NOT one of HIPAA\'s 18 PHI identifiers?',
+        options: ['A patient\'s zip code', 'A patient\'s favorite color', 'A patient\'s device serial number', 'A patient\'s IP address'],
+        answer: 1,
+        explanation: 'A patient\'s favorite color has no connection to their identity or health information and is not a PHI identifier. All others — zip code, device serial number, and IP address — are among the 18 identifiers.'
+      },
+      {
+        q: 'The minimum necessary standard requires you to:',
+        options: ['Document the minimum required by the agency', 'Access only the PHI needed to perform your specific job function', 'Share only summary information with physicians', 'Limit patient visits to the minimum covered by insurance'],
+        answer: 1,
+        explanation: 'The minimum necessary standard limits access to and disclosure of PHI to only what is required to accomplish the specific, permitted purpose — not more.'
+      },
+      {
+        q: 'A patient\'s adult daughter is present during your visit and asks you to explain her mother\'s plan of care. You should:',
+        options: ['Explain the plan of care — family members always have access to PHI', 'Ask the patient directly if she would like her daughter included in the discussion', 'Decline to speak with the daughter at all under any circumstances', 'Provide a general overview but withhold specific diagnoses'],
+        answer: 1,
+        explanation: 'The patient controls who receives their PHI. Ask the patient directly if she consents to having her daughter participate. If the patient says yes, you may include the daughter in the discussion.'
+      },
+      {
+        q: 'You receive a text from a fellow Metro clinician asking for a patient\'s phone number to confirm a visit. The correct response is:',
+        options: ['Text the number — it\'s just a phone number, not clinical information', 'Call the clinician and give the number verbally instead', 'Direct the clinician to get the contact information through ConnectTeam or the agency scheduler', 'Only share if the clinician is covering the visit the same day'],
+        answer: 2,
+        explanation: 'A patient\'s phone number is PHI. Standard text messaging is not HIPAA-compliant. The clinician should obtain contact information through approved channels — ConnectTeam or the agency scheduler.'
+      },
+      {
+        q: 'A clinician posts on social media: "Incredible day — my 78-year-old patient in Sand Springs finally walked 50 feet after her hip replacement!" This post:',
+        options: ['Is acceptable because no name was included', 'Is acceptable because it is a positive story about patient progress', 'Is a potential HIPAA violation because it could enable patient identification', 'Is acceptable if the clinician\'s profile is set to private'],
+        answer: 2,
+        explanation: 'Age + location + diagnosis + procedure creates a combination that may identify the patient. HIPAA violations do not require a name. A private social media profile does not protect against HIPAA liability.'
+      },
+      {
+        q: 'You discover you accidentally emailed a patient\'s evaluation to the wrong agency contact. What do you do first?',
+        options: ['Send a follow-up email asking them to delete it', 'Report the incident to Metro leadership within 24 hours', 'Document it in the patient\'s chart and move on', 'Contact the recipient and ask them to confirm they deleted it'],
+        answer: 1,
+        explanation: 'Any potential breach must be reported to Metro leadership within 24 hours. Do not attempt to handle it independently — Metro must conduct a breach assessment and may have notification obligations.'
+      },
+      {
+        q: 'Which of the following is a permitted disclosure of PHI without patient authorization?',
+        options: ['Sharing a patient\'s records with their employer at the employer\'s request', 'Discussing a patient\'s clinical status with the treating physician coordinating care', 'Posting a patient success story on Metro\'s website', 'Providing a patient\'s address to a neighbor who says they are checking on them'],
+        answer: 1,
+        explanation: 'Sharing clinical information with other treating providers falls under the Treatment exception to HIPAA — no authorization is required. All other options require written patient authorization.'
+      },
+      {
+        q: 'Under HIPAA\'s Breach Notification Rule, affected individuals must be notified:',
+        options: ['Within 24 hours of the breach being discovered', 'Within 30 days of the breach being discovered', 'Within 60 days of the breach being discovered', 'Within 90 days of the breach being discovered'],
+        answer: 2,
+        explanation: 'HIPAA requires notification to affected individuals within 60 days of discovery of a breach. This is Metro\'s obligation — your obligation is to report to Metro leadership within 24 hours so Metro can meet its deadlines.'
+      },
+      {
+        q: 'A patient tells you verbally that it is okay for you to speak with her son about her care. You should:',
+        options: ['Proceed — verbal consent from the patient is sufficient', 'Verify there is a signed authorization on file with the agency before disclosing any PHI to the son', 'Only discuss general progress, not clinical details', 'Document the verbal consent in your visit note and proceed'],
+        answer: 1,
+        explanation: 'HIPAA requires written authorization for disclosures to family members outside of the treatment context. Verbal consent is not sufficient. Verify a signed authorization is on file with the agency.'
+      },
+      {
+        q: 'An individual who knowingly obtains PHI for personal gain faces:',
+        options: ['A written warning and mandatory retraining', 'Civil penalties only — up to $50,000', 'Up to 10 years imprisonment and criminal penalties', 'Suspension of clinical license only'],
+        answer: 2,
+        explanation: 'HIPAA\'s criminal penalties for obtaining PHI for personal gain or malicious harm include up to 10 years imprisonment. Individual workforce members — not just organizations — can face criminal prosecution.'
+      }
+    ]
+  },
+
+  // ── OSHA & FIELD SAFETY ───────────────────────────────────
+  {
+    id: 'osha_safety',
+    track: ['newhire', 'annual'],
+    icon: '🦺',
+    title: 'OSHA & Field Safety',
+    desc: 'Workplace hazards, bloodborne pathogens, personal safety, and vehicle safety in home health.',
+    passScore: 80,
+    slides: [
+      { title: 'OSHA and Home Health — Why It Applies to You', content: `<p>The Occupational Safety and Health Administration (OSHA) sets legally enforceable standards to protect workers from workplace hazards. Home health is one of the most hazardous healthcare settings because you work in environments you cannot control.</p><div class="callout">OSHA standards that directly apply to home health clinicians include the Bloodborne Pathogens Standard (29 CFR 1910.1030), Hazard Communication Standard, and Personal Protective Equipment Standard.</div><p>Metro Mobile Health Care is responsible for providing you with a safe working environment, hazard training, and appropriate PPE. You are responsible for following safety protocols on every visit, every day.</p>` },
+      { title: 'Home Environment Hazards', content: `<p>Unlike a clinic, you have no control over the patient\'s home. Before beginning any visit, do a quick visual scan for:</p><ul><li><strong>Trip and fall hazards:</strong> loose rugs, cluttered pathways, poor lighting, uneven flooring, pets underfoot</li><li><strong>Structural hazards:</strong> unstable furniture, broken stairs, unsafe porches</li><li><strong>Air quality hazards:</strong> heavy smoke, mold, chemical odors, pest infestations</li><li><strong>Temperature extremes:</strong> no air conditioning in summer, inadequate heat in winter</li><li><strong>Unsafe equipment:</strong> malfunctioning medical equipment, oxygen in use near open flames</li></ul><div class="callout warn">Document any unsafe home conditions in your clinical note. If the environment poses an immediate danger, you have the right to leave and report to Metro immediately.</div>` },
+      { title: 'Personal Safety in the Field', content: `<p>Your personal safety is always the first priority. No visit is worth compromising your safety.</p><ul><li>Review the patient\'s address and neighborhood before your visit</li><li>Park in a well-lit, visible location; lock your vehicle every time</li><li>Trust your instincts — if something feels wrong at the door, you do not have to enter</li><li>If you encounter aggressive individuals or animals: leave immediately, call 911 if needed, then notify Metro</li><li>Do not wear excessive jewelry or carry large amounts of cash</li><li>Keep your phone charged and accessible at all times</li></ul><div class="callout danger">Never enter a home where you observe active domestic violence, weapon presence, or feel your physical safety is at immediate risk. Call 911 and notify Metro.</div>` },
+      { title: 'Standard Precautions — Every Patient, Every Visit', content: `<p>Standard precautions treat all blood, body fluids, secretions, and mucous membranes as potentially infectious — regardless of a patient\'s known diagnosis.</p><p><strong>Required at all times:</strong></p><ul><li>Hand hygiene before and after every patient contact</li><li>Gloves when contact with blood, body fluids, wounds, or mucous membranes is anticipated</li><li>Gown when clothing may become contaminated with body fluids</li><li>Mask and eye protection when splashing of body fluids is possible</li></ul><p>Transmission-based precautions (contact, droplet, airborne) are added when a patient has a known or suspected transmissible infection.</p>` },
+      { title: 'Personal Protective Equipment (PPE)', content: `<p>Metro provides PPE upon request. You are responsible for having appropriate supplies before beginning your schedule.</p><p><strong>Gloves:</strong></p><ul><li>Use non-sterile exam gloves for routine patient contact</li><li>Change gloves between tasks if moving from a contaminated to clean area</li><li>Never wash and reuse disposable gloves</li><li>Remove gloves without touching the outer surface — perform hand hygiene immediately after</li></ul><p><strong>Masks:</strong></p><ul><li>Surgical masks for droplet precautions</li><li>N95 respirators for airborne precautions (TB, measles, varicella) — must be fit-tested</li></ul><div class="callout">Contact Kym or Stephen if you need PPE supplies before your schedule depletes.</div>` },
+      { title: 'Bloodborne Pathogens — Your Rights', content: `<p>The OSHA Bloodborne Pathogens Standard protects workers from exposure to HIV, Hepatitis B, Hepatitis C, and other pathogens.</p><p><strong>Your rights:</strong></p><ul><li>Free Hepatitis B vaccination series within 10 days of hire</li><li>Free post-exposure evaluation and follow-up</li><li>Access to exposure and training records</li></ul><p><strong>Work practice controls:</strong></p><ul><li>Never recap needles by hand — use a one-handed scoop technique or safety device</li><li>Dispose of sharps immediately in an approved sharps container</li><li>Keep sharps containers within arm's reach during procedures involving needles</li><li>Never overfill a sharps container — replace when ¾ full</li></ul>` },
+      { title: 'Exposure Incident Response', content: `<p>An exposure incident is any eye, mouth, mucous membrane, non-intact skin, or parenteral contact with blood or potentially infectious materials.</p><p><strong>Immediate response:</strong></p><ol><li>Needlestick or skin contact: wash with soap and water for at least 60 seconds</li><li>Eye or mouth splash: flush with clean water for at least 15 minutes</li><li>Remove contaminated clothing</li></ol><p><strong>Then immediately:</strong></p><ol><li>Report to Stephen Mace or Evan Flanagan — same day</li><li>Seek medical evaluation within 2 hours — PEP for HIV is time-critical</li><li>Document: date, time, how the exposure occurred, body fluid involved</li></ol><div class="callout danger">Do not finish your visit before reporting an exposure. Your health comes first.</div>` },
+      { title: 'Sharps Safety and Biohazard Waste', content: `<p>Home health clinicians regularly encounter sharps in patients' homes. Handle all sharps as if they are contaminated.</p><ul><li>Carry an approved sharps disposal container in your clinical bag</li><li>Dispose of all used sharps immediately after use — never transport loose sharps</li><li>If a patient has an overflowing sharps container, document it and contact the agency for resources</li><li>Biohazard waste (soiled dressings, contaminated gloves) should be placed in a sealed bag before disposal</li><li>Never place biohazard waste in your vehicle for transport</li></ul><div class="callout warn">Never pick up loose sharps with bare hands. Use forceps or a mechanical device.</div>` },
+      { title: 'Ergonomics and Body Mechanics', content: `<p>Musculoskeletal injuries are among the leading causes of lost work time in home health.</p><p><strong>Safe patient handling:</strong></p><ul><li>Assess the patient\'s transfer ability and environment before any hands-on activity</li><li>Use available equipment — gait belts, transfer boards, grab bars — whenever possible</li><li>Never perform a solo lift of a dependent patient</li><li>Keep your back straight and use your legs when assisting with transfers</li><li>Avoid reaching overhead or working in sustained awkward postures</li></ul><p><strong>Protecting yourself:</strong></p><ul><li>Wear supportive, closed-toe footwear on all visits</li><li>Report any work-related injury or musculoskeletal pain to Metro promptly</li></ul>` },
+      { title: 'Vehicle and Travel Safety', content: `<p>Motor vehicle accidents are a leading cause of work-related fatalities in home health.</p><ul><li><strong>No phone use while driving</strong> — pull over completely before making or receiving calls</li><li>Never text while driving under any circumstances</li><li>Plan your route before leaving — do not use GPS navigation while moving in unfamiliar areas</li><li>Keep clinical supplies secured in the trunk — unsecured items become projectiles in a crash</li><li>Do not leave patient records or devices visible in your parked vehicle</li><li>Log mileage accurately in ConnectTeam immediately after each visit</li></ul><div class="callout">If involved in a vehicle accident during work hours, notify Metro the same day. Workers' compensation coverage may apply.</div>` },
+      { title: 'Hazard Communication', content: `<p>Patients' homes may contain cleaning products, pesticides, medications, and other chemical hazards.</p><ul><li>If you encounter strong chemical odors or inadequate ventilation — ventilate the area or step outside</li><li>Never mix unknown substances or handle unlabeled containers</li><li>Oxygen-enriched environments (patients on home O2) are a fire risk — no open flames, no smoking</li><li>If a patient has a substance use disorder, be aware of drug paraphernalia hazards including sharps</li></ul><p><strong>Poison Control:</strong> 1-800-222-1222 (24/7)</p>` },
+      { title: 'Reporting Work-Related Injuries', content: `<p>All work-related injuries, illnesses, and near-misses must be reported to Metro promptly.</p><p><strong>Report immediately (same day):</strong></p><ul><li>Any bloodborne pathogen exposure</li><li>Any injury requiring medical attention</li><li>Any motor vehicle accident during work hours</li><li>Any physical threat or assault</li></ul><p><strong>Report within 24 hours:</strong></p><ul><li>Any near-miss incident</li><li>Any unsafe home condition that prevented completion of care</li><li>Any musculoskeletal strain that may be work-related</li></ul><div class="callout">Oklahoma workers' compensation requires timely reporting. Delays can affect your eligibility for benefits.</div>` },
+
+      // ── WORKPLACE VIOLENCE PREVENTION ──
+      { title: 'Workplace Violence — Your Risk as a Home Health Clinician', content: `<p>Healthcare workers face a significantly higher risk of workplace violence than workers in any other industry. As a home health clinician working alone in patients' homes, your risk is unique — you have none of the engineering controls available in a clinic or hospital setting.</p>
+        <div class="callout danger">Healthcare workers suffer <strong>50% of all workplace assaults</strong> despite making up less than 20% of the workforce. Home health field workers are among the highest-risk group.</div>
+        <p>Workplace violence is defined as violent acts — including physical assaults and threats of assault — directed toward persons at work or on duty. There are four types relevant to home health:</p>
+        <ul>
+          <li><strong>Type I — Criminal Intent:</strong> perpetrator has no relationship to the workplace (robbery, random violence)</li>
+          <li><strong>Type II — Patient/Client:</strong> violence from the patient or their family members</li>
+          <li><strong>Type III — Worker-on-Worker:</strong> violence between coworkers</li>
+          <li><strong>Type IV — Personal Relationship:</strong> domestic violence that enters the work setting</li>
+        </ul>
+        <p>In home health, Type I and Type II are your primary concerns.</p>` },
+
+      { title: 'Recognizing Risk Factors Before You Enter', content: `<p>OSHA identifies specific risk factors for home health field workers. Assess these before and during every visit:</p>
+        <p><strong>Patient and Setting Risk Factors:</strong></p>
+        <ul>
+          <li>Working directly with people who have a history of violence, substance abuse, or gang involvement</li>
+          <li>Working alone in a patient's home with no backup available</li>
+          <li>Prevalence of firearms, knives, or other weapons in the home</li>
+          <li>Working in neighborhoods with high crime rates</li>
+          <li>Patients with pain, unfamiliar surroundings, or mind-altering medications that can cause agitation</li>
+        </ul>
+        <p><strong>Warning signs to assess before entering:</strong></p>
+        <ul>
+          <li>Unfamiliar vehicles or individuals around the property</li>
+          <li>Evidence of drug activity or paraphernalia visible outside</li>
+          <li>Aggressive dogs or animals not secured</li>
+          <li>Sounds of argument or disturbance inside</li>
+          <li>Your instinct tells you something is wrong</li>
+        </ul>
+        <div class="callout warn">You always have the right to leave or not enter. Contact Metro if you feel unsafe before, during, or after any visit.</div>` },
+
+      { title: 'The Four Stages of Crisis and De-Escalation', content: `<p>Most violent incidents escalate through predictable stages. Recognizing each stage early gives you the best chance to prevent violence.</p>
+        <p><strong>Stage 1 — Anxiety:</strong> patient appears restless, agitated, or unusually tense</p>
+        <ul><li>Response: acknowledge their feelings, speak calmly, reduce stimulation, give space</li></ul>
+        <p><strong>Stage 2 — Defensiveness:</strong> patient becomes verbally aggressive, threatening, or irrational</p>
+        <ul><li>Response: stay calm, don't argue, set clear limits, offer choices, avoid direct confrontation</li></ul>
+        <p><strong>Stage 3 — Acting Out:</strong> patient is physically aggressive or out of control</p>
+        <ul><li>Response: remove yourself from immediate danger, call 911, do not attempt physical restraint</li></ul>
+        <p><strong>Stage 4 — Tension Reduction:</strong> patient becomes exhausted or remorseful after an outburst</p>
+        <ul><li>Response: once safe, provide support, document thoroughly, report to Metro and the agency</li></ul>
+        <div class="callout">The goal of de-escalation is to interrupt the cycle before it reaches Stage 3. Your safety is always the priority — leaving is never the wrong choice.</div>` },
+
+      { title: 'De-Escalation Techniques in the Home', content: `<p>De-escalation is a set of verbal and non-verbal techniques to reduce agitation and prevent violence. Practice these skills on every visit, not just high-risk ones.</p>
+        <p><strong>Verbal techniques:</strong></p>
+        <ul>
+          <li>Use a calm, quiet, non-threatening tone of voice</li>
+          <li>Acknowledge the patient's feelings without agreeing with threatening behavior: "I can see you're frustrated"</li>
+          <li>Ask open-ended questions to understand what is wrong</li>
+          <li>Offer simple choices to restore a sense of control: "Would you prefer I come back later?"</li>
+          <li>Avoid arguing, correcting, or raising your voice</li>
+          <li>Use the patient's name and speak slowly and clearly</li>
+        </ul>
+        <p><strong>Non-verbal techniques:</strong></p>
+        <ul>
+          <li>Maintain a calm, open body posture — no crossed arms</li>
+          <li>Keep a safe distance — at least arm's length</li>
+          <li>Position yourself between the patient and the exit</li>
+          <li>Avoid direct prolonged eye contact which can feel threatening</li>
+          <li>Never turn your back on an agitated individual</li>
+        </ul>
+        <div class="callout warn">Do not attempt to physically restrain a patient under any circumstances. Your role is to de-escalate or exit — not to subdue.</div>` },
+
+      { title: 'Personal Safety Strategies in the Field', content: `<p>OSHA specifically identifies home health field workers as requiring unique personal safety strategies because engineering controls used in facilities are not available in private homes.</p>
+        <p><strong>Before the visit:</strong></p>
+        <ul>
+          <li>Review any known history of violence flagged in the patient's record or by the agency</li>
+          <li>Let Metro know your schedule — someone should always know where you are</li>
+          <li>Check in with Metro or agency after high-risk visits</li>
+          <li>Park in a visible, well-lit location with a clear exit path</li>
+          <li>Keep your phone charged and accessible at all times</li>
+        </ul>
+        <p><strong>During the visit:</strong></p>
+        <ul>
+          <li>Position yourself near the exit whenever possible</li>
+          <li>Do not wear necklaces, chains, or large jewelry that could be grabbed</li>
+          <li>Do not carry large amounts of cash</li>
+          <li>Be aware of others present in the home who have not been identified</li>
+          <li>Trust your instincts — if something feels wrong, leave</li>
+        </ul>
+        <p><strong>If you are threatened:</strong></p>
+        <ul>
+          <li>Do not argue or escalate — comply with demands for property</li>
+          <li>Remove yourself from the situation as soon as safely possible</li>
+          <li>Call 911 from a safe location</li>
+          <li>Notify Metro immediately</li>
+        </ul>` },
+
+      { title: 'After a Workplace Violence Incident', content: `<p>Your response after a violent incident is just as important as your response during one. OSHA requires employers to provide comprehensive post-incident support.</p>
+        <p><strong>Immediate steps:</strong></p>
+        <ol>
+          <li>Get to a safe location</li>
+          <li>Call 911 if there are injuries or an ongoing threat</li>
+          <li>Contact Metro leadership immediately — same day, any time</li>
+          <li>Seek medical attention for any physical injuries</li>
+          <li>File a police report if a crime occurred</li>
+        </ol>
+        <p><strong>Documentation — complete as soon as possible:</strong></p>
+        <ul>
+          <li>Date, time, and exact location of the incident</li>
+          <li>Description of what occurred — use exact words spoken if threatening</li>
+          <li>Description of the person(s) involved</li>
+          <li>Names of any witnesses</li>
+          <li>Any injuries sustained and medical care received</li>
+        </ul>
+        <div class="callout">OSHA research shows workplace violence is significantly underreported. Every incident — including threats, verbal abuse, and near-misses — must be reported. Unreported incidents cannot be prevented in the future.</div>
+        <p>Metro will provide support and connect you with counseling resources after any violent incident. You will never be penalized for reporting violence or for leaving a situation where you felt unsafe.</p>` }
+    ],
+    quiz: [
+      { q: 'Standard precautions apply to:', options: ['Only patients with known infectious diseases', 'Only during wound care or procedures involving blood', 'Every patient, every visit, regardless of diagnosis', 'Only when the agency specifies precautions in the orders'], answer: 2, explanation: 'Standard precautions are universal — applied to every patient on every visit. You treat all blood and body fluids as potentially infectious.' },
+      { q: 'You experience a needlestick while providing wound care. After washing the site, your next immediate action is:', options: ['Finish the visit and report when you get home', 'Report to Metro leadership the same day and seek medical evaluation within 2 hours', 'Monitor the site for signs of infection over the next week', 'File an incident report online when convenient'], answer: 1, explanation: 'Post-exposure prophylaxis for HIV is time-critical — most effective within 2 hours. Report to Metro immediately and seek medical evaluation the same day.' },
+      { q: 'You arrive at a patient\'s home and smell a strong unknown chemical odor inside. You should:', options: ['Proceed with the visit — odors are common in home settings', 'Open windows to ventilate and begin the visit', 'Step outside, do not enter, and contact Metro and the agency before proceeding', 'Ask the patient what the smell is and decide from there'], answer: 2, explanation: 'Strong unknown chemical odors represent a potential hazard. Do not enter until the situation is assessed. Your safety is the priority.' },
+      { q: 'A sharps container in a patient\'s home is overflowing. You should:', options: ['Empty it into a bag and dispose of it in the trash', 'Document it in the clinical note and contact the agency for sharps disposal resources', 'Bring it back to Metro for proper disposal', 'Cap it and leave it on the counter'], answer: 1, explanation: 'Document the unsafe condition and contact the agency. Never handle an overfull sharps container or transport sharps in your vehicle.' },
+      { q: 'Under the OSHA Bloodborne Pathogens Standard, Metro is required to offer you:', options: ['Annual flu shots at no cost', 'Free Hepatitis B vaccination within 10 days of hire', 'Free N95 respirators for all visits', 'Monthly bloodborne pathogen testing'], answer: 1, explanation: 'OSHA\'s Bloodborne Pathogens Standard requires employers to offer the Hepatitis B vaccination series free of charge within 10 working days of hire.' },
+      { q: 'You are driving between visits and receive an urgent call from Metro. You should:', options: ['Answer using speakerphone since it\'s work-related', 'Answer using a Bluetooth headset', 'Pull over safely and completely before answering', 'Call back when you arrive at the next patient\'s home'], answer: 2, explanation: 'Pull over completely before handling any call. Distracted driving significantly increases crash risk. No call is worth a motor vehicle accident.' },
+      { q: 'You arrive at a patient\'s home and hear loud arguing inside. You feel uneasy. You should:', options: ['Knock and proceed — you have a scheduled visit', 'Wait in your car and contact Metro before deciding whether to enter', 'Call the patient\'s phone to warn them you are outside', 'Skip the visit without notifying anyone'], answer: 1, explanation: 'Trust your instincts. Wait safely and contact Metro before entering any situation that feels unsafe. You always have the right to not enter a home where you feel threatened.' },
+      { q: 'A patient becomes verbally aggressive during your visit, raising their voice and making threatening statements. Your best first response is:', options: ['Raise your voice to match theirs and set firm limits', 'Immediately call 911', 'Speak calmly, acknowledge their feelings, create distance, and position yourself near the exit', 'Continue the visit normally and document the behavior afterward'], answer: 2, explanation: 'Verbal de-escalation — calm tone, acknowledging feelings, creating distance, and positioning near the exit — is the correct response. Call 911 only if the situation escalates to physical aggression.' },
+      { q: 'After a patient makes a verbal threat you are able to safely leave. Your next step is:', options: ['Document it in the agency EMR and move on to your next visit', 'Report it to Metro the same day and document what occurred in detail', 'Only report if the threat was physical not verbal', 'Wait to see if it happens again before reporting'], answer: 1, explanation: 'All threats — verbal or physical — must be reported to Metro the same day. OSHA requires reporting all incidents including threats and near-misses. Underreporting prevents future prevention.' }
+    ]
+  },
+
+  // ── ABUSE, NEGLECT & EXPLOITATION ────────────────────────
+  {
+    id: 'abuse_neglect',
+    track: ['newhire', 'annual'],
+    icon: '🛡️',
+    title: 'Abuse, Neglect & Exploitation',
+    desc: 'Mandatory reporter obligations, recognition of signs, reporting protocols, and Oklahoma law.',
+    passScore: 80,
+    slides: [
+      { title: 'You Are a Mandatory Reporter', content: `<p>As a licensed healthcare clinician in Oklahoma, you are legally designated as a <strong>mandatory reporter</strong> of suspected abuse, neglect, and exploitation. This is a legal obligation that comes with your license and your role.</p><p>You are required to report reasonable suspicion of abuse, neglect, or exploitation involving:</p><ul><li>Adults age 65 and older</li><li>Adults with physical or developmental disabilities who may be vulnerable</li><li>Children under age 18 present in any household you enter</li></ul><div class="callout danger">You do not need proof. You do not need to investigate. <strong>Reasonable suspicion is sufficient and required.</strong> Failure to report is a criminal offense under Oklahoma law (Title 43A O.S. § 10-104).</div>` },
+      { title: 'Good Faith Protection', content: `<p>Oklahoma law provides strong protections for mandatory reporters who report in good faith.</p><ul><li>A report made in good faith is <strong>immune from civil and criminal liability</strong> — even if the investigation does not confirm abuse</li><li>You are protected from retaliation by your employer for making a good-faith report</li><li>Your identity as the reporter is kept confidential during investigations</li></ul><p>The standard is good faith — not certainty. If you have a reasonable belief that abuse may be occurring, you are legally protected in reporting it.</p><div class="callout">The fear of being wrong is not a valid reason to withhold a report. The system is designed to investigate — your role is only to report what you observe.</div>` },
+      { title: 'Recognizing Physical Abuse', content: `<p>Physical abuse is the intentional use of physical force that results in pain, injury, or impairment. Signs include:</p><ul><li>Bruising in unusual locations — inner arms, torso, buttocks, back of legs</li><li>Bruises in various stages of healing suggesting repeated incidents</li><li>Injuries inconsistent with the explanation given</li><li>Burns with defined edges (cigarette burns, immersion burns)</li><li>Welts, bite marks, or injuries in the shape of an object</li><li>Patient flinches, withdraws, or appears fearful when touched</li></ul><div class="callout warn">Document objectively — describe what you see, not what you conclude. "3 cm yellow-green bruise, medial left upper arm, patient states unsure how it occurred" rather than "patient appears to be abused."</div>` },
+      { title: 'Recognizing Neglect', content: `<p>Neglect is the failure of a caregiver to provide necessary care to maintain the health, safety, and welfare of a vulnerable person.</p><p><strong>Signs in adults:</strong></p><ul><li>Malnutrition, dehydration, significant unintentional weight loss</li><li>Poor personal hygiene — soiled clothing, body odor, untreated skin breakdown</li><li>Untreated medical conditions or worsening wounds without explanation</li><li>Medication not being administered or refilled</li><li>Home environment unsafe — no heat/cooling, no food, pest infestation</li><li>Patient left alone for extended periods without ability to summon help</li></ul><p><strong>Signs in children present in the home:</strong></p><ul><li>Appears hungry, dirty, or inadequately dressed for weather</li><li>Untreated medical or dental conditions</li></ul>` },
+      { title: 'Recognizing Financial Exploitation', content: `<p>Financial exploitation is one of the most common — and most underreported — forms of elder abuse.</p><p><strong>Warning signs:</strong></p><ul><li>Sudden changes in financial situation — unpaid bills, utilities shut off, no money for medication</li><li>A new person has taken control of finances</li><li>Patient confused about or unaware of their financial situation</li><li>Missing valuables, jewelry, or cash</li><li>Large, unexplained withdrawals from bank accounts</li><li>Patient pressured to change will, power of attorney, or beneficiary designations</li><li>Caregiver speaks for the patient excessively, especially about money</li></ul><div class="callout warn">Financial exploitation often co-occurs with physical or emotional abuse.</div>` },
+      { title: 'Recognizing Emotional Abuse', content: `<p>Emotional abuse is among the most damaging but hardest to identify.</p><p><strong>Signs to watch for:</strong></p><ul><li>Patient appears fearful, anxious, or withdrawn — especially when the caregiver enters the room</li><li>Patient looks to caregiver before answering your questions</li><li>Caregiver speaks to patient in a degrading or dismissive manner</li><li>Patient is not allowed to speak privately with you</li><li>Patient reports feeling worthless or deserving of punishment</li><li>Caregiver threatens to "put the patient in a nursing home" as a means of control</li></ul><div class="callout">Try to speak with the patient privately during at least part of every visit.</div>` },
+      { title: 'Sexual Abuse and Self-Neglect', content: `<p><strong>Sexual abuse</strong> — any non-consensual sexual contact or exploitation. Signs include:</p><ul><li>Unexplained genital, rectal, or breast injuries</li><li>STIs in a patient with no known sexual activity</li><li>Patient reports of unwanted sexual contact</li><li>Torn, stained, or bloody undergarments</li></ul><p><strong>Self-neglect</strong> — when a vulnerable adult refuses to provide themselves with adequate food, water, shelter, or medical care. Also reportable:</p><ul><li>Living in severely unsafe or unsanitary conditions</li><li>Refusing necessary medical treatment to a degree that poses serious health risk with cognitive impairment affecting decision-making</li></ul><div class="callout warn">A competent adult has the right to make poor choices. Report when cognitive impairment is affecting decision-making capacity.</div>` },
+      { title: 'How to Report in Oklahoma', content: `<p><strong>State reporting:</strong></p><ul><li><strong>Adult Protective Services (APS):</strong> 1-800-522-3511 — available 24/7</li><li><strong>Child Abuse Hotline (DHS):</strong> 1-800-522-3511 — same number, 24/7</li><li>You may also report online at <strong>okdhs.org</strong></li><li>You do NOT need Metro's permission to make a report — you have independent authority as a mandatory reporter</li></ul><p><strong>Metro reporting:</strong></p><ul><li>Notify Stephen Mace or Evan Flanagan the same day you make or plan to make a report</li></ul><p><strong>Agency reporting:</strong></p><ul><li>Document your clinical observations in detail in the agency EMR</li><li>The agency may have additional internal reporting requirements</li></ul>` },
+      { title: 'What NOT to Do', content: `<div class="callout danger"><strong>Do not confront the suspected abuser.</strong> Confrontation can escalate danger and compromise the investigation.</div><ul><li>Do not tell the patient you are going to report — this can trigger retaliation</li><li>Do not promise the patient that nothing will change as a result of the report</li><li>Do not delay your report to gather more evidence</li><li>Do not attempt to conduct your own investigation</li><li>Do not document conclusions — document only objective observations</li><li>Do not share your suspicions with the patient\'s family members — they may be the abuser</li></ul>` },
+      { title: 'Documentation Best Practices', content: `<p>Your clinical documentation is a critical part of the abuse investigation. Write as if your notes will be read in court — because they may be.</p><p><strong>Document:</strong></p><ul><li>Exact physical findings with size, location, color, and shape</li><li>Patient's exact words — use quotation marks</li><li>Caregiver's explanation of injuries — note inconsistencies</li><li>Patient's affect and behavior in the caregiver\'s presence vs. alone</li><li>Environmental observations relevant to neglect</li><li>That you made an APS/DHS report and the date and time</li></ul><p><strong>Do not document:</strong></p><ul><li>Your personal conclusions about guilt or causation</li><li>The name of the person you suspect — only document what you observed</li></ul>` }
+    ],
+    quiz: [
+      { q: 'As a mandatory reporter in Oklahoma, you are required to report when:', options: ['You have confirmed evidence that abuse has occurred', 'You have a reasonable suspicion that abuse, neglect, or exploitation may be occurring', 'The patient or family member asks you to report', 'You have discussed the situation with Metro leadership and they agree'], answer: 1, explanation: 'Mandatory reporters are required to report based on reasonable suspicion — not confirmed evidence. Report what you observe and let APS investigate.' },
+      { q: 'A patient\'s caregiver insists on remaining in the room and answers questions before the patient can respond. This is:', options: ['Normal caregiver behavior — they are just being helpful', 'A potential sign of emotional abuse or controlling behavior that warrants further assessment', 'Only concerning if the patient appears physically injured', 'Acceptable as long as the patient does not object'], answer: 1, explanation: 'A caregiver who controls communication and prevents private conversation is a red flag for emotional abuse or exploitation. Try to speak with the patient alone and document your observations.' },
+      { q: 'You observe multiple bruises in various stages of healing on a patient\'s inner arms. The caregiver says "she bruises easily." You should:', options: ['Accept the explanation — elderly patients do bruise easily', 'Document your objective findings and report your concerns to APS and Metro', 'Ask the patient privately if she is being hurt before deciding whether to report', 'Wait one more visit to see if new bruises appear before reporting'], answer: 1, explanation: 'Bruising in unusual locations in various healing stages is a red flag for physical abuse. Document objectively and report based on reasonable suspicion — do not wait for additional evidence.' },
+      { q: 'After identifying suspected abuse, you should confront the caregiver to get their explanation before reporting:', options: ['True — you need all sides of the story before reporting', 'True — the caregiver deserves a chance to explain', 'False — confronting the suspected abuser can endanger the patient and compromise the investigation', 'False — only Metro leadership should confront the caregiver'], answer: 2, explanation: 'Never confront the suspected abuser. Report to APS and Metro — let trained investigators handle it.' },
+      { q: 'The Oklahoma Adult Protective Services reporting hotline is:', options: ['1-800-422-4453', '1-800-522-3511', '1-800-252-8049', '1-888-665-4228'], answer: 1, explanation: '1-800-522-3511 is the Oklahoma APS and DHS Child Abuse Hotline, available 24 hours a day, 7 days a week.' },
+      { q: 'Which is the most appropriate way to document suspected financial exploitation?', options: ['"Patient is being financially exploited by her son."', '"Patient\'s son has taken all her money and is abusing her."', '"Patient states she has no money for food this week. Bills on counter appear past due. Patient states son manages all her finances and she is unsure of her account balances."', '"Financial abuse suspected — reported to APS."'], answer: 2, explanation: 'Document objective observations and exact patient statements in quotation marks. Do not draw conclusions in the chart — that is the investigator\'s determination.' }
+    ]
+  },
+
+  // ── EMERGENCY PROCEDURES ─────────────────────────────────
+  {
+    id: 'emergency_proc',
+    track: ['newhire', 'annual'],
+    icon: '🚨',
+    title: 'Emergency Procedures',
+    desc: 'Medical emergencies, fire, severe weather, critical incidents, and after-hours protocols.',
+    passScore: 80,
+    slides: [
+      { title: 'Your Role in a Patient Emergency', content: `<p>As a licensed clinician in a patient\'s home, you may be the only trained healthcare professional present when a medical emergency occurs.</p><div class="callout danger">In any life-threatening emergency, <strong>call 911 first</strong>. Do not call Metro, the agency, or the patient\'s family before calling 911. Every second counts.</div><p>Your general responsibilities:</p><ul><li>Recognize the emergency and activate EMS immediately</li><li>Provide care within your licensure scope until EMS arrives</li><li>Stay with the patient — do not leave to make calls from outside</li><li>Ensure the address is clearly communicated to 911 dispatch</li><li>Notify the agency and Metro as soon as possible after EMS is activated</li><li>Document the event in detail in the agency EMR</li></ul>` },
+      { title: 'Cardiac and Respiratory Emergencies', content: `<p><strong>Signs of cardiac arrest:</strong> unresponsive, not breathing normally, no pulse</p><ol><li>Call 911 immediately</li><li>Begin CPR if trained and within your licensure scope — 30 compressions to 2 breaths, 100-120 compressions/minute</li><li>Use AED if one is available in the home</li><li>Continue until EMS arrives or patient shows signs of life</li></ol><p><strong>Respiratory distress:</strong> labored breathing, use of accessory muscles, cyanosis, dropping O2 sat</p><ul><li>Position patient upright if tolerated</li><li>Administer supplemental O2 if ordered and available</li><li>Call 911 if patient does not respond to initial interventions or condition worsens</li></ul><div class="callout danger">Never transport a patient in your personal vehicle — even in an emergency. Wait for EMS.</div>` },
+      { title: 'Falls During a Visit', content: `<p>A patient fall during your visit is one of the most common clinical emergencies in home health.</p><p><strong>Immediate assessment after a fall:</strong></p><ol><li>Do not move the patient until you have assessed for injury</li><li>Assess for head injury, loss of consciousness, pain, deformity, or inability to move extremities</li><li>If any signs of serious injury — call 911 before moving the patient</li><li>If no signs of serious injury, assist the patient up using safe technique</li></ol><p><strong>After any fall — regardless of apparent injury:</strong></p><ul><li>Document the fall in detail in the agency EMR</li><li>Notify the agency immediately — falls are a required reporting event</li><li>Notify Metro</li><li>Complete any agency-required incident report</li></ul><div class="callout warn">Never attempt to catch a falling patient — redirect to a safe landing if possible. Catching attempts are a leading cause of clinician back injury.</div>` },
+      { title: 'Stroke Recognition — Act FAST', content: `<p>Stroke is a time-sensitive emergency. Use the FAST acronym:</p><p><strong>F — Face:</strong> Ask the patient to smile. Is one side drooping?</p><p><strong>A — Arms:</strong> Ask the patient to raise both arms. Does one arm drift downward?</p><p><strong>S — Speech:</strong> Ask the patient to repeat a simple phrase. Is speech slurred or strange?</p><p><strong>T — Time:</strong> If you observe ANY of these signs, call 911 immediately.</p><div class="callout danger">The treatment window for ischemic stroke (tPA) is approximately 3-4.5 hours from symptom onset. Do not wait to see if symptoms resolve. Note the time symptoms began when you call 911.</div><p>Other stroke signs: sudden severe headache, sudden vision changes, sudden loss of balance or coordination, sudden confusion.</p>` },
+      { title: 'Diabetic Emergencies', content: `<p><strong>Hypoglycemia (low blood sugar — typically &lt;70 mg/dL):</strong></p><ul><li>Signs: shakiness, sweating, confusion, rapid heartbeat, pallor, hunger</li><li>If conscious and can swallow: 15g fast-acting carbohydrates (4 oz juice, glucose tablets)</li><li>Recheck in 15 minutes — repeat if still symptomatic</li><li>If unconscious or cannot swallow safely: call 911 immediately — do not give anything by mouth</li></ul><p><strong>Hyperglycemia / Diabetic Ketoacidosis signs:</strong></p><ul><li>Fruity breath, excessive thirst, frequent urination, nausea, abdominal pain, confusion</li><li>Call 911 for any patient with suspected DKA — this is a life-threatening emergency</li></ul>` },
+      { title: 'Fire Emergency — RACE and PASS', content: `<p><strong>RACE — What to do in a fire:</strong></p><ul><li><strong>R — Rescue:</strong> Remove anyone in immediate danger if safe to do so</li><li><strong>A — Alert:</strong> Call 911 immediately</li><li><strong>C — Contain:</strong> Close doors to slow fire spread</li><li><strong>E — Extinguish/Evacuate:</strong> Use extinguisher for small contained fires only; evacuate for larger fires</li></ul><p><strong>PASS — How to use a fire extinguisher:</strong></p><ul><li><strong>P</strong> — Pull the pin</li><li><strong>A</strong> — Aim at the base of the fire</li><li><strong>S</strong> — Squeeze the handle</li><li><strong>S</strong> — Sweep side to side</li></ul><div class="callout danger">Never use an elevator during a fire. Never re-enter a burning building. Your safety first.</div>` },
+      { title: 'Severe Weather — Oklahoma Specific', content: `<p>Oklahoma is in Tornado Alley. Severe weather can develop rapidly. Metro will never penalize you for a weather-related delay or cancellation.</p><p><strong>Tornado Warning (tornado confirmed or radar indicated):</strong></p><ul><li>Do not begin driving — shelter immediately</li><li>In a patient\'s home: interior room, lowest floor, away from windows — closets and bathrooms are ideal</li><li>In your vehicle with no shelter: get low in a ditch away from your vehicle — do not shelter under an overpass</li><li>Stay sheltered until the warning expires</li><li>Notify Metro when safe to do so</li></ul><p><strong>Tornado Watch:</strong></p><ul><li>Monitor weather actively — have a weather app with alerts enabled</li><li>Know the shelter location at each patient\'s home</li></ul>` },
+      { title: 'Patient Death During a Visit', content: `<p><strong>If you arrive and the patient appears deceased:</strong></p><ol><li>Call 911 — do not assume death without assessment</li><li>If no signs of life and rigor or lividity is present, do not disturb the scene</li><li>Notify Metro immediately</li><li>Notify the agency</li><li>Remain on scene until emergency personnel arrive unless unsafe to do so</li></ol><p><strong>Expected death (hospice/comfort measures):</strong></p><ul><li>Follow the agency's protocol for expected death</li><li>Comfort family members present</li><li>Document time, circumstances, and who was notified</li><li>Notify Metro</li></ul><div class="callout warn">Do not administer CPR to a patient with a valid DNR. Verify DNR status at the start of care and document its location in the home.</div>` },
+      { title: 'After-Hours and Critical Incident Reporting', content: `<p>Emergencies don't follow business hours. Know how to reach Metro at any time.</p><p><strong>After-hours Metro contacts:</strong></p><ul><li>Stephen Mace, DPT — primary after-hours contact</li><li>Evan Flanagan, PT — secondary contact</li></ul><p><strong>Critical incidents requiring same-day Metro notification:</strong></p><ul><li>Patient death during or immediately before a scheduled visit</li><li>911 activation for any patient emergency</li><li>Patient fall with injury</li><li>Any situation involving law enforcement</li><li>Any threat to your personal safety</li><li>Any bloodborne pathogen exposure</li><li>Any motor vehicle accident during work hours</li></ul>` }
+    ],
+    quiz: [
+      { q: 'A patient becomes unresponsive during your visit. Your very first action is:', options: ['Call Metro to report the emergency', 'Call the patient\'s family emergency contact', 'Call 911', 'Begin CPR immediately before calling anyone'], answer: 2, explanation: 'Call 911 first in any life-threatening emergency. Notify Metro and the family after EMS is activated.' },
+      { q: 'Using the FAST acronym, which finding indicates a possible stroke requiring immediate 911 activation?', options: ['Patient reports feeling fatigued during the visit', 'One side of the patient\'s face is drooping when asked to smile', 'Patient has an elevated blood pressure reading', 'Patient is confused about what day it is'], answer: 1, explanation: 'Facial drooping is a classic FAST sign of stroke. Any FAST finding warrants immediate 911 activation — do not wait to see if it resolves.' },
+      { q: 'A patient falls while you are present. They are alert and denying pain. You should:', options: ['Help them up immediately and continue the visit', 'Assess for injury before moving them, document the fall, and notify the agency and Metro', 'Complete the visit and document the fall in your next note', 'Only report to Metro if the patient has visible injury'], answer: 1, explanation: 'Assess for injury before moving any patient who has fallen. All falls must be reported to the agency and Metro regardless of apparent injury.' },
+      { q: 'A tornado warning is issued for your area while you are driving between visits. You should:', options: ['Drive quickly to your next patient\'s home for shelter', 'Pull under the nearest overpass for protection', 'Stop driving immediately and find the nearest interior shelter', 'Continue driving carefully and monitor the warning'], answer: 2, explanation: 'Never shelter under an overpass. Stop driving immediately when a tornado warning is issued and find interior shelter.' },
+      { q: 'You arrive for a scheduled visit and find the patient unresponsive with signs suggesting death for several hours. You should:', options: ['Begin CPR immediately', 'Call the patient\'s family first, then Metro', 'Call 911, do not disturb the scene, notify Metro, and remain until emergency personnel arrive', 'Leave the home and call the agency when you reach your car'], answer: 2, explanation: 'Call 911, preserve the scene, notify Metro, and remain on scene until emergency personnel arrive. Do not disturb the scene.' }
+    ]
+  },
+
+  // ── INFECTION CONTROL ────────────────────────────────────
+  {
+    id: 'infection_control',
+    track: ['newhire', 'annual'],
+    icon: '🧤',
+    title: 'Infection Control',
+    desc: 'Hand hygiene, PPE, transmission-based precautions, immunizations, and home health-specific infection risks.',
+    passScore: 80,
+    slides: [
+      { title: 'Why Infection Control Matters in Home Health', content: `<p>Home health clinicians move between multiple patient homes each day — making you a potential vector for spreading infection if proper controls are not followed. Unlike a hospital, you have no infection control department checking compliance. You are the last line of defense.</p><div class="callout">Healthcare-associated infections (HAIs) cause an estimated 99,000 deaths annually in the United States. Home health clinicians play a critical role in prevention.</div><p>Infection control has two goals:</p><ul><li><strong>Protect your patients</strong> — from organisms you may inadvertently bring into their home</li><li><strong>Protect yourself</strong> — from exposure to infectious agents in the patient\'s environment</li></ul>` },
+      { title: 'Hand Hygiene — The Single Most Important Intervention', content: `<p>Proper hand hygiene is the most effective measure to prevent spread of infection.</p><p><strong>Use soap and water (minimum 20 seconds) when:</strong></p><ul><li>Hands are visibly soiled or contaminated</li><li>After contact with a patient with known or suspected C. difficile — hand sanitizer is NOT effective against C. diff spores</li><li>After using the restroom</li><li>Before eating</li></ul><p><strong>Use alcohol-based hand sanitizer (≥60% alcohol) when hands are not visibly soiled:</strong></p><ul><li>Before entering the patient\'s home</li><li>Before and after direct patient contact</li><li>Before and after glove use</li><li>After contact with patient\'s environment or equipment</li><li>Before leaving the patient\'s home</li></ul>` },
+      { title: 'Proper Hand Washing Technique', content: `<p>Follow these steps every time:</p><ol><li>Wet hands with clean running water</li><li>Apply enough soap to cover all surfaces</li><li>Lather and scrub all surfaces — backs of hands, between fingers, under nails — for at least <strong>20 seconds</strong></li><li>Rinse thoroughly under running water</li><li>Dry with a clean paper towel</li><li>Use the paper towel to turn off the faucet</li></ol><div class="callout warn">Keep fingernails short and clean. Artificial nails and nail polish harbor significantly more bacteria and are not recommended for clinical staff.</div>` },
+      { title: 'Glove Use — When, How, and Common Mistakes', content: `<p>Gloves protect both you and your patient — but only when used correctly. Gloves are <strong>not a substitute for hand hygiene.</strong></p><p><strong>When to wear gloves:</strong></p><ul><li>Any anticipated contact with blood, body fluids, wound drainage, or mucous membranes</li><li>When handling soiled dressings, linens, or contaminated equipment</li><li>When the patient has a known transmissible infection requiring contact precautions</li></ul><p><strong>Common mistakes:</strong></p><ul><li>Touching clean surfaces while wearing contaminated gloves</li><li>Reusing disposable gloves</li><li>Failing to perform hand hygiene after glove removal</li><li>Removing gloves by grabbing the outer surface — always peel from the wrist inward</li></ul>` },
+      { title: 'Transmission-Based Precautions', content: `<p>When a patient has a known or suspected transmissible infection, additional precautions are added on top of standard precautions.</p><p><strong>Contact Precautions</strong> (MRSA, C. diff, VRE):</p><ul><li>Gown and gloves for all patient contact</li><li>Dedicate equipment to that patient when possible</li><li>Disinfect any shared equipment before and after use</li></ul><p><strong>Droplet Precautions</strong> (influenza, pertussis, meningitis):</p><ul><li>Surgical mask within 3 feet of the patient</li></ul><p><strong>Airborne Precautions</strong> (tuberculosis, measles, varicella):</p><ul><li>N95 respirator — must be fit-tested annually</li><li>Ensure adequate ventilation</li></ul>` },
+      { title: 'MRSA and Multi-Drug Resistant Organisms', content: `<p>MRSA and other MDROs are increasingly common in home health patients. Many carry MRSA without symptoms.</p><ul><li>MRSA is spread primarily through direct contact — hands are the most common route</li><li>Contact precautions are required when MRSA is known</li><li>Standard precautions with rigorous hand hygiene protect against unrecognized MRSA</li></ul><p><strong>Your clinical bag:</strong></p><ul><li>Keep your bag off the floor at all times — use a hook or clean surface</li><li>Disinfect the outside of your bag weekly and any time it contacts a contaminated surface</li><li>Do not share equipment between patients without proper disinfection</li><li>Keep clean and dirty supplies separated</li></ul>` },
+      { title: 'C. Difficile — Special Considerations', content: `<p>C. difficile (C. diff) produces spores that are resistant to alcohol-based hand sanitizers — soap and water is required.</p><p><strong>Signs a patient may have C. diff:</strong></p><ul><li>Recent antibiotic use (within the past 2-3 months)</li><li>Frequent watery, foul-smelling diarrhea</li><li>Recent hospitalization</li></ul><p><strong>C. diff precautions:</strong></p><ul><li>Use soap and water hand hygiene — not hand sanitizer — after any patient contact</li><li>Gown and gloves for all patient contact</li><li>Disinfect equipment with a sporicidal agent (bleach-based disinfectant)</li></ul><div class="callout danger">Hand sanitizer does NOT kill C. diff spores. Soap and water is mandatory.</div>` },
+      { title: 'Wound Care Infection Control', content: `<p>Wound care is a high-risk activity for infection transmission.</p><p><strong>Before wound care:</strong></p><ul><li>Assemble all supplies before opening the wound</li><li>Create a clean field on a stable surface using a clean barrier</li><li>Perform hand hygiene and don gloves</li></ul><p><strong>During wound care:</strong></p><ul><li>Remove soiled dressings with one gloved hand</li><li>Change gloves before applying new dressings</li><li>Use aseptic technique for wounds with exposed tissue or hardware</li></ul><p><strong>After wound care:</strong></p><ul><li>Dispose of soiled dressings in a sealed bag before placing in patient\'s trash</li><li>Remove gloves — perform hand hygiene immediately</li><li>Disinfect any reusable equipment</li></ul>` },
+      { title: 'Equipment Cleaning and Disinfection', content: `<p>Your clinical equipment moves from home to home and can transmit pathogens if not properly disinfected.</p><p><strong>After every patient visit:</strong></p><ul><li>Wipe stethoscope diaphragm and earpieces with 70% isopropyl alcohol</li><li>Wipe blood pressure cuff with an approved disinfectant wipe (allow full contact time per label)</li><li>Wipe pulse oximeter probe with alcohol wipe</li></ul><p><strong>Weekly:</strong></p><ul><li>Disinfect interior and exterior of your clinical bag</li><li>Inspect and restock supplies — check expiration dates</li></ul><div class="callout warn">Disinfectant wipes require dwell time — the surface must remain visibly wet for the contact time listed on the product (typically 1-3 minutes). Wiping and immediately drying does not disinfect.</div>` },
+      { title: 'Immunization Requirements', content: `<p><strong>Required annually:</strong></p><ul><li><strong>TB Screening:</strong> Annual tuberculin skin test or IGRA blood test</li><li><strong>Influenza vaccine:</strong> Strongly recommended; some agency partners require it. Declination form required if refused</li></ul><p><strong>Required at hire / on file:</strong></p><ul><li><strong>Hepatitis B:</strong> 3-dose series or documented immunity — offered by Metro within 10 days of hire</li><li><strong>MMR:</strong> 2 doses or documented immunity</li><li><strong>Varicella:</strong> 2 doses or documented immunity or history of disease</li><li><strong>Tdap:</strong> One-time dose; Td booster every 10 years</li><li><strong>COVID-19:</strong> Follow current CMS and agency partner requirements</li></ul><p>Submit documentation to Metro admin. Outdated records can affect your placement eligibility.</p>` },
+      { title: 'When to Stay Home', content: `<p>Visiting patients when you are ill can have serious consequences for medically fragile patients.</p><p><strong>Do not report for visits if you have:</strong></p><ul><li>Fever (≥100.4°F) — stay home until fever-free for 24 hours without fever-reducing medication</li><li>Active vomiting or diarrhea — stay home until symptom-free for 24 hours</li><li>Confirmed or suspected influenza, COVID-19, strep, or other communicable illness</li><li>Active shingles with lesions that cannot be fully covered</li><li>Conjunctivitis — until treatment has been started for 24 hours</li></ul><div class="callout">Notify Metro as soon as possible when you cannot work due to illness so visits can be reassigned. Protecting patients is the priority.</div>` }
+    ],
+    quiz: [
+      { q: 'After caring for a patient with confirmed C. difficile, hand hygiene should be performed using:', options: ['Alcohol-based hand sanitizer — it is faster and equally effective', 'Either soap and water or hand sanitizer — both are effective', 'Soap and water only — hand sanitizer does not kill C. diff spores', 'Antimicrobial soap only — regular soap is insufficient'], answer: 2, explanation: 'C. difficile produces spores that are resistant to alcohol-based hand sanitizers. Soap and water is the only effective hand hygiene method after C. diff contact.' },
+      { q: 'You are about to apply a new wound dressing. After removing the soiled dressing with gloves, you should:', options: ['Apply the new dressing with the same gloves to maintain efficiency', 'Change gloves and perform hand hygiene before applying the new dressing', 'Remove gloves, wash hands, then use bare hands to apply the new dressing', 'Continue with the same gloves as long as they are not visibly contaminated'], answer: 1, explanation: 'The outer surface of a soiled dressing is contaminated. Change gloves and perform hand hygiene between removing the soiled dressing and applying the new one.' },
+      { q: 'Your stethoscope should be disinfected:', options: ['Weekly during your clinical bag cleanup', 'Monthly or when visibly soiled', 'After every patient visit', 'Only after visiting a patient on contact precautions'], answer: 2, explanation: 'Stethoscopes and all patient care equipment should be disinfected after every patient visit — not just after high-risk visits.' },
+      { q: 'A patient you visited yesterday has just been diagnosed with influenza. You feel fine today. You should:', options: ['Continue your schedule — you feel fine so you are not contagious', 'Complete your schedule but wear a mask at all visits', 'Contact Metro — you may need to wear a mask and monitor for symptoms per current guidance', 'Cancel all visits immediately regardless of symptoms'], answer: 2, explanation: 'Contact Metro when you have had a known exposure. Whether you continue working depends on current guidelines and your vaccination status — do not make this decision alone.' },
+      { q: 'When using a disinfectant wipe on your blood pressure cuff, the correct technique is:', options: ['Wipe the surface and allow it to air dry immediately', 'Keep the surface visibly wet for the full dwell time listed on the product label', 'Wipe twice in quick succession for extra protection', 'Only wipe the parts that directly touched the patient\'s skin'], answer: 1, explanation: 'Disinfectants require contact time (dwell time) to be effective — typically 1-3 minutes. The surface must remain visibly wet for the full contact time. Immediately drying does not achieve disinfection.' },
+      { q: 'Which immunization does OSHA require employers to offer to clinical staff within 10 days of hire?', options: ['Influenza vaccine', 'COVID-19 vaccine', 'Hepatitis B vaccine series', 'Tdap booster'], answer: 2, explanation: 'OSHA\'s Bloodborne Pathogens Standard requires employers to offer the Hepatitis B vaccination series free of charge within 10 working days of initial assignment.' }
+    ]
+  },
+
+  // ── DEVICE & COMMUNICATION COMPLIANCE ────────────────────
+  {
+    id: 'nh_tablet',
+    track: ['newhire', 'annual'],
+    icon: '📱',
+    title: 'Device & Communication Compliance',
+    desc: 'Samsung Galaxy Tab policy, Knox MDM, HIPAA-compliant communication, and ConnectTeam acceptable use.',
+    passScore: 80,
+    slides: [
+      { title: 'Your Metro-Issued Device', content: `<p>Metro issues a Samsung Galaxy Tab managed by Knox MDM (Mobile Device Management). The device is Metro property and subject to all Metro policies. Key obligations:</p><ul><li>The tablet may be remotely wiped by Metro if lost, stolen, or at separation from Metro — without prior notice</li><li>Knox MDM may restrict or monitor app installation and usage</li><li>Do not share your tablet with family members, household members, or other clinicians</li><li>Keep the tablet charged and accessible during all scheduled work hours</li><li>Return the tablet and all accessories in good condition upon separation from Metro</li><li>Report any damage, malfunction, or loss to Metro immediately</li></ul><div class="callout warn">Using the Metro tablet for personal use — social media, personal email, personal apps, gaming — is a policy violation and may result in disciplinary action.</div>` },
+      { title: 'Knox MDM — What It Means for You', content: `<p>Knox MDM (Mobile Device Management) is Samsung's enterprise security platform. It allows Metro to manage and secure all issued devices remotely.</p><p><strong>What Knox MDM can do:</strong></p><ul><li>Remotely lock or wipe the device if it is lost or stolen</li><li>Restrict installation of unapproved apps</li><li>Enforce screen lock and auto-lock settings</li><li>Monitor device usage for compliance purposes</li><li>Push software updates and security patches</li></ul><p><strong>Your responsibilities:</strong></p><ul><li>Do not attempt to disable, bypass, or remove Knox MDM</li><li>Do not attempt to "root" or modify the operating system</li><li>Do not install apps outside the approved list without authorization from Metro</li><li>Auto-lock must remain enabled — screen locks within 2 minutes of inactivity</li></ul><div class="callout danger">Attempting to disable Knox MDM or bypass device security is a serious policy violation and a potential HIPAA security breach.</div>` },
+      { title: 'HIPAA-Compliant Communication', content: `<p>How you communicate patient information is a HIPAA compliance issue. The device and platform matter — not just the content.</p><p><strong>Never use these for PHI:</strong></p><ul><li>Standard SMS text messaging — not encrypted, not HIPAA compliant</li><li>Personal email (Gmail, Yahoo, iCloud, etc.)</li><li>Personal social media messaging (Facebook Messenger, Instagram DMs, WhatsApp)</li><li>iMessage or Android Messages to non-approved contacts</li><li>ConnectTeam chat or job notes</li></ul><p><strong>Approved for PHI:</strong></p><ul><li>Agency EMR secure messaging (CareFicient, BIOS, HelloNote, PointCare, HCHB)</li><li>Direct phone calls to agency coordinators or treating physicians — do not leave PHI in voicemail</li><li>Agency-approved fax with cover sheet to verified recipient</li></ul><div class="callout danger">Sending PHI via standard text message is a HIPAA violation regardless of intent. When in doubt, use the agency EMR.</div>` },
+      { title: 'ConnectTeam — Acceptable Use', content: `<p>ConnectTeam is Metro's scheduling, communication, and task management platform. It is NOT a clinical documentation system.</p><p><strong>Use ConnectTeam for:</strong></p><ul><li>Viewing your assigned visit schedule</li><li>Logging mileage for each visit (required for reimbursement)</li><li>Confirming or flagging scheduling conflicts</li><li>Completing Metro compliance checklists and training attestations</li><li>Communicating with Metro admin about scheduling and operational matters</li></ul><p><strong>Never use ConnectTeam for:</strong></p><ul><li>Patient names, dates of birth, addresses, or contact information</li><li>Diagnosis codes, clinical findings, or treatment information</li><li>Any information that could identify a patient</li><li>Complaints about patients, families, or agency staff</li></ul><div class="callout warn">ConnectTeam messages are stored and may be reviewed by Metro for compliance purposes. Treat every message as a professional business communication.</div>` },
+      { title: 'Lost or Stolen Device Protocol', content: `<p>A lost or stolen Metro tablet is a potential HIPAA security incident. Time matters — the faster you report, the faster Metro can remotely wipe the device before any PHI is accessed.</p><p><strong>If your tablet is lost or stolen:</strong></p><ol><li>Report to Stephen Mace or Evan Flanagan <strong>immediately — same day, any time</strong></li><li>If stolen: file a police report and provide Metro with the report number</li><li>Metro will initiate a remote Knox MDM wipe of the device</li><li>Metro will conduct a breach assessment to determine if PHI was at risk</li><li>Do not attempt to locate or retrieve the device yourself if it was stolen</li></ol><div class="callout danger">Delaying a lost device report to avoid trouble makes the situation significantly worse. Early reporting protects you, Metro, and your patients. Report immediately.</div>` }
+    ],
+    quiz: [
+      { q: 'Your Metro tablet is lost during a patient visit. Your first action is:', options: ['Report it to Metro within 24 hours', 'Purchase a replacement device before reporting', 'Report it to Metro immediately — same day', 'File a police report and inform Metro at your next scheduled check-in'], answer: 2, explanation: 'Report a lost device to Metro immediately so a remote Knox MDM wipe can be initiated before any PHI is accessed. Delays increase breach risk.' },
+      { q: 'A colleague texts you asking for a patient\'s phone number to confirm a visit tomorrow. You should:', options: ['Text the number — it is just a phone number, not clinical data', 'Call the colleague and give the number verbally', 'Direct the colleague to get contact information through ConnectTeam or the agency scheduler', 'Text the number only if you add a note that it is confidential'], answer: 2, explanation: 'A patient\'s phone number is PHI. Standard text messaging is not HIPAA compliant. All patient contact information should be obtained through approved channels.' },
+      { q: 'Which of the following is an appropriate use of ConnectTeam?', options: ['Messaging a patient\'s diagnosis to a covering clinician', 'Logging mileage after completing a visit', 'Documenting wound care findings for the agency chart', 'Sending a patient\'s address to a colleague covering your schedule'], answer: 1, explanation: 'ConnectTeam is for scheduling, mileage logging, and Metro operational communication only. Patient clinical information and PHI must go through the agency EMR.' },
+      { q: 'Knox MDM on your Metro tablet allows Metro to:', options: ['Read your personal text messages', 'Remotely wipe the device if it is lost or stolen', 'Track your vehicle location during work hours', 'Access your personal email account'], answer: 1, explanation: 'Knox MDM enables remote device management including the ability to wipe a lost or stolen device to protect PHI. It manages the work profile on the device — not personal accounts.' }
+    ]
+  },
+
+  // ── ADMIN ONLY ────────────────────────────────────────────
+  {
+    id: 'admin_org_compliance',
+    track: ['newhire', 'annual'],
+    icon: '🏢',
+    title: 'Organizational Compliance — Owner & Admin',
+    desc: 'HIPAA organizational obligations, Business Associate Agreements, risk assessments, breach response planning, and CMS survey readiness.',
+    passScore: 80,
+    adminOnly: true,
+    slides: [
+      { title: 'Your Organizational Obligations Under HIPAA', content: `<p>As a business owner or administrator of a healthcare staffing organization, your HIPAA obligations extend far beyond what individual clinicians must do. The Privacy Rule, Security Rule, and Breach Notification Rule place specific organizational responsibilities on Metro Mobile Health Care as a covered entity.</p>
+        <p><strong>Your core organizational obligations include:</strong></p>
+        <ul>
+          <li>Designate a <strong>HIPAA Privacy Officer</strong> responsible for developing and implementing privacy policies</li>
+          <li>Designate a <strong>HIPAA Security Officer</strong> responsible for ePHI safeguards</li>
+          <li>Conduct and document an annual <strong>Security Risk Assessment</strong></li>
+          <li>Maintain a written <strong>Notice of Privacy Practices (NPP)</strong></li>
+          <li>Execute <strong>Business Associate Agreements (BAAs)</strong> with all vendors who handle PHI</li>
+          <li>Maintain staff training records for a minimum of <strong>6 years</strong></li>
+          <li>Develop and maintain a written <strong>Breach Response Plan</strong></li>
+        </ul>
+        <div class="callout danger">The HHS Office for Civil Rights (OCR) can audit covered entities at any time. Organizational-level violations carry penalties up to $1.9 million per violation category per year.</div>` },
+
+      { title: 'Business Associate Agreements (BAAs)', content: `<p>A Business Associate Agreement is a legally required contract between your organization and any vendor or partner that creates, receives, maintains, or transmits PHI on your behalf.</p>
+        <p><strong>Who requires a BAA with Metro:</strong></p>
+        <ul>
+          <li>All partner home health agencies (CareFicient, BIOS, Millennium, Faith, HelloNote, PointCare, Caring Connection)</li>
+          <li>Your EHR or documentation platform vendors</li>
+          <li>Cloud storage providers used for any PHI (Google Drive if used for patient data)</li>
+          <li>IT support vendors who may access systems containing PHI</li>
+          <li>Billing and invoicing services handling patient or payer data</li>
+          <li>Your attorney and accountant if they handle PHI</li>
+        </ul>
+        <p><strong>What a BAA must include:</strong></p>
+        <ul>
+          <li>Permitted uses and disclosures of PHI by the business associate</li>
+          <li>Requirement to use appropriate safeguards</li>
+          <li>Obligation to report breaches to you within 60 days</li>
+          <li>Right for you to terminate the agreement if they violate HIPAA</li>
+        </ul>
+        <div class="callout warn">Operating without a BAA with a business associate is itself a HIPAA violation — even if no breach ever occurs. Review your vendor list annually.</div>` },
+
+      { title: 'Annual Security Risk Assessment', content: `<p>The HIPAA Security Rule requires covered entities to conduct a thorough assessment of potential risks and vulnerabilities to ePHI. This is not optional and must be documented in writing.</p>
+        <p><strong>Your risk assessment must evaluate:</strong></p>
+        <ul>
+          <li>All systems and devices that store, transmit, or process ePHI</li>
+          <li>Current security controls in place and their effectiveness</li>
+          <li>Likelihood and impact of potential threats</li>
+          <li>Current gaps between existing controls and required safeguards</li>
+        </ul>
+        <p><strong>For Metro specifically, assess:</strong></p>
+        <ul>
+          <li>Samsung Galaxy Tabs — Knox MDM configuration, encryption, remote wipe capability</li>
+          <li>Supabase database — access controls, data encryption at rest and in transit</li>
+          <li>Google Drive — what patient-adjacent data is stored, who has access</li>
+          <li>ConnectTeam — what PHI if any flows through the platform</li>
+          <li>Email — is PHI ever transmitted via unencrypted email</li>
+          <li>Agency EMR access — clinician login credentials, access logging</li>
+        </ul>
+        <div class="callout">The HHS Office for Civil Rights offers a free Security Risk Assessment Tool at <strong>healthit.gov/topic/privacy-security-and-hipaa/security-risk-assessment-tool</strong></div>` },
+
+      { title: 'Organizational Security Safeguards', content: `<p>The HIPAA Security Rule requires three categories of safeguards at the organizational level. As an owner or admin you are responsible for implementing and maintaining all three.</p>
+        <p><strong>Administrative Safeguards:</strong></p>
+        <ul>
+          <li>Written security policies and procedures (your P&P manual)</li>
+          <li>Workforce training and access authorization procedures</li>
+          <li>Sanctions policy for workforce members who violate HIPAA</li>
+          <li>Periodic evaluation of security measures</li>
+          <li>Contingency plan for data backup and disaster recovery</li>
+        </ul>
+        <p><strong>Physical Safeguards:</strong></p>
+        <ul>
+          <li>Device and media controls — Knox MDM on all issued tablets</li>
+          <li>Workstation use policies — screen locks, clean desk</li>
+          <li>Disposal procedures for devices containing ePHI</li>
+        </ul>
+        <p><strong>Technical Safeguards:</strong></p>
+        <ul>
+          <li>Unique user IDs for each clinician accessing agency EMRs</li>
+          <li>Automatic logoff on all work devices</li>
+          <li>Audit controls — agency EMRs log all access</li>
+          <li>Transmission security — only encrypted channels for ePHI</li>
+        </ul>` },
+
+      { title: 'Breach Response Plan', content: `<p>HIPAA requires covered entities to have a written breach response plan before a breach occurs — not after. Your plan must define exactly what happens when a breach is discovered.</p>
+        <p><strong>Your breach response plan must include:</strong></p>
+        <ol>
+          <li><strong>Discovery and containment</strong> — who reports breaches, to whom, and by when (Metro: same day to Stephen or Evan)</li>
+          <li><strong>Risk assessment</strong> — evaluate the probability that PHI was compromised</li>
+          <li><strong>Notification decision</strong> — determine if the incident meets the definition of a reportable breach</li>
+          <li><strong>Individual notification</strong> — written notice to affected patients within 60 days</li>
+          <li><strong>HHS notification</strong> — report to HHS within 60 days (500+ individuals) or annually (fewer than 500)</li>
+          <li><strong>Documentation</strong> — maintain records of all breaches and responses for 6 years</li>
+        </ol>
+        <div class="callout warn">If a breach affects 500 or more individuals in a state, you must also notify prominent media outlets in that state. This is why breach prevention is far less costly than breach response.</div>` },
+
+      { title: 'Staff Training Records and Documentation', content: `<p>HIPAA requires covered entities to train all workforce members on privacy and security policies and to maintain documentation of that training.</p>
+        <p><strong>Training documentation requirements:</strong></p>
+        <ul>
+          <li>Records must be retained for a minimum of <strong>6 years</strong></li>
+          <li>Must document: who was trained, what they were trained on, and when</li>
+          <li>Training must occur upon hire and when policies materially change</li>
+          <li>Annual refresher training is best practice and required by most accreditation bodies</li>
+        </ul>
+        <p><strong>How this compliance tool satisfies documentation requirements:</strong></p>
+        <ul>
+          <li>Every module completion is timestamped and stored in Supabase</li>
+          <li>Digital attestation captures the employee signature and date</li>
+          <li>Admin dashboard shows completion status for all staff at any time</li>
+          <li>Export to CSV provides a printable compliance record for surveyors</li>
+          <li>Annual reset and re-completion creates a new record each training year</li>
+        </ul>
+        <div class="callout">Export your compliance records to CSV at least annually and store a copy in your business records. In a survey or audit, being able to produce training records immediately demonstrates organizational maturity.</div>` },
+
+      { title: 'CMS Survey Readiness', content: `<p>CMS surveys can occur with little or no notice. Home health agencies and their staffing partners are subject to review of training records, policy documentation, and compliance programs.</p>
+        <p><strong>What surveyors look for in training compliance:</strong></p>
+        <ul>
+          <li>Proof that all staff completed HIPAA training within 90 days of hire</li>
+          <li>Proof of annual refresher training for all active staff</li>
+          <li>Written policies covering privacy, security, and breach response</li>
+          <li>Evidence that sanctions exist for policy violations</li>
+          <li>Documentation that a risk assessment has been conducted</li>
+          <li>BAAs in place with all business associates</li>
+        </ul>
+        <p><strong>Your survey readiness checklist:</strong></p>
+        <ul>
+          <li>Compliance records exported and filed — ✓ this tool provides this</li>
+          <li>P&P manual current and accessible — ✓ Metro P&P manual updated 2025</li>
+          <li>BAAs executed with all agency partners — review annually</li>
+          <li>Security risk assessment completed — annual obligation</li>
+          <li>Breach log maintained — even if no breaches occurred, document that</li>
+        </ul>
+        <div class="callout danger">The most common CMS finding in compliance reviews is not a breach — it is the <strong>absence of documentation</strong> that training and risk assessments occurred. Documented mediocrity beats undocumented excellence every time.</div>` },
+
+      { title: 'OSHA Organizational Obligations', content: `<p>As an employer, Metro has specific OSHA obligations that go beyond what individual clinicians must do in the field.</p>
+        <p><strong>Required programs and documentation:</strong></p>
+        <ul>
+          <li><strong>Exposure Control Plan</strong> — written plan for bloodborne pathogen exposure prevention, updated annually (29 CFR 1910.1030)</li>
+          <li><strong>Hepatitis B vaccination</strong> — offered free to all clinical staff within 10 days of hire; document offers and acceptances/declinations</li>
+          <li><strong>Post-exposure follow-up</strong> — free medical evaluation for any exposure incident; document all incidents</li>
+          <li><strong>OSHA 300 Log</strong> — maintain a log of recordable work-related injuries and illnesses if you have 10 or more employees</li>
+          <li><strong>Workplace Violence Prevention Program</strong> — written program identifying risks and controls for field workers</li>
+          <li><strong>Emergency Action Plan</strong> — written plan covering evacuation, emergency contacts, and procedures</li>
+        </ul>
+        <div class="callout warn">Oklahoma is covered by Federal OSHA (Region VI — Dallas). OSHA inspections can be triggered by an employee complaint, a referral from another agency, or a programmed inspection. Having written programs in place before an inspection is critical.</div>` },
+
+      { title: 'Workplace Violence Prevention Program', content: `<p>OSHA guidelines specifically identify home health field workers as a high-risk group requiring a written workplace violence prevention program. As the employer, Metro is responsible for developing and maintaining this program.</p>
+        <p><strong>Your written program must include:</strong></p>
+        <ul>
+          <li><strong>Management commitment statement</strong> — written policy that violence is not tolerated and will not be considered part of the job</li>
+          <li><strong>Hazard identification process</strong> — how Metro identifies and flags high-risk patient situations for clinicians</li>
+          <li><strong>Prevention controls</strong> — check-in procedures, clinician right to refuse unsafe visits, Metro response protocols</li>
+          <li><strong>Training documentation</strong> — annual training on violence recognition and de-escalation (covered by this tool)</li>
+          <li><strong>Incident reporting system</strong> — how clinicians report threats, near-misses, and violent incidents</li>
+          <li><strong>Post-incident response</strong> — medical care, counseling referral, and investigation procedures</li>
+          <li><strong>Program evaluation</strong> — annual review of incidents and effectiveness</li>
+        </ul>
+        <div class="callout">The OSHA 3148 Workplace Violence Prevention Guidelines for Healthcare Workers (2016) is the foundational document for your program. Your clinicians are trained on its content — your written program should reference it.</div>` },
+
+      { title: 'Oklahoma-Specific Compliance Requirements', content: `<p>In addition to federal requirements, Oklahoma has specific state-level compliance obligations for healthcare employers.</p>
+        <p><strong>Oklahoma mandatory reporter law:</strong></p>
+        <ul>
+          <li>Title 43A O.S. § 10-104 requires licensed healthcare workers to report suspected abuse, neglect, or exploitation</li>
+          <li>As the employer, Metro must ensure all clinical staff understand their mandatory reporter status</li>
+          <li>Metro should maintain documentation that staff received training on mandatory reporting obligations</li>
+        </ul>
+        <p><strong>Oklahoma Workers Compensation:</strong></p>
+        <ul>
+          <li>Oklahoma requires workers compensation coverage for all employees</li>
+          <li>Work-related injuries including workplace violence incidents must be reported promptly</li>
+          <li>Maintain a written policy on injury reporting and workers compensation procedures</li>
+        </ul>
+        <p><strong>Oklahoma TERO considerations:</strong></p>
+        <ul>
+          <li>Cherokee Nation TERO certification requires 51%+ tribal member ownership (Evan Flanagan)</li>
+          <li>Maintain documentation of tribal enrollment and ownership structure for certification maintenance</li>
+        </ul>
+        <div class="callout">Oklahoma does not have a state OSHA plan — Federal OSHA (Region VI, Dallas) has jurisdiction. Oklahoma does have state-specific licensing requirements for home health agencies that Metro partner agencies must maintain.</div>` }
+    ],
+    quiz: [
+      { q: 'Which of the following vendors requires a Business Associate Agreement with Metro?', options: ['Your office supply vendor', 'A home health agency partner that receives clinician documentation', 'A marketing agency designing your logo', 'Your commercial insurance carrier'], answer: 1, explanation: 'Any vendor that creates, receives, maintains, or transmits PHI on your behalf requires a BAA. Home health agency partners who receive clinician documentation containing patient PHI clearly qualify.' },
+      { q: 'HIPAA requires training records to be retained for a minimum of:', options: ['1 year', '3 years', '6 years', '10 years'], answer: 2, explanation: 'HIPAA requires documentation of training and policies to be retained for a minimum of 6 years from the date of creation or the date it was last in effect.' },
+      { q: 'The HIPAA Security Risk Assessment is:', options: ['Optional but recommended for small organizations', 'Required only after a breach occurs', 'A mandatory annual requirement for all covered entities', 'Only required for organizations with 50 or more employees'], answer: 2, explanation: 'The Security Risk Assessment is a mandatory requirement under the HIPAA Security Rule for all covered entities regardless of size. It must be conducted and documented at least annually.' },
+      { q: 'A breach affecting 12 patients must be reported to HHS:', options: ['Within 24 hours', 'Within 60 days of discovery', 'Annually in the next calendar year report', 'Only if the patients request notification'], answer: 2, explanation: 'Breaches affecting fewer than 500 individuals must be reported to HHS annually — in the calendar year following the breach. However notification to affected individuals is still required within 60 days of discovery.' },
+      { q: 'Under OSHA\'s Bloodborne Pathogens Standard, Metro must offer the Hepatitis B vaccine to clinical staff:', options: ['Within 30 days of hire', 'Within 10 working days of initial assignment', 'At the employee\'s request only', 'Only if the employee works with needles'], answer: 1, explanation: 'OSHA 29 CFR 1910.1030 requires employers to offer the Hepatitis B vaccination series free of charge within 10 working days of initial assignment to all employees with occupational exposure risk.' }
+    ]
+  }
+
+];
+
+// ══════════════════════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════════════════════
+let currentUser = null;
+let currentUserRole = 'clinician';
+let currentTrack = 'newhire';
+let currentModule = null;
+let currentSlide = 0;
+let quizAnswers = {};
+let completions = {};  // { moduleId: { score, signed, completed_at } }
+
+// ══════════════════════════════════════════════════════════════
+// AUTH
+// ══════════════════════════════════════════════════════════════
+async function doLogin() {
+  const name = document.getElementById('nameSelect').value;
+  const pin = document.getElementById('pinInput').value;
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+
+  if (!name) { showErr('Please select your name.'); return; }
+  if (!pin) { showErr('Please enter your PIN.'); return; }
+
+  const staff = staffList.find(s => s.full_name === name);
+  if (!staff || staff.pin !== pin) {
+    showErr('Incorrect PIN. Contact Stephen or Evan if you need help.');
+    return;
+  }
+
+  currentUser = name;
+  currentUserRole = staff.role;
+  document.getElementById('userBadge').textContent = name;
+  document.getElementById('userBadge').style.display = 'block';
+  document.getElementById('logoutBtn').style.display = 'block';
+
+  showScreen('dashScreen');
+  loadCompletions();
+}
+
+document.getElementById('pinInput').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+
+function showErr(msg) {
+  const el = document.getElementById('loginError');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function logout() {
+  currentUser = null; currentModule = null; completions = {};
+  document.getElementById('userBadge').style.display = 'none';
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('nameSelect').value = '';
+  document.getElementById('pinInput').value = '';
+  showScreen('loginScreen');
+}
+
+// ══════════════════════════════════════════════════════════════
+// SUPABASE OPS
+// ══════════════════════════════════════════════════════════════
+async function loadCompletions() {
+  try {
+    const { data } = await sb.from('compliance_completions')
+      .select('*').eq('employee_name', currentUser);
+    completions = {};
+    if (data) data.forEach(r => { completions[r.module_id] = r; });
+  } catch(e) { console.warn('Supabase not configured yet — running in demo mode.'); }
+  renderDash();
+  if (isAdmin(currentUser)) {
+    document.getElementById('adminSection').style.display = 'block';
+    loadAdminTable();
+    loadAdminFilters();
+  }
+}
+
+async function saveCompletion(moduleId, score, signature) {
+  const payload = {
+    employee_name: currentUser,
+    module_id: moduleId,
+    track: currentTrack,
+    score,
+    signature,
+    completed_at: new Date().toISOString()
+  };
+  try {
+    await sb.from('compliance_completions').upsert(payload, { onConflict: 'employee_name,module_id' });
+  } catch(e) { console.warn('Supabase save skipped (demo mode).'); }
+  completions[moduleId] = payload;
+}
+
+async function loadAdminTable() {
+  const empFilter = document.getElementById('adminFilterEmployee').value;
+  const trackFilter = document.getElementById('adminFilterTrack').value;
+  try {
+    let q = sb.from('compliance_completions').select('*').order('completed_at', { ascending: false });
+    if (empFilter) q = q.eq('employee_name', empFilter);
+    if (trackFilter) q = q.eq('track', trackFilter);
+    const { data } = await q;
+    renderAdminTable(data || []);
+  } catch(e) {
+    renderAdminTable([]);
+  }
+}
+
+async function loadAdminFilters() {
+  try {
+    const { data } = await sb.from('compliance_completions').select('employee_name').order('employee_name');
+    const names = [...new Set((data||[]).map(r => r.employee_name))];
+    const sel = document.getElementById('adminFilterEmployee');
+    names.forEach(n => {
+      const o = document.createElement('option'); o.value = n; o.textContent = n; sel.appendChild(o);
+    });
+  } catch(e) {}
+}
+
+function renderAdminTable(rows) {
+  const tbody = document.getElementById('adminTbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--gray-400);padding:24px;">No completions recorded yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = rows.map(r => {
+    const mod = MODULES.find(m => m.id === r.module_id);
+    const date = r.completed_at ? new Date(r.completed_at).toLocaleDateString() : '—';
+    return `<tr>
+      <td>${r.employee_name}</td>
+      <td>${mod ? mod.title : r.module_id}</td>
+      <td>${r.track === 'newhire' ? 'New Hire' : 'Annual'}</td>
+      <td><span class="${r.score >= 70 ? 'tag-done' : 'tag-pend'}">${r.score}%</span></td>
+      <td>${r.signature ? '✓ ' + r.signature : '—'}</td>
+      <td>${date}</td>
+    </tr>`;
+  }).join('');
+}
+
+function exportCSV() {
+  // Pull from rendered table
+  const rows = document.querySelectorAll('#adminTbody tr');
+  let csv = 'Employee,Module,Track,Score,Signed,Completed\n';
+  rows.forEach(tr => {
+    const cells = [...tr.querySelectorAll('td')].map(td => `"${td.textContent.trim()}"`);
+    csv += cells.join(',') + '\n';
+  });
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `mmhc-compliance-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════════════════
+// DASHBOARD RENDER
+// ══════════════════════════════════════════════════════════════
+function setTrack(track, btn) {
+  currentTrack = track;
+  document.querySelectorAll('.track-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderDash();
+}
+
+function renderDash() {
+  const mods = MODULES.filter(m => m.track.includes(currentTrack) && (!m.adminOnly || isAdmin(currentUser)));
+  const grid = document.getElementById('modulesGrid');
+  const name = currentUser ? currentUser.split(',')[0] : 'Team';
+  document.getElementById('dashGreeting').textContent = `Hello, ${name}`;
+
+  const done = mods.filter(m => completions[m.id]).length;
+  document.getElementById('dashSub').textContent =
+    `${currentTrack === 'newhire' ? 'New Hire' : 'Annual Compliance'} Track — ${done}/${mods.length} modules complete`;
+
+  grid.innerHTML = mods.map(m => {
+    const comp = completions[m.id];
+    let badgeClass = 'badge-todo', badgeLabel = 'Not Started';
+    if (comp) { badgeClass = 'badge-done'; badgeLabel = '✓ Completed'; }
+
+    return `<div class="module-card ${comp ? 'completed' : ''}" onclick="openModule('${m.id.trim()}')">
+      <div class="module-icon">${m.icon}</div>
+      <div class="module-title">${m.title}</div>
+      <div class="module-meta">${m.slides.length} slides · ${(m.quiz||[]).length} quiz question${(m.quiz||[]).length !== 1 ? 's' : ''}</div>
+      <span class="status-badge ${badgeClass}">${badgeLabel}</span>
+      ${comp ? `<div class="progress-bar-wrap"><div class="progress-bar-fill" style="width:100%"></div></div>` : ''}
+      ${comp ? `<div style="font-size:11px;color:var(--gray-400);margin-top:8px;">Score: ${comp.score}% · ${new Date(comp.completed_at).toLocaleDateString()}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════════════════════════
+// MODULE VIEWER
+// ══════════════════════════════════════════════════════════════
+function openModule(id) {
+  currentModule = MODULES.find(m => m.id === id);
+  currentSlide = 0;
+  quizAnswers = {};
+  document.getElementById('mvIcon').textContent = currentModule.icon;
+  document.getElementById('mvTitle').textContent = currentModule.title;
+  document.getElementById('mvDesc').textContent = currentModule.desc;
+  showScreen('moduleScreen');
+  renderSlide();
+}
+
+function goBack() {
+  showScreen('dashScreen');
+  renderDash();
+}
+
+function renderSlide() {
+  stopSpeech();
+  const total = currentModule.slides.length + 1; // +1 for quiz
+  const fill = Math.round((currentSlide / total) * 100);
+  document.getElementById('slideProgressFill').style.width = fill + '%';
+
+  const body = document.getElementById('moduleBody');
+
+  if (currentSlide < currentModule.slides.length) {
+    const slide = currentModule.slides[currentSlide];
+    body.innerHTML = `
+      <div class="listen-bar">
+        <button class="listen-btn" id="listenBtn" onclick="toggleListen()">🔊 Listen</button>
+        <button onclick="adjustSpeed(-0.1)" title="Slower" style="padding:5px 10px;border-radius:7px;border:1px solid rgba(42,143,160,.4);background:#fff;color:var(--teal);font-size:14px;font-weight:700;cursor:pointer;line-height:1;">🐢</button>
+        <span id="speedLabel" style="font-size:12px;font-weight:700;color:var(--teal);min-width:32px;text-align:center;">1×</span>
+        <button onclick="adjustSpeed(0.1)" title="Faster" style="padding:5px 10px;border-radius:7px;border:1px solid rgba(42,143,160,.4);background:#fff;color:var(--teal);font-size:14px;font-weight:700;cursor:pointer;line-height:1;">🐇</button>
+        <span class="listen-label" id="listenLabel">Tap to hear this slide read aloud</span>
+        <div class="listen-progress" id="listenProgress"><div class="listen-progress-fill" id="listenProgressFill"></div></div>
+      </div>
+      <h3>${slide.title}</h3>
+      ${slide.content}
+      <div class="slide-nav">
+        <span class="slide-counter">Slide ${currentSlide + 1} of ${currentModule.slides.length}</span>
+        <div style="display:flex;gap:10px;">
+          ${currentSlide > 0 ? `<button class="nav-btn prev" onclick="goSlide(-1)">← Previous</button>` : ''}
+          <button class="nav-btn next" onclick="goSlide(1)">Next →</button>
+        </div>
+      </div>`;
+  } else {
+    renderQuiz();
+  }
+}
+
+function goSlide(dir) {
+  stopSpeech();
+  currentSlide += dir;
+  renderSlide();
+  document.getElementById('moduleBody').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── SPEECH SYNTHESIS ──────────────────────────────────────
+let speechUtterance = null;
+let speechPlaying = false;
+let progressTimer = null;
+let speechRate = 0.92;
+
+function getSlideText() {
+  const slide = currentModule.slides[currentSlide];
+  // Strip HTML tags and clean up whitespace
+  const tmp = document.createElement('div');
+  tmp.innerHTML = slide.title + '. ' + slide.content;
+  let text = tmp.textContent.replace(/\s+/g, ' ').trim();
+
+  // Pronounce acronyms naturally instead of letter-by-letter
+  const acronyms = {
+    'HIPAA': 'HIPPa',
+    'OSHA': 'OH-sha',
+    'PHI': 'P-H-I',
+    'ePHI': 'E-P-H-I',
+    'MRSA': 'MER-sa',
+    'RACE': 'race',
+    'PASS': 'pass',
+    'FAST': 'fast',
+    'TPO': 'T-P-O',
+    'APS': 'A-P-S',
+    'DHS': 'D-H-S',
+    'EMS': 'E-M-S',
+    'PPE': 'P-P-E',
+    'CPR': 'C-P-R',
+    'AED': 'A-E-D',
+    'MDM': 'M-D-M',
+    'SMS': 'S-M-S',
+    'CMS': 'C-M-S',
+    'HHS': 'H-H-S',
+    'OCR': 'O-C-R',
+    'DKA': 'D-K-A',
+    'MDRO': 'M-D-R-O',
+    'SSN': 'S-S-N',
+    'DNR': 'D-N-R',
+    'SOC': 'S-O-C',
+    'OASIS': 'oh-AY-sis',
+    'TB': 'T-B',
+    'MMR': 'M-M-R',
+    'Tdap': 'T-dap',
+    'VRE': 'V-R-E',
+    'PEP': 'P-E-P',
+    'CFR': 'C-F-R',
+    'HAI': 'H-A-I',
+    'HAIs': 'H-A-Is',
+    'EMR': 'E-M-R',
+    'TERO': 'TEER-oh',
+    'PLLC': 'P-L-L-C',
+  };
+
+  for (const [acronym, pronunciation] of Object.entries(acronyms)) {
+    const regex = new RegExp('\\b' + acronym + '\\b', 'g');
+    text = text.replace(regex, pronunciation);
+  }
+
+  return text;
+}
+
+function toggleListen() {
+  if (speechPlaying) {
+    stopSpeech();
+  } else {
+    startSpeech();
+  }
+}
+
+function startSpeech() {
+  if (!window.speechSynthesis) {
+    toast('Text-to-speech is not supported in this browser.');
+    return;
+  }
+  stopSpeech();
+
+  const text = getSlideText();
+  speechUtterance = new SpeechSynthesisUtterance(text);
+  speechUtterance.rate = speechRate;
+  speechUtterance.pitch = 1.0;
+  speechUtterance.volume = 1.0;
+
+  // Try to use a natural US English voice
+  const voices = window.speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.lang === 'en-US' && v.name.includes('Google'))
+    || voices.find(v => v.lang === 'en-US' && !v.localService)
+    || voices.find(v => v.lang.startsWith('en-US'))
+    || voices.find(v => v.lang.startsWith('en'));
+  if (preferred) speechUtterance.voice = preferred;
+
+  speechUtterance.onstart = () => {
+    speechPlaying = true;
+    const btn = document.getElementById('listenBtn');
+    const label = document.getElementById('listenLabel');
+    const prog = document.getElementById('listenProgress');
+    if (btn) { btn.textContent = '⏹ Stop'; btn.classList.add('playing'); }
+    if (label) label.textContent = 'Reading slide aloud…';
+    if (prog) { prog.classList.add('active'); }
+    animateProgress(text.length);
+  };
+
+  speechUtterance.onend = () => { onSpeechEnd(false); };
+  speechUtterance.onerror = () => { onSpeechEnd(false); };
+
+  window.speechSynthesis.speak(speechUtterance);
+}
+
+function animateProgress(textLen) {
+  // Estimate duration: ~140 words/min at rate 0.92 → adjust per char count
+  const words = textLen / 5;
+  const durationMs = (words / 140) * 60000 / speechRate;
+  const fill = document.getElementById('listenProgressFill');
+  if (!fill) return;
+  fill.style.transition = 'none';
+  fill.style.width = '0%';
+  setTimeout(() => {
+    fill.style.transition = `width ${durationMs}ms linear`;
+    fill.style.width = '100%';
+  }, 50);
+}
+
+function onSpeechEnd(stopped) {
+  speechPlaying = false;
+  clearInterval(progressTimer);
+  const btn = document.getElementById('listenBtn');
+  const label = document.getElementById('listenLabel');
+  const prog = document.getElementById('listenProgress');
+  const fill = document.getElementById('listenProgressFill');
+  if (btn) { btn.textContent = '🔊 Listen'; btn.classList.remove('playing'); }
+  if (label) label.textContent = stopped ? 'Tap to hear this slide read aloud' : '✓ Done — tap to replay';
+  if (prog) prog.classList.remove('active');
+  if (fill) { fill.style.transition = 'none'; fill.style.width = '0%'; }
+}
+
+function stopSpeech() {
+  if (window.speechSynthesis) window.speechSynthesis.cancel();
+  speechPlaying = false;
+  clearInterval(progressTimer);
+}
+
+function adjustSpeed(delta) {
+  // Range: 0.5 to 1.5, steps of 0.1
+  speechRate = Math.min(1.5, Math.max(0.5, Math.round((speechRate + delta) * 10) / 10));
+  const label = document.getElementById('speedLabel');
+  if (label) label.textContent = speechRate.toFixed(1).replace('.0', '') + '×';
+  // If currently playing, restart at new speed
+  if (speechPlaying) {
+    stopSpeech();
+    setTimeout(startSpeech, 100);
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// STAFF MANAGEMENT
+// ══════════════════════════════════════════════════════════════
+
+function switchAdminTab(tab) {
+  document.getElementById('adminTabRecords').style.display = tab === 'records' ? 'block' : 'none';
+  document.getElementById('adminTabStaff').style.display = tab === 'staff' ? 'block' : 'none';
+  document.getElementById('tabRecords').classList.toggle('active', tab === 'records');
+  document.getElementById('tabStaff').classList.toggle('active', tab === 'staff');
+  if (tab === 'staff') loadStaffTable();
+}
+
+async function loadStaffTable() {
+  try {
+    const { data } = await sb.from('compliance_staff')
+      .select('id, full_name, pin, role, email, active').order('full_name');
+    const tbody = document.getElementById('staffTbody');
+    if (!data || !data.length) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--gray-400);padding:20px;">No staff records found.</td></tr>';
+      return;
+    }
+    tbody.innerHTML = data.map(s => `
+      <tr id="staffrow_${s.id}">
+        <td>${s.full_name}</td>
+        <td>
+          ${s.email
+            ? `<span style="color:rgba(255,255,255,.7);font-size:12px;">${s.email}</span>`
+            : `<span style="color:rgba(255,255,255,.25);font-size:12px;font-style:italic;">not set</span>`
+          }
+          <button onclick="editEmail('${s.id}','${s.full_name.replace(/'/g,"\'")}')" style="margin-left:6px;padding:2px 7px;font-size:10px;border-radius:5px;border:1px solid rgba(255,255,255,.2);background:transparent;color:rgba(255,255,255,.5);cursor:pointer;">✏</button>
+        </td>
+        <td><span style="color:${s.role === 'admin' ? 'var(--gold)' : 'var(--teal-light)'};font-weight:600;">${s.role}</span></td>
+        <td><span style="color:${s.active ? '#5de0a0' : '#f08080'};font-weight:700;">${s.active ? '● Active' : '○ Inactive'}</span></td>
+        <td><span style="color:rgba(255,255,255,.3);font-family:monospace;">••••••</span></td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap;">
+          <button onclick="resetPin('${s.id}','${s.full_name.replace(/'/g,"\'")}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:transparent;color:#dde2ea;cursor:pointer;">Reset PIN</button>
+          ${s.active
+            ? `<button onclick="setStaffActive('${s.id}', false)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid #f08080;background:transparent;color:#f08080;cursor:pointer;">Deactivate</button>`
+            : `<button onclick="setStaffActive('${s.id}', true)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid #5de0a0;background:transparent;color:#5de0a0;cursor:pointer;">Reactivate</button>`
+          }
+          <button onclick="changeRole('${s.id}','${s.role}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid var(--gold);background:transparent;color:var(--gold);cursor:pointer;">${s.role === 'admin' ? '→ Clinician' : '→ Admin'}</button>
+          ${s.email
+            ? `<button onclick="quickSendReminder('${s.full_name.replace(/'/g,"\\'")}','${s.email}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid var(--teal-light);background:transparent;color:var(--teal-light);cursor:pointer;">📧 Remind</button>`
+            : `<span style="padding:4px 10px;font-size:11px;color:rgba(255,255,255,.2);font-style:italic;">no email</span>`
+          }
+          <button onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid #f08080;background:rgba(240,128,128,.1);color:#f08080;cursor:pointer;">Delete</button>
+        </td>
+      </tr>`).join('');
+  } catch(e) { console.error('loadStaffTable error:', e); }
+}
+
+function showAddStaff() {
+  document.getElementById('addStaffForm').style.display = 'block';
+  document.getElementById('newStaffName').focus();
+}
+function hideAddStaff() {
+  document.getElementById('addStaffForm').style.display = 'none';
+  document.getElementById('newStaffName').value = '';
+  document.getElementById('newStaffEmail').value = '';
+  document.getElementById('newStaffPin').value = '';
+  document.getElementById('addStaffError').style.display = 'none';
+}
+
+async function saveNewStaff() {
+  const name = document.getElementById('newStaffName').value.trim();
+  const pin = document.getElementById('newStaffPin').value.trim();
+  const role = document.getElementById('newStaffRole').value;
+  const errEl = document.getElementById('addStaffError');
+  errEl.style.display = 'none';
+
+  if (!name) { errEl.textContent = 'Name is required.'; errEl.style.display = 'block'; return; }
+  if (!pin || pin.length < 4) { errEl.textContent = 'PIN must be at least 4 characters.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const email = document.getElementById('newStaffEmail').value.trim() || null;
+    const { error } = await sb.from('compliance_staff').insert({ full_name: name, pin, role, email, active: true });
+    if (error) throw error;
+
+    // Sync email to clinicians table if email provided
+    if (email) {
+      const baseName = stripCredentials(name);
+      await sb.from('clinicians').update({ email }).eq('name', baseName);
+    }
+
+    toast(`✓ ${name} added successfully`);
+    hideAddStaff();
+    loadStaffTable();
+    await loadStaffList();
+  } catch(e) {
+    errEl.textContent = e.message.includes('unique') ? 'A staff member with that name already exists.' : 'Error saving: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function setStaffActive(id, active) {
+  try {
+    await sb.from('compliance_staff').update({ active, updated_at: new Date().toISOString() }).eq('id', id);
+    toast(active ? '✓ Staff member reactivated' : '✓ Staff member deactivated');
+    loadStaffTable();
+    await loadStaffList();
+  } catch(e) { toast('Error updating staff status'); }
+}
+
+async function resetPin(id, name) {
+  const newPin = prompt(`Set new PIN for ${name}:`);
+  if (!newPin) return;
+  if (newPin.length < 4) { toast('PIN must be at least 4 characters'); return; }
+  try {
+    await sb.from('compliance_staff').update({ pin: newPin, updated_at: new Date().toISOString() }).eq('id', id);
+    toast(`✓ PIN updated for ${name}`);
+  } catch(e) { toast('Error updating PIN'); }
+}
+
+async function changeRole(id, currentRole) {
+  const newRole = currentRole === 'admin' ? 'clinician' : 'admin';
+  try {
+    await sb.from('compliance_staff').update({ role: newRole, updated_at: new Date().toISOString() }).eq('id', id);
+    toast(`✓ Role updated to ${newRole}`);
+    loadStaffTable();
+    await loadStaffList();
+  } catch(e) { toast('Error updating role'); }
+}
+
+function stripCredentials(fullName) {
+  // Remove credential suffix: "Evan Flanagan, PT" -> "Evan Flanagan"
+  // Split on comma and take only the first part
+  const parts = fullName.split(',');
+  if (parts.length > 1) {
+    const credential = parts[parts.length - 1].trim().toUpperCase();
+    const knownCredentials = ['DPT','PT','PTA','OT','COTA','SLP','NP','RN','LPN','LCSW','MD','DO'];
+    if (knownCredentials.includes(credential)) {
+      return parts.slice(0, parts.length - 1).join(',').trim();
+    }
+  }
+  // Handle "(Admin)" suffix
+  return fullName.replace(' (Admin)', '').trim();
+}
+
+async function editEmail(id, name) {
+  const current = staffList.find(s => s.full_name === name);
+  const newEmail = prompt(`Email address for ${name}:`, current?.email || '');
+  if (newEmail === null) return; // cancelled
+  try {
+    // Update compliance_staff
+    await sb.from('compliance_staff').update({ email: newEmail || null, updated_at: new Date().toISOString() }).eq('id', id);
+
+    // Sync back to clinicians table in eval tool
+    const baseName = stripCredentials(name);
+    const { data: syncData, error: syncError } = await sb.from('clinicians')
+      .update({ email: newEmail || null })
+      .eq('name', baseName)
+      .select();
+    if (syncError) {
+      console.warn('Clinicians sync warning:', syncError.message);
+      toast(`✓ Email updated for ${name} (eval tool sync failed)`);
+    } else if (syncData && syncData.length > 0) {
+      toast(`✓ Email updated for ${name} — synced to eval tool`);
+    } else {
+      toast(`✓ Email updated for ${name} (no matching eval tool record)`);
+    }
+    loadStaffTable();
+    await loadStaffList();
+  } catch(e) { toast('Error updating email: ' + e.message); }
+}
+
+async function deleteStaff(id, name) {
+  if (!confirm(`Permanently delete ${name}?\n\nThis removes them from the staff list but keeps their training completion records.`)) return;
+  try {
+    const { error } = await sb.from('compliance_staff').delete().eq('id', id);
+    if (error) throw error;
+    toast(`✓ ${name} deleted`);
+    loadStaffTable();
+    await loadStaffList();
+  } catch(e) { toast('Error deleting staff member: ' + e.message); }
+}
+
+// ── EMAIL NOTIFICATIONS ──────────────────────────────────
+async function showNotifyPanel() {
+  document.getElementById('notifyPanel').style.display = 'block';
+  document.getElementById('notifyStatus').style.display = 'none';
+
+  // Populate individual staff dropdown
+  const sel = document.getElementById('notifyIndividual');
+  sel.innerHTML = '';
+  staffList.filter(s => s.email).forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.email;
+    o.textContent = s.full_name;
+    sel.appendChild(o);
+  });
+
+  // Load completions for smart targeting
+  await loadCompletionSummary();
+
+  // Reset the form — don't auto-populate, let admin choose first
+  document.getElementById('notifyTarget').value = 'all_with_email';
+  document.getElementById('notifyEmails').value = '';
+  document.getElementById('notifyMessage').value = '';
+  document.getElementById('notifyCount').style.display = 'none';
+  document.getElementById('notifyIndividualWrap').style.display = 'none';
+}
+
+// Cache of who has completed what
+let completionSummary = { newhire: [], annual: [] };
+
+async function loadCompletionSummary() {
+  try {
+    const modules = MODULES.map(m => m.id);
+    const { data } = await sb.from('compliance_completions')
+      .select('employee_name, track')
+      .in('module_id', modules);
+
+    // Find who has completed ALL modules for each track
+    const newhireModules = MODULES.filter(m => m.track.includes('newhire')).map(m => m.id);
+    const annualModules  = MODULES.filter(m => m.track.includes('annual')).map(m => m.id);
+
+    completionSummary.newhire = staffList.filter(s => {
+      const done = (data||[]).filter(c => c.employee_name === s.full_name && c.track === 'newhire').map(c => c.module_id);
+      return newhireModules.every(id => done.includes(id));
+    }).map(s => s.full_name);
+
+    completionSummary.annual = staffList.filter(s => {
+      const done = (data||[]).filter(c => c.employee_name === s.full_name && c.track === 'annual').map(c => c.module_id);
+      return annualModules.every(id => done.includes(id));
+    }).map(s => s.full_name);
+  } catch(e) {
+    console.warn('Could not load completion summary:', e);
+  }
+}
+
+function onNotifyTargetChange() {
+  const target = document.getElementById('notifyTarget').value;
+  document.getElementById('notifyIndividualWrap').style.display =
+    target === 'individual' ? 'block' : 'none';
+  // Clear emails when target changes so admin must click Load
+  document.getElementById('notifyEmails').value = '';
+  document.getElementById('notifyCount').style.display = 'none';
+  // Auto-fill only for individual selection
+  if (target === 'individual') {
+    onIndividualChange();
+  }
+}
+
+function loadRecipients() {
+  const target = document.getElementById('notifyTarget').value;
+  autoPopulateEmails(target);
+}
+
+function onIndividualChange() {
+  const email = document.getElementById('notifyIndividual').value;
+  document.getElementById('notifyEmails').value = email || '';
+  updateNotifyCount(email ? 1 : 0);
+}
+
+function autoPopulateEmails(target) {
+  const emailField = document.getElementById('notifyEmails');
+  let filtered = [];
+
+  if (target === 'individual') {
+    const sel = document.getElementById('notifyIndividual');
+    emailField.value = sel.value || '';
+    updateNotifyCount(sel.value ? 1 : 0);
+    return;
+  }
+
+  if (target === 'all_with_email') {
+    filtered = staffList.filter(s => s.email);
+  } else if (target === 'newhire_incomplete') {
+    filtered = staffList.filter(s => s.email && !completionSummary.newhire.includes(s.full_name));
+  } else if (target === 'newhire_complete') {
+    filtered = staffList.filter(s => s.email && completionSummary.newhire.includes(s.full_name));
+  } else if (target === 'annual_incomplete') {
+    filtered = staffList.filter(s => s.email && !completionSummary.annual.includes(s.full_name));
+  } else if (target === 'annual_complete') {
+    filtered = staffList.filter(s => s.email && completionSummary.annual.includes(s.full_name));
+  }
+
+  emailField.value = filtered.map(s => s.email).join('\n');
+  updateNotifyCount(filtered.length);
+}
+
+function updateNotifyCount(count) {
+  const el = document.getElementById('notifyCount');
+  const txt = document.getElementById('notifyCountText');
+  if (count === 0) {
+    txt.textContent = '⚠ No matching staff with email addresses found.';
+    el.style.color = '#f08080';
+  } else {
+    txt.textContent = `✓ ${count} staff member${count !== 1 ? 's' : ''} will receive this email.`;
+    el.style.color = 'var(--teal-light)';
+  }
+  el.style.display = 'block';
+}
+
+function hideNotifyPanel() {
+  document.getElementById('notifyPanel').style.display = 'none';
+  document.getElementById('notifyStatus').style.display = 'none';
+  document.getElementById('notifyEmails').value = '';
+  document.getElementById('notifyMessage').value = '';
+}
+
+async function sendReminders() {
+  const emailsRaw = document.getElementById('notifyEmails').value.trim();
+  const customMsg = document.getElementById('notifyMessage').value.trim();
+  const target = document.getElementById('notifyTarget').value;
+  const statusEl = document.getElementById('notifyStatus');
+  const sendBtn = document.getElementById('sendBtn');
+
+  if (!emailsRaw) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#f08080';
+    statusEl.textContent = 'Please enter at least one email address.';
+    return;
+  }
+
+  // Parse emails
+  const emails = emailsRaw.split(/[,\n]+/).map(e => e.trim()).filter(e => e.includes('@'));
+  if (!emails.length) {
+    statusEl.style.display = 'block';
+    statusEl.style.color = '#f08080';
+    statusEl.textContent = 'No valid email addresses found.';
+    return;
+  }
+
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending…';
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'rgba(255,255,255,.6)';
+  statusEl.textContent = `Sending to ${emails.length} recipient(s)…`;
+
+  // Init EmailJS
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+
+  let sent = 0, failed = 0;
+  for (const email of emails) {
+    const name = email.split('@')[0];
+    try {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: email,
+        to_name: name,
+        subject_line: `Action Required — ${target === 'newhire' ? 'New Hire' : 'Annual'} Compliance Training`,
+        message_body: `${customMsg || 'Please log in and complete your required compliance training modules.'}
+
+Training portal:`,
+        tool_url: COMPANY_CONFIG.toolUrl,
+        company_name: COMPANY_CONFIG.name,
+      });
+      sent++;
+      statusEl.textContent = `Sent ${sent} of ${emails.length}…`;
+    } catch(e) {
+      console.error('Email failed for', email, e);
+      failed++;
+    }
+  }
+
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send Reminders';
+
+  if (failed === 0) {
+    statusEl.style.color = '#5de0a0';
+    statusEl.textContent = `✓ Successfully sent to ${sent} staff member(s).`;
+    toast(`✓ Reminders sent to ${sent} staff member(s)`);
+  } else {
+    statusEl.style.color = '#f0c060';
+    statusEl.textContent = `Sent ${sent}, failed ${failed}. Check email addresses and try again.`;
+  }
+}
+
+async function quickSendReminder(name, email) {
+  if (!email) { toast('No email address on file for ' + name); return; }
+  if (!confirm(`Send a training reminder to ${name} at ${email}?`)) return;
+
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+  try {
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: email,
+      to_name: name,
+      subject_line: 'Reminder — Complete Your Annual Compliance Training',
+      message_body: `This is a reminder to complete your required annual compliance training modules.
+
+Training portal:`,
+      tool_url: COMPANY_CONFIG.toolUrl,
+      company_name: COMPANY_CONFIG.name,
+    });
+    toast(`✓ Reminder sent to ${name}`);
+  } catch(e) {
+    console.error('Quick send failed:', e);
+    toast(`Failed to send to ${name} — check EmailJS settings`);
+  }
+}
+
+
+async function annualReset() {
+  const year = new Date().getFullYear();
+  if (!confirm(`Reset ALL annual compliance completions?\n\nThis will clear every employee\'s annual training records so everyone must redo their annual modules. New hire completions are not affected.\n\nThis action cannot be undone. Continue?`)) return;
+  try {
+    const { error } = await sb.from('compliance_completions')
+      .delete()
+      .eq('track', 'annual');
+    if (error) throw error;
+    toast('✓ Annual compliance reset — all staff must redo annual training');
+    loadAdminTable();
+  } catch(e) { toast('Error resetting annual completions: ' + e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Load voices (Chrome requires this trigger)
+if (window.speechSynthesis) {
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+}
+
+// Load staff list on page init
+loadStaffList();
+
+// One-time backfill: sync any existing compliance emails to clinicians table
+async function backfillEmailsToClinicans() {
+  try {
+    const { data } = await sb.from('compliance_staff').select('full_name, email').not('email', 'is', null);
+    if (!data) return;
+    for (const s of data) {
+      const baseName = stripCredentials(s.full_name);
+      await sb.from('clinicians').update({ email: s.email }).eq('name', baseName);
+    }
+    console.log('Email backfill complete');
+  } catch(e) { console.warn('Backfill error:', e); }
+}
+
+function renderQuiz() {
+  document.getElementById('slideProgressFill').style.width = '90%';
+  const qs = currentModule.quiz;
+  const body = document.getElementById('moduleBody');
+
+  if (completions[currentModule.id]) {
+    showCompletionState(body);
+    return;
+  }
+
+  body.innerHTML = `
+    <h3 style="margin-bottom:20px;">Knowledge Check</h3>
+    <div class="quiz-wrap" id="quizWrap">
+      ${qs.map((q, qi) => `
+        <div class="quiz-q" id="qq${qi}">
+          <div class="q-text">${qi + 1}. ${q.q}</div>
+          ${q.options.map((opt, oi) => `
+            <label class="quiz-option" id="opt_${qi}_${oi}">
+              <input type="radio" name="q${qi}" value="${oi}" onchange="selectAnswer(${qi}, ${oi})" />
+              <span>${opt}</span>
+            </label>`).join('')}
+        </div>`).join('')}
+    </div>
+    <div class="slide-nav">
+      <button class="nav-btn prev" onclick="goSlide(-1)">← Review Slides</button>
+      <button class="nav-btn next" id="submitQuizBtn" onclick="submitQuiz()" disabled>Submit →</button>
+    </div>`;
+}
+
+function selectAnswer(qi, oi) {
+  quizAnswers[qi] = oi;
+  const allAnswered = currentModule.quiz.every((_, i) => quizAnswers[i] !== undefined);
+  document.getElementById('submitQuizBtn').disabled = !allAnswered;
+}
+
+function submitQuiz() {
+  const qs = currentModule.quiz;
+  let correct = 0;
+  qs.forEach((q, qi) => {
+    const chosen = quizAnswers[qi];
+    const isRight = chosen === q.answer;
+    if (isRight) correct++;
+    document.querySelectorAll(`#qq${qi} .quiz-option`).forEach((el, oi) => {
+      el.querySelector('input').disabled = true;
+      if (oi === q.answer) el.classList.add('correct');
+      else if (oi === chosen && !isRight) el.classList.add('incorrect');
+    });
+  });
+
+  const score = Math.round((correct / qs.length) * 100);
+  const passThreshold = currentModule.passScore || 70;
+  const passed = score >= passThreshold;
+
+  document.getElementById('quizWrap').insertAdjacentHTML('afterend', `
+    <div class="quiz-result" style="margin-top:20px;">
+      <div class="score">${score}%</div>
+      <div class="score-label">${correct} of ${qs.length} correct</div>
+      <div class="pass-msg ${passed ? 'pass' : 'fail'}">
+        ${passed ? '✓ Passed — please sign below to complete this module.' : `✗ Score below ${passThreshold}% — please review the slides and retake.`}
+      </div>
+    </div>
+    ${passed ? renderAttestation(score) : `<div style="margin-top:20px;text-align:center;"><button class="nav-btn prev" onclick="openModule('${currentModule.id}')">↺ Retake Module</button></div>`}
+  `);
+
+  document.getElementById('submitQuizBtn').remove();
+}
+
+function renderAttestation(score) {
+  return `<div class="attestation-box" id="attestBox">
+    <h4>Employee Attestation</h4>
+    <p>By signing below, I confirm that I have completed the <strong>${currentModule.title}</strong> training module, reviewed all content, and understand my obligations as a Metro Mobile Health Care clinician.</p>
+    <div class="sig-row">
+      <input type="text" id="sigInput" placeholder="Type your full name to sign" />
+      <button class="attest-btn" id="attestBtn" onclick="submitAttestation(${score})">Sign & Complete</button>
+    </div>
+  </div>`;
+}
+
+async function submitAttestation(score) {
+  const sig = document.getElementById('sigInput').value.trim();
+  if (!sig) { toast('Please type your full name to sign.'); return; }
+  const btn = document.getElementById('attestBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Saving…';
+
+  await saveCompletion(currentModule.id, score, sig);
+  document.getElementById('slideProgressFill').style.width = '100%';
+  showCompletionState(document.getElementById('moduleBody'));
+  toast('✓ Module completed and recorded!');
+}
+
+function showCompletionState(container) {
+  const comp = completions[currentModule.id];
+  container.innerHTML = `<div class="completion-banner">
+    <div class="check">✅</div>
+    <h3>Module Complete</h3>
+    <p>${currentModule.title} was completed on ${new Date(comp.completed_at).toLocaleDateString()} with a score of ${comp.score}%.</p>
+    <span class="gold-pill">Signed: ${comp.signature}</span>
+    <div style="margin-top:24px;">
+      <button class="nav-btn prev" onclick="goBack()">← Back to Dashboard</button>
+    </div>
+  </div>`;
+}
+
+// ══════════════════════════════════════════════════════════════
+// UTILS
+// ══════════════════════════════════════════════════════════════
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+let toastTimer;
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+}
+</script>
+</body>
+</html>
