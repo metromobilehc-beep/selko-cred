@@ -1608,6 +1608,10 @@ async function loadStaffTable() {
             : `<button onclick="setStaffActive('${s.id}', true)" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid #5de0a0;background:transparent;color:#5de0a0;cursor:pointer;">Reactivate</button>`
           }
           <button onclick="changeRole('${s.id}','${s.role}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid var(--gold);background:transparent;color:var(--gold);cursor:pointer;">${s.role === 'admin' ? '→ Clinician' : '→ Admin'}</button>
+          ${s.email
+            ? `<button onclick="quickSendReminder('${s.full_name.replace(/'/g,"\\'")}','${s.email}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid var(--teal-light);background:transparent;color:var(--teal-light);cursor:pointer;">📧 Remind</button>`
+            : `<span style="padding:4px 10px;font-size:11px;color:rgba(255,255,255,.2);font-style:italic;">no email</span>`
+          }
           <button onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')" style="padding:4px 10px;font-size:11px;font-weight:600;border-radius:6px;border:1px solid #f08080;background:rgba(240,128,128,.1);color:#f08080;cursor:pointer;">Delete</button>
         </td>
       </tr>`).join('');
@@ -1909,6 +1913,27 @@ async function sendReminders() {
   } else {
     statusEl.style.color = '#f0c060';
     statusEl.textContent = `Sent ${sent}, failed ${failed}. Check email addresses and try again.`;
+  }
+}
+
+async function quickSendReminder(name, email) {
+  if (!email) { toast('No email address on file for ' + name); return; }
+  if (!confirm(`Send a training reminder to ${name} at ${email}?`)) return;
+
+  emailjs.init(EMAILJS_PUBLIC_KEY);
+  try {
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: email,
+      to_name: name,
+      track: 'Annual Compliance',
+      custom_message: 'This is a reminder to complete your required compliance training modules.',
+      tool_url: 'https://metromobilehc-beep.github.io/mmhc-compliance-tool',
+      from_name: 'Metro Mobile Health Care',
+    });
+    toast(`✓ Reminder sent to ${name}`);
+  } catch(e) {
+    console.error('Quick send failed:', e);
+    toast(`Failed to send to ${name} — check EmailJS settings`);
   }
 }
 
