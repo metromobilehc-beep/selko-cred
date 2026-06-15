@@ -1280,6 +1280,194 @@ const MODULES = [
       { q: 'Which of the following is an appropriate use of ConnectTeam?', options: ['Messaging a patient\'s diagnosis to a covering clinician', 'Logging mileage after completing a visit', 'Documenting wound care findings for the agency chart', 'Sending a patient\'s address to a colleague covering your schedule'], answer: 1, explanation: 'ConnectTeam is for scheduling, mileage logging, and Metro operational communication only. Patient clinical information and PHI must go through the agency EMR.' },
       { q: 'Knox MDM on your Metro tablet allows Metro to:', options: ['Read your personal text messages', 'Remotely wipe the device if it is lost or stolen', 'Track your vehicle location during work hours', 'Access your personal email account'], answer: 1, explanation: 'Knox MDM enables remote device management including the ability to wipe a lost or stolen device to protect PHI. It manages the work profile on the device — not personal accounts.' }
     ]
+  },
+
+  // ── ADMIN ONLY ────────────────────────────────────────────
+  {
+    id: 'admin_org_compliance',
+    track: ['newhire', 'annual'],
+    icon: '🏢',
+    title: 'Organizational Compliance — Owner & Admin',
+    desc: 'HIPAA organizational obligations, Business Associate Agreements, risk assessments, breach response planning, and CMS survey readiness.',
+    passScore: 80,
+    adminOnly: true,
+    slides: [
+      { title: 'Your Organizational Obligations Under HIPAA', content: `<p>As a business owner or administrator of a healthcare staffing organization, your HIPAA obligations extend far beyond what individual clinicians must do. The Privacy Rule, Security Rule, and Breach Notification Rule place specific organizational responsibilities on Metro Mobile Health Care as a covered entity.</p>
+        <p><strong>Your core organizational obligations include:</strong></p>
+        <ul>
+          <li>Designate a <strong>HIPAA Privacy Officer</strong> responsible for developing and implementing privacy policies</li>
+          <li>Designate a <strong>HIPAA Security Officer</strong> responsible for ePHI safeguards</li>
+          <li>Conduct and document an annual <strong>Security Risk Assessment</strong></li>
+          <li>Maintain a written <strong>Notice of Privacy Practices (NPP)</strong></li>
+          <li>Execute <strong>Business Associate Agreements (BAAs)</strong> with all vendors who handle PHI</li>
+          <li>Maintain staff training records for a minimum of <strong>6 years</strong></li>
+          <li>Develop and maintain a written <strong>Breach Response Plan</strong></li>
+        </ul>
+        <div class="callout danger">The HHS Office for Civil Rights (OCR) can audit covered entities at any time. Organizational-level violations carry penalties up to $1.9 million per violation category per year.</div>` },
+
+      { title: 'Business Associate Agreements (BAAs)', content: `<p>A Business Associate Agreement is a legally required contract between your organization and any vendor or partner that creates, receives, maintains, or transmits PHI on your behalf.</p>
+        <p><strong>Who requires a BAA with Metro:</strong></p>
+        <ul>
+          <li>All partner home health agencies (CareFicient, BIOS, Millennium, Faith, HelloNote, PointCare, Caring Connection)</li>
+          <li>Your EHR or documentation platform vendors</li>
+          <li>Cloud storage providers used for any PHI (Google Drive if used for patient data)</li>
+          <li>IT support vendors who may access systems containing PHI</li>
+          <li>Billing and invoicing services handling patient or payer data</li>
+          <li>Your attorney and accountant if they handle PHI</li>
+        </ul>
+        <p><strong>What a BAA must include:</strong></p>
+        <ul>
+          <li>Permitted uses and disclosures of PHI by the business associate</li>
+          <li>Requirement to use appropriate safeguards</li>
+          <li>Obligation to report breaches to you within 60 days</li>
+          <li>Right for you to terminate the agreement if they violate HIPAA</li>
+        </ul>
+        <div class="callout warn">Operating without a BAA with a business associate is itself a HIPAA violation — even if no breach ever occurs. Review your vendor list annually.</div>` },
+
+      { title: 'Annual Security Risk Assessment', content: `<p>The HIPAA Security Rule requires covered entities to conduct a thorough assessment of potential risks and vulnerabilities to ePHI. This is not optional and must be documented in writing.</p>
+        <p><strong>Your risk assessment must evaluate:</strong></p>
+        <ul>
+          <li>All systems and devices that store, transmit, or process ePHI</li>
+          <li>Current security controls in place and their effectiveness</li>
+          <li>Likelihood and impact of potential threats</li>
+          <li>Current gaps between existing controls and required safeguards</li>
+        </ul>
+        <p><strong>For Metro specifically, assess:</strong></p>
+        <ul>
+          <li>Samsung Galaxy Tabs — Knox MDM configuration, encryption, remote wipe capability</li>
+          <li>Supabase database — access controls, data encryption at rest and in transit</li>
+          <li>Google Drive — what patient-adjacent data is stored, who has access</li>
+          <li>ConnectTeam — what PHI if any flows through the platform</li>
+          <li>Email — is PHI ever transmitted via unencrypted email</li>
+          <li>Agency EMR access — clinician login credentials, access logging</li>
+        </ul>
+        <div class="callout">The HHS Office for Civil Rights offers a free Security Risk Assessment Tool at <strong>healthit.gov/topic/privacy-security-and-hipaa/security-risk-assessment-tool</strong></div>` },
+
+      { title: 'Organizational Security Safeguards', content: `<p>The HIPAA Security Rule requires three categories of safeguards at the organizational level. As an owner or admin you are responsible for implementing and maintaining all three.</p>
+        <p><strong>Administrative Safeguards:</strong></p>
+        <ul>
+          <li>Written security policies and procedures (your P&P manual)</li>
+          <li>Workforce training and access authorization procedures</li>
+          <li>Sanctions policy for workforce members who violate HIPAA</li>
+          <li>Periodic evaluation of security measures</li>
+          <li>Contingency plan for data backup and disaster recovery</li>
+        </ul>
+        <p><strong>Physical Safeguards:</strong></p>
+        <ul>
+          <li>Device and media controls — Knox MDM on all issued tablets</li>
+          <li>Workstation use policies — screen locks, clean desk</li>
+          <li>Disposal procedures for devices containing ePHI</li>
+        </ul>
+        <p><strong>Technical Safeguards:</strong></p>
+        <ul>
+          <li>Unique user IDs for each clinician accessing agency EMRs</li>
+          <li>Automatic logoff on all work devices</li>
+          <li>Audit controls — agency EMRs log all access</li>
+          <li>Transmission security — only encrypted channels for ePHI</li>
+        </ul>` },
+
+      { title: 'Breach Response Plan', content: `<p>HIPAA requires covered entities to have a written breach response plan before a breach occurs — not after. Your plan must define exactly what happens when a breach is discovered.</p>
+        <p><strong>Your breach response plan must include:</strong></p>
+        <ol>
+          <li><strong>Discovery and containment</strong> — who reports breaches, to whom, and by when (Metro: same day to Stephen or Evan)</li>
+          <li><strong>Risk assessment</strong> — evaluate the probability that PHI was compromised</li>
+          <li><strong>Notification decision</strong> — determine if the incident meets the definition of a reportable breach</li>
+          <li><strong>Individual notification</strong> — written notice to affected patients within 60 days</li>
+          <li><strong>HHS notification</strong> — report to HHS within 60 days (500+ individuals) or annually (fewer than 500)</li>
+          <li><strong>Documentation</strong> — maintain records of all breaches and responses for 6 years</li>
+        </ol>
+        <div class="callout warn">If a breach affects 500 or more individuals in a state, you must also notify prominent media outlets in that state. This is why breach prevention is far less costly than breach response.</div>` },
+
+      { title: 'Staff Training Records and Documentation', content: `<p>HIPAA requires covered entities to train all workforce members on privacy and security policies and to maintain documentation of that training.</p>
+        <p><strong>Training documentation requirements:</strong></p>
+        <ul>
+          <li>Records must be retained for a minimum of <strong>6 years</strong></li>
+          <li>Must document: who was trained, what they were trained on, and when</li>
+          <li>Training must occur upon hire and when policies materially change</li>
+          <li>Annual refresher training is best practice and required by most accreditation bodies</li>
+        </ul>
+        <p><strong>How this compliance tool satisfies documentation requirements:</strong></p>
+        <ul>
+          <li>Every module completion is timestamped and stored in Supabase</li>
+          <li>Digital attestation captures the employee signature and date</li>
+          <li>Admin dashboard shows completion status for all staff at any time</li>
+          <li>Export to CSV provides a printable compliance record for surveyors</li>
+          <li>Annual reset and re-completion creates a new record each training year</li>
+        </ul>
+        <div class="callout">Export your compliance records to CSV at least annually and store a copy in your business records. In a survey or audit, being able to produce training records immediately demonstrates organizational maturity.</div>` },
+
+      { title: 'CMS Survey Readiness', content: `<p>CMS surveys can occur with little or no notice. Home health agencies and their staffing partners are subject to review of training records, policy documentation, and compliance programs.</p>
+        <p><strong>What surveyors look for in training compliance:</strong></p>
+        <ul>
+          <li>Proof that all staff completed HIPAA training within 90 days of hire</li>
+          <li>Proof of annual refresher training for all active staff</li>
+          <li>Written policies covering privacy, security, and breach response</li>
+          <li>Evidence that sanctions exist for policy violations</li>
+          <li>Documentation that a risk assessment has been conducted</li>
+          <li>BAAs in place with all business associates</li>
+        </ul>
+        <p><strong>Your survey readiness checklist:</strong></p>
+        <ul>
+          <li>Compliance records exported and filed — ✓ this tool provides this</li>
+          <li>P&P manual current and accessible — ✓ Metro P&P manual updated 2025</li>
+          <li>BAAs executed with all agency partners — review annually</li>
+          <li>Security risk assessment completed — annual obligation</li>
+          <li>Breach log maintained — even if no breaches occurred, document that</li>
+        </ul>
+        <div class="callout danger">The most common CMS finding in compliance reviews is not a breach — it is the <strong>absence of documentation</strong> that training and risk assessments occurred. Documented mediocrity beats undocumented excellence every time.</div>` },
+
+      { title: 'OSHA Organizational Obligations', content: `<p>As an employer, Metro has specific OSHA obligations that go beyond what individual clinicians must do in the field.</p>
+        <p><strong>Required programs and documentation:</strong></p>
+        <ul>
+          <li><strong>Exposure Control Plan</strong> — written plan for bloodborne pathogen exposure prevention, updated annually (29 CFR 1910.1030)</li>
+          <li><strong>Hepatitis B vaccination</strong> — offered free to all clinical staff within 10 days of hire; document offers and acceptances/declinations</li>
+          <li><strong>Post-exposure follow-up</strong> — free medical evaluation for any exposure incident; document all incidents</li>
+          <li><strong>OSHA 300 Log</strong> — maintain a log of recordable work-related injuries and illnesses if you have 10 or more employees</li>
+          <li><strong>Workplace Violence Prevention Program</strong> — written program identifying risks and controls for field workers</li>
+          <li><strong>Emergency Action Plan</strong> — written plan covering evacuation, emergency contacts, and procedures</li>
+        </ul>
+        <div class="callout warn">Oklahoma is covered by Federal OSHA (Region VI — Dallas). OSHA inspections can be triggered by an employee complaint, a referral from another agency, or a programmed inspection. Having written programs in place before an inspection is critical.</div>` },
+
+      { title: 'Workplace Violence Prevention Program', content: `<p>OSHA guidelines specifically identify home health field workers as a high-risk group requiring a written workplace violence prevention program. As the employer, Metro is responsible for developing and maintaining this program.</p>
+        <p><strong>Your written program must include:</strong></p>
+        <ul>
+          <li><strong>Management commitment statement</strong> — written policy that violence is not tolerated and will not be considered part of the job</li>
+          <li><strong>Hazard identification process</strong> — how Metro identifies and flags high-risk patient situations for clinicians</li>
+          <li><strong>Prevention controls</strong> — check-in procedures, clinician right to refuse unsafe visits, Metro response protocols</li>
+          <li><strong>Training documentation</strong> — annual training on violence recognition and de-escalation (covered by this tool)</li>
+          <li><strong>Incident reporting system</strong> — how clinicians report threats, near-misses, and violent incidents</li>
+          <li><strong>Post-incident response</strong> — medical care, counseling referral, and investigation procedures</li>
+          <li><strong>Program evaluation</strong> — annual review of incidents and effectiveness</li>
+        </ul>
+        <div class="callout">The OSHA 3148 Workplace Violence Prevention Guidelines for Healthcare Workers (2016) is the foundational document for your program. Your clinicians are trained on its content — your written program should reference it.</div>` },
+
+      { title: 'Oklahoma-Specific Compliance Requirements', content: `<p>In addition to federal requirements, Oklahoma has specific state-level compliance obligations for healthcare employers.</p>
+        <p><strong>Oklahoma mandatory reporter law:</strong></p>
+        <ul>
+          <li>Title 43A O.S. § 10-104 requires licensed healthcare workers to report suspected abuse, neglect, or exploitation</li>
+          <li>As the employer, Metro must ensure all clinical staff understand their mandatory reporter status</li>
+          <li>Metro should maintain documentation that staff received training on mandatory reporting obligations</li>
+        </ul>
+        <p><strong>Oklahoma Workers Compensation:</strong></p>
+        <ul>
+          <li>Oklahoma requires workers compensation coverage for all employees</li>
+          <li>Work-related injuries including workplace violence incidents must be reported promptly</li>
+          <li>Maintain a written policy on injury reporting and workers compensation procedures</li>
+        </ul>
+        <p><strong>Oklahoma TERO considerations:</strong></p>
+        <ul>
+          <li>Cherokee Nation TERO certification requires 51%+ tribal member ownership (Evan Flanagan)</li>
+          <li>Maintain documentation of tribal enrollment and ownership structure for certification maintenance</li>
+        </ul>
+        <div class="callout">Oklahoma does not have a state OSHA plan — Federal OSHA (Region VI, Dallas) has jurisdiction. Oklahoma does have state-specific licensing requirements for home health agencies that Metro partner agencies must maintain.</div>` }
+    ],
+    quiz: [
+      { q: 'Which of the following vendors requires a Business Associate Agreement with Metro?', options: ['Your office supply vendor', 'A home health agency partner that receives clinician documentation', 'A marketing agency designing your logo', 'Your commercial insurance carrier'], answer: 1, explanation: 'Any vendor that creates, receives, maintains, or transmits PHI on your behalf requires a BAA. Home health agency partners who receive clinician documentation containing patient PHI clearly qualify.' },
+      { q: 'HIPAA requires training records to be retained for a minimum of:', options: ['1 year', '3 years', '6 years', '10 years'], answer: 2, explanation: 'HIPAA requires documentation of training and policies to be retained for a minimum of 6 years from the date of creation or the date it was last in effect.' },
+      { q: 'The HIPAA Security Risk Assessment is:', options: ['Optional but recommended for small organizations', 'Required only after a breach occurs', 'A mandatory annual requirement for all covered entities', 'Only required for organizations with 50 or more employees'], answer: 2, explanation: 'The Security Risk Assessment is a mandatory requirement under the HIPAA Security Rule for all covered entities regardless of size. It must be conducted and documented at least annually.' },
+      { q: 'A breach affecting 12 patients must be reported to HHS:', options: ['Within 24 hours', 'Within 60 days of discovery', 'Annually in the next calendar year report', 'Only if the patients request notification'], answer: 2, explanation: 'Breaches affecting fewer than 500 individuals must be reported to HHS annually — in the calendar year following the breach. However notification to affected individuals is still required within 60 days of discovery.' },
+      { q: 'Under OSHA\'s Bloodborne Pathogens Standard, Metro must offer the Hepatitis B vaccine to clinical staff:', options: ['Within 30 days of hire', 'Within 10 working days of initial assignment', 'At the employee\'s request only', 'Only if the employee works with needles'], answer: 1, explanation: 'OSHA 29 CFR 1910.1030 requires employers to offer the Hepatitis B vaccination series free of charge within 10 working days of initial assignment to all employees with occupational exposure risk.' }
+    ]
   }
 
 ];
@@ -1443,7 +1631,7 @@ function setTrack(track, btn) {
 }
 
 function renderDash() {
-  const mods = MODULES.filter(m => m.track.includes(currentTrack));
+  const mods = MODULES.filter(m => m.track.includes(currentTrack) && (!m.adminOnly || isAdmin(currentUser)));
   const grid = document.getElementById('modulesGrid');
   const name = currentUser ? currentUser.split(',')[0] : 'Team';
   document.getElementById('dashGreeting').textContent = `Hello, ${name}`;
