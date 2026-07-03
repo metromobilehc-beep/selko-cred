@@ -363,6 +363,29 @@
           <option value="0">Unverified</option>
           <option value="1">Verified</option>
         </select>
+        <button class="btn btn-sm btn-gold" onclick="proGate(showAddDocType)" id="addDocTypeBtn" style="display:none;">+ Custom doc type</button>
+      </div>
+
+      <!-- Custom doc type form (Pro only) -->
+      <div class="inline-form" id="addDocTypeForm">
+        <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:end;">
+          <div>
+            <label class="inline-label">Document type name</label>
+            <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" />
+          </div>
+          <div>
+            <label class="inline-label">Has expiration?</label>
+            <select class="inline-select" id="dtExpires">
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-end;">
+            <button class="btn btn-sm btn-teal" onclick="saveDocType()">Save</button>
+            <button class="btn btn-sm btn-ghost" onclick="hideAddDocType()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
+          </div>
+        </div>
+        <div id="dtErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
       <div class="tbl-wrap">
         <table>
@@ -549,6 +572,14 @@ async function initSession(user) {
 
   currentProfile = profile;
   currentCompany = company;
+
+  // Tier: pro and enterprise both unlock Pro features
+  window._isPro = ['pro','enterprise'].includes(company.plan);
+
+  // Apply branding if enabled and configured
+  if (company.branding_enabled && company.branding) {
+    applyBranding(company.branding, company.logo_url);
+  }
 
   document.getElementById('hdrUser').textContent   = profile.full_name;
   document.getElementById('hdrUser').style.display  = 'block';
@@ -762,6 +793,40 @@ async function initAdmin() {
   await loadAdminFilters();
   await loadAdminDocs();
   await loadAlertBanner();
+  // Show custom doc type button for Pro/Enterprise
+  if (window._isPro) {
+    document.getElementById('addDocTypeBtn').style.display = 'inline-flex';
+  }
+}
+
+// ══ CUSTOM DOC TYPES (Pro) ══
+function showAddDocType() { document.getElementById('addDocTypeForm').style.display = 'block'; }
+function hideAddDocType() {
+  document.getElementById('addDocTypeForm').style.display = 'none';
+  document.getElementById('dtName').value = '';
+  document.getElementById('dtErr').style.display = 'none';
+}
+
+async function saveDocType() {
+  const name    = document.getElementById('dtName').value.trim();
+  const expires = document.getElementById('dtExpires').value === 'true';
+  const err     = document.getElementById('dtErr');
+  err.style.display = 'none';
+  if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+
+  const { error } = await sb.from('document_types').insert({
+    name,
+    expires,
+    company_id:  currentProfile.company_id,
+    sort_order:  999,
+    description: `Custom type for ${currentCompany.name}`,
+  });
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+
+  toast(`Document type "${name}" added`);
+  hideAddDocType();
+  await loadDocTypes();
+  await loadAdminFilters();
 }
 
 async function loadStaffList() {
@@ -1012,6 +1077,35 @@ function exportCsv() {
   a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
   a.download = `selko-cred-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
+}
+
+// ══ BRANDING ══
+function applyBranding(branding, logoUrl) {
+  if (!branding) return;
+  const r = document.documentElement.style;
+  if (branding.primary)  r.setProperty('--teal',   branding.primary);
+  if (branding.primary)  r.setProperty('--teal-l',  branding.primary);
+  if (branding.secondary) r.setProperty('--gold',  branding.secondary);
+  if (branding.navy)     r.setProperty('--navy',    branding.navy);
+  if (branding.navy)     r.setProperty('--navy2',   branding.navy);
+
+  // Logo in header
+  if (logoUrl) {
+    const mark = document.querySelector('.logo-mark');
+    if (mark) {
+      mark.innerHTML = `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;" />`;
+    }
+  }
+
+  // Company name in header
+  const logoName = document.querySelector('.logo-name');
+  if (logoName && branding.company_name) logoName.textContent = branding.company_name;
+}
+
+// ══ PRO GATE ══
+function proGate(action) {
+  if (window._isPro) { action(); return; }
+  toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
 }
 
 // ══ SESSION RESTORE ══
