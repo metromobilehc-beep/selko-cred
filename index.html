@@ -840,15 +840,13 @@ async function uploadDoc() {
     const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
     if (stErr) throw stErr;
 
-    const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
       company_id:       currentProfile.company_id,
       staff_id:         window._staffId,
       document_type_id: parseInt(typeId),
       label:            docType?.name || 'Document',
       expiry_date:      expDate || null,
-      file_url:         publicUrl,
+      file_url:         path,
       file_name:        file.name,
       notes:            notes || null,
     });
@@ -1008,7 +1006,7 @@ async function loadAdminDocs() {
       ? '<span class="badge badge-verified">✓ Verified</span>'
       : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`;
     const fileHtml = r.file_url
-      ? `<a href="${r.file_url}" target="_blank" style="color:var(--teal-l);font-size:12px;">View file</a>`
+      ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}') " style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View file</button>`
       : '<span style="color:rgba(255,255,255,.3);font-size:12px;">No file</span>';
     return `<tr>
       <td>${name}</td>
@@ -1036,12 +1034,21 @@ async function verifyDoc(id) {
   await loadAlertBanner();
 }
 
-async function deleteDoc(id, fileUrl) {
+async function viewFile(filePath) {
+  try {
+    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
+  } catch(e) {
+    toast('Could not open file: ' + e.message, true);
+  }
+}
+
+async function deleteDoc(id, filePath) {
   if (!confirm('Delete this document record? This cannot be undone.')) return;
   try {
-    if (fileUrl) {
-      const path = fileUrl.split('/compliance-documents/')[1]?.split('?')[0];
-      if (path) await sb.storage.from(STORAGE_BUCKET).remove([path]);
+    if (filePath) {
+      await sb.storage.from(STORAGE_BUCKET).remove([filePath]);
     }
     await sb.from('credtrack_documents').delete().eq('id', id);
     toast('Document deleted');
@@ -1327,8 +1334,7 @@ async function adminUploadDoc() {
       const path = `credtrack/${currentProfile.company_id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
       const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
       if (stErr) throw stErr;
-      const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
-      fileUrl  = publicUrl;
+      fileUrl  = path;  // store path, not public URL
       fileName = file.name;
     }
 
