@@ -33,48 +33,34 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--offwhite); color: var(--gray-800); min-height: 100vh; }
 
-  /* ── HEADER ── */
   header {
-    background: var(--navy);
-    height: 56px; padding: 0 24px;
+    background: var(--navy); height: 56px; padding: 0 24px;
     display: flex; align-items: center; justify-content: space-between;
     position: sticky; top: 0; z-index: 100;
     border-bottom: 1px solid rgba(255,255,255,.06);
   }
-  .logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
-  .logo-mark {
-    width: 32px; height: 32px; border-radius: 7px;
-    background: var(--teal);
-    display: flex; align-items: center; justify-content: center;
-    font-weight: 900; font-size: 14px; color: #fff; letter-spacing: -1px;
-  }
-  .logo-name { color: #fff; font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
-  .logo-sub  { color: var(--teal-l); font-size: 11px; font-weight: 400; margin-top: 1px; }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-mark { width: 32px; height: 32px; border-radius: 7px; background: var(--teal); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 13px; color: #fff; }
+  .logo-name { color: #fff; font-size: 15px; font-weight: 700; }
+  .logo-sub  { color: var(--teal-l); font-size: 11px; }
   #hdrRight  { display: flex; align-items: center; gap: 8px; }
   #hdrUser   { color: rgba(255,255,255,.7); font-size: 13px; display: none; }
   #hdrRole   { background: var(--teal); color: #fff; padding: 2px 9px; border-radius: 10px; font-size: 11px; font-weight: 700; display: none; }
-  #hdrLogout { background: transparent; border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.7); padding: 4px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; display: none; transition: all .2s; }
-  #hdrLogout:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.4); }
+  #hdrLogout { background: transparent; border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.7); padding: 4px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; display: none; }
+  #hdrLogout:hover { background: rgba(255,255,255,.08); }
 
-  /* ── SCREENS ── */
   .screen { display: none; }
   .screen.active { display: block; }
 
-  /* ── LOGIN ── */
-  #loginScreen { min-height: calc(100vh - 56px); display: none; align-items: center; justify-content: center; padding: 32px 16px; background: var(--offwhite); }
+  /* LOGIN */
+  #loginScreen { min-height: calc(100vh - 56px); display: none; align-items: center; justify-content: center; padding: 32px 16px; }
   #loginScreen.active { display: flex; }
-
-  .login-card {
-    background: #fff; border-radius: 14px; box-shadow: var(--shadow-lg);
-    padding: 40px 36px; width: 100%; max-width: 400px;
-    border: 1px solid var(--gray-200);
-  }
-  .login-header { margin-bottom: 28px; }
-  .login-header h2 { font-size: 22px; color: var(--navy); font-weight: 700; margin-bottom: 4px; }
-  .login-header p  { color: var(--gray-600); font-size: 14px; }
+  .login-card { background: #fff; border-radius: 14px; box-shadow: var(--shadow-lg); padding: 40px 36px; width: 100%; max-width: 400px; border: 1px solid var(--gray-200); }
+  .login-card h2 { font-size: 22px; color: var(--navy); font-weight: 700; margin-bottom: 4px; }
+  .login-card p  { color: var(--gray-600); font-size: 14px; margin-bottom: 24px; }
 
   .form-group { margin-bottom: 16px; }
-  label.field-label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-600); margin-bottom: 6px; letter-spacing: .2px; }
+  .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--gray-600); margin-bottom: 6px; }
   input[type=text], input[type=email], input[type=password], input[type=date], select, textarea {
     width: 100%; padding: 10px 13px; border: 1.5px solid var(--gray-200);
     border-radius: var(--radius); font-size: 14px; color: var(--gray-800);
@@ -87,27 +73,27 @@
   .btn-primary:hover { background: var(--teal-l); }
   .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
   .btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 6px; }
-  .btn-teal  { background: var(--teal); color: #fff; }
+  .btn-teal   { background: var(--teal); color: #fff; }
   .btn-teal:hover { background: var(--teal-l); }
-  .btn-gold  { background: transparent; border: 1px solid var(--gold); color: var(--gold); }
+  .btn-gold   { background: transparent; border: 1px solid var(--gold); color: var(--gold); }
   .btn-gold:hover { background: rgba(245,158,11,.08); }
-  .btn-danger{ background: transparent; border: 1px solid var(--danger); color: var(--danger); }
+  .btn-danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
   .btn-danger:hover { background: rgba(239,68,68,.08); }
-  .btn-ghost { background: transparent; border: 1px solid var(--gray-200); color: var(--gray-600); }
+  .btn-ghost  { background: transparent; border: 1px solid var(--gray-200); color: var(--gray-600); }
   .btn-ghost:hover { border-color: var(--gray-400); }
 
   .alert { padding: 10px 14px; border-radius: var(--radius); font-size: 13px; margin-bottom: 14px; display: none; }
-  .alert-error { background: #fef2f2; border: 1px solid #fecaca; color: var(--danger); }
+  .alert-error   { background: #fef2f2; border: 1px solid #fecaca; color: var(--danger); }
   .alert-success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
 
-  /* ── LAYOUT ── */
+  /* LAYOUT */
   .page { padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
   .page-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
   .page-header h1 { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
   .page-header p  { color: var(--gray-600); font-size: 14px; }
 
-  /* ── STAT CARDS ── */
-  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 24px; }
+  /* STAT CARDS */
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px,1fr)); gap: 12px; margin-bottom: 24px; }
   .stat-card { background: #fff; border-radius: var(--radius); padding: 16px; border: 1px solid var(--gray-200); border-left: 3px solid var(--gray-200); box-shadow: var(--shadow); }
   .stat-card.ok     { border-left-color: var(--success); }
   .stat-card.warn   { border-left-color: var(--warn); }
@@ -116,98 +102,85 @@
   .stat-num   { font-size: 28px; font-weight: 800; color: var(--navy); line-height: 1; }
   .stat-label { font-size: 12px; color: var(--gray-600); margin-top: 4px; font-weight: 500; }
 
-  /* ── PANELS ── */
+  /* PANELS */
   .panel { background: #fff; border-radius: 10px; border: 1px solid var(--gray-200); box-shadow: var(--shadow); margin-bottom: 20px; }
   .panel-head { padding: 16px 20px; border-bottom: 1px solid var(--gray-100); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
   .panel-title { font-size: 15px; font-weight: 700; color: var(--navy); }
   .panel-body  { padding: 20px; }
 
-  /* ── BADGES ── */
+  /* BADGES */
   .badge { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; white-space: nowrap; }
-  .badge-ok      { background: #d1fae5; color: #065f46; }
-  .badge-warn    { background: #fef3c7; color: #92400e; }
-  .badge-danger  { background: #fee2e2; color: #991b1b; }
-  .badge-none    { background: var(--gray-100); color: var(--gray-600); }
-  .badge-verified{ background: #dbeafe; color: #1e40af; }
-  .badge-pending { background: #fef3c7; color: #92400e; }
+  .badge-ok       { background: #d1fae5; color: #065f46; }
+  .badge-warn     { background: #fef3c7; color: #92400e; }
+  .badge-danger   { background: #fee2e2; color: #991b1b; }
+  .badge-none     { background: var(--gray-100); color: var(--gray-600); }
+  .badge-verified { background: #dbeafe; color: #1e40af; }
+  .badge-pending  { background: #fef3c7; color: #92400e; }
 
-  /* ── DOC LIST (staff) ── */
+  /* DOC LIST */
   .doc-item { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--gray-100); flex-wrap: wrap; }
   .doc-item:last-child { border-bottom: none; }
-  .doc-icon  { font-size: 22px; width: 34px; text-align: center; flex-shrink: 0; }
-  .doc-info  { flex: 1; min-width: 0; }
-  .doc-name  { font-weight: 600; font-size: 14px; color: var(--navy); }
-  .doc-meta  { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
-  .doc-note  { font-size: 12px; color: var(--gray-600); margin-top: 2px; font-style: italic; }
+  .doc-icon { font-size: 22px; width: 34px; text-align: center; flex-shrink: 0; }
+  .doc-info { flex: 1; min-width: 0; }
+  .doc-name { font-weight: 600; font-size: 14px; color: var(--navy); }
+  .doc-meta { font-size: 12px; color: var(--gray-400); margin-top: 2px; }
+  .doc-note { font-size: 12px; color: var(--gray-600); margin-top: 2px; font-style: italic; }
 
-  /* ── UPLOAD AREA ── */
+  /* UPLOAD */
   .file-btns { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
   .file-label { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: var(--radius); cursor: pointer; font-size: 13px; font-weight: 600; transition: all .15s; }
-  .file-label-primary { background: var(--teal); color: #fff; }
+  .file-label-primary   { background: var(--teal); color: #fff; }
   .file-label-primary:hover { background: var(--teal-l); }
   .file-label-secondary { background: var(--navy3); color: #fff; }
-  .file-label-secondary:hover { background: var(--navy2); }
   #upFileName { font-size: 13px; color: var(--gray-400); font-style: italic; }
   #photoPreview { margin-top: 10px; display: none; }
   #photoPreviewImg { max-width: 180px; max-height: 140px; border-radius: var(--radius); border: 1.5px solid var(--gray-200); object-fit: cover; }
 
-  /* ── FORM GRID ── */
   .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  /* ── TABS ── */
+  /* TABS */
   .tabs { display: flex; gap: 6px; margin-bottom: 20px; flex-wrap: wrap; }
   .tab { padding: 7px 16px; border-radius: var(--radius); border: 1.5px solid var(--gray-200); background: #fff; font-size: 13px; font-weight: 600; color: var(--gray-600); cursor: pointer; transition: all .15s; }
   .tab.active { background: var(--navy); border-color: var(--navy); color: #fff; }
   .tab:hover:not(.active) { border-color: var(--teal); color: var(--teal); }
 
-  /* ── ADMIN DARK PANEL ── */
-  .dark-panel { background: var(--navy); border-radius: 10px; padding: 20px; color: #fff; }
-  .dark-panel h2 { font-size: 14px; color: var(--teal-l); margin-bottom: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  /* DARK PANEL */
+  .dark-panel { background: var(--navy); border-radius: 10px; padding: 20px; color: #fff; margin-bottom: 16px; }
+  .dark-panel h2 { font-size: 12px; color: var(--teal-l); margin-bottom: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
 
-  .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
   .filter-sel { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
   .filter-sel option { background: var(--navy2); }
 
-  /* ── TABLE ── */
+  /* TABLE */
   .tbl-wrap { overflow-x: auto; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; padding: 8px 12px; color: var(--teal-l); font-weight: 600; border-bottom: 1px solid rgba(255,255,255,.08); white-space: nowrap; font-size: 12px; }
   td { padding: 10px 12px; border-bottom: 1px solid rgba(255,255,255,.05); color: #cbd5e1; vertical-align: middle; }
   tr:last-child td { border-bottom: none; }
   tr:hover td { background: rgba(255,255,255,.02); }
-  .td-actions { display: flex; gap: 5px; flex-wrap: wrap; }
+  .td-actions { display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
 
-  /* Light table (staff management) */
-  .light-panel { background: #fff; border-radius: 10px; border: 1px solid var(--gray-200); }
-  .light-panel table { font-size: 13px; }
-  .light-panel th { color: var(--gray-600); border-bottom: 1px solid var(--gray-200); background: var(--gray-100); font-size: 12px; }
-  .light-panel td { border-bottom: 1px solid var(--gray-100); color: var(--gray-800); }
-  .light-panel tr:last-child td { border-bottom: none; }
-  .light-panel tr:hover td { background: var(--gray-100); }
-
-  /* ── ALERT BANNERS ── */
+  /* BANNER */
   .banner { border-radius: 8px; padding: 12px 16px; margin-bottom: 14px; display: none; }
   .banner-danger { background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.3); }
-  .banner-warn   { background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.3); }
-  .banner-title  { font-weight: 700; font-size: 13px; margin-bottom: 6px; }
-  .banner-danger .banner-title { color: #f87171; }
-  .banner-warn   .banner-title { color: #fbbf24; }
+  .banner-title  { font-weight: 700; font-size: 13px; margin-bottom: 6px; color: #f87171; }
   .banner-list   { font-size: 12px; color: #cbd5e1; line-height: 1.9; }
 
-  /* ── ADD STAFF FORM ── */
+  /* INLINE FORM */
   .inline-form { background: rgba(255,255,255,.05); border-radius: 8px; padding: 16px; margin-bottom: 14px; display: none; }
-  .inline-form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
-  .inline-label { font-size: 11px; font-weight: 600; color: var(--teal-l); display: block; margin-bottom: 4px; text-transform: uppercase; }
-  .inline-input { width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: inherit; }
+  .inline-label  { font-size: 11px; font-weight: 600; color: var(--teal-l); display: block; margin-bottom: 4px; text-transform: uppercase; }
+  .inline-input  { width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: inherit; }
   .inline-input:focus { outline: none; border-color: var(--teal); }
   .inline-select { width: 100%; padding: 7px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: inherit; cursor: pointer; }
   .inline-select option { background: var(--navy2); }
+  .inline-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
+  .inline-grid-3 { display: grid; grid-template-columns: 1fr 1fr auto; gap: 10px; align-items: end; }
 
-  /* ── TOAST ── */
+  /* TOAST */
   #toast { position: fixed; bottom: 24px; right: 24px; background: var(--navy); color: #fff; padding: 11px 18px; border-radius: 8px; font-size: 13px; box-shadow: var(--shadow-lg); z-index: 9999; opacity: 0; transform: translateY(8px); transition: all .25s; pointer-events: none; border-left: 3px solid var(--teal); }
   #toast.show { opacity: 1; transform: translateY(0); }
 
-  /* ── UPLOAD STATUS ── */
   .up-status { font-size: 13px; padding: 8px 12px; border-radius: 6px; margin: 8px 0; display: none; }
   .up-ok  { background: #f0fdf4; color: #15803d; border: 1px solid #bbf7d0; }
   .up-err { background: #fef2f2; color: var(--danger); border: 1px solid #fecaca; }
@@ -221,7 +194,8 @@
   @media (max-width: 640px) {
     .page { padding: 16px; }
     .form-grid-2 { grid-template-columns: 1fr; }
-    .inline-form-grid { grid-template-columns: 1fr 1fr; }
+    .inline-grid-4 { grid-template-columns: 1fr 1fr; }
+    .inline-grid-3 { grid-template-columns: 1fr; }
     .login-card { padding: 28px 20px; }
   }
 </style>
@@ -243,13 +217,11 @@
   </div>
 </header>
 
-<!-- ══ LOGIN ══ -->
+<!-- LOGIN -->
 <div id="loginScreen" class="screen active">
   <div class="login-card">
-    <div class="login-header">
-      <h2>Sign in to Selko Cred</h2>
-      <p>Use your work email and password to access your credentials.</p>
-    </div>
+    <h2>Sign in to Selko Cred</h2>
+    <p>Use your work email and password.</p>
     <div id="loginAlert" class="alert alert-error"></div>
     <div class="form-group">
       <label class="field-label">Email</label>
@@ -264,7 +236,7 @@
   </div>
 </div>
 
-<!-- ══ STAFF SCREEN ══ -->
+<!-- STAFF SCREEN -->
 <div id="staffScreen" class="screen">
   <div class="page">
     <div class="page-header">
@@ -273,14 +245,9 @@
         <p>Upload and track your required documents.</p>
       </div>
     </div>
-
     <div class="stat-grid" id="statCards"></div>
-
-    <!-- Upload -->
     <div class="panel">
-      <div class="panel-head">
-        <span class="panel-title">Upload a document</span>
-      </div>
+      <div class="panel-head"><span class="panel-title">Upload a document</span></div>
       <div class="panel-body">
         <div class="form-grid-2" style="margin-bottom:14px;">
           <div class="form-group" style="margin:0;">
@@ -295,12 +262,12 @@
         <div class="form-group">
           <label class="field-label">Attach file</label>
           <div class="file-btns">
-            <label for="upFile" class="file-label file-label-primary">📎 Choose file</label>
+            <label for="upFile"   class="file-label file-label-primary">📎 Choose file</label>
             <label for="upCamera" class="file-label file-label-secondary">📷 Take photo</label>
             <span id="upFileName">No file selected</span>
           </div>
-          <input type="file" id="upFile"   accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onFileSelected(this)" />
-          <input type="file" id="upCamera" accept="image/*" capture="environment" style="display:none;" onchange="onFileSelected(this)" />
+          <input type="file"   id="upFile"   accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onFileSelected(this)" />
+          <input type="file"   id="upCamera" accept="image/*" capture="environment" style="display:none;" onchange="onFileSelected(this)" />
           <div id="photoPreview">
             <img id="photoPreviewImg" />
             <button onclick="clearPhoto()" style="display:block;margin-top:6px;padding:3px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:12px;cursor:pointer;">Remove</button>
@@ -308,18 +275,14 @@
         </div>
         <div class="form-group">
           <label class="field-label">Notes (optional)</label>
-          <input type="text" id="upNotes" placeholder="e.g. License #OK12345, renewal in progress" />
+          <input type="text" id="upNotes" placeholder="e.g. License #OK12345" />
         </div>
         <div id="upStatus" class="up-status"></div>
         <button class="btn btn-teal" id="upBtn" onclick="uploadDoc()">Upload document</button>
       </div>
     </div>
-
-    <!-- My docs -->
     <div class="panel">
-      <div class="panel-head">
-        <span class="panel-title">My documents</span>
-      </div>
+      <div class="panel-head"><span class="panel-title">My documents</span></div>
       <div class="panel-body" id="myDocsList">
         <div class="empty-state"><div class="empty-icon">📂</div>No documents uploaded yet.</div>
       </div>
@@ -327,7 +290,7 @@
   </div>
 </div>
 
-<!-- ══ ADMIN SCREEN ══ -->
+<!-- ADMIN SCREEN -->
 <div id="adminScreen" class="screen">
   <div class="page">
     <div class="page-header">
@@ -335,12 +298,9 @@
         <h1>Credential Admin</h1>
         <p>Manage staff credentials and track expirations.</p>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
-      </div>
+      <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
     </div>
 
-    <!-- Alert banners -->
     <div class="banner banner-danger" id="expiredBanner">
       <div class="banner-title">🔴 Expired or expiring within 30 days</div>
       <div class="banner-list" id="expiredList"></div>
@@ -356,19 +316,17 @@
     <div id="tabDocs" class="dark-panel">
       <h2>All staff documents</h2>
       <div class="filter-bar">
-        <select class="filter-sel" id="fEmp"    onchange="loadAdminDocs()"><option value="">All staff</option></select>
-        <select class="filter-sel" id="fType"   onchange="loadAdminDocs()"><option value="">All types</option></select>
+        <select class="filter-sel" id="fEmp"      onchange="loadAdminDocs()"><option value="">All staff</option></select>
+        <select class="filter-sel" id="fType"     onchange="loadAdminDocs()"><option value="">All types</option></select>
         <select class="filter-sel" id="fVerified" onchange="loadAdminDocs()">
           <option value="">All statuses</option>
           <option value="0">Unverified</option>
           <option value="1">Verified</option>
         </select>
-        <button class="btn btn-sm btn-gold" onclick="proGate(showAddDocType)" id="addDocTypeBtn" style="display:none;">+ Custom doc type</button>
+        <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
       </div>
-
-      <!-- Custom doc type form (Pro only) -->
       <div class="inline-form" id="addDocTypeForm">
-        <div style="display:grid;grid-template-columns:1fr 1fr auto auto;gap:10px;align-items:end;">
+        <div class="inline-grid-3">
           <div>
             <label class="inline-label">Document type name</label>
             <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" />
@@ -402,8 +360,8 @@
     <div id="tabExp" class="dark-panel" style="display:none;">
       <h2>Expiration tracker</h2>
       <div class="filter-bar">
-        <select class="filter-sel" id="fExpEmp"  onchange="loadExpTracker()"><option value="">All staff</option></select>
-        <select class="filter-sel" id="fExpWin"  onchange="loadExpTracker()">
+        <select class="filter-sel" id="fExpEmp" onchange="loadExpTracker()"><option value="">All staff</option></select>
+        <select class="filter-sel" id="fExpWin" onchange="loadExpTracker()">
           <option value="">All</option>
           <option value="expired">Expired</option>
           <option value="30">Within 30 days</option>
@@ -424,13 +382,13 @@
 
     <!-- STAFF TAB -->
     <div id="tabStaff" style="display:none;">
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel">
         <h2>Staff management</h2>
         <div class="filter-bar">
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
         </div>
         <div class="inline-form" id="addStaffForm">
-          <div class="inline-form-grid">
+          <div class="inline-grid-4">
             <div>
               <label class="inline-label">Full name</label>
               <input class="inline-input" type="text" id="nsName" placeholder="Jane Smith, PT" />
@@ -457,13 +415,11 @@
             </div>
           </div>
           <div id="nsErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-top:8px;">Staff member will receive a Supabase invite email to set their password.</p>
+          <p style="font-size:12px;color:rgba(255,255,255,.35);margin-top:8px;">Staff member will need a Supabase invite to set their password before they can log in.</p>
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr>
-              <th>Name</th><th>Email</th><th>Title</th><th>Type</th><th>Status</th><th>Actions</th>
-            </tr></thead>
+            <thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody id="staffTbody"></tbody>
           </table>
         </div>
@@ -488,26 +444,26 @@ let currentCompany = null;
 let docTypes       = [];
 let staffList      = [];
 
-// ══ HELPERS ══
-function docStatus(expiryDate) {
-  if (!expiryDate) return 'no_expiry';
-  const days = Math.ceil((new Date(expiryDate) - new Date()) / 86400000);
+// ══ UTILS ══
+function docStatus(d) {
+  if (!d) return 'no_expiry';
+  const days = Math.ceil((new Date(d) - new Date()) / 86400000);
   if (days < 0)  return 'expired';
   if (days < 30) return 'expiring_soon';
   return 'current';
 }
-function statusBadge(expiryDate) {
-  const s = docStatus(expiryDate);
-  if (s === 'expired')      return '<span class="badge badge-danger">Expired</span>';
+function statusBadge(d) {
+  const s = docStatus(d);
+  if (s === 'expired')       return '<span class="badge badge-danger">Expired</span>';
   if (s === 'expiring_soon') return '<span class="badge badge-warn">Expiring soon</span>';
-  if (s === 'current')      return '<span class="badge badge-ok">Current</span>';
+  if (s === 'current')       return '<span class="badge badge-ok">Current</span>';
   return '<span class="badge badge-none">No expiry</span>';
 }
 function fmtDate(d) { return d ? new Date(d).toLocaleDateString() : '—'; }
-function daysLabel(expiryDate) {
-  if (!expiryDate) return '—';
-  const days = Math.ceil((new Date(expiryDate) - new Date()) / 86400000);
-  if (days < 0) return `<span style="color:#f87171;font-weight:700;">${Math.abs(days)}d overdue</span>`;
+function daysLabel(d) {
+  if (!d) return '—';
+  const days = Math.ceil((new Date(d) - new Date()) / 86400000);
+  if (days < 0)  return `<span style="color:#f87171;font-weight:700;">${Math.abs(days)}d overdue</span>`;
   if (days < 30) return `<span style="color:#fbbf24;font-weight:700;">${days}d</span>`;
   if (days < 90) return `<span style="color:#fb923c;font-weight:700;">${days}d</span>`;
   return `<span style="color:#4ade80;">${days}d</span>`;
@@ -528,73 +484,75 @@ function showScreen(id) {
   document.getElementById(id).classList.add('active');
 }
 
+function showAlert(el, msg) { el.textContent = msg; el.style.display = 'block'; }
+
 // ══ AUTH ══
 async function doLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const pass  = document.getElementById('loginPassword').value;
-  const alert = document.getElementById('loginAlert');
+  const alertEl = document.getElementById('loginAlert');
   const btn   = document.getElementById('loginBtn');
-  alert.style.display = 'none';
+  alertEl.style.display = 'none';
 
-  if (!email || !pass) { showAlert(alert, 'Please enter your email and password.'); return; }
+  if (!email || !pass) { showAlert(alertEl, 'Please enter your email and password.'); return; }
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Signing in…';
 
-  const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
-  if (error) {
-    showAlert(alert, 'Incorrect email or password.');
-    btn.disabled = false; btn.textContent = 'Sign in';
-    return;
+  try {
+    const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
+    if (error) throw error;
+    await initSession(data.user);
+  } catch(e) {
+    showAlert(alertEl, 'Login error: ' + e.message);
+    btn.disabled = false;
+    btn.textContent = 'Sign in';
   }
-
-  await initSession(data.user);
 }
 
-document.getElementById('loginPassword').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
-
-function showAlert(el, msg) { el.textContent = msg; el.style.display = 'block'; }
+document.getElementById('loginPassword').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
 
 async function initSession(user) {
-  // Load profile
-  const { data: profile } = await sb.from('profiles').select('*').eq('id', user.id).single();
-  if (!profile) { await sb.auth.signOut(); showAlert(document.getElementById('loginAlert'), 'Profile not found. Contact your admin.'); document.getElementById('loginBtn').disabled = false; document.getElementById('loginBtn').textContent = 'Sign in'; return; }
+  try {
+    const { data: profile, error: profErr } = await sb.from('profiles').select('*').eq('id', user.id).single();
+    if (profErr) throw new Error('Profile error: ' + profErr.message);
+    if (!profile) throw new Error('No profile found for this account.');
 
-  // Load company
-  const { data: company } = await sb.from('companies').select('*').eq('id', profile.company_id).single();
-  if (!company || !company.has_credtrack) {
+    const { data: company, error: compErr } = await sb.from('companies').select('*').eq('id', profile.company_id).single();
+    if (compErr) throw new Error('Company error: ' + compErr.message);
+    if (!company) throw new Error('No company found.');
+    if (!company.has_credtrack) throw new Error('Your organization does not have access to Selko Cred. Contact your administrator.');
+
+    currentProfile = profile;
+    currentCompany = company;
+    window._isPro  = ['pro','enterprise'].includes(company.plan);
+
+    if (company.branding_enabled && company.branding && Object.keys(company.branding).length) {
+      applyBranding(company.branding, company.logo_url);
+    }
+
+    document.getElementById('hdrUser').textContent    = profile.full_name;
+    document.getElementById('hdrUser').style.display   = 'block';
+    document.getElementById('hdrRole').textContent    = (profile.role === 'admin' || profile.is_super_admin) ? 'Admin' : 'Staff';
+    document.getElementById('hdrRole').style.display   = 'block';
+    document.getElementById('hdrLogout').style.display = 'block';
+
+    await loadDocTypes();
+
+    if (profile.role === 'admin' || profile.is_super_admin) {
+      showScreen('adminScreen');
+      await initAdmin();
+    } else {
+      showScreen('staffScreen');
+      await initStaff();
+    }
+  } catch(e) {
     await sb.auth.signOut();
-    showAlert(document.getElementById('loginAlert'), 'Your organization does not have access to Selko Cred.');
+    showAlert(document.getElementById('loginAlert'), e.message);
     document.getElementById('loginBtn').disabled = false;
     document.getElementById('loginBtn').textContent = 'Sign in';
-    return;
-  }
-
-  currentProfile = profile;
-  currentCompany = company;
-
-  // Tier: pro and enterprise both unlock Pro features
-  window._isPro = ['pro','enterprise'].includes(company.plan);
-
-  // Apply branding if enabled and configured
-  if (company.branding_enabled && company.branding) {
-    applyBranding(company.branding, company.logo_url);
-  }
-
-  document.getElementById('hdrUser').textContent   = profile.full_name;
-  document.getElementById('hdrUser').style.display  = 'block';
-  document.getElementById('hdrRole').textContent   = (profile.role === 'admin' || profile.is_super_admin) ? 'Admin' : 'Staff';
-  document.getElementById('hdrRole').style.display  = 'block';
-  document.getElementById('hdrLogout').style.display = 'block';
-
-  await loadDocTypes();
-
-  if (profile.role === 'admin' || profile.is_super_admin) {
-    showScreen('adminScreen');
-    await initAdmin();
-  } else {
-    showScreen('staffScreen');
-    await initStaff();
   }
 }
 
@@ -611,10 +569,11 @@ async function logout() {
 
 // ══ DOC TYPES ══
 async function loadDocTypes() {
-  const { data } = await sb.from('document_types')
+  const { data, error } = await sb.from('document_types')
     .select('*')
     .or(`company_id.is.null,company_id.eq.${currentProfile.company_id}`)
     .order('sort_order');
+  if (error) { console.error('doc types error:', error); return; }
   docTypes = data || [];
   const sel = document.getElementById('upType');
   sel.innerHTML = '<option value="">— Select type —</option>';
@@ -626,25 +585,17 @@ async function loadDocTypes() {
 
 // ══ STAFF INIT ══
 async function initStaff() {
-  // Find credtrack_staff record for this profile
+  document.getElementById('staffGreeting').textContent =
+    'My Credentials — ' + currentProfile.full_name.split(',')[0];
   const { data: staffRec } = await sb.from('credtrack_staff')
     .select('*').eq('profile_id', currentProfile.id).single();
-
-  document.getElementById('staffGreeting').textContent =
-    `My Credentials — ${currentProfile.full_name.split(',')[0]}`;
-
-  await renderStatCards(staffRec?.id);
-  await loadMyDocs(staffRec?.id);
-
-  // Store for upload
   window._staffId = staffRec?.id || null;
+  await renderStatCards(window._staffId);
+  await loadMyDocs(window._staffId);
 }
 
 async function renderStatCards(staffId) {
-  if (!staffId) {
-    document.getElementById('statCards').innerHTML = '';
-    return;
-  }
+  if (!staffId) { document.getElementById('statCards').innerHTML = ''; return; }
   const { data } = await sb.from('credtrack_documents').select('expiry_date').eq('staff_id', staffId);
   let ok = 0, warn = 0, expired = 0, noExp = 0;
   (data || []).forEach(d => {
@@ -654,9 +605,8 @@ async function renderStatCards(staffId) {
     else if (s === 'expired') expired++;
     else noExp++;
   });
-  const total = (data || []).length;
   document.getElementById('statCards').innerHTML = `
-    <div class="stat-card info"><div class="stat-num">${total}</div><div class="stat-label">Total documents</div></div>
+    <div class="stat-card info"><div class="stat-num">${(data||[]).length}</div><div class="stat-label">Total documents</div></div>
     <div class="stat-card ok"><div class="stat-num">${ok}</div><div class="stat-label">Current</div></div>
     <div class="stat-card warn"><div class="stat-num">${warn}</div><div class="stat-label">Expiring soon</div></div>
     <div class="stat-card danger"><div class="stat-num">${expired}</div><div class="stat-label">Expired</div></div>`;
@@ -678,18 +628,18 @@ async function loadMyDocs(staffId) {
     return;
   }
 
-  const icons = { 'PT License':'🪪', 'PTA License':'🪪', 'OT License':'🪪', 'COTA License':'🪪', 'SLP License':'🪪', 'Driver License':'🚗', 'Auto Insurance':'🚙', 'CPR/BLS Certification':'❤️', 'TB Test / Screening':'🩺', 'Background Check':'🔍', 'Malpractice Insurance':'🛡️' };
+  const icons = { 'PT License':'🪪','PTA License':'🪪','OT License':'🪪','COTA License':'🪪','SLP License':'🪪','Driver License':'🚗','Auto Insurance':'🚙','CPR/BLS Certification':'❤️','TB Test / Screening':'🩺','Background Check':'🔍','Malpractice Insurance':'🛡️' };
 
   container.innerHTML = data.map(doc => {
     const typeName = doc.document_types?.name || doc.label;
     const icon = icons[typeName] || '📄';
-    const verifiedBadge = doc.verified
+    const badge = doc.verified
       ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Verified</span>'
       : '<span class="badge badge-pending"  style="margin-left:6px;">Pending review</span>';
     return `<div class="doc-item">
       <div class="doc-icon">${icon}</div>
       <div class="doc-info">
-        <div class="doc-name">${typeName} ${verifiedBadge}</div>
+        <div class="doc-name">${typeName} ${badge}</div>
         <div class="doc-meta">${doc.file_name || 'Record only'} · Uploaded ${fmtDate(doc.created_at)}</div>
         ${doc.notes ? `<div class="doc-note">${doc.notes}</div>` : ''}
       </div>
@@ -724,16 +674,13 @@ function clearPhoto() {
 }
 
 async function uploadDoc() {
-  const typeId = document.getElementById('upType').value;
+  const typeId  = document.getElementById('upType').value;
   const expDate = document.getElementById('upExp').value;
   const notes   = document.getElementById('upNotes').value.trim();
-  const fileInput = document.getElementById('upFile').files[0]
-    ? document.getElementById('upFile')
-    : document.getElementById('upCamera');
+  const fileInput = document.getElementById('upFile').files[0] ? document.getElementById('upFile') : document.getElementById('upCamera');
   const file = fileInput.files[0];
   const btn  = document.getElementById('upBtn');
-  const statusEl = document.getElementById('upStatus');
-  statusEl.style.display = 'none';
+  document.getElementById('upStatus').style.display = 'none';
 
   if (!typeId) { showUpStatus('Please select a document type.', 'err'); return; }
   if (!file)   { showUpStatus('Please attach a file.', 'err'); return; }
@@ -756,7 +703,7 @@ async function uploadDoc() {
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
       company_id:       currentProfile.company_id,
       staff_id:         window._staffId,
-      document_type_id: typeId,
+      document_type_id: parseInt(typeId),
       label:            docType?.name || 'Document',
       expiry_date:      expDate || null,
       file_url:         publicUrl,
@@ -787,46 +734,13 @@ function showUpStatus(msg, type) {
   el.style.display = 'block';
 }
 
-// ══ ADMIN INIT ══
+// ══ ADMIN ══
 async function initAdmin() {
   await loadStaffList();
   await loadAdminFilters();
   await loadAdminDocs();
   await loadAlertBanner();
-  // Show custom doc type button for Pro/Enterprise
-  if (window._isPro) {
-    document.getElementById('addDocTypeBtn').style.display = 'inline-flex';
-  }
-}
-
-// ══ CUSTOM DOC TYPES (Pro) ══
-function showAddDocType() { document.getElementById('addDocTypeForm').style.display = 'block'; }
-function hideAddDocType() {
-  document.getElementById('addDocTypeForm').style.display = 'none';
-  document.getElementById('dtName').value = '';
-  document.getElementById('dtErr').style.display = 'none';
-}
-
-async function saveDocType() {
-  const name    = document.getElementById('dtName').value.trim();
-  const expires = document.getElementById('dtExpires').value === 'true';
-  const err     = document.getElementById('dtErr');
-  err.style.display = 'none';
-  if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
-
-  const { error } = await sb.from('document_types').insert({
-    name,
-    expires,
-    company_id:  currentProfile.company_id,
-    sort_order:  999,
-    description: `Custom type for ${currentCompany.name}`,
-  });
-  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
-
-  toast(`Document type "${name}" added`);
-  hideAddDocType();
-  await loadDocTypes();
-  await loadAdminFilters();
+  if (window._isPro) document.getElementById('addDocTypeBtn').style.display = 'inline-flex';
 }
 
 async function loadStaffList() {
@@ -868,8 +782,13 @@ async function loadAdminDocs() {
   if (verified === '1') q = q.eq('verified', true);
   if (verified === '0') q = q.eq('verified', false);
 
-  const { data } = await q;
+  const { data, error } = await q;
   const tbody = document.getElementById('adminDocsTbody');
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:#f87171;padding:20px;">${error.message}</td></tr>`;
+    return;
+  }
 
   if (!data?.length) {
     tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No documents found.</td></tr>';
@@ -880,12 +799,11 @@ async function loadAdminDocs() {
     const name     = r.credtrack_staff?.full_name || '—';
     const typeName = r.document_types?.name || r.label;
     const verHtml  = r.verified
-      ? `<span class="badge badge-verified">✓ Verified</span>`
+      ? '<span class="badge badge-verified">✓ Verified</span>'
       : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`;
     const fileHtml = r.file_url
       ? `<a href="${r.file_url}" target="_blank" style="color:var(--teal-l);font-size:12px;">View file</a>`
       : '<span style="color:rgba(255,255,255,.3);font-size:12px;">No file</span>';
-
     return `<tr>
       <td>${name}</td>
       <td>${typeName}</td>
@@ -916,7 +834,7 @@ async function deleteDoc(id, fileUrl) {
   if (!confirm('Delete this document record? This cannot be undone.')) return;
   try {
     if (fileUrl) {
-      const path = fileUrl.split('/compliance-documents/')[1];
+      const path = fileUrl.split('/compliance-documents/')[1]?.split('?')[0];
       if (path) await sb.storage.from(STORAGE_BUCKET).remove([path]);
     }
     await sb.from('credtrack_documents').delete().eq('id', id);
@@ -954,18 +872,13 @@ async function loadExpTracker() {
     tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No records found.</td></tr>';
     return;
   }
-
-  tbody.innerHTML = rows.map(r => {
-    const name = r.credtrack_staff?.full_name || '—';
-    const type = r.document_types?.name || r.label;
-    return `<tr>
-      <td>${name}</td>
-      <td>${type}</td>
-      <td style="font-size:12px;">${fmtDate(r.expiry_date)}</td>
-      <td>${daysLabel(r.expiry_date)}</td>
-      <td>${statusBadge(r.expiry_date)}</td>
-    </tr>`;
-  }).join('');
+  tbody.innerHTML = rows.map(r => `<tr>
+    <td>${r.credtrack_staff?.full_name || '—'}</td>
+    <td>${r.document_types?.name || r.label}</td>
+    <td style="font-size:12px;">${fmtDate(r.expiry_date)}</td>
+    <td>${daysLabel(r.expiry_date)}</td>
+    <td>${statusBadge(r.expiry_date)}</td>
+  </tr>`).join('');
 }
 
 async function loadAlertBanner() {
@@ -984,8 +897,7 @@ async function loadAlertBanner() {
     banner.style.display = 'block';
     document.getElementById('expiredList').innerHTML = urgent.map(r => {
       const days = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000);
-      const label = days < 0 ? `EXPIRED ${Math.abs(days)}d ago` : `${days}d remaining`;
-      return `• ${r.credtrack_staff?.full_name || '?'} — ${r.document_types?.name || r.label} (${label})`;
+      return `• ${r.credtrack_staff?.full_name || '?'} — ${r.document_types?.name || r.label} (${days < 0 ? 'EXPIRED ' + Math.abs(days) + 'd ago' : days + 'd remaining'})`;
     }).join('<br>');
   } else { banner.style.display = 'none'; }
 }
@@ -1014,6 +926,7 @@ function showAddStaff() { document.getElementById('addStaffForm').style.display 
 function hideAddStaff() {
   document.getElementById('addStaffForm').style.display = 'none';
   ['nsName','nsEmail','nsTitle'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('nsErr').style.display = 'none';
 }
 
 async function saveNewStaff() {
@@ -1023,10 +936,8 @@ async function saveNewStaff() {
   const type  = document.getElementById('nsType').value;
   const err   = document.getElementById('nsErr');
   err.style.display = 'none';
-
   if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
   if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
-
   try {
     const { error } = await sb.from('credtrack_staff').insert({
       company_id: currentProfile.company_id,
@@ -1037,19 +948,61 @@ async function saveNewStaff() {
       active:     true,
     });
     if (error) throw error;
-    toast(`${name} added`);
+    toast(name + ' added');
     hideAddStaff();
     await loadStaffTable();
-  } catch(e) {
-    err.textContent = e.message;
-    err.style.display = 'block';
-  }
+  } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
 }
 
 async function toggleActive(id, active) {
   await sb.from('credtrack_staff').update({ active: !active }).eq('id', id);
   toast(active ? 'Staff member deactivated' : 'Staff member reactivated');
   await loadStaffTable();
+}
+
+// ══ CUSTOM DOC TYPES (Pro) ══
+function proGate(action) {
+  if (window._isPro) { action(); return; }
+  toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
+}
+function showAddDocType() { document.getElementById('addDocTypeForm').style.display = 'block'; }
+function hideAddDocType() {
+  document.getElementById('addDocTypeForm').style.display = 'none';
+  document.getElementById('dtName').value = '';
+  document.getElementById('dtErr').style.display = 'none';
+}
+async function saveDocType() {
+  const name    = document.getElementById('dtName').value.trim();
+  const expires = document.getElementById('dtExpires').value === 'true';
+  const err     = document.getElementById('dtErr');
+  err.style.display = 'none';
+  if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+  const { error } = await sb.from('document_types').insert({
+    name, expires, company_id: currentProfile.company_id, sort_order: 999,
+    description: 'Custom type for ' + currentCompany.name,
+  });
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  toast('Document type "' + name + '" added');
+  hideAddDocType();
+  await loadDocTypes();
+  await loadAdminFilters();
+}
+
+// ══ BRANDING ══
+function applyBranding(branding, logoUrl) {
+  if (!branding) return;
+  const r = document.documentElement.style;
+  if (branding.primary)  { r.setProperty('--teal',   branding.primary); r.setProperty('--teal-l', branding.primary); }
+  if (branding.secondary) r.setProperty('--gold', branding.secondary);
+  if (branding.navy)     { r.setProperty('--navy', branding.navy); r.setProperty('--navy2', branding.navy); }
+  if (logoUrl) {
+    const mark = document.querySelector('.logo-mark');
+    if (mark) mark.innerHTML = `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;" />`;
+  }
+  if (branding.company_name) {
+    const n = document.querySelector('.logo-name');
+    if (n) n.textContent = branding.company_name;
+  }
 }
 
 // ══ TABS ══
@@ -1079,39 +1032,10 @@ function exportCsv() {
   a.click();
 }
 
-// ══ BRANDING ══
-function applyBranding(branding, logoUrl) {
-  if (!branding) return;
-  const r = document.documentElement.style;
-  if (branding.primary)  r.setProperty('--teal',   branding.primary);
-  if (branding.primary)  r.setProperty('--teal-l',  branding.primary);
-  if (branding.secondary) r.setProperty('--gold',  branding.secondary);
-  if (branding.navy)     r.setProperty('--navy',    branding.navy);
-  if (branding.navy)     r.setProperty('--navy2',   branding.navy);
-
-  // Logo in header
-  if (logoUrl) {
-    const mark = document.querySelector('.logo-mark');
-    if (mark) {
-      mark.innerHTML = `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;" />`;
-    }
-  }
-
-  // Company name in header
-  const logoName = document.querySelector('.logo-name');
-  if (logoName && branding.company_name) logoName.textContent = branding.company_name;
-}
-
-// ══ PRO GATE ══
-function proGate(action) {
-  if (window._isPro) { action(); return; }
-  toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
-}
-
 // ══ SESSION RESTORE ══
 sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' && session?.user) {
-    if (!currentProfile) await initSession(session.user);
+  if (event === 'SIGNED_IN' && session?.user && !currentProfile) {
+    await initSession(session.user);
   }
   if (event === 'SIGNED_OUT') {
     currentProfile = null; currentCompany = null;
