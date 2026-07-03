@@ -316,6 +316,12 @@
       <button class="btn btn-sm btn-teal" id="exportProBtn" onclick="exportProReport()" style="display:none;">⬇ Export Report</button>
     </div>
 
+    <!-- View as Admin banner -->
+    <div id="viewAsBanner" style="display:none;background:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:16px;display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <span style="color:#fcd34d;font-size:13px;font-weight:700;">⚡ Viewing as Admin — <span id="viewAsName"></span></span>
+      <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
+    </div>
+
     <div class="banner banner-danger" id="expiredBanner">
       <div class="banner-title">🔴 Expired or expiring within 30 days</div>
       <div class="banner-list" id="expiredList"></div>
@@ -1373,6 +1379,50 @@ function showAuStatus(msg, type) {
   el.className = 'up-status ' + (type === 'ok' ? 'up-ok' : 'up-err');
   el.style.display = 'block';
 }
+// ══ VIEW AS ADMIN ══
+let _superProfile = null;
+let _superCompany = null;
+
+async function viewAsAdmin(companyId, companyName) {
+  _superProfile = { ...currentProfile };
+  _superCompany = { ...currentCompany };
+
+  const { data: company } = await sb.from('companies').select('*').eq('id', companyId).single();
+  if (!company) { toast('Company not found', true); return; }
+
+  currentCompany = company;
+  window._isPro  = ['pro','enterprise'].includes(company.plan);
+
+  await loadStaffList();
+  await loadAdminFilters();
+  await loadDocTypes();
+
+  const banner = document.getElementById('viewAsBanner');
+  banner.style.display = 'flex';
+  document.getElementById('viewAsName').textContent = companyName;
+  document.getElementById('tab-super').style.display = 'none';
+
+  switchTab('docs');
+  toast('Now viewing ' + companyName);
+}
+
+async function exitViewAsAdmin() {
+  currentProfile = { ..._superProfile };
+  currentCompany = { ..._superCompany };
+  window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
+  _superProfile  = null;
+  _superCompany  = null;
+
+  document.getElementById('viewAsBanner').style.display = 'none';
+  document.getElementById('tab-super').style.display = 'inline-flex';
+
+  await loadStaffList();
+  await loadAdminFilters();
+  await loadDocTypes();
+  switchTab('super');
+  toast('Returned to Selko Admin');
+}
+
 function applyBranding(branding, logoUrl) {
   if (!branding) return;
   const r = document.documentElement.style;
@@ -1468,6 +1518,7 @@ async function loadSuperAdmin() {
       </div>
 
       <div class="company-card-actions">
+        <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
         <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
         <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
           onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
