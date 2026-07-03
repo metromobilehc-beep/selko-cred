@@ -917,6 +917,7 @@ async function loadStaffTable() {
     <td><span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span></td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
+      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
     </div></td>
   </tr>`).join('');
@@ -1016,6 +1017,32 @@ function switchTab(tab) {
   if (tab === 'docs')  loadAdminDocs();
   if (tab === 'exp')   loadExpTracker();
   if (tab === 'staff') loadStaffTable();
+}
+
+// ══ INVITE ══
+async function sendInvite(staffId, fullName, email) {
+  if (!confirm(`Send login invite to ${fullName} at ${email}?`)) return;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({
+        email,
+        full_name: fullName,
+        staff_id:  staffId,
+        redirect_to: 'https://cred.selko360.com',
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    toast(`Invite sent to ${fullName}`);
+  } catch(e) {
+    toast('Invite failed: ' + e.message, true);
+  }
 }
 
 // ══ CSV EXPORT ══
