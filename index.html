@@ -1276,6 +1276,8 @@ async function scanCredential() {
   btn.textContent = '🔍 Scan document';
   btn.disabled = false;
 }
+
+function toggleAdminUpload() {
   const form = document.getElementById('adminUploadForm');
   const isHidden = form.style.display === 'none' || !form.style.display;
   form.style.display = isHidden ? 'block' : 'none';
