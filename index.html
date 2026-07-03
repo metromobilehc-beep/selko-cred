@@ -313,6 +313,7 @@
         <p>Manage staff credentials and track expirations.</p>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
+      <button class="btn btn-sm btn-teal" id="exportProBtn" onclick="exportProReport()" style="display:none;">⬇ Export Report</button>
     </div>
 
     <div class="banner banner-danger" id="expiredBanner">
@@ -653,10 +654,15 @@ async function logout() {
 
 // ══ DOC TYPES ══
 async function loadDocTypes() {
-  const { data, error } = await sb.from('document_types')
+  let q = sb.from('document_types')
     .select('*')
     .or(`company_id.is.null,company_id.eq.${currentProfile.company_id}`)
     .order('sort_order');
+
+  // Standard plan only sees standard tier types
+  if (!window._isPro) q = q.eq('tier', 'standard');
+
+  const { data, error } = await q;
   if (error) { console.error('doc types error:', error); return; }
   docTypes = data || [];
   const sel = document.getElementById('upType');
@@ -824,7 +830,71 @@ async function initAdmin() {
   await loadAdminFilters();
   await loadAdminDocs();
   await loadAlertBanner();
-  if (window._isPro) document.getElementById('addDocTypeBtn').style.display = 'inline-flex';
+  if (window._isPro) {
+    document.getElementById('addDocTypeBtn').style.display = 'inline-flex';
+    document.getElementById('exportProBtn').style.display  = 'inline-flex';
+  }
+}
+
+async function exportProReport() {
+  // Pull all docs with staff and type names
+  const { data } = await sb.from('credtrack_documents')
+    .select('*, credtrack_staff(full_name), document_types(name, tier)')
+    .eq('company_id', currentProfile.company_id)
+    .order('credtrack_staff(full_name)');
+
+  if (!data?.length) { toast('No documents to export', true); return; }
+
+  const today = new Date();
+  const rows = data.map(r => {
+    const days = r.expiry_date ? Math.ceil((new Date(r.expiry_date) - today) / 86400000) : null;
+    const status = !r.expiry_date ? 'No expiry' : days < 0 ? 'EXPIRED' : days < 30 ? 'Expiring soon' : days < 90 ? 'Due soon' : 'Current';
+    return {
+      staff:    r.credtrack_staff?.full_name || '—',
+      type:     r.document_types?.name || r.label,
+      tier:     r.document_types?.tier || '—',
+      issued:   r.issued_date ? new Date(r.issued_date).toLocaleDateString() : '—',
+      expires:  r.expiry_date ? new Date(r.expiry_date).toLocaleDateString() : '—',
+      days:     days !== null ? (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`) : '—',
+      status,
+      verified: r.verified ? 'Yes' : 'No',
+      file:     r.file_name || '—',
+      uploaded: new Date(r.created_at).toLocaleDateString(),
+    };
+  });
+
+  // Group by staff member
+  const byStaff = {};
+  rows.forEach(r => { if (!byStaff[r.staff]) byStaff[r.staff] = []; byStaff[r.staff].push(r); });
+
+  let csv = `Selko Cred — Credential Report\n`;
+  csv += `${currentCompany.name}\n`;
+  csv += `Generated: ${today.toLocaleDateString()}\n\n`;
+  csv += `Staff Member,Document Type,Tier,Issued,Expires,Days Remaining,Status,Verified,File,Uploaded\n`;
+
+  Object.entries(byStaff).forEach(([staff, docs]) => {
+    docs.forEach(d => {
+      csv += `"${staff}","${d.type}","${d.tier}","${d.issued}","${d.expires}","${d.days}","${d.status}","${d.verified}","${d.file}","${d.uploaded}"\n`;
+    });
+    csv += '\n'; // blank line between staff members
+  });
+
+  // Summary section
+  const expired     = rows.filter(r => r.status === 'EXPIRED').length;
+  const expiringSoon = rows.filter(r => r.status === 'Expiring soon').length;
+  const current     = rows.filter(r => r.status === 'Current').length;
+  csv += `\nSUMMARY\n`;
+  csv += `Total documents,${rows.length}\n`;
+  csv += `Current,${current}\n`;
+  csv += `Expiring soon,${expiringSoon}\n`;
+  csv += `Expired,${expired}\n`;
+  csv += `Staff members,${Object.keys(byStaff).length}\n`;
+
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_CredReport_${today.toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('Report exported');
 }
 
 async function loadStaffList() {
