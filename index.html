@@ -1031,14 +1031,17 @@ async function sendInvite(staffId, fullName, email) {
         'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
-        email,
-        full_name: fullName,
-        staff_id:  staffId,
-        redirect_to: 'https://cred.selko360.com',
+        name:               fullName,
+        email:              email,
+        company_id:         currentProfile.company_id,
+        role:               'clinician',
+        inviter_company_id: currentProfile.company_id,
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
+    // Link profile_id to credtrack_staff row
+    await sb.from('credtrack_staff').update({ email }).eq('id', staffId);
     toast(`Invite sent to ${fullName}`);
   } catch(e) {
     toast('Invite failed: ' + e.message, true);
