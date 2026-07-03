@@ -340,7 +340,56 @@
           <option value="1">Verified</option>
         </select>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
+        <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
       </div>
+
+      <!-- Admin upload form -->
+      <div class="inline-form" id="adminUploadForm">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div>
+            <label class="inline-label">Staff member</label>
+            <select class="inline-select" id="auStaff">
+              <option value="">— Select staff —</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Document type</label>
+            <select class="inline-select" id="auType">
+              <option value="">— Select type —</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Issued date</label>
+            <input class="inline-input" type="date" id="auIssued" />
+          </div>
+          <div>
+            <label class="inline-label">Expiration date</label>
+            <input class="inline-input" type="date" id="auExpiry" />
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;">
+          <div>
+            <label class="inline-label">Attach file (optional)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <label for="auFile" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📎 Choose file</label>
+              <button class="btn btn-sm btn-gold" id="scanBtn" onclick="scanCredential()" style="display:none;">🔍 Scan document</button>
+              <span id="auFileName" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">No file selected</span>
+            </div>
+            <input type="file" id="auFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onAuFileSelected(this)" />
+          </div>
+          <div>
+            <label class="inline-label">Notes</label>
+            <input class="inline-input" type="text" id="auNotes" placeholder="e.g. License #OK12345" />
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-end;">
+            <button class="btn btn-sm btn-teal" onclick="adminUploadDoc()">Save</button>
+            <button class="btn btn-sm btn-ghost" onclick="toggleAdminUpload()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
+          </div>
+        </div>
+        <div id="auStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Custom doc type form (Pro only) -->
       <div class="inline-form" id="addDocTypeForm">
         <div class="inline-grid-3">
           <div>
@@ -361,6 +410,7 @@
         </div>
         <div id="dtErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
+
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -1143,7 +1193,176 @@ async function saveDocType() {
   await loadAdminFilters();
 }
 
-// ══ BRANDING ══
+// ══ ADMIN UPLOAD ══
+function onAuFileSelected(input) {
+  const file = input.files[0];
+  if (!file) {
+    document.getElementById('auFileName').textContent = 'No file selected';
+    document.getElementById('scanBtn').style.display = 'none';
+    return;
+  }
+  document.getElementById('auFileName').textContent = file.name;
+  // Show scan button for images and PDFs
+  document.getElementById('scanBtn').style.display = 'inline-flex';
+}
+
+async function scanCredential() {
+  const file = document.getElementById('auFile').files[0];
+  if (!file) { toast('Please select a file first', true); return; }
+
+  const btn = document.getElementById('scanBtn');
+  btn.textContent = '⏳ Scanning…';
+  btn.disabled = true;
+  showAuStatus('Scanning document with AI — this takes a few seconds…', 'ok');
+
+  try {
+    // Convert file to base64
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    // Determine media type
+    let mediaType = 'image/jpeg';
+    if (file.type) mediaType = file.type;
+    else if (file.name.endsWith('.png')) mediaType = 'image/png';
+    else if (file.name.endsWith('.pdf')) mediaType = 'application/pdf';
+
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/scan-credential', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ fileBase64: base64, mediaType, fileName: file.name }),
+    });
+
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    const e = result.extracted;
+
+    // Pre-fill form fields
+    if (e.issued_date) document.getElementById('auIssued').value = e.issued_date;
+    if (e.expiry_date) document.getElementById('auExpiry').value = e.expiry_date;
+    if (e.notes || e.license_number) {
+      const notes = [e.license_number ? `License #${e.license_number}` : '', e.notes || ''].filter(Boolean).join(' — ');
+      document.getElementById('auNotes').value = notes;
+    }
+
+    // Try to match document type
+    if (e.document_type) {
+      const typeStr = e.document_type.toLowerCase();
+      const match = docTypes.find(d =>
+        typeStr.includes(d.name.toLowerCase()) ||
+        d.name.toLowerCase().includes(typeStr.split(' ')[0])
+      );
+      if (match) document.getElementById('auType').value = match.id;
+    }
+
+    const filled = [e.issued_date, e.expiry_date].filter(Boolean).length;
+    showAuStatus(`✓ Scan complete — ${filled} date${filled !== 1 ? 's' : ''} extracted. Review and save.`, 'ok');
+    toast('Document scanned successfully');
+
+  } catch(e) {
+    showAuStatus('Scan failed: ' + e.message, 'err');
+  }
+
+  btn.textContent = '🔍 Scan document';
+  btn.disabled = false;
+}
+  const form = document.getElementById('adminUploadForm');
+  const isHidden = form.style.display === 'none' || !form.style.display;
+  form.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) populateAdminUploadSelects();
+}
+
+function populateAdminUploadSelects() {
+  // Staff dropdown
+  const auStaff = document.getElementById('auStaff');
+  auStaff.innerHTML = '<option value="">— Select staff —</option>';
+  staffList.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.full_name; auStaff.appendChild(o);
+  });
+  // Doc type dropdown
+  const auType = document.getElementById('auType');
+  auType.innerHTML = '<option value="">— Select type —</option>';
+  docTypes.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id; o.textContent = t.name; auType.appendChild(o);
+  });
+}
+
+async function adminUploadDoc() {
+  const staffId  = document.getElementById('auStaff').value;
+  const typeId   = document.getElementById('auType').value;
+  const issued   = document.getElementById('auIssued').value;
+  const expiry   = document.getElementById('auExpiry').value;
+  const notes    = document.getElementById('auNotes').value.trim();
+  const file     = document.getElementById('auFile').files[0];
+  const statusEl = document.getElementById('auStatus');
+  statusEl.style.display = 'none';
+
+  if (!staffId) { showAuStatus('Please select a staff member.', 'err'); return; }
+  if (!typeId)  { showAuStatus('Please select a document type.', 'err'); return; }
+
+  const docType = docTypes.find(d => d.id == typeId);
+
+  try {
+    let fileUrl  = null;
+    let fileName = null;
+
+    // Upload file if provided
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err'); return; }
+      const ext  = file.name.split('.').pop();
+      const path = `credtrack/${currentProfile.company_id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
+      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
+      if (stErr) throw stErr;
+      const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      fileUrl  = publicUrl;
+      fileName = file.name;
+    }
+
+    const { error: dbErr } = await sb.from('credtrack_documents').insert({
+      company_id:       currentProfile.company_id,
+      staff_id:         staffId,
+      document_type_id: parseInt(typeId),
+      label:            docType?.name || 'Document',
+      issued_date:      issued || null,
+      expiry_date:      expiry || null,
+      file_url:         fileUrl,
+      file_name:        fileName,
+      notes:            notes || null,
+      verified:         true,
+      verified_by:      currentProfile.full_name,
+      verified_at:      new Date().toISOString(),
+    });
+    if (dbErr) throw dbErr;
+
+    showAuStatus('✓ Credential saved successfully.', 'ok');
+    // Reset form
+    ['auStaff','auType','auIssued','auExpiry','auNotes'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('auFile').value = '';
+    document.getElementById('auFileName').textContent = 'No file selected';
+    toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
+    await loadAdminDocs();
+    await loadAlertBanner();
+  } catch(e) {
+    showAuStatus('Error: ' + e.message, 'err');
+  }
+}
+
+function showAuStatus(msg, type) {
+  const el = document.getElementById('auStatus');
+  el.textContent = msg;
+  el.className = 'up-status ' + (type === 'ok' ? 'up-ok' : 'up-err');
+  el.style.display = 'block';
+}
 function applyBranding(branding, logoUrl) {
   if (!branding) return;
   const r = document.documentElement.style;
