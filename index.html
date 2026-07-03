@@ -1393,15 +1393,12 @@ function exportCsv() {
 }
 
 // ══ SESSION RESTORE ══
-sb.auth.onAuthStateChange(async (event, session) => {
-  if (event === 'SIGNED_IN' && session?.user && !currentProfile) {
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
     await initSession(session.user);
   }
-  if (event === 'SIGNED_OUT') {
-    currentProfile = null; currentCompany = null;
-    showScreen('loginScreen');
-  }
-});
+})();
 </script>
 <div id="toast"></div>
 </body>
