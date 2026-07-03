@@ -188,6 +188,20 @@
   .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
+  .company-card { background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; padding: 18px; }
+  .company-card-head { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 14px; }
+  .company-card-name { font-size: 15px; font-weight: 700; color: #fff; margin-bottom: 3px; }
+  .company-card-slug { font-size: 11px; color: rgba(255,255,255,.35); }
+  .company-card-body { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 14px; }
+  .company-card-stat { background: rgba(255,255,255,.04); border-radius: 6px; padding: 10px 12px; }
+  .company-card-stat-num   { font-size: 20px; font-weight: 800; color: #fff; line-height: 1; }
+  .company-card-stat-label { font-size: 11px; color: rgba(255,255,255,.4); margin-top: 2px; }
+  .company-card-flags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .flag-pill { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
+  .flag-on  { background: rgba(13,148,136,.25); color: var(--teal-l); border: 1px solid rgba(13,148,136,.4); }
+  .flag-off { background: rgba(255,255,255,.05); color: rgba(255,255,255,.3); border: 1px solid rgba(255,255,255,.1); }
+  .company-card-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+
   .empty-state { text-align: center; padding: 40px 20px; color: var(--gray-400); font-size: 14px; }
   .empty-icon  { font-size: 32px; margin-bottom: 10px; }
 
@@ -429,8 +443,13 @@
 
     <!-- SUPER ADMIN TAB -->
     <div id="tabSuper" style="display:none;">
+
+      <!-- Platform stats -->
+      <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
+
+      <!-- Add company -->
       <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>⚡ Selko Admin — All Companies</h2>
+        <h2>⚡ Selko Admin — Companies</h2>
         <div class="filter-bar">
           <button class="btn btn-sm btn-teal" onclick="showAddCompany()">+ Add company</button>
         </div>
@@ -463,16 +482,12 @@
           </div>
           <div id="coErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
         </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr>
-              <th>Company</th><th>Plan</th><th>CredTrack</th><th>Branding</th><th>Staff</th><th>Actions</th>
-            </tr></thead>
-            <tbody id="superCompaniesTbody"></tbody>
-          </table>
-        </div>
+
+        <!-- Company cards -->
+        <div id="companyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:16px;"></div>
       </div>
 
+      <!-- Cross-company invite -->
       <div class="dark-panel">
         <h2>Invite staff to any company</h2>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
@@ -494,6 +509,7 @@
         </div>
         <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
+
     </div>
 
 <script>
@@ -1091,6 +1107,20 @@ function switchTab(tab) {
 // ══ SUPER ADMIN ══
 async function loadSuperAdmin() {
   const { data: companies } = await sb.from('companies').select('*').order('name');
+  const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
+  const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
+
+  // Staff and doc counts per company
+  const staffCounts = {}, docCounts = {};
+  (allStaff || []).forEach(s => { staffCounts[s.company_id] = (staffCounts[s.company_id] || 0) + 1; });
+  (allDocs  || []).forEach(d => { docCounts[d.company_id]   = (docCounts[d.company_id]   || 0) + 1; });
+
+  // Platform stats
+  document.getElementById('superStats').innerHTML = `
+    <div class="stat-card info"><div class="stat-num">${(companies||[]).length}</div><div class="stat-label">Companies</div></div>
+    <div class="stat-card ok"><div class="stat-num">${(companies||[]).filter(c=>c.has_credtrack).length}</div><div class="stat-label">CredTrack active</div></div>
+    <div class="stat-card info"><div class="stat-num">${Object.values(staffCounts).reduce((a,b)=>a+b,0)}</div><div class="stat-label">Total staff</div></div>
+    <div class="stat-card info"><div class="stat-num">${Object.values(docCounts).reduce((a,b)=>a+b,0)}</div><div class="stat-label">Total documents</div></div>`;
 
   // Populate company invite dropdown
   const invComp = document.getElementById('invComp');
@@ -1100,54 +1130,71 @@ async function loadSuperAdmin() {
     o.value = c.id; o.textContent = c.name; invComp.appendChild(o);
   });
 
-  const tbody = document.getElementById('superCompaniesTbody');
+  // Company cards
+  const cards = document.getElementById('companyCards');
   if (!companies?.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No companies found.</td></tr>';
+    cards.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div>No companies yet.</div>';
     return;
   }
 
-  // Get staff counts per company
-  const { data: staffCounts } = await sb.from('credtrack_staff').select('company_id');
-  const counts = {};
-  (staffCounts || []).forEach(s => { counts[s.company_id] = (counts[s.company_id] || 0) + 1; });
+  cards.innerHTML = companies.map(c => {
+    const staff = staffCounts[c.id] || 0;
+    const docs  = docCounts[c.id]   || 0;
+    const planColor = c.plan === 'enterprise' ? '#fbbf24' : c.plan === 'pro' ? '#34d399' : 'rgba(255,255,255,.5)';
+    return `<div class="company-card">
+      <div class="company-card-head">
+        <div>
+          <div class="company-card-name">${c.name}</div>
+          <div class="company-card-slug">${c.slug}</div>
+        </div>
+        <span style="color:${planColor};font-size:11px;font-weight:700;text-transform:uppercase;">${c.plan}</span>
+      </div>
 
-  tbody.innerHTML = companies.map(c => `<tr>
-    <td>
-      <div style="font-weight:600;">${c.name}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.3);">${c.slug}</div>
-    </td>
-    <td>
-      <select class="filter-sel" style="font-size:12px;padding:4px 8px;" onchange="updateCompanyPlan('${c.id}',this.value)">
-        <option value="standard" ${c.plan==='standard'?'selected':''}>Standard</option>
-        <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro</option>
-        <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise</option>
-      </select>
-    </td>
-    <td>
-      <button class="btn btn-sm ${c.has_credtrack ? 'btn-teal' : 'btn-ghost'}" 
-        onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})"
-        style="${c.has_credtrack ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">
-        ${c.has_credtrack ? '✓ On' : 'Off'}
-      </button>
-    </td>
-    <td>
-      <button class="btn btn-sm ${c.branding_enabled ? 'btn-teal' : 'btn-ghost'}"
-        onclick="toggleCompanyFlag('${c.id}','branding_enabled',${c.branding_enabled})"
-        style="${c.branding_enabled ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">
-        ${c.branding_enabled ? '✓ On' : 'Off'}
-      </button>
-    </td>
-    <td style="color:#4ade80;font-weight:600;">${counts[c.id] || 0}</td>
-    <td>
-      <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
-    </td>
-  </tr>`).join('');
+      <div class="company-card-body">
+        <div class="company-card-stat">
+          <div class="company-card-stat-num">${staff}</div>
+          <div class="company-card-stat-label">Staff members</div>
+        </div>
+        <div class="company-card-stat">
+          <div class="company-card-stat-num">${docs}</div>
+          <div class="company-card-stat-label">Documents</div>
+        </div>
+      </div>
+
+      <div class="company-card-flags">
+        <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '✓' : '✕'}</span>
+        <span class="flag-pill ${c.has_compliance ? 'flag-on' : 'flag-off'}">Comply ${c.has_compliance ? '✓' : '✕'}</span>
+        <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '✓' : '✕'}</span>
+        <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
+      </div>
+
+      <div class="company-card-actions">
+        <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
+        <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
+          onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
+          ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-async function updateCompanyPlan(id, plan) {
-  const { error } = await sb.from('companies').update({ plan }).eq('id', id);
+// Edit company modal (inline within card area)
+async function editCompany(id) {
+  const { data: c } = await sb.from('companies').select('*').eq('id', id).single();
+  if (!c) return;
+
+  const plan = prompt(`Plan for ${c.name}:\nCurrent: ${c.plan}\nEnter: standard, pro, or enterprise`, c.plan);
+  if (!plan || !['standard','pro','enterprise'].includes(plan.toLowerCase())) {
+    if (plan !== null) toast('Invalid plan. Use: standard, pro, or enterprise', true);
+    return;
+  }
+
+  const { error } = await sb.from('companies').update({ plan: plan.toLowerCase() }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
-  toast('Plan updated');
+  toast(`${c.name} updated to ${plan}`);
+  await loadSuperAdmin();
 }
 
 async function toggleCompanyFlag(id, flag, current) {
