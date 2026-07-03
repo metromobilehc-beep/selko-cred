@@ -310,6 +310,7 @@
       <button class="tab active" id="tab-docs"  onclick="switchTab('docs')">Documents</button>
       <button class="tab"        id="tab-exp"   onclick="switchTab('exp')">Expiration tracker</button>
       <button class="tab"        id="tab-staff" onclick="switchTab('staff')">Staff</button>
+      <button class="tab"        id="tab-super" onclick="switchTab('super')" style="display:none;">⚡ Selko Admin</button>
     </div>
 
     <!-- DOCUMENTS TAB -->
@@ -426,10 +427,74 @@
       </div>
     </div>
 
-  </div>
-</div>
+    <!-- SUPER ADMIN TAB -->
+    <div id="tabSuper" style="display:none;">
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>⚡ Selko Admin — All Companies</h2>
+        <div class="filter-bar">
+          <button class="btn btn-sm btn-teal" onclick="showAddCompany()">+ Add company</button>
+        </div>
+        <div class="inline-form" id="addCompanyForm">
+          <div class="inline-grid-4">
+            <div>
+              <label class="inline-label">Company name</label>
+              <input class="inline-input" type="text" id="coName" placeholder="Acme Home Health" />
+            </div>
+            <div>
+              <label class="inline-label">Slug</label>
+              <input class="inline-input" type="text" id="coSlug" placeholder="acme" />
+            </div>
+            <div>
+              <label class="inline-label">Plan</label>
+              <select class="inline-select" id="coPlan">
+                <option value="standard">Standard</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+            </div>
+            <div>
+              <label class="inline-label">Admin email</label>
+              <input class="inline-input" type="email" id="coEmail" placeholder="admin@company.com" />
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-end;">
+              <button class="btn btn-sm btn-teal" onclick="saveNewCompany()">Save</button>
+              <button class="btn btn-sm btn-ghost" onclick="hideAddCompany()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
+            </div>
+          </div>
+          <div id="coErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Company</th><th>Plan</th><th>CredTrack</th><th>Branding</th><th>Staff</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="superCompaniesTbody"></tbody>
+          </table>
+        </div>
+      </div>
 
-<div id="toast"></div>
+      <div class="dark-panel">
+        <h2>Invite staff to any company</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+          <div>
+            <label class="inline-label">Company</label>
+            <select class="inline-select" id="invComp"></select>
+          </div>
+          <div>
+            <label class="inline-label">Full name</label>
+            <input class="inline-input" type="text" id="invName" placeholder="Jane Smith, PT" />
+          </div>
+          <div>
+            <label class="inline-label">Email</label>
+            <input class="inline-input" type="email" id="invEmail" placeholder="jane@company.com" />
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-end;">
+            <button class="btn btn-sm btn-teal" onclick="superInvite()">Send invite</button>
+          </div>
+        </div>
+        <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+      </div>
+    </div>
 
 <script>
 // ══ CONFIG ══
@@ -544,6 +609,9 @@ async function initSession(user) {
     if (profile.role === 'admin' || profile.is_super_admin) {
       showScreen('adminScreen');
       await initAdmin();
+      if (profile.is_super_admin) {
+        document.getElementById('tab-super').style.display = 'inline-flex';
+      }
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -1008,7 +1076,7 @@ function applyBranding(branding, logoUrl) {
 
 // ══ TABS ══
 function switchTab(tab) {
-  ['docs','exp','staff'].forEach(t => {
+  ['docs','exp','staff','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
@@ -1017,6 +1085,151 @@ function switchTab(tab) {
   if (tab === 'docs')  loadAdminDocs();
   if (tab === 'exp')   loadExpTracker();
   if (tab === 'staff') loadStaffTable();
+  if (tab === 'super') loadSuperAdmin();
+}
+
+// ══ SUPER ADMIN ══
+async function loadSuperAdmin() {
+  const { data: companies } = await sb.from('companies').select('*').order('name');
+
+  // Populate company invite dropdown
+  const invComp = document.getElementById('invComp');
+  invComp.innerHTML = '';
+  (companies || []).forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.id; o.textContent = c.name; invComp.appendChild(o);
+  });
+
+  const tbody = document.getElementById('superCompaniesTbody');
+  if (!companies?.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No companies found.</td></tr>';
+    return;
+  }
+
+  // Get staff counts per company
+  const { data: staffCounts } = await sb.from('credtrack_staff').select('company_id');
+  const counts = {};
+  (staffCounts || []).forEach(s => { counts[s.company_id] = (counts[s.company_id] || 0) + 1; });
+
+  tbody.innerHTML = companies.map(c => `<tr>
+    <td>
+      <div style="font-weight:600;">${c.name}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.3);">${c.slug}</div>
+    </td>
+    <td>
+      <select class="filter-sel" style="font-size:12px;padding:4px 8px;" onchange="updateCompanyPlan('${c.id}',this.value)">
+        <option value="standard" ${c.plan==='standard'?'selected':''}>Standard</option>
+        <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro</option>
+        <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise</option>
+      </select>
+    </td>
+    <td>
+      <button class="btn btn-sm ${c.has_credtrack ? 'btn-teal' : 'btn-ghost'}" 
+        onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})"
+        style="${c.has_credtrack ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">
+        ${c.has_credtrack ? '✓ On' : 'Off'}
+      </button>
+    </td>
+    <td>
+      <button class="btn btn-sm ${c.branding_enabled ? 'btn-teal' : 'btn-ghost'}"
+        onclick="toggleCompanyFlag('${c.id}','branding_enabled',${c.branding_enabled})"
+        style="${c.branding_enabled ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">
+        ${c.branding_enabled ? '✓ On' : 'Off'}
+      </button>
+    </td>
+    <td style="color:#4ade80;font-weight:600;">${counts[c.id] || 0}</td>
+    <td>
+      <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
+    </td>
+  </tr>`).join('');
+}
+
+async function updateCompanyPlan(id, plan) {
+  const { error } = await sb.from('companies').update({ plan }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Plan updated');
+}
+
+async function toggleCompanyFlag(id, flag, current) {
+  const { error } = await sb.from('companies').update({ [flag]: !current }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Updated');
+  await loadSuperAdmin();
+}
+
+async function deleteCompany(id, name) {
+  if (!confirm(`Delete ${name}? This will remove all associated staff and documents. This cannot be undone.`)) return;
+  const { error } = await sb.from('companies').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(name + ' deleted');
+  await loadSuperAdmin();
+}
+
+function showAddCompany() { document.getElementById('addCompanyForm').style.display = 'block'; }
+function hideAddCompany() {
+  document.getElementById('addCompanyForm').style.display = 'none';
+  ['coName','coSlug','coEmail'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('coErr').style.display = 'none';
+}
+
+async function saveNewCompany() {
+  const name  = document.getElementById('coName').value.trim();
+  const slug  = document.getElementById('coSlug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  const plan  = document.getElementById('coPlan').value;
+  const email = document.getElementById('coEmail').value.trim();
+  const err   = document.getElementById('coErr');
+  err.style.display = 'none';
+  if (!name) { err.textContent = 'Company name is required.'; err.style.display = 'block'; return; }
+  if (!slug) { err.textContent = 'Slug is required (letters, numbers, hyphens only).'; err.style.display = 'block'; return; }
+  const { error } = await sb.from('companies').insert({
+    name, slug, plan,
+    has_credtrack: true,
+    has_compliance: false,
+    has_hep: false,
+    branding_enabled: false,
+    active: true,
+    admin_emails: email ? [email] : [],
+  });
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  toast(name + ' added');
+  hideAddCompany();
+  await loadSuperAdmin();
+}
+
+async function superInvite() {
+  const companyId = document.getElementById('invComp').value;
+  const name      = document.getElementById('invName').value.trim();
+  const email     = document.getElementById('invEmail').value.trim();
+  const err       = document.getElementById('invErr');
+  err.style.display = 'none';
+  if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
+  if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        name, email,
+        company_id:         companyId,
+        role:               'admin',
+        inviter_company_id: currentProfile.company_id,
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    // Add to credtrack_staff for that company
+    await sb.from('credtrack_staff').insert({
+      company_id: companyId, full_name: name, email,
+      staff_type: 'admin', active: true,
+    });
+    toast('Invite sent to ' + name);
+    document.getElementById('invName').value  = '';
+    document.getElementById('invEmail').value = '';
+  } catch(e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  }
 }
 
 // ══ INVITE ══
@@ -1073,5 +1286,6 @@ sb.auth.onAuthStateChange(async (event, session) => {
   }
 });
 </script>
+<div id="toast"></div>
 </body>
 </html>
