@@ -1139,6 +1139,7 @@ async function loadStaffTable() {
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
   </tr>`).join('');
 }
@@ -1179,6 +1180,21 @@ async function toggleActive(id, active) {
   await sb.from('credtrack_staff').update({ active: !active }).eq('id', id);
   toast(active ? 'Staff member deactivated' : 'Staff member reactivated');
   await loadStaffTable();
+}
+
+async function deleteStaff(id, fullName) {
+  if (!confirm(`Permanently delete ${fullName}?\n\nThis will also delete all their credential records. For staff who quit, consider Deactivate instead to preserve their history.`)) return;
+  try {
+    // Documents cascade delete via FK, but let's also clean up storage files
+    const { data: docs } = await sb.from('credtrack_documents')
+      .select('file_url').eq('staff_id', id);
+    const paths = (docs || []).map(d => d.file_url).filter(Boolean);
+    if (paths.length) await sb.storage.from(STORAGE_BUCKET).remove(paths);
+
+    await sb.from('credtrack_staff').delete().eq('id', id);
+    toast(fullName + ' deleted');
+    await loadStaffTable();
+  } catch(e) { toast('Error: ' + e.message, true); }
 }
 
 async function resetPassword(email, fullName) {
