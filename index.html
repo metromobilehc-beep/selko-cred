@@ -1137,6 +1137,7 @@ async function loadStaffTable() {
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
+      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
     </div></td>
   </tr>`).join('');
@@ -1180,7 +1181,25 @@ async function toggleActive(id, active) {
   await loadStaffTable();
 }
 
-// ══ CUSTOM DOC TYPES (Pro) ══
+async function resetPassword(email, fullName) {
+  if (!confirm(`Send a password reset email to ${fullName} at ${email}?`)) return;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reset-password', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ email }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    toast(`Password reset sent to ${fullName}`);
+  } catch(e) {
+    toast('Reset failed: ' + e.message, true);
+  }
+}
 function proGate(action) {
   if (window._isPro) { action(); return; }
   toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
