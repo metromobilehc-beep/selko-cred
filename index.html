@@ -1550,6 +1550,10 @@ async function loadSettings() {
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
 
+  // Lock company name editing for non-super-admins
+  const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
+  document.getElementById('setCoName').disabled = !isSuperAdmin;
+
   // Branding
   if (window._isPro) {
     document.getElementById('brandingLocked').style.display = 'none';
@@ -1602,10 +1606,10 @@ async function loadDocTypesTable() {
     <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
-      <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
+      ${(currentProfile.is_super_admin) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
         style="font-size:11px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);">
         ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
-      </button>
+      </button>` : ''}
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
   </tr>`).join('');
@@ -1636,17 +1640,20 @@ async function deleteDocType(id, name) {
 }
 
 async function saveCompanySettings() {
-  const name       = document.getElementById('setCoName').value.trim();
   const adminEmail = document.getElementById('setAdminEmail').value.trim();
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
   const statusEl   = document.getElementById('setCoStatus');
 
+  // Only super admins can change company name
+  const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
   const updates = {
-    name,
     admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
     custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2 },
   };
+  if (isSuperAdmin) {
+    updates.name = document.getElementById('setCoName').value.trim();
+  }
 
   const { error } = await sb.from('companies').update(updates).eq('id', currentCompany.id);
   if (error) {
