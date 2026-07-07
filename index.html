@@ -1207,7 +1207,7 @@ async function resetPassword(email, fullName) {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ email }),
+      body: JSON.stringify({ email, redirect_to: 'https://cred.selko360.com' }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
