@@ -817,7 +817,7 @@ async function logout() {
 async function loadDocTypes() {
   let q = sb.from('document_types')
     .select('*')
-    .or(`company_id.is.null,company_id.eq.${currentProfile.company_id}`)
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('sort_order');
 
   // Standard plan only sees standard tier types
@@ -944,13 +944,13 @@ async function uploadDoc() {
   try {
     const docType = docTypes.find(d => d.id == typeId);
     const ext  = file.name.split('.').pop();
-    const path = `credtrack/${currentProfile.company_id}/${window._staffId}/${Date.now()}_${typeId}.${ext}`;
+    const path = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}.${ext}`;
 
     const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
     if (stErr) throw stErr;
 
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
-      company_id:       currentProfile.company_id,
+      company_id:       currentCompany.id,
       staff_id:         window._staffId,
       document_type_id: parseInt(typeId),
       label:            docType?.name || 'Document',
@@ -999,7 +999,7 @@ async function exportProReport() {
   // Pull all docs with staff and type names
   const { data } = await sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name, tier)')
-    .eq('company_id', currentProfile.company_id)
+    .eq('company_id', currentCompany.id)
     .order('credtrack_staff(full_name)');
 
   if (!data?.length) { toast('No documents to export', true); return; }
@@ -1058,7 +1058,7 @@ async function exportProReport() {
 
 async function loadStaffList() {
   const { data } = await sb.from('credtrack_staff')
-    .select('*').eq('company_id', currentProfile.company_id).order('full_name');
+    .select('*').eq('company_id', currentCompany.id).order('full_name');
   staffList = data || [];
 }
 
@@ -1087,7 +1087,7 @@ async function loadAdminDocs() {
 
   let q = sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name)')
-    .eq('company_id', currentProfile.company_id)
+    .eq('company_id', currentCompany.id)
     .order('created_at', { ascending: false });
 
   if (emp)  q = q.eq('staff_id', emp);
@@ -1172,7 +1172,7 @@ async function loadExpTracker() {
 
   let q = sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name)')
-    .eq('company_id', currentProfile.company_id)
+    .eq('company_id', currentCompany.id)
     .not('expiry_date', 'is', null)
     .order('expiry_date');
 
@@ -1206,7 +1206,7 @@ async function loadExpTracker() {
 async function loadAlertBanner() {
   const { data } = await sb.from('credtrack_documents')
     .select('expiry_date, credtrack_staff(full_name), document_types(name)')
-    .eq('company_id', currentProfile.company_id)
+    .eq('company_id', currentCompany.id)
     .not('expiry_date', 'is', null);
 
   const urgent = (data || []).filter(r => {
@@ -1266,7 +1266,7 @@ async function saveNewStaff() {
   if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
   try {
     const { error } = await sb.from('credtrack_staff').insert({
-      company_id: currentProfile.company_id,
+      company_id: currentCompany.id,
       full_name:  name,
       email:      email,
       job_title:  title || null,
@@ -1359,7 +1359,7 @@ async function saveDocType() {
   err.style.display = 'none';
   if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
   const { error } = await sb.from('document_types').insert({
-    name, expires, company_id: currentProfile.company_id, sort_order: 999,
+    name, expires, company_id: currentCompany.id, sort_order: 999,
     description: 'Custom type for ' + currentCompany.name,
   });
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
@@ -1498,7 +1498,7 @@ async function adminUploadDoc() {
     if (file) {
       if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err'); return; }
       const ext  = file.name.split('.').pop();
-      const path = `credtrack/${currentProfile.company_id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
+      const path = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
       const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
       if (stErr) throw stErr;
       fileUrl  = path;  // store path, not public URL
@@ -1506,7 +1506,7 @@ async function adminUploadDoc() {
     }
 
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
-      company_id:       currentProfile.company_id,
+      company_id:       currentCompany.id,
       staff_id:         staffId,
       document_type_id: parseInt(typeId),
       label:            docType?.name || 'Document',
@@ -1581,7 +1581,7 @@ async function loadSettings() {
 async function loadDocTypesTable() {
   const { data } = await sb.from('document_types')
     .select('*')
-    .or(`company_id.is.null,company_id.eq.${currentProfile.company_id}`)
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('sort_order');
 
   const tbody = document.getElementById('docTypesTbody');
@@ -2117,7 +2117,7 @@ async function superInvite() {
         name, email,
         company_id:         companyId,
         role:               'admin',
-        inviter_company_id: currentProfile.company_id,
+        inviter_company_id: currentCompany.id,
       }),
     });
     const result = await res.json();
@@ -2150,9 +2150,9 @@ async function sendInvite(staffId, fullName, email) {
       body: JSON.stringify({
         name:               fullName,
         email:              email,
-        company_id:         currentProfile.company_id,
+        company_id:         currentCompany.id,
         role:               'clinician',
-        inviter_company_id: currentProfile.company_id,
+        inviter_company_id: currentCompany.id,
       }),
     });
     const result = await res.json();
