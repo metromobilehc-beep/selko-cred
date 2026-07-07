@@ -1872,16 +1872,186 @@ async function editCompany(id) {
   const { data: c } = await sb.from('companies').select('*').eq('id', id).single();
   if (!c) return;
 
-  const plan = prompt(`Plan for ${c.name}:\nCurrent: ${c.plan}\nEnter: standard, pro, or enterprise`, c.plan);
-  if (!plan || !['standard','pro','enterprise'].includes(plan.toLowerCase())) {
-    if (plan !== null) toast('Invalid plan. Use: standard, pro, or enterprise', true);
+  // Build modal overlay
+  const existing = document.getElementById('companyConfigModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'companyConfigModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:640px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+        <div>
+          <div style="color:#fff;font-size:16px;font-weight:700;">${c.name}</div>
+          <div style="color:rgba(255,255,255,.4);font-size:12px;">Company Configuration</div>
+        </div>
+        <button onclick="document.getElementById('companyConfigModal').remove()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);padding:4px 12px;border-radius:6px;cursor:pointer;font-size:13px;">✕ Close</button>
+      </div>
+
+      <!-- Basic info -->
+      <div style="margin-bottom:20px;">
+        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Basic Info</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label class="inline-label">Company name</label>
+            <input class="inline-input" type="text" id="cfg_name" value="${c.name}" />
+          </div>
+          <div>
+            <label class="inline-label">Slug</label>
+            <input class="inline-input" type="text" id="cfg_slug" value="${c.slug}" />
+          </div>
+          <div>
+            <label class="inline-label">Admin email</label>
+            <input class="inline-input" type="email" id="cfg_email" value="${(c.admin_emails||[])[0]||''}" />
+          </div>
+          <div>
+            <label class="inline-label">Plan</label>
+            <select class="inline-select" id="cfg_plan">
+              <option value="standard" ${c.plan==='standard'?'selected':''}>Standard</option>
+              <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro</option>
+              <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Module access -->
+      <div style="margin-bottom:20px;">
+        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Module Access</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="cfg_credtrack" ${c.has_credtrack?'checked':''} /> CredTrack
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="cfg_compliance" ${c.has_compliance?'checked':''} /> Comply
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="cfg_hep" ${c.has_hep?'checked':''} /> HEP
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="cfg_active" ${c.active?'checked':''} /> Account active
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
+            <input type="checkbox" id="cfg_branding" ${c.branding_enabled?'checked':''} /> Branding enabled
+          </label>
+        </div>
+      </div>
+
+      <!-- Trial settings -->
+      <div style="margin-bottom:20px;">
+        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Trial Settings</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label class="inline-label">Trial status</label>
+            <select class="inline-select" id="cfg_trial_status">
+              <option value="active"    ${(c.custom_vars?.trial_status||'active')==='active'?'selected':''}>Active</option>
+              <option value="trial"     ${c.custom_vars?.trial_status==='trial'?'selected':''}>Trial</option>
+              <option value="expired"   ${c.custom_vars?.trial_status==='expired'?'selected':''}>Expired</option>
+              <option value="suspended" ${c.custom_vars?.trial_status==='suspended'?'selected':''}>Suspended</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Trial expiry date</label>
+            <input class="inline-input" type="date" id="cfg_trial_expiry" value="${c.custom_vars?.trial_expiry||''}" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Notification settings -->
+      <div style="margin-bottom:20px;">
+        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Notification Settings</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label class="inline-label">First reminder (days before expiry)</label>
+            <input class="inline-input" type="number" id="cfg_warn1" value="${c.custom_vars?.warn1||30}" min="1" max="365" />
+          </div>
+          <div>
+            <label class="inline-label">Second reminder (days before expiry)</label>
+            <input class="inline-input" type="number" id="cfg_warn2" value="${c.custom_vars?.warn2||7}" min="1" max="90" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Branding -->
+      <div style="margin-bottom:24px;">
+        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Branding</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+          <div>
+            <label class="inline-label">Primary color</label>
+            <input class="inline-input" type="text" id="cfg_primary" value="${c.branding?.primary||''}" placeholder="#0d9488" />
+          </div>
+          <div>
+            <label class="inline-label">Navy color</label>
+            <input class="inline-input" type="text" id="cfg_navy" value="${c.branding?.navy||''}" placeholder="#0f1f2e" />
+          </div>
+          <div>
+            <label class="inline-label">Display name</label>
+            <input class="inline-input" type="text" id="cfg_brand_name" value="${c.branding?.company_name||''}" />
+          </div>
+          <div>
+            <label class="inline-label">Logo URL</label>
+            <input class="inline-input" type="text" id="cfg_logo" value="${c.logo_url||''}" placeholder="https://..." />
+          </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('companyConfigModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+        <button class="btn btn-sm btn-teal" onclick="saveCompanyConfig('${id}')">Save all settings</button>
+      </div>
+      <div id="cfgStatus" class="up-status" style="margin-top:10px;"></div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveCompanyConfig(id) {
+  const statusEl = document.getElementById('cfgStatus');
+
+  const updates = {
+    name:             document.getElementById('cfg_name').value.trim(),
+    slug:             document.getElementById('cfg_slug').value.trim(),
+    plan:             document.getElementById('cfg_plan').value,
+    has_credtrack:    document.getElementById('cfg_credtrack').checked,
+    has_compliance:   document.getElementById('cfg_compliance').checked,
+    has_hep:          document.getElementById('cfg_hep').checked,
+    active:           document.getElementById('cfg_active').checked,
+    branding_enabled: document.getElementById('cfg_branding').checked,
+    admin_emails:     [document.getElementById('cfg_email').value.trim()].filter(Boolean),
+    logo_url:         document.getElementById('cfg_logo').value.trim() || null,
+    branding: {
+      primary:      document.getElementById('cfg_primary').value.trim(),
+      navy:         document.getElementById('cfg_navy').value.trim(),
+      company_name: document.getElementById('cfg_brand_name').value.trim(),
+    },
+    custom_vars: {
+      trial_status:  document.getElementById('cfg_trial_status').value,
+      trial_expiry:  document.getElementById('cfg_trial_expiry').value || null,
+      warn1:         parseInt(document.getElementById('cfg_warn1').value) || 30,
+      warn2:         parseInt(document.getElementById('cfg_warn2').value) || 7,
+    },
+  };
+
+  const { error } = await sb.from('companies').update(updates).eq('id', id);
+  if (error) {
+    statusEl.textContent = 'Error: ' + error.message;
+    statusEl.className = 'up-status up-err';
+    statusEl.style.display = 'block';
     return;
   }
 
-  const { error } = await sb.from('companies').update({ plan: plan.toLowerCase() }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast(`${c.name} updated to ${plan}`);
-  await loadSuperAdmin();
+  statusEl.textContent = '✓ All settings saved';
+  statusEl.className = 'up-status up-ok';
+  statusEl.style.display = 'block';
+  toast('Company settings saved');
+  setTimeout(() => {
+    document.getElementById('companyConfigModal')?.remove();
+    loadSuperAdmin();
+  }, 1200);
 }
 
 async function toggleCompanyFlag(id, flag, current) {
