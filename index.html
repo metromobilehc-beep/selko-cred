@@ -328,10 +328,11 @@
     </div>
 
     <div class="tabs">
-      <button class="tab active" id="tab-docs"  onclick="switchTab('docs')">Documents</button>
-      <button class="tab"        id="tab-exp"   onclick="switchTab('exp')">Expiration tracker</button>
-      <button class="tab"        id="tab-staff" onclick="switchTab('staff')">Staff</button>
-      <button class="tab"        id="tab-super" onclick="switchTab('super')" style="display:none;">⚡ Selko Admin</button>
+      <button class="tab active" id="tab-docs"     onclick="switchTab('docs')">Documents</button>
+      <button class="tab"        id="tab-exp"      onclick="switchTab('exp')">Expiration tracker</button>
+      <button class="tab"        id="tab-staff"    onclick="switchTab('staff')">Staff</button>
+      <button class="tab"        id="tab-settings" onclick="switchTab('settings')">Settings</button>
+      <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;">⚡ Selko Admin</button>
     </div>
 
     <!-- DOCUMENTS TAB -->
@@ -496,6 +497,108 @@
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- SETTINGS TAB -->
+    <div id="tabSettings" style="display:none;">
+
+      <!-- Company settings -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Company settings</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Company name</label>
+            <input class="inline-input" type="text" id="setCoName" />
+          </div>
+          <div>
+            <label class="inline-label">Admin notification email</label>
+            <input class="inline-input" type="email" id="setAdminEmail" placeholder="admin@company.com" />
+          </div>
+          <div>
+            <label class="inline-label">Expiry warning — first reminder (days)</label>
+            <input class="inline-input" type="number" id="setWarn1" value="30" min="1" max="365" />
+          </div>
+          <div>
+            <label class="inline-label">Expiry warning — second reminder (days)</label>
+            <input class="inline-input" type="number" id="setWarn2" value="7" min="1" max="90" />
+          </div>
+        </div>
+        <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save settings</button>
+        <div id="setCoStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Branding (Pro only) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Branding <span id="brandingProTag" style="font-size:10px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h2>
+        <div id="brandingLocked" style="color:rgba(255,255,255,.4);font-size:13px;display:none;">Branding customization is available on the Pro plan.</div>
+        <div id="brandingForm">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div>
+              <label class="inline-label">Primary color</label>
+              <input class="inline-input" type="text" id="setBrandPrimary" placeholder="#0d9488" />
+            </div>
+            <div>
+              <label class="inline-label">Navy/background color</label>
+              <input class="inline-input" type="text" id="setBrandNavy" placeholder="#0f1f2e" />
+            </div>
+            <div>
+              <label class="inline-label">Company display name</label>
+              <input class="inline-input" type="text" id="setBrandName" placeholder="My Agency" />
+            </div>
+          </div>
+          <div style="margin-bottom:14px;">
+            <label class="inline-label">Logo URL</label>
+            <input class="inline-input" type="text" id="setBrandLogo" placeholder="https://..." />
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="saveBranding()">Save branding</button>
+        </div>
+        <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Document type management -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Document types</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which credential types are available to your staff. Global types cannot be deleted but can be hidden.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr>
+              <th>Name</th><th>Expires</th><th>Tier</th><th>Type</th><th>Actions</th>
+            </tr></thead>
+            <tbody id="docTypesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Trial management (super admin only) -->
+      <div class="dark-panel" id="trialPanel" style="display:none;margin-bottom:16px;">
+        <h2>Trial management</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Trial status</label>
+            <select class="inline-select" id="setTrialStatus">
+              <option value="active">Active</option>
+              <option value="trial">Trial</option>
+              <option value="expired">Expired</option>
+              <option value="suspended">Suspended</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Trial expiry date</label>
+            <input class="inline-input" type="date" id="setTrialExpiry" />
+          </div>
+          <div>
+            <label class="inline-label">Plan</label>
+            <select class="inline-select" id="setTrialPlan">
+              <option value="standard">Standard</option>
+              <option value="pro">Pro</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-teal" onclick="saveTrialSettings()">Save trial settings</button>
+        <div id="setTrialStatus2" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
     </div>
 
     <!-- SUPER ADMIN TAB -->
@@ -1138,6 +1241,7 @@ async function loadStaffTable() {
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
       <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
@@ -1174,6 +1278,28 @@ async function saveNewStaff() {
     hideAddStaff();
     await loadStaffTable();
   } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
+}
+
+async function editStaff(id) {
+  const s = staffList.find(s => s.id === id);
+  if (!s) return;
+
+  const name  = prompt('Full name:', s.full_name);
+  if (name === null) return;
+  const email = prompt('Email:', s.email || '');
+  if (email === null) return;
+  const title = prompt('Job title:', s.job_title || '');
+  if (title === null) return;
+
+  const { error } = await sb.from('credtrack_staff').update({
+    full_name: name.trim() || s.full_name,
+    email:     email.trim() || null,
+    job_title: title.trim() || null,
+  }).eq('id', id);
+
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(name + ' updated');
+  await loadStaffTable();
 }
 
 async function toggleActive(id, active) {
@@ -1414,7 +1540,182 @@ function showAuStatus(msg, type) {
   el.className = 'up-status ' + (type === 'ok' ? 'up-ok' : 'up-err');
   el.style.display = 'block';
 }
-// ══ VIEW AS ADMIN ══
+// ══ SETTINGS ══
+async function loadSettings() {
+  const c = currentCompany;
+
+  // Company settings
+  document.getElementById('setCoName').value    = c.name || '';
+  document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
+  document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
+  document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
+
+  // Branding
+  if (window._isPro) {
+    document.getElementById('brandingLocked').style.display = 'none';
+    document.getElementById('brandingForm').style.display   = 'block';
+    document.getElementById('brandingProTag').style.display = 'none';
+    const b = c.branding || {};
+    document.getElementById('setBrandPrimary').value = b.primary || '';
+    document.getElementById('setBrandNavy').value    = b.navy    || '';
+    document.getElementById('setBrandName').value    = b.company_name || '';
+    document.getElementById('setBrandLogo').value    = c.logo_url || '';
+  } else {
+    document.getElementById('brandingLocked').style.display = 'block';
+    document.getElementById('brandingForm').style.display   = 'none';
+    document.getElementById('brandingProTag').style.display = 'inline';
+  }
+
+  // Trial panel (super admin only)
+  if (currentProfile.is_super_admin) {
+    document.getElementById('trialPanel').style.display = 'block';
+    document.getElementById('setTrialStatus').value  = c.active ? 'active' : 'suspended';
+    document.getElementById('setTrialPlan').value    = c.plan || 'standard';
+    document.getElementById('setTrialExpiry').value  = c.custom_vars?.trial_expiry || '';
+  }
+
+  // Document types table
+  await loadDocTypesTable();
+}
+
+async function loadDocTypesTable() {
+  const { data } = await sb.from('document_types')
+    .select('*')
+    .or(`company_id.is.null,company_id.eq.${currentProfile.company_id}`)
+    .order('sort_order');
+
+  const tbody = document.getElementById('docTypesTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(t => `<tr>
+    <td>
+      <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;" 
+        type="text" value="${t.name}" id="dtname_${t.id}" 
+        onblur="updateDocTypeName(${t.id}, this.value)" />
+    </td>
+    <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
+    <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
+    <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
+    <td><div class="td-actions">
+      <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
+        style="font-size:11px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);">
+        ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
+      </button>
+      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+    </div></td>
+  </tr>`).join('');
+}
+
+async function updateDocTypeName(id, name) {
+  if (!name.trim()) return;
+  const { error } = await sb.from('document_types').update({ name: name.trim() }).eq('id', id);
+  if (error) toast('Error: ' + error.message, true);
+  else toast('Document type updated');
+}
+
+async function toggleDocTypeTier(id, currentTier) {
+  const newTier = currentTier === 'pro' ? 'standard' : 'pro';
+  const { error } = await sb.from('document_types').update({ tier: newTier }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Tier updated to ' + newTier);
+  await loadDocTypesTable();
+}
+
+async function deleteDocType(id, name) {
+  if (!confirm(`Delete custom document type "${name}"? This cannot be undone.`)) return;
+  const { error } = await sb.from('document_types').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(name + ' deleted');
+  await loadDocTypesTable();
+  await loadDocTypes();
+}
+
+async function saveCompanySettings() {
+  const name       = document.getElementById('setCoName').value.trim();
+  const adminEmail = document.getElementById('setAdminEmail').value.trim();
+  const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
+  const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
+  const statusEl   = document.getElementById('setCoStatus');
+
+  const updates = {
+    name,
+    admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
+    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2 },
+  };
+
+  const { error } = await sb.from('companies').update(updates).eq('id', currentCompany.id);
+  if (error) {
+    statusEl.textContent = 'Error: ' + error.message;
+    statusEl.className = 'up-status up-err';
+    statusEl.style.display = 'block';
+    return;
+  }
+
+  currentCompany = { ...currentCompany, ...updates };
+  statusEl.textContent = '✓ Settings saved';
+  statusEl.className = 'up-status up-ok';
+  statusEl.style.display = 'block';
+  toast('Settings saved');
+  setTimeout(() => statusEl.style.display = 'none', 3000);
+}
+
+async function saveBranding() {
+  const branding = {
+    primary:      document.getElementById('setBrandPrimary').value.trim(),
+    navy:         document.getElementById('setBrandNavy').value.trim(),
+    company_name: document.getElementById('setBrandName').value.trim(),
+  };
+  const logo_url = document.getElementById('setBrandLogo').value.trim();
+  const statusEl = document.getElementById('setBrandStatus');
+
+  const { error } = await sb.from('companies').update({ branding, logo_url }).eq('id', currentCompany.id);
+  if (error) {
+    statusEl.textContent = 'Error: ' + error.message;
+    statusEl.className = 'up-status up-err';
+    statusEl.style.display = 'block';
+    return;
+  }
+
+  currentCompany = { ...currentCompany, branding, logo_url };
+  applyBranding(branding, logo_url);
+  statusEl.textContent = '✓ Branding saved and applied';
+  statusEl.className = 'up-status up-ok';
+  statusEl.style.display = 'block';
+  toast('Branding saved');
+  setTimeout(() => statusEl.style.display = 'none', 3000);
+}
+
+async function saveTrialSettings() {
+  const status   = document.getElementById('setTrialStatus').value;
+  const plan     = document.getElementById('setTrialPlan').value;
+  const expiry   = document.getElementById('setTrialExpiry').value;
+  const statusEl = document.getElementById('setTrialStatus2');
+
+  const updates = {
+    active: status === 'active' || status === 'trial',
+    plan,
+    custom_vars: { ...(currentCompany.custom_vars || {}), trial_status: status, trial_expiry: expiry },
+  };
+
+  const { error } = await sb.from('companies').update(updates).eq('id', currentCompany.id);
+  if (error) {
+    statusEl.textContent = 'Error: ' + error.message;
+    statusEl.className = 'up-status up-err';
+    statusEl.style.display = 'block';
+    return;
+  }
+
+  currentCompany = { ...currentCompany, ...updates };
+  window._isPro  = ['pro','enterprise'].includes(plan);
+  statusEl.textContent = '✓ Trial settings saved';
+  statusEl.className = 'up-status up-ok';
+  statusEl.style.display = 'block';
+  toast('Trial settings saved');
+  setTimeout(() => statusEl.style.display = 'none', 3000);
+}
 let _superProfile = null;
 let _superCompany = null;
 
@@ -1476,16 +1777,17 @@ function applyBranding(branding, logoUrl) {
 
 // ══ TABS ══
 function switchTab(tab) {
-  ['docs','exp','staff','super'].forEach(t => {
+  ['docs','exp','staff','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
     if (btn)   btn.classList.toggle('active', tab === t);
   });
-  if (tab === 'docs')  loadAdminDocs();
-  if (tab === 'exp')   loadExpTracker();
-  if (tab === 'staff') loadStaffTable();
-  if (tab === 'super') loadSuperAdmin();
+  if (tab === 'docs')     loadAdminDocs();
+  if (tab === 'exp')      loadExpTracker();
+  if (tab === 'staff')    loadStaffTable();
+  if (tab === 'settings') loadSettings();
+  if (tab === 'super')    loadSuperAdmin();
 }
 
 // ══ SUPER ADMIN ══
