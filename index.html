@@ -1566,12 +1566,14 @@ async function loadSettings() {
     document.getElementById('brandingProTag').style.display = 'inline';
   }
 
-  // Trial panel (super admin only)
-  if (currentProfile.is_super_admin) {
+  // Trial panel (super admin only, and NOT when viewing as another company)
+  if (currentProfile.is_super_admin && !_superProfile) {
     document.getElementById('trialPanel').style.display = 'block';
     document.getElementById('setTrialStatus').value  = c.active ? 'active' : 'suspended';
     document.getElementById('setTrialPlan').value    = c.plan || 'standard';
     document.getElementById('setTrialExpiry').value  = c.custom_vars?.trial_expiry || '';
+  } else {
+    document.getElementById('trialPanel').style.display = 'none';
   }
 
   // Document types table
