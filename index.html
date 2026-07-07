@@ -1926,19 +1926,10 @@ async function editCompany(id) {
         </div>
       </div>
 
-      <!-- Module access -->
+      <!-- Account status -->
       <div style="margin-bottom:20px;">
-        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Module Access</div>
+        <div style="color:var(--teal-l);font-size:11px;font-weight:600;text-transform:uppercase;margin-bottom:10px;">Account Status</div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="cfg_credtrack" ${c.has_credtrack?'checked':''} /> CredTrack
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="cfg_compliance" ${c.has_compliance?'checked':''} /> Comply
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
-            <input type="checkbox" id="cfg_hep" ${c.has_hep?'checked':''} /> HEP
-          </label>
           <label style="display:flex;align-items:center;gap:6px;color:#fff;font-size:13px;cursor:pointer;">
             <input type="checkbox" id="cfg_active" ${c.active?'checked':''} /> Account active
           </label>
@@ -2000,8 +1991,13 @@ async function editCompany(id) {
             <input class="inline-input" type="text" id="cfg_brand_name" value="${c.branding?.company_name||''}" />
           </div>
           <div>
-            <label class="inline-label">Logo URL</label>
-            <input class="inline-input" type="text" id="cfg_logo" value="${c.logo_url||''}" placeholder="https://..." />
+            <label class="inline-label">Logo</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              ${c.logo_url ? `<img src="${c.logo_url}" style="height:32px;border-radius:4px;border:1px solid rgba(255,255,255,.2);" />` : ''}
+              <label for="cfg_logo_file" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📎 Upload logo</label>
+              <span id="cfg_logo_name" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">${c.logo_url ? 'Logo set' : 'No logo'}</span>
+            </div>
+            <input type="file" id="cfg_logo_file" accept=".jpg,.jpeg,.png,.svg,.webp" style="display:none;" onchange="document.getElementById('cfg_logo_name').textContent=this.files[0]?.name||'No logo'" />
           </div>
         </div>
       </div>
@@ -2021,17 +2017,32 @@ async function editCompany(id) {
 async function saveCompanyConfig(id) {
   const statusEl = document.getElementById('cfgStatus');
 
+  // Handle logo upload if file selected
+  let logo_url = null;
+  const logoFile = document.getElementById('cfg_logo_file')?.files[0];
+  if (logoFile) {
+    try {
+      const ext  = logoFile.name.split('.').pop();
+      const path = `logos/${id}/logo.${ext}`;
+      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
+      if (stErr) throw stErr;
+      const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      logo_url = publicUrl;
+    } catch(e) {
+      statusEl.textContent = 'Logo upload failed: ' + e.message;
+      statusEl.className = 'up-status up-err';
+      statusEl.style.display = 'block';
+      return;
+    }
+  }
+
   const updates = {
     name:             document.getElementById('cfg_name').value.trim(),
     slug:             document.getElementById('cfg_slug').value.trim(),
     plan:             document.getElementById('cfg_plan').value,
-    has_credtrack:    document.getElementById('cfg_credtrack').checked,
-    has_compliance:   document.getElementById('cfg_compliance').checked,
-    has_hep:          document.getElementById('cfg_hep').checked,
     active:           document.getElementById('cfg_active').checked,
     branding_enabled: document.getElementById('cfg_branding').checked,
     admin_emails:     [document.getElementById('cfg_email').value.trim()].filter(Boolean),
-    logo_url:         document.getElementById('cfg_logo').value.trim() || null,
     branding: {
       primary:      document.getElementById('cfg_primary').value.trim(),
       navy:         document.getElementById('cfg_navy').value.trim(),
@@ -2044,6 +2055,8 @@ async function saveCompanyConfig(id) {
       warn2:         parseInt(document.getElementById('cfg_warn2').value) || 7,
     },
   };
+
+  if (logo_url) updates.logo_url = logo_url;
 
   const { error } = await sb.from('companies').update(updates).eq('id', id);
   if (error) {
