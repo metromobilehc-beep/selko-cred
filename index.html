@@ -2202,6 +2202,8 @@ function exportCsv() {
 }
 
 // ══ PASSWORD RECOVERY ══
+const isRecoveryLink = location.hash.includes('type=recovery') || location.search.includes('type=recovery');
+
 sb.auth.onAuthStateChange((event, session) => {
   if (event === 'PASSWORD_RECOVERY') {
     showSetNewPasswordForm();
@@ -2235,6 +2237,7 @@ function showSetNewPasswordForm() {
 
 // ══ SESSION RESTORE ══
 (async () => {
+  if (isRecoveryLink) return;
   const { data: { session } } = await sb.auth.getSession();
   if (session?.user) {
     await initSession(session.user);
