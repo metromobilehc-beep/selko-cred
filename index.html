@@ -2201,6 +2201,38 @@ function exportCsv() {
   a.click();
 }
 
+// ══ PASSWORD RECOVERY ══
+sb.auth.onAuthStateChange((event, session) => {
+  if (event === 'PASSWORD_RECOVERY') {
+    showSetNewPasswordForm();
+  }
+});
+
+function showSetNewPasswordForm() {
+  document.body.innerHTML = `
+    <div style="max-width:340px;margin:80px auto;font-family:sans-serif;">
+      <h2>Set a new password</h2>
+      <input type="password" id="newPass" placeholder="New password" style="width:100%;margin-bottom:10px;padding:8px;box-sizing:border-box;">
+      <button id="savePassBtn" style="width:100%;padding:8px;">Save password</button>
+      <div id="passErr" style="color:#c0392b;font-size:13px;margin-top:8px;"></div>
+    </div>`;
+  document.getElementById('savePassBtn').onclick = async () => {
+    const pw = document.getElementById('newPass').value;
+    if (pw.length < 8) {
+      document.getElementById('passErr').textContent = 'Password must be at least 8 characters.';
+      return;
+    }
+    const { error } = await sb.auth.updateUser({ password: pw });
+    if (error) {
+      document.getElementById('passErr').textContent = error.message;
+    } else {
+      alert('Password updated. Please sign in again.');
+      await sb.auth.signOut();
+      location.href = 'https://cred.selko360.com';
+    }
+  };
+}
+
 // ══ SESSION RESTORE ══
 (async () => {
   const { data: { session } } = await sb.auth.getSession();
