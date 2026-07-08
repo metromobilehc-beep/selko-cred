@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Selko Cred — Credential Manager</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root {
     --navy:      #0f1f2e;
@@ -313,7 +316,8 @@
         <p>Manage staff credentials and track expirations.</p>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
-      <button class="btn btn-sm btn-teal" id="exportProBtn" onclick="exportProReport()" style="display:none;">⬇ Export Report</button>
+      <button class="btn btn-sm btn-teal" id="exportProExcelBtn" onclick="exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
+      <button class="btn btn-sm btn-gold" id="exportProPdfBtn" onclick="exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
     </div>
 
     <!-- View as Admin banner -->
@@ -990,19 +994,20 @@ async function initAdmin() {
   await loadAdminDocs();
   await loadAlertBanner();
   if (window._isPro) {
-    document.getElementById('addDocTypeBtn').style.display = 'inline-flex';
-    document.getElementById('exportProBtn').style.display  = 'inline-flex';
+    document.getElementById('addDocTypeBtn').style.display     = 'inline-flex';
+    document.getElementById('exportProExcelBtn').style.display = 'inline-flex';
+    document.getElementById('exportProPdfBtn').style.display   = 'inline-flex';
   }
 }
 
-async function exportProReport() {
-  // Pull all docs with staff and type names
+// ── Shared data fetch for both Pro export formats ──
+async function fetchProReportRows() {
   const { data } = await sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name, tier)')
     .eq('company_id', currentCompany.id)
     .order('credtrack_staff(full_name)');
 
-  if (!data?.length) { toast('No documents to export', true); return; }
+  if (!data?.length) return null;
 
   const today = new Date();
   const rows = data.map(r => {
@@ -1011,49 +1016,197 @@ async function exportProReport() {
     return {
       staff:    r.credtrack_staff?.full_name || '—',
       type:     r.document_types?.name || r.label,
-      tier:     r.document_types?.tier || '—',
+      tier:     r.document_types?.tier || 'standard',
       issued:   r.issued_date ? new Date(r.issued_date).toLocaleDateString() : '—',
       expires:  r.expiry_date ? new Date(r.expiry_date).toLocaleDateString() : '—',
       days:     days !== null ? (days < 0 ? `${Math.abs(days)}d overdue` : `${days}d`) : '—',
       status,
       verified: r.verified ? 'Yes' : 'No',
       file:     r.file_name || '—',
-      uploaded: new Date(r.created_at).toLocaleDateString(),
     };
   });
 
-  // Group by staff member
-  const byStaff = {};
-  rows.forEach(r => { if (!byStaff[r.staff]) byStaff[r.staff] = []; byStaff[r.staff].push(r); });
+  const summary = {
+    total:        rows.length,
+    current:      rows.filter(r => r.status === 'Current').length,
+    expiringSoon: rows.filter(r => r.status === 'Expiring soon' || r.status === 'Due soon').length,
+    expired:      rows.filter(r => r.status === 'EXPIRED').length,
+    staffCount:   new Set(rows.map(r => r.staff)).size,
+  };
 
-  let csv = `Selko Cred — Credential Report\n`;
-  csv += `${currentCompany.name}\n`;
-  csv += `Generated: ${today.toLocaleDateString()}\n\n`;
-  csv += `Staff Member,Document Type,Tier,Issued,Expires,Days Remaining,Status,Verified,File,Uploaded\n`;
+  return { rows, summary };
+}
 
-  Object.entries(byStaff).forEach(([staff, docs]) => {
-    docs.forEach(d => {
-      csv += `"${staff}","${d.type}","${d.tier}","${d.issued}","${d.expires}","${d.days}","${d.status}","${d.verified}","${d.file}","${d.uploaded}"\n`;
-    });
-    csv += '\n'; // blank line between staff members
+// ── Real formatted Excel export (Pro) ──
+async function exportProReportExcel() {
+  const result = await fetchProReportRows();
+  if (!result) { toast('No documents to export', true); return; }
+  const { rows, summary } = result;
+
+  const NAVY = 'FF0F1F2E', TEAL = 'FF0D9488';
+  const RED_FILL = 'FFFEE2E2', RED_TEXT = 'FF991B1B';
+  const GREEN_FILL = 'FFD1FAE5', GREEN_TEXT = 'FF065F46';
+  const AMBER_FILL = 'FFFEF3C7', AMBER_TEXT = 'FF92400E';
+  const BORDER = { style: 'thin', color: { argb: 'FFD9D9D9' } };
+  const thinBorder = { top: BORDER, bottom: BORDER, left: BORDER, right: BORDER };
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Credential Report');
+
+  ws.mergeCells('A1:I1');
+  const title = ws.getCell('A1');
+  title.value = currentCompany.name;
+  title.font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FFFFFFFF' } };
+  title.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+  ws.getRow(1).height = 26;
+
+  ws.mergeCells('A2:I2');
+  const sub = ws.getCell('A2');
+  sub.value = `Credential Compliance Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`;
+  sub.font = { name: 'Arial', size: 10, italic: true, color: { argb: 'FFFFFFFF' } };
+  sub.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
+  ws.getRow(2).height = 18;
+
+  const summaryCards = [
+    ['Total Documents', summary.total, TEAL],
+    ['Current',         summary.current, 'FF10B981'],
+    ['Expiring Soon',   summary.expiringSoon, 'FFF59E0B'],
+    ['Expired',         summary.expired, 'FFEF4444'],
+  ];
+  let col = 1;
+  summaryCards.forEach(([label, val, color]) => {
+    const c1 = ws.getColumn(col).letter, c2 = ws.getColumn(col + 1).letter;
+    ws.mergeCells(`${c1}4:${c2}4`);
+    const vCell = ws.getCell(`${c1}4`);
+    vCell.value = val;
+    vCell.font = { name: 'Arial', size: 18, bold: true, color: { argb: color } };
+    vCell.alignment = { horizontal: 'center' };
+    ws.mergeCells(`${c1}5:${c2}5`);
+    const lCell = ws.getCell(`${c1}5`);
+    lCell.value = label;
+    lCell.font = { name: 'Arial', size: 9, color: { argb: 'FF475569' } };
+    lCell.alignment = { horizontal: 'center' };
+    col += 2;
   });
 
-  // Summary section
-  const expired     = rows.filter(r => r.status === 'EXPIRED').length;
-  const expiringSoon = rows.filter(r => r.status === 'Expiring soon').length;
-  const current     = rows.filter(r => r.status === 'Current').length;
-  csv += `\nSUMMARY\n`;
-  csv += `Total documents,${rows.length}\n`;
-  csv += `Current,${current}\n`;
-  csv += `Expiring soon,${expiringSoon}\n`;
-  csv += `Expired,${expired}\n`;
-  csv += `Staff members,${Object.keys(byStaff).length}\n`;
+  const headers = ['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Verified','File'];
+  const headerRowNum = 7;
+  const headerRow = ws.getRow(headerRowNum);
+  headers.forEach((h, i) => {
+    const cell = headerRow.getCell(i + 1);
+    cell.value = h;
+    cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: TEAL } };
+    cell.border = thinBorder;
+  });
+  headerRow.height = 22;
 
+  let rowNum = headerRowNum + 1, prevStaff = null;
+  rows.forEach(r => {
+    if (prevStaff && r.staff !== prevStaff) rowNum++;
+    prevStaff = r.staff;
+    const row = ws.getRow(rowNum);
+    const vals = [r.staff, r.type, r.tier, r.issued, r.expires, r.days, r.status, r.verified === 'Yes' ? '✓ Yes' : 'No', r.file];
+    vals.forEach((v, i) => {
+      const cell = row.getCell(i + 1);
+      cell.value = v;
+      cell.font = { name: 'Arial', size: 10 };
+      cell.border = thinBorder;
+    });
+    let fill = null, textColor = null;
+    if (r.status === 'EXPIRED') { fill = RED_FILL; textColor = RED_TEXT; }
+    else if (r.status === 'Current') { fill = GREEN_FILL; textColor = GREEN_TEXT; }
+    else if (r.status === 'Expiring soon' || r.status === 'Due soon') { fill = AMBER_FILL; textColor = AMBER_TEXT; }
+    if (fill) {
+      for (let i = 1; i <= 9; i++) row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+      row.getCell(7).font = { name: 'Arial', size: 10, bold: true, color: { argb: textColor } };
+    }
+    rowNum++;
+  });
+
+  ws.columns = [{width:22},{width:24},{width:10},{width:12},{width:12},{width:14},{width:12},{width:10},{width:16}];
+  ws.views = [{ state: 'frozen', ySplit: headerRowNum }];
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-  a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_CredReport_${today.toISOString().slice(0,10)}.csv`;
+  a.href = url;
+  a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_CredReport_${new Date().toISOString().slice(0,10)}.xlsx`;
   a.click();
-  toast('Report exported');
+  URL.revokeObjectURL(url);
+  toast('Excel report exported');
+}
+
+// ── Real formatted PDF export (Pro) ──
+async function exportProReportPDF() {
+  const result = await fetchProReportRows();
+  if (!result) { toast('No documents to export', true); return; }
+  const { rows, summary } = result;
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const NAVY = [15, 31, 46], TEAL = [13, 148, 136];
+  const RED = [153, 27, 27], GREEN = [6, 95, 70], AMBER = [146, 64, 14];
+
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageWidth, 50, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(currentCompany.name, 24, 24);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.text(`Credential Compliance Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`, 24, 40);
+
+  const summaryItems = [
+    ['Total Documents', summary.total, TEAL],
+    ['Current',         summary.current, [16,185,129]],
+    ['Expiring Soon',   summary.expiringSoon, [245,158,11]],
+    ['Expired',         summary.expired, [239,68,68]],
+  ];
+  let x = 24;
+  summaryItems.forEach(([label, val, color]) => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(18);
+    doc.setTextColor(...color);
+    doc.text(String(val), x, 78);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
+    doc.text(label, x, 92);
+    x += 140;
+  });
+
+  const body = rows.map(r => [r.staff, r.type, r.tier, r.issued, r.expires, r.days, r.status, r.verified, r.file]);
+
+  doc.autoTable({
+    startY: 108,
+    head: [['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Verified','File']],
+    body,
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+    didParseCell: function(data) {
+      if (data.section === 'body') {
+        const status = data.row.raw[6];
+        if (status === 'EXPIRED') {
+          data.cell.styles.fillColor = [254,226,226];
+          if (data.column.index === 6) { data.cell.styles.textColor = RED; data.cell.styles.fontStyle = 'bold'; }
+        } else if (status === 'Current') {
+          data.cell.styles.fillColor = [209,250,229];
+          if (data.column.index === 6) { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = 'bold'; }
+        } else if (status === 'Expiring soon' || status === 'Due soon') {
+          data.cell.styles.fillColor = [254,243,199];
+          if (data.column.index === 6) { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = 'bold'; }
+        }
+      }
+    },
+  });
+
+  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_CredReport_${new Date().toISOString().slice(0,10)}.pdf`);
+  toast('PDF report exported');
 }
 
 async function loadStaffList() {
