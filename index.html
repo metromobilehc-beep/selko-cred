@@ -1481,7 +1481,7 @@ async function loadStaffTable() {
     <td>${s.full_name}</td>
     <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
     <td style="font-size:12px;">${s.job_title || '—'}</td>
-    <td><span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span></td>
+    <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
@@ -1566,6 +1566,55 @@ async function deleteStaff(id, fullName) {
     toast(fullName + ' deleted');
     await loadStaffTable();
   } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+// ── Staff type picker (clinician / office / admin) ──
+function showStaffTypeModal(id, name, currentType) {
+  const existing = document.getElementById('staffTypeModalCred');
+  if (existing) existing.remove();
+
+  const options = [
+    { value: 'clinician', label: 'Clinician', desc: 'Field/clinical staff' },
+    { value: 'office',    label: 'Office',    desc: 'Office/administrative staff' },
+    { value: 'admin',     label: 'Admin',     desc: 'Full staff & credential management access' },
+  ];
+
+  const modal = document.createElement('div');
+  modal.id = 'staffTypeModalCred';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Choose a staff type.</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+        ${options.map(o => `
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${o.value===currentType?'var(--teal)':'rgba(255,255,255,.15)'};background:${o.value===currentType?'rgba(13,148,136,.12)':'rgba(255,255,255,.03)'};border-radius:8px;cursor:pointer;">
+            <input type="radio" name="stTypeOption" value="${o.value}" ${o.value===currentType?'checked':''} style="margin-top:2px;accent-color:var(--teal);">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#fff;">${o.label}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:1px;">${o.desc}</div>
+            </div>
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="confirmStaffTypeCred('${id}','${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('staffTypeModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function confirmStaffTypeCred(id, name) {
+  const selected = document.querySelector('input[name="stTypeOption"]:checked');
+  if (!selected) return;
+  const newType = selected.value;
+
+  const { error } = await sb.from('credtrack_staff').update({ staff_type: newType }).eq('id', id);
+  document.getElementById('staffTypeModalCred')?.remove();
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ ${name} set to ${newType}`);
+  await loadStaffTable();
 }
 
 async function resetPassword(email, fullName) {
