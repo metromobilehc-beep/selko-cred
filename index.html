@@ -553,8 +553,14 @@
             </div>
           </div>
           <div style="margin-bottom:14px;">
-            <label class="inline-label">Logo URL</label>
-            <input class="inline-input" type="text" id="setBrandLogo" placeholder="https://..." />
+            <label class="inline-label">Logo</label>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+              <img id="setBrandLogoPreview" src="" style="height:36px;border-radius:5px;border:1px solid rgba(255,255,255,.2);display:none;" />
+              <label for="setBrandLogoFile" style="display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:13px;font-weight:600;">📎 Upload logo</label>
+              <span id="setBrandLogoName" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">No logo set</span>
+            </div>
+            <input type="file" id="setBrandLogoFile" accept=".jpg,.jpeg,.png,.svg,.webp" style="display:none;" onchange="onBrandLogoSelected(this)" />
+            <input type="hidden" id="setBrandLogo" />
           </div>
           <button class="btn btn-sm btn-teal" onclick="saveBranding()">Save branding</button>
         </div>
@@ -1803,6 +1809,16 @@ async function loadSettings() {
     document.getElementById('setBrandNavy').value    = b.navy    || '';
     document.getElementById('setBrandName').value    = b.company_name || '';
     document.getElementById('setBrandLogo').value    = c.logo_url || '';
+    const logoPreview = document.getElementById('setBrandLogoPreview');
+    const logoName    = document.getElementById('setBrandLogoName');
+    if (c.logo_url) {
+      logoPreview.src = c.logo_url;
+      logoPreview.style.display = 'inline-block';
+      logoName.textContent = 'Logo set';
+    } else {
+      logoPreview.style.display = 'none';
+      logoName.textContent = 'No logo set';
+    }
   } else {
     document.getElementById('brandingLocked').style.display = 'block';
     document.getElementById('brandingForm').style.display   = 'none';
@@ -1910,14 +1926,44 @@ async function saveCompanySettings() {
   setTimeout(() => statusEl.style.display = 'none', 3000);
 }
 
+function onBrandLogoSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  document.getElementById('setBrandLogoName').textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const preview = document.getElementById('setBrandLogoPreview');
+    preview.src = e.target.result;
+    preview.style.display = 'inline-block';
+  };
+  reader.readAsDataURL(file);
+}
+
 async function saveBranding() {
   const branding = {
     primary:      document.getElementById('setBrandPrimary').value.trim(),
     navy:         document.getElementById('setBrandNavy').value.trim(),
     company_name: document.getElementById('setBrandName').value.trim(),
   };
-  const logo_url = document.getElementById('setBrandLogo').value.trim();
   const statusEl = document.getElementById('setBrandStatus');
+  let logo_url = document.getElementById('setBrandLogo').value.trim();
+
+  const logoFile = document.getElementById('setBrandLogoFile').files[0];
+  if (logoFile) {
+    try {
+      const ext  = logoFile.name.split('.').pop();
+      const path = `logos/${currentCompany.id}/logo.${ext}`;
+      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
+      if (stErr) throw stErr;
+      const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      logo_url = publicUrl;
+    } catch(e) {
+      statusEl.textContent = 'Logo upload failed: ' + e.message;
+      statusEl.className = 'up-status up-err';
+      statusEl.style.display = 'block';
+      return;
+    }
+  }
 
   const { error } = await sb.from('companies').update({ branding, logo_url }).eq('id', currentCompany.id);
   if (error) {
