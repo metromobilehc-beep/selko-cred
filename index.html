@@ -8,6 +8,7 @@
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <style>
   :root {
     --navy:      #0f1f2e;
@@ -351,6 +352,7 @@
           <option value="1">Verified</option>
         </select>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
+        <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
       </div>
 
@@ -995,6 +997,7 @@ async function initAdmin() {
   await loadAlertBanner();
   if (window._isPro) {
     document.getElementById('addDocTypeBtn').style.display     = 'inline-flex';
+    document.getElementById('bulkDownloadBtn').style.display   = 'inline-flex';
     document.getElementById('exportProExcelBtn').style.display = 'inline-flex';
     document.getElementById('exportProPdfBtn').style.display   = 'inline-flex';
   }
@@ -1317,6 +1320,89 @@ async function deleteDoc(id, filePath) {
     await loadAdminDocs();
     await loadAlertBanner();
   } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+// ── Bulk document download (Pro) ──
+function showBulkDownloadPicker() {
+  const existing = document.getElementById('bulkDownloadModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'bulkDownloadModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:6px;">Download documents</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:20px;">Choose which files to include in the ZIP.</div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn btn-teal" onclick="runBulkDownload(true)" style="justify-content:center;">Download current filtered results</button>
+        <button class="btn btn-gold" onclick="runBulkDownload(false)" style="justify-content:center;">Download all documents</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('bulkDownloadModal').remove()" style="justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+      <div id="bulkDownloadStatus" style="font-size:12px;color:rgba(255,255,255,.6);margin-top:14px;display:none;"></div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function runBulkDownload(useFilters) {
+  const statusEl = document.getElementById('bulkDownloadStatus');
+  const showStatus = (msg) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.display = 'block'; } };
+
+  let q = sb.from('credtrack_documents')
+    .select('*, credtrack_staff(full_name), document_types(name)')
+    .eq('company_id', currentCompany.id)
+    .not('file_url', 'is', null);
+
+  if (useFilters) {
+    const emp      = document.getElementById('fEmp')?.value      || '';
+    const type     = document.getElementById('fType')?.value     || '';
+    const verified = document.getElementById('fVerified')?.value || '';
+    if (emp)  q = q.eq('staff_id', emp);
+    if (type) q = q.eq('document_type_id', type);
+    if (verified === '1') q = q.eq('verified', true);
+    if (verified === '0') q = q.eq('verified', false);
+  }
+
+  const { data, error } = await q;
+  if (error) { showStatus('Error: ' + error.message); return; }
+  if (!data?.length) { showStatus('No files found matching that selection.'); return; }
+
+  showStatus(`Downloading 0 of ${data.length}…`);
+
+  const zip = new JSZip();
+  let done = 0, failed = 0;
+
+  for (const doc of data) {
+    try {
+      const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(doc.file_url);
+      if (dlErr) throw dlErr;
+      const staffFolder = (doc.credtrack_staff?.full_name || 'Unassigned').replace(/[\/\\:*?"<>|]/g, '_');
+      const typeName     = (doc.document_types?.name || doc.label || 'Document').replace(/[\/\\:*?"<>|]/g, '_');
+      const ext          = (doc.file_name || '').split('.').pop() || 'bin';
+      const safeName     = `${typeName}_${doc.id.slice(0,8)}.${ext}`;
+      zip.folder(staffFolder).file(safeName, blobData);
+      done++;
+    } catch(e) {
+      console.warn('Failed to download', doc.file_url, e);
+      failed++;
+    }
+    showStatus(`Downloading ${done + failed} of ${data.length}…`);
+  }
+
+  if (done === 0) { showStatus('All downloads failed — please try again.'); return; }
+
+  showStatus('Zipping files…');
+  const content = await zip.generateAsync({ type: 'blob' });
+  const url = URL.createObjectURL(content);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_Documents_${new Date().toISOString().slice(0,10)}.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  document.getElementById('bulkDownloadModal')?.remove();
+  toast(failed > 0 ? `Downloaded ${done} file(s), ${failed} failed` : `✓ ${done} file(s) downloaded`);
 }
 
 async function loadExpTracker() {
