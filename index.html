@@ -380,7 +380,7 @@
             <input class="inline-input" type="date" id="auExpiry" />
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;">
           <div>
             <label class="inline-label">Attach file (optional)</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -393,6 +393,10 @@
           <div>
             <label class="inline-label">Notes</label>
             <input class="inline-input" type="text" id="auNotes" placeholder="e.g. License #OK12345" />
+          </div>
+          <div>
+            <label class="inline-label">License #</label>
+            <input class="inline-input" type="text" id="auLicense" placeholder="e.g. OK12345" />
           </div>
           <div style="display:flex;gap:6px;align-items:flex-end;">
             <button class="btn btn-sm btn-teal" onclick="adminUploadDoc()">Save</button>
@@ -1486,11 +1490,19 @@ async function loadStaffTable() {
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
       <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
   </tr>`).join('');
+}
+
+function verifyLicense(staffId) {
+  const s = staffList.find(x => x.id === staffId);
+  const text = s ? (s.license_number ? `${s.full_name} (${s.license_number})` : s.full_name) : '';
+  navigator.clipboard.writeText(text).catch(() => {});
+  window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
 }
 
 function showAddStaff() { document.getElementById('addStaffForm').style.display = 'block'; }
@@ -1718,10 +1730,8 @@ async function scanCredential() {
     // Pre-fill form fields
     if (e.issued_date) document.getElementById('auIssued').value = e.issued_date;
     if (e.expiry_date) document.getElementById('auExpiry').value = e.expiry_date;
-    if (e.notes || e.license_number) {
-      const notes = [e.license_number ? `License #${e.license_number}` : '', e.notes || ''].filter(Boolean).join(' — ');
-      document.getElementById('auNotes').value = notes;
-    }
+    if (e.notes) document.getElementById('auNotes').value = e.notes;
+    if (e.license_number) document.getElementById('auLicense').value = e.license_number;
 
     // Try to match document type
     if (e.document_type) {
@@ -1775,6 +1785,7 @@ async function adminUploadDoc() {
   const issued   = document.getElementById('auIssued').value;
   const expiry   = document.getElementById('auExpiry').value;
   const notes    = document.getElementById('auNotes').value.trim();
+  const license  = document.getElementById('auLicense').value.trim();
   const file     = document.getElementById('auFile').files[0];
   const statusEl = document.getElementById('auStatus');
   statusEl.style.display = 'none';
@@ -1815,9 +1826,15 @@ async function adminUploadDoc() {
     });
     if (dbErr) throw dbErr;
 
+    if (license) {
+      await sb.from('credtrack_staff').update({ license_number: license }).eq('id', staffId);
+      const s = staffList.find(x => x.id === staffId);
+      if (s) s.license_number = license;
+    }
+
     showAuStatus('✓ Credential saved successfully.', 'ok');
     // Reset form
-    ['auStaff','auType','auIssued','auExpiry','auNotes'].forEach(id => document.getElementById(id).value = '');
+    ['auStaff','auType','auIssued','auExpiry','auNotes','auLicense'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('auFile').value = '';
     document.getElementById('auFileName').textContent = 'No file selected';
     toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
