@@ -1654,13 +1654,26 @@ async function toggleActive(id, active) {
 }
 
 async function deleteStaff(id, fullName) {
-  if (!confirm(`Permanently delete ${fullName}?\n\nThis will also delete all their credential records. For staff who quit, consider Deactivate instead to preserve their history.`)) return;
+  if (!confirm(`Permanently delete ${fullName}?\n\nThis will also delete all their credential records and their login (if any), so the same email can be re-invited later. For staff who quit, consider Deactivate instead to preserve their history.`)) return;
   try {
+    const staffRecord = staffList.find(x => x.id === id);
+
     // Documents cascade delete via FK, but let's also clean up storage files
     const { data: docs } = await sb.from('credtrack_documents')
       .select('file_url').eq('staff_id', id);
     const paths = (docs || []).map(d => d.file_url).filter(Boolean);
     if (paths.length) await sb.storage.from(STORAGE_BUCKET).remove(paths);
+
+    // Delete the underlying auth login too, so this email can be re-invited later
+    if (staffRecord && staffRecord.email) {
+      try {
+        await sb.functions.invoke('delete-staff-auth', {
+          body: { email: staffRecord.email, company_id: currentCompany.id }
+        });
+      } catch (authErr) {
+        console.warn('delete-staff-auth failed (continuing with profile delete):', authErr);
+      }
+    }
 
     await sb.from('credtrack_staff').delete().eq('id', id);
     toast(fullName + ' deleted');
