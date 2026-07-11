@@ -1502,6 +1502,10 @@ async function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
   const text = s ? (s.license_number ? `${s.full_name} (${s.license_number})` : s.full_name) : '';
 
+  // Open the tab FIRST, synchronously, so Chrome's popup blocker sees it
+  // as directly tied to the click. Doing this after an await gets silently blocked.
+  window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
+
   let copied = false;
   try {
     await navigator.clipboard.writeText(text);
@@ -1515,8 +1519,6 @@ async function verifyLicense(staffId) {
   } else {
     prompt('Clipboard copy failed — copy this manually:', text);
   }
-
-  window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
 }
 
 function showAddStaff() { document.getElementById('addStaffForm').style.display = 'block'; }
