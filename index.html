@@ -403,6 +403,26 @@
             <button class="btn btn-sm btn-ghost" onclick="toggleAdminUpload()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
           </div>
         </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px;">
+          <div>
+            <label class="inline-label">License state</label>
+            <select class="inline-select" id="auLicenseState"></select>
+          </div>
+          <div>
+            <label class="inline-label">License type</label>
+            <select class="inline-select" id="auLicenseType">
+              <option value="">— Not specified —</option>
+              <option value="PT">PT — Physical Therapist</option>
+              <option value="PTA">PTA — Physical Therapist Assistant</option>
+              <option value="OT">OT — Occupational Therapist</option>
+              <option value="COTA">COTA — Occupational Therapy Assistant</option>
+              <option value="SLP">SLP — Speech-Language Pathologist</option>
+              <option value="RN">RN — Registered Nurse</option>
+              <option value="LPN">LPN — Licensed Practical Nurse</option>
+              <option value="OTHER">Other</option>
+            </select>
+          </div>
+        </div>
         <div id="auStatus" class="up-status" style="margin-top:10px;"></div>
       </div>
 
@@ -702,6 +722,23 @@ let currentProfile = null;
 let currentCompany = null;
 let docTypes       = [];
 let staffList      = [];
+let boardConfig    = {}; // keyed by state_code, e.g. boardConfig['OK']
+
+async function loadBoardConfig() {
+  const { data } = await sb.from('license_board_config').select('*');
+  boardConfig = {};
+  (data || []).forEach(row => { boardConfig[row.state_code] = row; });
+}
+
+const LICENSE_TYPE_LABELS = {
+  PT:   'Physical Therapist',
+  PTA:  'Physical Therapist Assistant',
+  OT:   'Occupational Therapist',
+  COTA: 'Occupational Therapy Assistant',
+  SLP:  'Speech-Language Pathologist',
+  RN:   'Registered Nurse',
+  LPN:  'Licensed Practical Nurse',
+};
 
 // ══ UTILS ══
 function docStatus(d) {
@@ -799,6 +836,7 @@ async function initSession(user) {
     document.getElementById('hdrLogout').style.display = 'block';
 
     await loadDocTypes();
+    await loadBoardConfig();
 
     if (profile.role === 'admin' || profile.is_super_admin) {
       showScreen('adminScreen');
@@ -1500,22 +1538,37 @@ async function loadStaffTable() {
 
 function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+
+  const stateCode = s.license_state || 'OK';
+  const config = boardConfig[stateCode];
+
   let text = '';
   let fieldHint = '';
+  let url = '';
 
-  if (s && s.license_number) {
-    text = s.license_number;
-    fieldHint = 'License Number field';
-  } else if (s) {
-    // full_name is typically "First Last, Suffix" — strip suffix, take last word as last name
-    const nameOnly = s.full_name.split(',')[0].trim();
-    const parts = nameOnly.split(' ');
-    text = parts[parts.length - 1];
-    fieldHint = 'Last Name field';
+  if (config) {
+    // We have a verified board link/behavior for this state
+    if (s.license_number) {
+      text = s.license_number;
+      fieldHint = config.license_unique_by_num
+        ? 'License Number field'
+        : `License Number field${s.license_type ? ` — then set Profession to ${LICENSE_TYPE_LABELS[s.license_type] || s.license_type}` : ` — ${config.field_guidance || ''}`}`;
+    } else {
+      const nameOnly = s.full_name.split(',')[0].trim();
+      const parts = nameOnly.split(' ');
+      text = parts[parts.length - 1];
+      fieldHint = 'Last Name field';
+    }
+    url = config.lookup_url;
+  } else {
+    // No curated config yet for this state — fall back to a search
+    // that at least points toward the right board, rather than doing nothing.
+    text = s.license_number || s.full_name.split(',')[0].trim();
+    fieldHint = `no saved board link for ${stateCode} yet — opening a search instead`;
+    url = `https://www.google.com/search?q=${encodeURIComponent(stateCode + ' physical therapy license verification board lookup')}`;
   }
 
-  // Synchronous copy via a temporary textarea — avoids the async Clipboard API,
-  // which can silently hang once focus shifts to a newly opened tab.
   let copied = false;
   try {
     const ta = document.createElement('textarea');
@@ -1537,7 +1590,7 @@ function verifyLicense(staffId) {
     prompt(`Clipboard copy failed — copy this manually (paste into ${fieldHint}):`, text);
   }
 
-  window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
+  window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 function showAddStaff() { document.getElementById('addStaffForm').style.display = 'block'; }
@@ -1812,6 +1865,16 @@ function populateAdminUploadSelects() {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name; auType.appendChild(o);
   });
+  // License state dropdown
+  const auLicState = document.getElementById('auLicenseState');
+  const US_STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
+  auLicState.innerHTML = '';
+  Object.entries(US_STATES).forEach(([code, name]) => {
+    const o = document.createElement('option');
+    o.value = code; o.textContent = `${name} (${code})`;
+    if (code === 'OK') o.selected = true;
+    auLicState.appendChild(o);
+  });
 }
 
 async function adminUploadDoc() {
@@ -1821,6 +1884,8 @@ async function adminUploadDoc() {
   const expiry   = document.getElementById('auExpiry').value;
   const notes    = document.getElementById('auNotes').value.trim();
   const license  = document.getElementById('auLicense').value.trim();
+  const licState = document.getElementById('auLicenseState').value;
+  const licType  = document.getElementById('auLicenseType').value;
   const file     = document.getElementById('auFile').files[0];
   const statusEl = document.getElementById('auStatus');
   statusEl.style.display = 'none';
@@ -1862,9 +1927,12 @@ async function adminUploadDoc() {
     if (dbErr) throw dbErr;
 
     if (license) {
-      await sb.from('credtrack_staff').update({ license_number: license }).eq('id', staffId);
+      const updates = { license_number: license };
+      if (licState) updates.license_state = licState;
+      if (licType)  updates.license_type  = licType;
+      await sb.from('credtrack_staff').update(updates).eq('id', staffId);
       const s = staffList.find(x => x.id === staffId);
-      if (s) s.license_number = license;
+      if (s) Object.assign(s, updates);
     }
 
     showAuStatus('✓ Credential saved successfully.', 'ok');
