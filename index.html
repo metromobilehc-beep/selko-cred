@@ -2642,6 +2642,7 @@ async function sendInvite(staffId, fullName, email) {
         company_id:         currentCompany.id,
         role:               'clinician',
         inviter_company_id: currentCompany.id,
+        app:                'cred',
       }),
     });
     const result = await res.json();
