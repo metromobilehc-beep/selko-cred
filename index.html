@@ -1498,10 +1498,24 @@ async function loadStaffTable() {
   </tr>`).join('');
 }
 
-function verifyLicense(staffId) {
+async function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
   const text = s ? (s.license_number ? `${s.full_name} (${s.license_number})` : s.full_name) : '';
-  navigator.clipboard.writeText(text).catch(() => {});
+
+  let copied = false;
+  try {
+    await navigator.clipboard.writeText(text);
+    copied = true;
+  } catch (err) {
+    copied = false;
+  }
+
+  if (copied) {
+    toast(`Copied "${text}" — paste into the board search`);
+  } else {
+    prompt('Clipboard copy failed — copy this manually:', text);
+  }
+
   window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
 }
 
