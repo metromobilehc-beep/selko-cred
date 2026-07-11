@@ -1498,7 +1498,7 @@ async function loadStaffTable() {
   </tr>`).join('');
 }
 
-async function verifyLicense(staffId) {
+function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
   let text = '';
   let fieldHint = '';
@@ -1514,14 +1514,19 @@ async function verifyLicense(staffId) {
     fieldHint = 'Last Name field';
   }
 
-  // Open the tab FIRST, synchronously, so Chrome's popup blocker sees it
-  // as directly tied to the click.
-  window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
-
+  // Synchronous copy via a temporary textarea — avoids the async Clipboard API,
+  // which can silently hang once focus shifts to a newly opened tab.
   let copied = false;
   try {
-    await navigator.clipboard.writeText(text);
-    copied = true;
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    copied = document.execCommand('copy');
+    document.body.removeChild(ta);
   } catch (err) {
     copied = false;
   }
@@ -1531,6 +1536,8 @@ async function verifyLicense(staffId) {
   } else {
     prompt(`Clipboard copy failed — copy this manually (paste into ${fieldHint}):`, text);
   }
+
+  window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
 }
 
 function showAddStaff() { document.getElementById('addStaffForm').style.display = 'block'; }
