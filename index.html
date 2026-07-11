@@ -1500,10 +1500,22 @@ async function loadStaffTable() {
 
 async function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
-  const text = s ? (s.license_number ? `${s.full_name} (${s.license_number})` : s.full_name) : '';
+  let text = '';
+  let fieldHint = '';
+
+  if (s && s.license_number) {
+    text = s.license_number;
+    fieldHint = 'License Number field';
+  } else if (s) {
+    // full_name is typically "First Last, Suffix" — strip suffix, take last word as last name
+    const nameOnly = s.full_name.split(',')[0].trim();
+    const parts = nameOnly.split(' ');
+    text = parts[parts.length - 1];
+    fieldHint = 'Last Name field';
+  }
 
   // Open the tab FIRST, synchronously, so Chrome's popup blocker sees it
-  // as directly tied to the click. Doing this after an await gets silently blocked.
+  // as directly tied to the click.
   window.open('https://www.medicalboard.ok.gov/s/license-lookup', '_blank', 'noopener,noreferrer');
 
   let copied = false;
@@ -1515,9 +1527,9 @@ async function verifyLicense(staffId) {
   }
 
   if (copied) {
-    toast(`Copied "${text}" — paste into the board search`);
+    toast(`Copied "${text}" — paste into the ${fieldHint}`);
   } else {
-    prompt('Clipboard copy failed — copy this manually:', text);
+    prompt(`Clipboard copy failed — copy this manually (paste into ${fieldHint}):`, text);
   }
 }
 
