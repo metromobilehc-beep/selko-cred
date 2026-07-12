@@ -1574,10 +1574,63 @@ async function loadAdminDocs() {
       <td style="font-size:11px;color:rgba(255,255,255,.4);">${fmtDate(r.created_at)}</td>
       <td><div class="td-actions">
         ${fileHtml}
+        <button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>
         <button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>
       </div></td>
     </tr>`;
   }).join('');
+}
+
+function editDocDates(docId, currentIssued, currentExpiry) {
+  const existing = document.getElementById('editDatesModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'editDatesModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Edit dates</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Correct the issued/expiration dates if the board's record differs from what was originally entered.</div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">Issued date</label>
+        <input class="inline-input" type="date" id="editIssuedDate" value="${currentIssued || ''}" />
+      </div>
+      <div style="margin-bottom:18px;">
+        <label class="inline-label">Expiration date</label>
+        <input class="inline-input" type="date" id="editExpiryDate" value="${currentExpiry || ''}" />
+      </div>
+      <div id="editDatesErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveDocDates('${docId}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editDatesModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveDocDates(docId) {
+  const issued = document.getElementById('editIssuedDate').value || null;
+  const expiry = document.getElementById('editExpiryDate').value || null;
+  const errEl  = document.getElementById('editDatesErr');
+
+  const { error } = await sb.from('credtrack_documents').update({
+    issued_date: issued,
+    expiry_date: expiry,
+  }).eq('id', docId);
+
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('editDatesModal')?.remove();
+  toast('Dates updated');
+  await loadAdminDocs();
+  await loadAlertBanner();
+  await loadExpTracker();
 }
 
 async function verifyDoc(id) {
@@ -1803,6 +1856,7 @@ async function loadStaffTable() {
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
+      <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
       <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
       <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
@@ -1865,6 +1919,40 @@ function verifyLicense(staffId) {
   }
 
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function attachVerificationProof(staffId) {
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+
+  // Make sure we're on the Documents tab where the upload form lives
+  switchTab('docs');
+
+  const form = document.getElementById('adminUploadForm');
+  if (form.style.display !== 'block') {
+    toggleAdminUpload();
+  }
+
+  // populateAdminUploadSelects() runs inside toggleAdminUpload() when opening;
+  // give it a tick to finish populating the dropdowns before we set values.
+  setTimeout(() => {
+    document.getElementById('auStaff').value = staffId;
+
+    const verifType = docTypes.find(t => t.name.toLowerCase() === 'license verification record');
+    if (verifType) {
+      document.getElementById('auType').value = verifType.id;
+    } else {
+      toast('Set up "License Verification Record" as a document type first (Settings → Document types)', true);
+    }
+
+    const today = new Date().toLocaleDateString();
+    const stateLabel = s.license_state || 'OK';
+    document.getElementById('auNotes').value =
+      `License verified on ${stateLabel} board, ${today}, by ${currentProfile.full_name}`;
+
+    document.getElementById('auFile').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    toast(`Ready — attach the screenshot/PDF for ${s.full_name}`);
+  }, 50);
 }
 
 function showAddStaff() { document.getElementById('addStaffForm').style.display = 'block'; }
