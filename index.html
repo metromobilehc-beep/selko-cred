@@ -974,6 +974,7 @@ async function initStaff() {
   window._staffId = staffRec?.id || null;
   await renderStatCards(window._staffId);
   await loadMyDocs(window._staffId);
+  await restorePendingFrontPhoto();
 }
 
 async function renderStatCards(staffId) {
@@ -1081,6 +1082,7 @@ function onUpCameraSingleSelected(input) {
 
   if (frontEmpty) {
     setHiddenFile('upFile', newPhoto);
+    persistPendingFrontPhoto(newPhoto);
     toast('Front captured — tap "Take photo" again for the back, if needed');
   } else if (backEmpty) {
     setHiddenFile('upFile2', newPhoto);
@@ -1089,10 +1091,49 @@ function onUpCameraSingleSelected(input) {
     // Both already filled — start over with this as the new front
     setHiddenFile('upFile', newPhoto);
     setHiddenFile('upFile2', null);
+    persistPendingFrontPhoto(newPhoto);
     toast('Front replaced — tap "Take photo" again for the back, if needed');
   }
   input.value = '';
   refreshUpFileDisplay();
+}
+
+// Some mobile browsers (notably iOS Safari under memory pressure) silently
+// reload the page while the native camera app is open, wiping any JS state —
+// including a front photo just captured. Stashing it in sessionStorage lets
+// us recover it after such a reload, so tapping "Take photo" a second time
+// for the back doesn't lose the front.
+function persistPendingFrontPhoto(file) {
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      sessionStorage.setItem('selkoCredPendingFront', JSON.stringify({
+        name: file.name, type: file.type, dataUrl: reader.result,
+      }));
+    } catch(e) { /* sessionStorage full or unavailable — safe to ignore, just less resilient */ }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearPendingFrontPhoto() {
+  try { sessionStorage.removeItem('selkoCredPendingFront'); } catch(e) {}
+}
+
+async function restorePendingFrontPhoto() {
+  let saved;
+  try { saved = sessionStorage.getItem('selkoCredPendingFront'); } catch(e) { return; }
+  if (!saved) return;
+  try {
+    const { name, type, dataUrl } = JSON.parse(saved);
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    const file = new File([blob], name, { type });
+    setHiddenFile('upFile', file);
+    refreshUpFileDisplay();
+    toast('Recovered your front photo after the page reloaded — tap "Take photo" again for the back');
+  } catch(e) {
+    clearPendingFrontPhoto();
+  }
 }
 
 function clearPhoto() {
@@ -1100,6 +1141,7 @@ function clearPhoto() {
   setHiddenFile('upFile2', null);
   document.getElementById('upFilesMulti').value = '';
   document.getElementById('upCameraSingle').value = '';
+  clearPendingFrontPhoto();
   refreshUpFileDisplay();
 }
 
