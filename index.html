@@ -567,21 +567,48 @@
     <div id="tabInsurance" class="dark-panel" style="display:none;">
       <h2>Insurance network verification board</h2>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
-      <div class="inline-form" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-        <select class="inline-select" id="pnStaff"></select>
-        <select class="inline-select" id="pnPayer"></select>
-        <select class="inline-select" id="pnStatus">
-          <option value="pending">Pending</option>
-          <option value="in_network">In-network</option>
-          <option value="out_of_network">Out of network</option>
-          <option value="expired">Expired</option>
-        </select>
-        <input type="date" id="pnSubmitted"  title="Date submitted"   style="width:150px;" />
-        <input type="date" id="pnConfirmed"  title="Date confirmed"   style="width:150px;" />
-        <input type="date" id="pnInNetwork"  title="Date in-network"  style="width:150px;" />
-        <input type="date" id="pnExpiration" title="Expiration date"  style="width:150px;" />
-        <input type="text" id="pnConfCode"   placeholder="Confirmation code" style="width:170px;" />
-        <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:44px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;"></textarea>
+      <div class="inline-form" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;">
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
+          <select class="inline-select" id="pnStaff"></select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Payer</label>
+          <select class="inline-select" id="pnPayer"></select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Status</label>
+          <select class="inline-select" id="pnStatus">
+            <option value="pending">Pending</option>
+            <option value="in_network">In-network</option>
+            <option value="out_of_network">Out of network</option>
+            <option value="expired">Expired</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Submitted</label>
+          <input type="date" id="pnSubmitted" style="width:150px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmed</label>
+          <input type="date" id="pnConfirmed" style="width:150px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">In-network</label>
+          <input type="date" id="pnInNetwork" style="width:150px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
+          <input type="date" id="pnExpiration" style="width:150px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmation code</label>
+          <input type="text" id="pnConfCode" placeholder="e.g. AUTH-12345" style="width:170px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Notes</label>
+          <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;"></textarea>
+        </div>
         <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
       </div>
       <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
