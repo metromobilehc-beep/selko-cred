@@ -359,6 +359,7 @@
       <button class="tab active" id="tab-docs"     onclick="switchTab('docs')">Documents</button>
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')">Expiration tracker</button>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')">Staff</button>
+      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')">Insurance</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')">Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;">⚡ Selko Admin</button>
     </div>
@@ -563,6 +564,31 @@
     </div>
 
     <!-- SETTINGS TAB -->
+    <div id="tabInsurance" class="dark-panel" style="display:none;">
+      <h2>Insurance network verification board</h2>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
+      <div class="inline-form" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+        <select class="inline-select" id="pnStaff"></select>
+        <select class="inline-select" id="pnPayer"></select>
+        <select class="inline-select" id="pnStatus">
+          <option value="pending">Pending</option>
+          <option value="in_network">In-network</option>
+          <option value="out_of_network">Out of network</option>
+          <option value="expired">Expired</option>
+        </select>
+        <input type="date" id="pnEffective" title="Effective date" style="width:150px;" />
+        <input type="date" id="pnExpiration" title="Expiration date" style="width:150px;" />
+        <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
+      </div>
+      <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Effective</th><th>Expires</th><th>Actions</th></tr></thead>
+          <tbody id="payerBoardTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
     <div id="tabSettings" style="display:none;">
 
       <!-- Company settings -->
@@ -651,32 +677,6 @@
           <table>
             <thead><tr><th>Payer</th><th>Type</th><th>Actions</th></tr></thead>
             <tbody id="payersTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Insurance network verification board -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Insurance network verification board</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Track which staff are confirmed in-network with which payers.</p>
-        <div class="inline-form" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-          <select class="inline-select" id="pnStaff"></select>
-          <select class="inline-select" id="pnPayer"></select>
-          <select class="inline-select" id="pnStatus">
-            <option value="pending">Pending</option>
-            <option value="in_network">In-network</option>
-            <option value="out_of_network">Out of network</option>
-            <option value="expired">Expired</option>
-          </select>
-          <input type="date" id="pnEffective" title="Effective date" style="width:150px;" />
-          <input type="date" id="pnExpiration" title="Expiration date" style="width:150px;" />
-          <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
-        </div>
-        <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Effective</th><th>Expires</th><th>Actions</th></tr></thead>
-            <tbody id="payerBoardTbody"></tbody>
           </table>
         </div>
       </div>
@@ -2473,9 +2473,8 @@ async function loadSettings() {
   // Document types table
   await loadDocTypesTable();
 
-  // Payer list + verification board
+  // Payer list (add/delete management)
   await loadPayersTable();
-  await loadPayerBoard();
 }
 
 async function loadDocTypesTable() {
@@ -2581,10 +2580,23 @@ async function loadPayersTable() {
   sel.innerHTML = data.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 }
 
+async function loadInsuranceTab() {
+  await loadStaffList();   // ensure staffList is fresh in case Staff tab hasn't loaded yet
+  await loadPayerBoard();
+}
+
 async function loadPayerBoard() {
-  // populate staff dropdown from the already-loaded staffList
+  // populate staff dropdown from staffList
   const staffSel = document.getElementById('pnStaff');
   staffSel.innerHTML = staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+
+  // populate payer dropdown directly (don't depend on the Settings tab having loaded)
+  const { data: payerData } = await sb.from('payers')
+    .select('*')
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
+    .order('name');
+  const payerSel = document.getElementById('pnPayer');
+  payerSel.innerHTML = (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 
   const { data, error } = await sb.from('staff_payer_networks')
     .select('*, credtrack_staff(full_name), payers(name)')
@@ -2838,17 +2850,18 @@ function applyBranding(branding, logoUrl) {
 
 // ══ TABS ══
 function switchTab(tab) {
-  ['docs','exp','staff','settings','super'].forEach(t => {
+  ['docs','exp','staff','insurance','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
     if (btn)   btn.classList.toggle('active', tab === t);
   });
-  if (tab === 'docs')     loadAdminDocs();
-  if (tab === 'exp')      loadExpTracker();
-  if (tab === 'staff')    loadStaffTable();
-  if (tab === 'settings') loadSettings();
-  if (tab === 'super')    loadSuperAdmin();
+  if (tab === 'docs')      loadAdminDocs();
+  if (tab === 'exp')       loadExpTracker();
+  if (tab === 'staff')     loadStaffTable();
+  if (tab === 'insurance') loadInsuranceTab();
+  if (tab === 'settings')  loadSettings();
+  if (tab === 'super')     loadSuperAdmin();
 }
 
 // ══ SUPER ADMIN ══
