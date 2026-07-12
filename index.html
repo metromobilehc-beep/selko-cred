@@ -1806,14 +1806,31 @@ function showBulkDownloadPicker() {
   const existing = document.getElementById('bulkDownloadModal');
   if (existing) existing.remove();
 
+  const staffChecklist = staffList.map(s => `
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;color:#fff;cursor:pointer;">
+      <input type="checkbox" class="bulkDlStaffCheck" value="${s.id}" />
+      ${s.full_name}
+    </label>
+  `).join('');
+
   const modal = document.createElement('div');
   modal.id = 'bulkDownloadModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:6px;">Download documents</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:20px;">Choose which files to include in the ZIP.</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">Choose which files to include in the ZIP.</div>
+
+      <div style="border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:10px 14px;max-height:180px;overflow-y:auto;margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+          <span style="font-size:11px;color:rgba(255,255,255,.4);">Select specific therapist(s)</span>
+          <a href="#" onclick="document.querySelectorAll('.bulkDlStaffCheck').forEach(c=>c.checked=false);return false;" style="font-size:11px;color:var(--teal-l);">Clear</a>
+        </div>
+        ${staffChecklist || '<span style="font-size:12px;color:rgba(255,255,255,.3);">No staff found.</span>'}
+      </div>
+
       <div style="display:flex;flex-direction:column;gap:10px;">
+        <button class="btn btn-teal" onclick="runBulkDownload('selected')" style="justify-content:center;">Download selected therapist(s)</button>
         <button class="btn btn-teal" onclick="runBulkDownload(true)" style="justify-content:center;">Download current filtered results</button>
         <button class="btn btn-gold" onclick="runBulkDownload(false)" style="justify-content:center;">Download all documents</button>
         <button class="btn btn-ghost" onclick="document.getElementById('bulkDownloadModal').remove()" style="justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
@@ -1824,7 +1841,7 @@ function showBulkDownloadPicker() {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-async function runBulkDownload(useFilters) {
+async function runBulkDownload(mode) {
   const statusEl = document.getElementById('bulkDownloadStatus');
   const showStatus = (msg) => { if (statusEl) { statusEl.textContent = msg; statusEl.style.display = 'block'; } };
 
@@ -1833,7 +1850,11 @@ async function runBulkDownload(useFilters) {
     .eq('company_id', currentCompany.id)
     .not('file_url', 'is', null);
 
-  if (useFilters) {
+  if (mode === 'selected') {
+    const selectedIds = [...document.querySelectorAll('.bulkDlStaffCheck:checked')].map(c => c.value);
+    if (!selectedIds.length) { showStatus('Select at least one therapist first.'); return; }
+    q = q.in('staff_id', selectedIds);
+  } else if (mode === true) {
     const emp      = document.getElementById('fEmp')?.value      || '';
     const type     = document.getElementById('fType')?.value     || '';
     const verified = document.getElementById('fVerified')?.value || '';
@@ -1842,6 +1863,7 @@ async function runBulkDownload(useFilters) {
     if (verified === '1') q = q.eq('verified', true);
     if (verified === '0') q = q.eq('verified', false);
   }
+  // mode === false: no filters, download everything
 
   const { data, error } = await q;
   if (error) { showStatus('Error: ' + error.message); return; }
@@ -2004,7 +2026,7 @@ async function loadStaffTable() {
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
-      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
       <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
@@ -2243,7 +2265,21 @@ async function confirmStaffTypeCred(id, name) {
   await loadStaffTable();
 }
 
-async function resetPassword(email, fullName) {
+async function resetPassword(email, fullName, staffId) {
+  // Safeguard: a "reset password" only works if this person already has an
+  // account. If they never accepted an invite, there's nothing to reset —
+  // catch that here instead of silently sending a reset link that won't work.
+  const { data: existingProfile } = await sb.from('profiles').select('id').eq('email', email).maybeSingle();
+  if (!existingProfile) {
+    const wantsInvite = confirm(
+      `${fullName} (${email}) doesn't have an account yet — they haven't accepted an invite, so a password reset won't work for them.\n\nSend them a login invite instead?`
+    );
+    if (wantsInvite && staffId) {
+      await sendInvite(staffId, fullName, email);
+    }
+    return;
+  }
+
   if (!confirm(`Send a password reset email to ${fullName} at ${email}?`)) return;
   try {
     const { data: { session } } = await sb.auth.getSession();
