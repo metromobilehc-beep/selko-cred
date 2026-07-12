@@ -863,6 +863,11 @@ async function initSession(user) {
 
     if (company.branding_enabled && company.branding && Object.keys(company.branding).length) {
       applyBranding(company.branding, company.logo_url);
+    } else {
+      // Free baseline for every account, regardless of plan: at least show
+      // which company you're in. Custom colors/logo stay Pro-only.
+      const sub = document.querySelector('.logo-sub');
+      if (sub) sub.textContent = company.name;
     }
 
     document.getElementById('hdrUser').textContent    = profile.full_name;
