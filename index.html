@@ -274,7 +274,7 @@
         <div class="form-grid-2" style="margin-bottom:14px;">
           <div class="form-group" style="margin:0;">
             <label class="field-label">Document type</label>
-            <select id="upType"><option value="">— Select type —</option></select>
+            <select id="upType" onchange="onUpTypeChanged()"><option value="">— Select type —</option></select>
           </div>
           <div class="form-group" style="margin:0;">
             <label class="field-label">Expiration date (if applicable)</label>
@@ -297,6 +297,10 @@
             <img id="photoPreviewImg" />
             <button onclick="clearPhoto()" style="display:block;margin-top:6px;padding:3px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:12px;cursor:pointer;">Clear</button>
           </div>
+        </div>
+        <div class="form-group" id="upLicenseGroup" style="display:none;">
+          <label class="field-label">License number <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="upLicense" placeholder="e.g. OK12345" />
         </div>
         <div class="form-group">
           <label class="field-label">Notes (optional)</label>
@@ -382,7 +386,7 @@
           </div>
           <div>
             <label class="inline-label">Document type</label>
-            <select class="inline-select" id="auType">
+            <select class="inline-select" id="auType" onchange="onAuTypeChanged()">
               <option value="">— Select type —</option>
             </select>
           </div>
@@ -420,7 +424,7 @@
             <input class="inline-input" type="text" id="auNotes" placeholder="e.g. License #OK12345" />
           </div>
           <div>
-            <label class="inline-label">License #</label>
+            <label class="inline-label" id="auLicenseLabel">License #</label>
             <input class="inline-input" type="text" id="auLicense" placeholder="e.g. OK12345" />
           </div>
           <div style="display:flex;gap:6px;align-items:flex-end;">
@@ -1031,6 +1035,26 @@ async function loadMyDocs(staffId) {
   }).join('');
 }
 
+function isLicenseDocType(docType) {
+  if (!docType) return false;
+  return /license/i.test(docType.name || '');
+}
+
+function onUpTypeChanged() {
+  const typeId = document.getElementById('upType').value;
+  const docType = docTypes.find(d => d.id == typeId);
+  document.getElementById('upLicenseGroup').style.display = isLicenseDocType(docType) ? 'block' : 'none';
+}
+
+function onAuTypeChanged() {
+  const typeId = document.getElementById('auType').value;
+  const docType = docTypes.find(d => d.id == typeId);
+  const required = isLicenseDocType(docType);
+  document.getElementById('auLicenseLabel').innerHTML = required
+    ? 'License # <span style="color:#fca5a5;">*</span>'
+    : 'License #';
+}
+
 // ══ UPLOAD ══
 function setHiddenFile(inputId, file) {
   const dt = new DataTransfer();
@@ -1149,13 +1173,20 @@ async function uploadDoc() {
   const typeId  = document.getElementById('upType').value;
   const expDate = document.getElementById('upExp').value;
   const notes   = document.getElementById('upNotes').value.trim();
+  const license = document.getElementById('upLicense').value.trim();
   const file = document.getElementById('upFile').files[0];
   const btn  = document.getElementById('upBtn');
   document.getElementById('upStatus').style.display = 'none';
 
+  const docTypeForValidation = docTypes.find(d => d.id == typeId);
+
   if (!typeId) { showUpStatus('Please select a document type.', 'err'); return; }
   if (!file)   { showUpStatus('Please attach a file.', 'err'); return; }
   if (file.size > 10 * 1024 * 1024) { showUpStatus('File must be under 10MB.', 'err'); return; }
+  if (isLicenseDocType(docTypeForValidation) && !license) {
+    showUpStatus('Please enter your license number for this document type.', 'err');
+    return;
+  }
   if (!window._staffId) { showUpStatus('Your staff record is not set up. Contact your admin.', 'err'); return; }
 
   btn.disabled = true;
@@ -1196,10 +1227,16 @@ async function uploadDoc() {
     });
     if (dbErr) throw dbErr;
 
+    if (license) {
+      await sb.from('credtrack_staff').update({ license_number: license }).eq('id', window._staffId);
+    }
+
     showUpStatus('✓ Uploaded successfully. Your admin will review it shortly.', 'ok');
     document.getElementById('upType').value  = '';
     document.getElementById('upExp').value   = '';
     document.getElementById('upNotes').value = '';
+    document.getElementById('upLicense').value = '';
+    document.getElementById('upLicenseGroup').style.display = 'none';
     clearPhoto();
     await renderStatCards(window._staffId);
     await loadMyDocs(window._staffId);
@@ -2108,6 +2145,7 @@ function populateAdminUploadSelects() {
     if (code === 'OK') o.selected = true;
     auLicState.appendChild(o);
   });
+  onAuTypeChanged();
 }
 
 async function adminUploadDoc() {
@@ -2125,6 +2163,12 @@ async function adminUploadDoc() {
 
   if (!staffId) { showAuStatus('Please select a staff member.', 'err'); return; }
   if (!typeId)  { showAuStatus('Please select a document type.', 'err'); return; }
+
+  const docTypeForValidation = docTypes.find(d => d.id == typeId);
+  if (isLicenseDocType(docTypeForValidation) && !license) {
+    showAuStatus('License number is required for this document type.', 'err');
+    return;
+  }
 
   const docType = docTypes.find(d => d.id == typeId);
 
