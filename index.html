@@ -250,7 +250,10 @@
       <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" />
     </div>
     <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">Sign in</button>
-    <p style="margin-top:16px;font-size:12px;color:var(--gray-400);text-align:center;">Contact your administrator if you need access.</p>
+    <p style="margin-top:14px;text-align:center;">
+      <a href="#" onclick="forgotPassword(); return false;" style="font-size:13px;color:var(--teal);text-decoration:none;">Forgot password?</a>
+    </p>
+    <p style="margin-top:10px;font-size:12px;color:var(--gray-400);text-align:center;">Contact your administrator if you need access.</p>
   </div>
 </div>
 
@@ -809,6 +812,31 @@ async function doLogin() {
 document.getElementById('loginPassword').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
+
+async function forgotPassword() {
+  const alertEl = document.getElementById('loginAlert');
+  const prefill = document.getElementById('loginEmail').value.trim();
+  const email = prompt('Enter your work email to reset your password:', prefill);
+  if (!email) return;
+
+  alertEl.className = 'alert alert-success';
+  alertEl.textContent = 'Sending reset link…';
+  alertEl.style.display = 'block';
+
+  try {
+    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: 'https://cred.selko360.com/'
+    });
+    if (error) throw error;
+    // Don't reveal whether the email exists — same message either way
+    alertEl.className = 'alert alert-success';
+    alertEl.textContent = 'If an account exists for that email, a password reset link has been sent.';
+  } catch(e) {
+    alertEl.className = 'alert alert-error';
+    alertEl.textContent = 'Something went wrong: ' + e.message;
+  }
+  alertEl.style.display = 'block';
+}
 
 async function initSession(user) {
   try {
