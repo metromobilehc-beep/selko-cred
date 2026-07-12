@@ -282,28 +282,21 @@
           </div>
         </div>
         <div class="form-group">
-          <label class="field-label">Attach file</label>
+          <label class="field-label">Attach document (front & back, if applicable)</label>
           <div class="file-btns">
-            <label for="upFile"   class="file-label file-label-primary">📎 Choose file</label>
-            <label for="upCamera" class="file-label file-label-secondary">📷 Take photo</label>
+            <label for="upFilesMulti" class="file-label file-label-primary">📎 Choose file(s)</label>
+            <label for="upCameraSingle" class="file-label file-label-secondary">📷 Take photo</label>
             <span id="upFileName">No file selected</span>
           </div>
-          <input type="file"   id="upFile"   accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onFileSelected(this)" />
-          <input type="file"   id="upCamera" accept="image/*" capture="environment" style="display:none;" onchange="onFileSelected(this)" />
+          <div id="upFileHint" style="font-size:11px;color:var(--gray-400);margin-top:4px;display:none;">Tip: select both front and back at once with "Choose file(s)", or tap "Take photo" twice — once per side.</div>
+          <input type="file" id="upFilesMulti"   accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none;" onchange="onUpFilesMultiSelected(this)" />
+          <input type="file" id="upCameraSingle" accept="image/*" capture="environment" style="display:none;" onchange="onUpCameraSingleSelected(this)" />
+          <input type="file" id="upFile"  style="display:none;" />
+          <input type="file" id="upFile2" style="display:none;" />
           <div id="photoPreview">
             <img id="photoPreviewImg" />
-            <button onclick="clearPhoto()" style="display:block;margin-top:6px;padding:3px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:12px;cursor:pointer;">Remove</button>
+            <button onclick="clearPhoto()" style="display:block;margin-top:6px;padding:3px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:12px;cursor:pointer;">Clear</button>
           </div>
-        </div>
-        <div class="form-group">
-          <label class="field-label">Back of document (optional — e.g. reverse side of a license or ID card)</label>
-          <div class="file-btns">
-            <label for="upFile2"   class="file-label file-label-primary">📎 Choose file</label>
-            <label for="upCamera2" class="file-label file-label-secondary">📷 Take photo</label>
-            <span id="upFileName2">No file selected</span>
-          </div>
-          <input type="file" id="upFile2"   accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onFile2Selected(this)" />
-          <input type="file" id="upCamera2" accept="image/*" capture="environment" style="display:none;" onchange="onFile2Selected(this)" />
         </div>
         <div class="form-group">
           <label class="field-label">Notes (optional)</label>
@@ -1038,43 +1031,83 @@ async function loadMyDocs(staffId) {
 }
 
 // ══ UPLOAD ══
-function onFileSelected(input) {
-  if (input.id === 'upFile') document.getElementById('upCamera').value = '';
-  else document.getElementById('upFile').value = '';
-  const file = input.files[0];
-  if (!file) { clearPhoto(); return; }
-  document.getElementById('upFileName').textContent = file.name;
-  if (file.type.startsWith('image/')) {
+function setHiddenFile(inputId, file) {
+  const dt = new DataTransfer();
+  if (file) dt.items.add(file);
+  document.getElementById(inputId).files = dt.files;
+}
+
+function refreshUpFileDisplay() {
+  const front = document.getElementById('upFile').files[0];
+  const back  = document.getElementById('upFile2').files[0];
+  const nameEl = document.getElementById('upFileName');
+  const hintEl = document.getElementById('upFileHint');
+
+  if (!front && !back) {
+    nameEl.textContent = 'No file selected';
+    hintEl.style.display = 'none';
+  } else if (front && back) {
+    nameEl.textContent = `${front.name} + ${back.name} (front & back)`;
+    hintEl.style.display = 'none';
+  } else {
+    nameEl.textContent = front ? front.name : back.name;
+    hintEl.style.display = 'block';
+  }
+
+  if (front && front.type.startsWith('image/')) {
     const reader = new FileReader();
     reader.onload = e => {
       document.getElementById('photoPreviewImg').src = e.target.result;
       document.getElementById('photoPreview').style.display = 'block';
     };
-    reader.readAsDataURL(file);
-  } else { document.getElementById('photoPreview').style.display = 'none'; }
+    reader.readAsDataURL(front);
+  } else {
+    document.getElementById('photoPreview').style.display = 'none';
+  }
+}
+
+function onUpFilesMultiSelected(input) {
+  const files = input.files;
+  setHiddenFile('upFile',  files[0] || null);
+  setHiddenFile('upFile2', files[1] || null);
+  refreshUpFileDisplay();
+}
+
+function onUpCameraSingleSelected(input) {
+  const newPhoto = input.files[0];
+  if (!newPhoto) return;
+  const frontEmpty = !document.getElementById('upFile').files[0];
+  const backEmpty  = !document.getElementById('upFile2').files[0];
+
+  if (frontEmpty) {
+    setHiddenFile('upFile', newPhoto);
+    toast('Front captured — tap "Take photo" again for the back, if needed');
+  } else if (backEmpty) {
+    setHiddenFile('upFile2', newPhoto);
+    toast('Back captured');
+  } else {
+    // Both already filled — start over with this as the new front
+    setHiddenFile('upFile', newPhoto);
+    setHiddenFile('upFile2', null);
+    toast('Front replaced — tap "Take photo" again for the back, if needed');
+  }
+  input.value = '';
+  refreshUpFileDisplay();
 }
 
 function clearPhoto() {
-  document.getElementById('upFile').value = '';
-  document.getElementById('upCamera').value = '';
-  document.getElementById('upFileName').textContent = 'No file selected';
-  document.getElementById('photoPreview').style.display = 'none';
-  document.getElementById('photoPreviewImg').src = '';
-}
-
-function onFile2Selected(input) {
-  if (input.id === 'upFile2') document.getElementById('upCamera2').value = '';
-  else document.getElementById('upFile2').value = '';
-  const file = input.files[0];
-  document.getElementById('upFileName2').textContent = file ? file.name : 'No file selected';
+  setHiddenFile('upFile', null);
+  setHiddenFile('upFile2', null);
+  document.getElementById('upFilesMulti').value = '';
+  document.getElementById('upCameraSingle').value = '';
+  refreshUpFileDisplay();
 }
 
 async function uploadDoc() {
   const typeId  = document.getElementById('upType').value;
   const expDate = document.getElementById('upExp').value;
   const notes   = document.getElementById('upNotes').value.trim();
-  const fileInput = document.getElementById('upFile').files[0] ? document.getElementById('upFile') : document.getElementById('upCamera');
-  const file = fileInput.files[0];
+  const file = document.getElementById('upFile').files[0];
   const btn  = document.getElementById('upBtn');
   document.getElementById('upStatus').style.display = 'none';
 
@@ -1096,8 +1129,7 @@ async function uploadDoc() {
 
     // Optional second file (e.g. back of a license/ID)
     let fileUrl2 = null, fileName2 = null;
-    const file2Input = document.getElementById('upFile2').files[0] ? document.getElementById('upFile2') : document.getElementById('upCamera2');
-    const file2 = file2Input.files[0];
+    const file2 = document.getElementById('upFile2').files[0];
     if (file2) {
       if (file2.size > 10 * 1024 * 1024) { showUpStatus('Back-of-document file must be under 10MB.', 'err'); return; }
       const ext2  = file2.name.split('.').pop();
@@ -1127,9 +1159,6 @@ async function uploadDoc() {
     document.getElementById('upExp').value   = '';
     document.getElementById('upNotes').value = '';
     clearPhoto();
-    document.getElementById('upFile2').value = '';
-    document.getElementById('upCamera2').value = '';
-    document.getElementById('upFileName2').textContent = 'No file selected';
     await renderStatCards(window._staffId);
     await loadMyDocs(window._staffId);
     toast('Document uploaded');
