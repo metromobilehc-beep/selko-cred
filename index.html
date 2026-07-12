@@ -286,9 +286,12 @@
           <div class="file-btns">
             <label for="upFilesMulti" class="file-label file-label-primary">📎 Choose file(s)</label>
             <label for="upCameraSingle" class="file-label file-label-secondary">📷 Take photo</label>
-            <span id="upFileName">No file selected</span>
           </div>
-          <div id="upFileHint" style="font-size:11px;color:var(--gray-400);margin-top:4px;display:none;">Tip: select both front and back at once with "Choose file(s)", or tap "Take photo" twice — once per side.</div>
+          <div style="margin-top:8px;font-size:13px;">
+            <div id="upFrontStatus" style="color:var(--gray-400);">○ Front — not attached</div>
+            <div id="upBackStatus" style="color:var(--gray-400);margin-top:2px;">○ Back — not attached</div>
+          </div>
+          <div id="upFileHint" style="font-size:11px;color:var(--gray-400);margin-top:6px;display:none;">Tip: select both front and back at once with "Choose file(s)", or tap "Take photo" twice — once per side.</div>
           <input type="file" id="upFilesMulti"   accept=".pdf,.jpg,.jpeg,.png" multiple style="display:none;" onchange="onUpFilesMultiSelected(this)" />
           <input type="file" id="upCameraSingle" accept="image/*" capture="environment" style="display:none;" onchange="onUpCameraSingleSelected(this)" />
           <input type="file" id="upFile"  style="display:none;" />
@@ -298,6 +301,7 @@
             <button onclick="clearPhoto()" style="display:block;margin-top:6px;padding:3px 10px;background:transparent;border:1px solid var(--danger);color:var(--danger);border-radius:5px;font-size:12px;cursor:pointer;">Clear</button>
           </div>
         </div>
+        <span id="upFileName" style="display:none;"></span>
         <div class="form-group" id="upLicenseGroup" style="display:none;">
           <label class="field-label">License number <span style="color:var(--danger);">*</span></label>
           <input type="text" id="upLicense" placeholder="e.g. OK12345" />
@@ -1065,18 +1069,36 @@ function setHiddenFile(inputId, file) {
 function refreshUpFileDisplay() {
   const front = document.getElementById('upFile').files[0];
   const back  = document.getElementById('upFile2').files[0];
-  const nameEl = document.getElementById('upFileName');
   const hintEl = document.getElementById('upFileHint');
+  const frontEl = document.getElementById('upFrontStatus');
+  const backEl  = document.getElementById('upBackStatus');
 
-  if (!front && !back) {
-    nameEl.textContent = 'No file selected';
-    hintEl.style.display = 'none';
-  } else if (front && back) {
-    nameEl.textContent = `${front.name} + ${back.name} (front & back)`;
-    hintEl.style.display = 'none';
+  if (front) {
+    frontEl.textContent = `✓ Front — ${front.name}`;
+    frontEl.style.color = 'var(--success)';
+    frontEl.style.fontWeight = '600';
   } else {
-    nameEl.textContent = front ? front.name : back.name;
-    hintEl.style.display = 'block';
+    frontEl.textContent = '○ Front — not attached';
+    frontEl.style.color = 'var(--gray-400)';
+    frontEl.style.fontWeight = 'normal';
+  }
+
+  if (back) {
+    backEl.textContent = `✓ Back — ${back.name}`;
+    backEl.style.color = 'var(--success)';
+    backEl.style.fontWeight = '600';
+  } else {
+    backEl.textContent = '○ Back — not attached';
+    backEl.style.color = 'var(--gray-400)';
+    backEl.style.fontWeight = 'normal';
+  }
+
+  hintEl.style.display = (front && !back) ? 'block' : 'none';
+
+  // Legacy hidden field some other code paths may still reference
+  const nameEl = document.getElementById('upFileName');
+  if (nameEl) {
+    nameEl.textContent = front && back ? `${front.name} + ${back.name}` : (front?.name || back?.name || 'No file selected');
   }
 
   if (front && front.type.startsWith('image/')) {
