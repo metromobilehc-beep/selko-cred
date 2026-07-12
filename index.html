@@ -638,6 +638,49 @@
         </div>
       </div>
 
+      <!-- Payer network management -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Insurance payer list</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
+        <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;">
+          <input type="text" id="payerName" placeholder="Payer name (e.g. BlueCross BlueShield of Oklahoma)" style="flex:1;" />
+          <button class="btn btn-sm btn-gold" onclick="savePayer()">+ Add payer</button>
+        </div>
+        <div id="payerErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Payer</th><th>Type</th><th>Actions</th></tr></thead>
+            <tbody id="payersTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Insurance network verification board -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Insurance network verification board</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Track which staff are confirmed in-network with which payers.</p>
+        <div class="inline-form" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+          <select class="inline-select" id="pnStaff"></select>
+          <select class="inline-select" id="pnPayer"></select>
+          <select class="inline-select" id="pnStatus">
+            <option value="pending">Pending</option>
+            <option value="in_network">In-network</option>
+            <option value="out_of_network">Out of network</option>
+            <option value="expired">Expired</option>
+          </select>
+          <input type="date" id="pnEffective" title="Effective date" style="width:150px;" />
+          <input type="date" id="pnExpiration" title="Expiration date" style="width:150px;" />
+          <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
+        </div>
+        <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Effective</th><th>Expires</th><th>Actions</th></tr></thead>
+            <tbody id="payerBoardTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Trial management (super admin only) -->
       <div class="dark-panel" id="trialPanel" style="display:none;margin-bottom:16px;">
         <h2>Trial management</h2>
@@ -2429,6 +2472,10 @@ async function loadSettings() {
 
   // Document types table
   await loadDocTypesTable();
+
+  // Payer list + verification board
+  await loadPayersTable();
+  await loadPayerBoard();
 }
 
 async function loadDocTypesTable() {
@@ -2484,6 +2531,134 @@ async function deleteDocType(id, name) {
   toast(name + ' deleted');
   await loadDocTypesTable();
   await loadDocTypes();
+}
+
+// ══ PAYER NETWORK MANAGEMENT ══
+async function savePayer() {
+  const nameEl = document.getElementById('payerName');
+  const name   = nameEl.value.trim();
+  const err    = document.getElementById('payerErr');
+  err.style.display = 'none';
+  if (!name) { err.textContent = 'Payer name is required.'; err.style.display = 'block'; return; }
+  const { error } = await sb.from('payers').insert({ name, company_id: currentCompany.id, active: true });
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  toast('Payer "' + name + '" added');
+  nameEl.value = '';
+  await loadPayersTable();
+  await loadPayerBoard(); // refresh dropdown options
+}
+
+async function deletePayer(id, name) {
+  if (!confirm(`Delete payer "${name}"? This will also remove any staff network records tied to it.`)) return;
+  const { error } = await sb.from('payers').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(name + ' deleted');
+  await loadPayersTable();
+  await loadPayerBoard();
+}
+
+async function loadPayersTable() {
+  const { data } = await sb.from('payers')
+    .select('*')
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
+    .order('name');
+
+  const tbody = document.getElementById('payersTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No payers added yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = data.map(p => `<tr>
+    <td>${p.name}</td>
+    <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${p.company_id ? 'Custom' : 'Global'}</span></td>
+    <td><div class="td-actions">
+      ${p.company_id ? `<button class="btn btn-sm btn-danger" onclick="deletePayer('${p.id}','${p.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+    </div></td>
+  </tr>`).join('');
+
+  // populate the assignment form's payer dropdown too
+  const sel = document.getElementById('pnPayer');
+  sel.innerHTML = data.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+async function loadPayerBoard() {
+  // populate staff dropdown from the already-loaded staffList
+  const staffSel = document.getElementById('pnStaff');
+  staffSel.innerHTML = staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+
+  const { data, error } = await sb.from('staff_payer_networks')
+    .select('*, credtrack_staff(full_name), payers(name)')
+    .eq('company_id', currentCompany.id)
+    .order('created_at', { ascending: false });
+
+  const tbody = document.getElementById('payerBoardTbody');
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No network records yet.</td></tr>';
+    return;
+  }
+
+  const badgeClass = {
+    in_network:     'badge-verified',
+    pending:        'badge-warn',
+    out_of_network: 'badge-none',
+    expired:        'badge-none',
+  };
+  const badgeLabel = {
+    in_network:     'In-network',
+    pending:        'Pending',
+    out_of_network: 'Out of network',
+    expired:        'Expired',
+  };
+
+  tbody.innerHTML = data.map(r => `<tr>
+    <td>${r.credtrack_staff?.full_name || '—'}</td>
+    <td>${r.payers?.name || '—'}</td>
+    <td><span class="badge ${badgeClass[r.status] || 'badge-none'}">${badgeLabel[r.status] || r.status}</span></td>
+    <td>${r.effective_date || '—'}</td>
+    <td>${r.expiration_date || '—'}</td>
+    <td><div class="td-actions">
+      <button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+async function savePayerNetwork() {
+  const staffId    = document.getElementById('pnStaff').value;
+  const payerId    = document.getElementById('pnPayer').value;
+  const status     = document.getElementById('pnStatus').value;
+  const effective  = document.getElementById('pnEffective').value || null;
+  const expiration = document.getElementById('pnExpiration').value || null;
+  const err        = document.getElementById('pnErr');
+  err.style.display = 'none';
+  if (!staffId || !payerId) { err.textContent = 'Staff and payer are required.'; err.style.display = 'block'; return; }
+
+  const { error } = await sb.from('staff_payer_networks').upsert({
+    company_id: currentCompany.id,
+    staff_id: staffId,
+    payer_id: payerId,
+    status,
+    effective_date: effective,
+    expiration_date: expiration,
+    verified_at: status === 'in_network' ? new Date().toISOString() : null,
+  }, { onConflict: 'staff_id,payer_id' });
+
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  toast('Network status saved');
+  document.getElementById('pnEffective').value  = '';
+  document.getElementById('pnExpiration').value = '';
+  await loadPayerBoard();
+}
+
+async function deletePayerNetwork(id) {
+  if (!confirm('Delete this network record?')) return;
+  const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Record deleted');
+  await loadPayerBoard();
 }
 
 async function saveCompanySettings() {
@@ -3013,9 +3188,9 @@ async function superInvite() {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({
         name, email,
-        company_id:         companyId,
-        role:               'admin',
-        inviter_company_id: currentCompany.id,
+        company_id: companyId,
+        role:       'admin',
+        app:        'cred',
       }),
     });
     const result = await res.json();
