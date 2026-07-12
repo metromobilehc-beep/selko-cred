@@ -880,7 +880,31 @@ function toast(msg, isErr) {
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
+  if (isErr) logError('toast', msg);
 }
+
+async function logError(errorType, message, context) {
+  try {
+    await sb.from('error_logs').insert({
+      source_app:    'cred',
+      company_id:    (typeof currentCompany !== 'undefined' && currentCompany) ? currentCompany.id : null,
+      user_email:    (typeof currentProfile !== 'undefined' && currentProfile) ? currentProfile.email : null,
+      error_type:    errorType,
+      error_message: String(message).slice(0, 2000),
+      context:       context ? String(context).slice(0, 2000) : null,
+      url:           window.location.href,
+    });
+  } catch (_) {
+    // Never let logging itself break the app
+  }
+}
+
+window.addEventListener('error', (e) => {
+  logError('window_error', e.message, e.filename + ':' + e.lineno);
+});
+window.addEventListener('unhandledrejection', (e) => {
+  logError('unhandled_rejection', e.reason?.message || String(e.reason));
+});
 
 function showScreen(id) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
