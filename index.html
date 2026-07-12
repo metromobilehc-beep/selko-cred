@@ -1857,8 +1857,9 @@ async function loadStaffTable() {
 
   tbody.innerHTML = staffList.map(s => {
     const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
+    const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
     const nameCell = fullyVerified
-      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and verification record uploaded" style="margin-left:6px;">✓ Fully verified</span>`
+      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and a board verification record uploaded — does not cover CPR, driver's license, insurance, or other credential types" style="margin-left:6px;">✓ ${licenseLabel} Verified</span>`
       : s.full_name;
     return `<tr>
     <td>${nameCell}</td>
