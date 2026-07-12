@@ -750,6 +750,36 @@
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
+      <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🐛 Bug log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Errors logged across all Selko apps that write to this table.</p>
+        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+          <select class="inline-select" id="bugAppFilter" onchange="loadBugLog()">
+            <option value="">All apps</option>
+            <option value="cred">Cred</option>
+            <option value="comply">Comply</option>
+            <option value="billing">Billing</option>
+            <option value="hep">HEP</option>
+          </select>
+          <select class="inline-select" id="bugTypeFilter" onchange="loadBugLog()">
+            <option value="">All error types</option>
+            <option value="login_failed">Login failed</option>
+            <option value="session_restore_failed">Session restore failed</option>
+            <option value="toast">Toast (in-app error)</option>
+            <option value="window_error">Uncaught JS error</option>
+            <option value="unhandled_rejection">Unhandled rejection</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th></tr></thead>
+            <tbody id="bugLogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Add company -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>⚡ Selko Admin — Companies</h2>
@@ -932,6 +962,7 @@ async function doLogin() {
     await initSession(data.user);
   } catch(e) {
     showAlert(alertEl, 'Login error: ' + e.message);
+    logError('login_failed', e.message, 'attempted_email:' + email);
     btn.disabled = false;
     btn.textContent = 'Sign in';
   }
@@ -2935,8 +2966,50 @@ function switchTab(tab) {
   if (tab === 'super')     loadSuperAdmin();
 }
 
+async function loadBugLog() {
+  const appFilter  = document.getElementById('bugAppFilter')?.value  || '';
+  const typeFilter = document.getElementById('bugTypeFilter')?.value || '';
+
+  let q = sb.from('error_logs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (appFilter)  q = q.eq('source_app', appFilter);
+  if (typeFilter) q = q.eq('error_type', typeFilter);
+
+  const { data, error } = await q;
+  const tbody = document.getElementById('bugLogTbody');
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No errors logged.</td></tr>';
+    return;
+  }
+
+  // Look up company names for any rows that have a company_id (best-effort; skip if it fails)
+  const companyIds = [...new Set(data.map(r => r.company_id).filter(Boolean))];
+  let companyNames = {};
+  if (companyIds.length) {
+    const { data: comps } = await sb.from('companies').select('id, name').in('id', companyIds);
+    (comps || []).forEach(c => { companyNames[c.id] = c.name; });
+  }
+
+  tbody.innerHTML = data.map(r => `<tr>
+    <td style="white-space:nowrap;font-size:11px;color:rgba(255,255,255,.5);">${new Date(r.created_at).toLocaleString()}</td>
+    <td><span class="badge badge-ok">${r.source_app || '—'}</span></td>
+    <td style="font-size:11px;color:rgba(255,255,255,.6);">${r.error_type || '—'}</td>
+    <td style="max-width:280px;white-space:normal;font-size:12px;">${r.error_message || '—'}</td>
+    <td style="font-size:11px;">${r.user_email || '—'}</td>
+    <td style="font-size:11px;">${companyNames[r.company_id] || '—'}</td>
+    <td style="max-width:200px;white-space:normal;font-size:11px;color:rgba(255,255,255,.4);">${r.context || '—'}</td>
+  </tr>`).join('');
+}
+
 // ══ SUPER ADMIN ══
 async function loadSuperAdmin() {
+  await loadBugLog();
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
@@ -3378,9 +3451,18 @@ function showSetNewPasswordForm() {
 (async () => {
   if (isRecoveryLink) return;
   if (isInviteLink) { showSetNewPasswordForm(); return; }
-  const { data: { session } } = await sb.auth.getSession();
-  if (session?.user) {
-    await initSession(session.user);
+  let session;
+  try {
+    ({ data: { session } } = await sb.auth.getSession());
+    if (session?.user) {
+      await initSession(session.user);
+    }
+  } catch (e) {
+    logError('session_restore_failed', e.message, 'restore_email:' + (session?.user?.email || 'unknown'));
+    await sb.auth.signOut();
+    showScreen('loginScreen');
+    const alertEl = document.getElementById('loginAlert');
+    if (alertEl) { showAlert(alertEl, 'Your session could not be restored. Please sign in again.'); }
   }
 })();
 </script>
