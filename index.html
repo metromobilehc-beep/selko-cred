@@ -1846,8 +1846,22 @@ async function loadStaffTable() {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff added yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = staffList.map(s => `<tr>
-    <td>${s.full_name}</td>
+
+  // Find which staff have a "License Verification Record" on file, so we can
+  // show a combined "license number + verification proof" complete badge.
+  const { data: verifDocs } = await sb.from('credtrack_documents')
+    .select('staff_id, document_types!inner(name)')
+    .eq('company_id', currentCompany.id)
+    .eq('document_types.name', 'License Verification Record');
+  const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
+
+  tbody.innerHTML = staffList.map(s => {
+    const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
+    const nameCell = fullyVerified
+      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and verification record uploaded" style="margin-left:6px;">✓ Fully verified</span>`
+      : s.full_name;
+    return `<tr>
+    <td>${nameCell}</td>
     <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
     <td style="font-size:12px;">${s.job_title || '—'}</td>
     <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
@@ -1861,7 +1875,8 @@ async function loadStaffTable() {
       <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
       <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 }
 
 function verifyLicense(staffId) {
