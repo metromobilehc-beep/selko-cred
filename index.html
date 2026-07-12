@@ -567,6 +567,12 @@
     <div id="tabInsurance" class="dark-panel" style="display:none;">
       <h2>Insurance network verification board</h2>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
+
+      <!-- Quick reference: who's in-network, grouped by payer -->
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:16px;margin-bottom:20px;">
+        <h3 style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:12px;">Quick reference — who's in-network</h3>
+        <div id="pnQuickRef" style="display:flex;flex-direction:column;gap:10px;"></div>
+      </div>
       <div class="inline-form" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;">
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
@@ -2671,6 +2677,30 @@ async function loadInsuranceTab() {
   await loadPayerBoard();
 }
 
+function renderQuickRef(records) {
+  const el = document.getElementById('pnQuickRef');
+  const inNetwork = records.filter(r => r.status === 'in_network');
+  if (!inNetwork.length) {
+    el.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No staff confirmed in-network yet.</div>';
+    return;
+  }
+  const byPayer = {};
+  inNetwork.forEach(r => {
+    const payerName = r.payers?.name || 'Unknown payer';
+    (byPayer[payerName] ||= []).push(r.credtrack_staff?.full_name || 'Unknown staff');
+  });
+  el.innerHTML = Object.keys(byPayer).sort().map(payerName => `
+    <div>
+      <div style="font-size:12px;font-weight:600;color:#fff;margin-bottom:4px;">${payerName}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">
+        ${byPayer[payerName].sort().map(name =>
+          `<span class="badge badge-verified">${name}</span>`
+        ).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
 async function loadPayerBoard() {
   // populate staff dropdown from staffList
   const staffSel = document.getElementById('pnStaff');
@@ -2688,6 +2718,8 @@ async function loadPayerBoard() {
     .select('*, credtrack_staff(full_name), payers(name)')
     .eq('company_id', currentCompany.id)
     .order('created_at', { ascending: false });
+
+  renderQuickRef(data || []);
 
   const tbody = document.getElementById('payerBoardTbody');
   if (error) {
