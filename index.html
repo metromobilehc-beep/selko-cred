@@ -1039,9 +1039,11 @@ async function loadMyDocs(staffId) {
   }).join('');
 }
 
+const PROFESSIONAL_LICENSE_TYPES = ['pt license', 'pta license', 'ot license', 'cota license', 'slp license'];
+
 function isLicenseDocType(docType) {
-  if (!docType) return false;
-  return /license/i.test(docType.name || '');
+  if (!docType || !docType.name) return false;
+  return PROFESSIONAL_LICENSE_TYPES.includes(docType.name.trim().toLowerCase());
 }
 
 function onUpTypeChanged() {
