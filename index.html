@@ -330,9 +330,17 @@
       <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
     </div>
 
-    <div class="banner banner-danger" id="expiredBanner">
-      <div class="banner-title">🔴 Expired or expiring within 30 days</div>
-      <div class="banner-list" id="expiredList"></div>
+    <div class="banner banner-danger" id="expiredBanner" style="cursor:default;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <span id="expiredSummary" class="banner-title" style="margin:0;"></span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-ghost" id="expiredToggleBtn" onclick="toggleExpiredDetail()" style="border-color:rgba(153,27,27,.3);color:#b91c1c;">Show details</button>
+          <button class="btn btn-sm btn-gold" onclick="switchTab('exp')">View in tracker</button>
+        </div>
+      </div>
+      <div class="banner-list" id="expiredList" style="display:none;margin-top:10px;"></div>
     </div>
 
     <div class="tabs">
@@ -1524,19 +1532,39 @@ async function loadAlertBanner() {
     .eq('company_id', currentCompany.id)
     .not('expiry_date', 'is', null);
 
-  const urgent = (data || []).filter(r => {
-    const days = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000);
-    return days < 30;
-  });
+  const withDays = (data || []).map(r => ({
+    ...r,
+    days: Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000),
+  }));
+  const urgent = withDays.filter(r => r.days < 30).sort((a, b) => a.days - b.days);
 
   const banner = document.getElementById('expiredBanner');
-  if (urgent.length) {
-    banner.style.display = 'block';
-    document.getElementById('expiredList').innerHTML = urgent.map(r => {
-      const days = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000);
-      return `• ${r.credtrack_staff?.full_name || '?'} — ${r.document_types?.name || r.label} (${days < 0 ? 'EXPIRED ' + Math.abs(days) + 'd ago' : days + 'd remaining'})`;
-    }).join('<br>');
-  } else { banner.style.display = 'none'; }
+  if (!urgent.length) { banner.style.display = 'none'; return; }
+
+  banner.style.display = 'block';
+
+  const expiredCount = urgent.filter(r => r.days < 0).length;
+  const soonCount     = urgent.length - expiredCount;
+  const parts = [];
+  if (expiredCount) parts.push(`${expiredCount} expired`);
+  if (soonCount)    parts.push(`${soonCount} expiring within 30 days`);
+  document.getElementById('expiredSummary').textContent = `🔴 ${parts.join(' · ')}`;
+
+  document.getElementById('expiredList').innerHTML = urgent.map(r =>
+    `• ${r.credtrack_staff?.full_name || '?'} — ${r.document_types?.name || r.label} (${r.days < 0 ? 'EXPIRED ' + Math.abs(r.days) + 'd ago' : r.days + 'd remaining'})`
+  ).join('<br>');
+
+  // Collapse by default each time it reloads, so it never silently stays open and bulky
+  document.getElementById('expiredList').style.display = 'none';
+  document.getElementById('expiredToggleBtn').textContent = 'Show details';
+}
+
+function toggleExpiredDetail() {
+  const list = document.getElementById('expiredList');
+  const btn  = document.getElementById('expiredToggleBtn');
+  const isHidden = list.style.display === 'none';
+  list.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? 'Hide details' : 'Show details';
 }
 
 // ══ STAFF MANAGEMENT ══
