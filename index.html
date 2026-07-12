@@ -231,6 +231,7 @@
   <div id="hdrRight">
     <span id="hdrUser"></span>
     <span id="hdrRole"></span>
+    <button id="hdrMyCreds" onclick="toggleMyCredsView()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;display:none;">My Credentials</button>
     <button id="hdrLogout" onclick="logout()">Sign out</button>
   </div>
 </header>
@@ -876,6 +877,10 @@ async function initSession(user) {
     document.getElementById('hdrRole').style.display   = 'block';
     document.getElementById('hdrLogout').style.display = 'block';
 
+    if (profile.role === 'admin' || profile.is_super_admin) {
+      document.getElementById('hdrMyCreds').style.display = 'inline-block';
+    }
+
     await loadDocTypes();
     await loadBoardConfig();
 
@@ -930,11 +935,29 @@ async function loadDocTypes() {
 }
 
 // ══ STAFF INIT ══
+let _adminViewingOwnCreds = false;
+
+async function toggleMyCredsView() {
+  const btn = document.getElementById('hdrMyCreds');
+  _adminViewingOwnCreds = !_adminViewingOwnCreds;
+
+  if (_adminViewingOwnCreds) {
+    showScreen('staffScreen');
+    await initStaff();
+    btn.textContent = '← Back to Admin';
+  } else {
+    showScreen('adminScreen');
+    btn.textContent = 'My Credentials';
+    // Admin screen data was already loaded on initial login; just re-show it.
+    switchTab(document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'docs');
+  }
+}
+
 async function initStaff() {
   document.getElementById('staffGreeting').textContent =
     'My Credentials — ' + currentProfile.full_name.split(',')[0];
   const { data: staffRec } = await sb.from('credtrack_staff')
-    .select('*').eq('profile_id', currentProfile.id).single();
+    .select('*').eq('company_id', currentCompany.id).eq('email', currentProfile.email).maybeSingle();
   window._staffId = staffRec?.id || null;
   await renderStatCards(window._staffId);
   await loadMyDocs(window._staffId);
