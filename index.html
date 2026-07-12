@@ -416,9 +416,11 @@
             <label class="inline-label">Back of document (optional)</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <label for="auFile2" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📎 Choose file</label>
+              <label for="auCamera2" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--navy3);color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📷 Take photo</label>
               <span id="auFileName2" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">No file selected</span>
             </div>
             <input type="file" id="auFile2" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onAuFile2Selected(this)" />
+            <input type="file" id="auCamera2" accept="image/*" capture="environment" style="display:none;" onchange="onAuFile2Selected(this)" />
           </div>
           <div>
             <label class="inline-label">Notes</label>
@@ -1930,6 +1932,8 @@ function onAuFileSelected(input) {
 }
 
 function onAuFile2Selected(input) {
+  if (input.id === 'auFile2') document.getElementById('auCamera2').value = '';
+  else document.getElementById('auFile2').value = '';
   const file = input.files[0];
   document.getElementById('auFileName2').textContent = file ? file.name : 'No file selected';
 }
@@ -2070,7 +2074,7 @@ async function adminUploadDoc() {
 
     // Optional second file (e.g. back of a license/ID)
     let fileUrl2 = null, fileName2 = null;
-    const file2 = document.getElementById('auFile2').files[0];
+    const file2 = document.getElementById('auFile2').files[0] || document.getElementById('auCamera2').files[0];
     if (file2) {
       if (file2.size > 10 * 1024 * 1024) { showAuStatus('Back-of-document file must be under 10MB.', 'err'); return; }
       const ext2  = file2.name.split('.').pop();
@@ -2114,6 +2118,7 @@ async function adminUploadDoc() {
     document.getElementById('auFile').value = '';
     document.getElementById('auFileName').textContent = 'No file selected';
     document.getElementById('auFile2').value = '';
+    document.getElementById('auCamera2').value = '';
     document.getElementById('auFileName2').textContent = 'No file selected';
     toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
     await loadAdminDocs();
