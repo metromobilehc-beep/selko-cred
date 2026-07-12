@@ -296,6 +296,16 @@
           </div>
         </div>
         <div class="form-group">
+          <label class="field-label">Back of document (optional — e.g. reverse side of a license or ID card)</label>
+          <div class="file-btns">
+            <label for="upFile2"   class="file-label file-label-primary">📎 Choose file</label>
+            <label for="upCamera2" class="file-label file-label-secondary">📷 Take photo</label>
+            <span id="upFileName2">No file selected</span>
+          </div>
+          <input type="file" id="upFile2"   accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onFile2Selected(this)" />
+          <input type="file" id="upCamera2" accept="image/*" capture="environment" style="display:none;" onchange="onFile2Selected(this)" />
+        </div>
+        <div class="form-group">
           <label class="field-label">Notes (optional)</label>
           <input type="text" id="upNotes" placeholder="e.g. License #OK12345" />
         </div>
@@ -392,7 +402,7 @@
             <input class="inline-input" type="date" id="auExpiry" />
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;">
           <div>
             <label class="inline-label">Attach file (optional)</label>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -401,6 +411,14 @@
               <span id="auFileName" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">No file selected</span>
             </div>
             <input type="file" id="auFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onAuFileSelected(this)" />
+          </div>
+          <div>
+            <label class="inline-label">Back of document (optional)</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <label for="auFile2" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📎 Choose file</label>
+              <span id="auFileName2" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">No file selected</span>
+            </div>
+            <input type="file" id="auFile2" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onAuFile2Selected(this)" />
           </div>
           <div>
             <label class="inline-label">Notes</label>
@@ -1009,7 +1027,7 @@ async function loadMyDocs(staffId) {
       <div class="doc-icon">${icon}</div>
       <div class="doc-info">
         <div class="doc-name">${typeName} ${badge}</div>
-        <div class="doc-meta">${doc.file_name || 'Record only'} · Uploaded ${fmtDate(doc.created_at)}</div>
+        <div class="doc-meta">${doc.file_url_2 ? `${doc.file_name || 'Front'} + ${doc.file_name_2} (front & back)` : (doc.file_name || 'Record only')} · Uploaded ${fmtDate(doc.created_at)}</div>
         ${doc.notes ? `<div class="doc-note">${doc.notes}</div>` : ''}
       </div>
       ${statusBadge(doc.expiry_date)}
@@ -1042,6 +1060,13 @@ function clearPhoto() {
   document.getElementById('photoPreviewImg').src = '';
 }
 
+function onFile2Selected(input) {
+  if (input.id === 'upFile2') document.getElementById('upCamera2').value = '';
+  else document.getElementById('upFile2').value = '';
+  const file = input.files[0];
+  document.getElementById('upFileName2').textContent = file ? file.name : 'No file selected';
+}
+
 async function uploadDoc() {
   const typeId  = document.getElementById('upType').value;
   const expDate = document.getElementById('upExp').value;
@@ -1067,6 +1092,20 @@ async function uploadDoc() {
     const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
     if (stErr) throw stErr;
 
+    // Optional second file (e.g. back of a license/ID)
+    let fileUrl2 = null, fileName2 = null;
+    const file2Input = document.getElementById('upFile2').files[0] ? document.getElementById('upFile2') : document.getElementById('upCamera2');
+    const file2 = file2Input.files[0];
+    if (file2) {
+      if (file2.size > 10 * 1024 * 1024) { showUpStatus('Back-of-document file must be under 10MB.', 'err'); return; }
+      const ext2  = file2.name.split('.').pop();
+      const path2 = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}_back.${ext2}`;
+      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, file2, { contentType: file2.type });
+      if (stErr2) throw stErr2;
+      fileUrl2  = path2;
+      fileName2 = file2.name;
+    }
+
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
       company_id:       currentCompany.id,
       staff_id:         window._staffId,
@@ -1075,6 +1114,8 @@ async function uploadDoc() {
       expiry_date:      expDate || null,
       file_url:         path,
       file_name:        file.name,
+      file_url_2:       fileUrl2,
+      file_name_2:      fileName2,
       notes:            notes || null,
     });
     if (dbErr) throw dbErr;
@@ -1084,6 +1125,9 @@ async function uploadDoc() {
     document.getElementById('upExp').value   = '';
     document.getElementById('upNotes').value = '';
     clearPhoto();
+    document.getElementById('upFile2').value = '';
+    document.getElementById('upCamera2').value = '';
+    document.getElementById('upFileName2').textContent = 'No file selected';
     await renderStatCards(window._staffId);
     await loadMyDocs(window._staffId);
     toast('Document uploaded');
@@ -1382,9 +1426,10 @@ async function loadAdminDocs() {
     const verHtml  = r.verified
       ? '<span class="badge badge-verified">✓ Verified</span>'
       : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`;
-    const fileHtml = r.file_url
-      ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}') " style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View file</button>`
-      : '<span style="color:rgba(255,255,255,.3);font-size:12px;">No file</span>';
+    const fileHtml = [
+      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
+      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View back</button>` : '',
+    ].join(' ') || '<span style="color:rgba(255,255,255,.3);font-size:12px;">No file</span>';
     return `<tr>
       <td>${name}</td>
       <td>${typeName}</td>
@@ -1487,13 +1532,24 @@ async function runBulkDownload(useFilters) {
 
   for (const doc of data) {
     try {
-      const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(doc.file_url);
-      if (dlErr) throw dlErr;
       const staffFolder = (doc.credtrack_staff?.full_name || 'Unassigned').replace(/[\/\\:*?"<>|]/g, '_');
       const typeName     = (doc.document_types?.name || doc.label || 'Document').replace(/[\/\\:*?"<>|]/g, '_');
-      const ext          = (doc.file_name || '').split('.').pop() || 'bin';
-      const safeName     = `${typeName}_${doc.id.slice(0,8)}.${ext}`;
-      zip.folder(staffFolder).file(safeName, blobData);
+
+      if (doc.file_url) {
+        const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(doc.file_url);
+        if (dlErr) throw dlErr;
+        const ext      = (doc.file_name || '').split('.').pop() || 'bin';
+        const suffix   = doc.file_url_2 ? '_front' : '';
+        const safeName = `${typeName}_${doc.id.slice(0,8)}${suffix}.${ext}`;
+        zip.folder(staffFolder).file(safeName, blobData);
+      }
+      if (doc.file_url_2) {
+        const { data: blobData2, error: dlErr2 } = await sb.storage.from(STORAGE_BUCKET).download(doc.file_url_2);
+        if (dlErr2) throw dlErr2;
+        const ext2      = (doc.file_name_2 || '').split('.').pop() || 'bin';
+        const safeName2 = `${typeName}_${doc.id.slice(0,8)}_back.${ext2}`;
+        zip.folder(staffFolder).file(safeName2, blobData2);
+      }
       done++;
     } catch(e) {
       console.warn('Failed to download', doc.file_url, e);
@@ -1873,6 +1929,11 @@ function onAuFileSelected(input) {
   document.getElementById('scanBtn').style.display = 'inline-flex';
 }
 
+function onAuFile2Selected(input) {
+  const file = input.files[0];
+  document.getElementById('auFileName2').textContent = file ? file.name : 'No file selected';
+}
+
 async function scanCredential() {
   const file = document.getElementById('auFile').files[0];
   if (!file) { toast('Please select a file first', true); return; }
@@ -2007,6 +2068,19 @@ async function adminUploadDoc() {
       fileName = file.name;
     }
 
+    // Optional second file (e.g. back of a license/ID)
+    let fileUrl2 = null, fileName2 = null;
+    const file2 = document.getElementById('auFile2').files[0];
+    if (file2) {
+      if (file2.size > 10 * 1024 * 1024) { showAuStatus('Back-of-document file must be under 10MB.', 'err'); return; }
+      const ext2  = file2.name.split('.').pop();
+      const path2 = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}_back.${ext2}`;
+      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, file2, { contentType: file2.type });
+      if (stErr2) throw stErr2;
+      fileUrl2  = path2;
+      fileName2 = file2.name;
+    }
+
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
       company_id:       currentCompany.id,
       staff_id:         staffId,
@@ -2016,6 +2090,8 @@ async function adminUploadDoc() {
       expiry_date:      expiry || null,
       file_url:         fileUrl,
       file_name:        fileName,
+      file_url_2:       fileUrl2,
+      file_name_2:      fileName2,
       notes:            notes || null,
       verified:         true,
       verified_by:      currentProfile.full_name,
@@ -2037,6 +2113,8 @@ async function adminUploadDoc() {
     ['auStaff','auType','auIssued','auExpiry','auNotes','auLicense'].forEach(id => document.getElementById(id).value = '');
     document.getElementById('auFile').value = '';
     document.getElementById('auFileName').textContent = 'No file selected';
+    document.getElementById('auFile2').value = '';
+    document.getElementById('auFileName2').textContent = 'No file selected';
     toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
     await loadAdminDocs();
     await loadAlertBanner();
