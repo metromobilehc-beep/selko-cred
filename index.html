@@ -576,14 +576,18 @@
           <option value="out_of_network">Out of network</option>
           <option value="expired">Expired</option>
         </select>
-        <input type="date" id="pnEffective" title="Effective date" style="width:150px;" />
-        <input type="date" id="pnExpiration" title="Expiration date" style="width:150px;" />
+        <input type="date" id="pnSubmitted"  title="Date submitted"   style="width:150px;" />
+        <input type="date" id="pnConfirmed"  title="Date confirmed"   style="width:150px;" />
+        <input type="date" id="pnInNetwork"  title="Date in-network"  style="width:150px;" />
+        <input type="date" id="pnExpiration" title="Expiration date"  style="width:150px;" />
+        <input type="text" id="pnConfCode"   placeholder="Confirmation code" style="width:170px;" />
+        <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:44px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;"></textarea>
         <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
       </div>
       <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Effective</th><th>Expires</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
           <tbody id="payerBoardTbody"></tbody>
         </table>
       </div>
@@ -2630,8 +2634,12 @@ async function loadPayerBoard() {
     <td>${r.credtrack_staff?.full_name || '—'}</td>
     <td>${r.payers?.name || '—'}</td>
     <td><span class="badge ${badgeClass[r.status] || 'badge-none'}">${badgeLabel[r.status] || r.status}</span></td>
-    <td>${r.effective_date || '—'}</td>
+    <td>${r.date_submitted  || '—'}</td>
+    <td>${r.date_confirmed  || '—'}</td>
+    <td>${r.date_in_network || '—'}</td>
     <td>${r.expiration_date || '—'}</td>
+    <td>${r.confirmation_code || '—'}</td>
+    <td style="max-width:220px;white-space:normal;font-size:12px;color:rgba(255,255,255,.7);">${r.notes || '—'}</td>
     <td><div class="td-actions">
       <button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>
     </div></td>
@@ -2639,12 +2647,16 @@ async function loadPayerBoard() {
 }
 
 async function savePayerNetwork() {
-  const staffId    = document.getElementById('pnStaff').value;
-  const payerId    = document.getElementById('pnPayer').value;
-  const status     = document.getElementById('pnStatus').value;
-  const effective  = document.getElementById('pnEffective').value || null;
-  const expiration = document.getElementById('pnExpiration').value || null;
-  const err        = document.getElementById('pnErr');
+  const staffId       = document.getElementById('pnStaff').value;
+  const payerId       = document.getElementById('pnPayer').value;
+  const status        = document.getElementById('pnStatus').value;
+  const submitted     = document.getElementById('pnSubmitted').value  || null;
+  const confirmed     = document.getElementById('pnConfirmed').value  || null;
+  const inNetworkDate = document.getElementById('pnInNetwork').value  || null;
+  const expiration    = document.getElementById('pnExpiration').value || null;
+  const confCode      = document.getElementById('pnConfCode').value.trim() || null;
+  const notes         = document.getElementById('pnNotes').value.trim()    || null;
+  const err           = document.getElementById('pnErr');
   err.style.display = 'none';
   if (!staffId || !payerId) { err.textContent = 'Staff and payer are required.'; err.style.display = 'block'; return; }
 
@@ -2653,15 +2665,23 @@ async function savePayerNetwork() {
     staff_id: staffId,
     payer_id: payerId,
     status,
-    effective_date: effective,
+    date_submitted: submitted,
+    date_confirmed: confirmed,
+    date_in_network: inNetworkDate,
     expiration_date: expiration,
+    confirmation_code: confCode,
+    notes,
     verified_at: status === 'in_network' ? new Date().toISOString() : null,
   }, { onConflict: 'staff_id,payer_id' });
 
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
   toast('Network status saved');
-  document.getElementById('pnEffective').value  = '';
+  document.getElementById('pnSubmitted').value  = '';
+  document.getElementById('pnConfirmed').value  = '';
+  document.getElementById('pnInNetwork').value  = '';
   document.getElementById('pnExpiration').value = '';
+  document.getElementById('pnConfCode').value   = '';
+  document.getElementById('pnNotes').value      = '';
   await loadPayerBoard();
 }
 
