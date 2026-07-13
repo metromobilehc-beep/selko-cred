@@ -2110,7 +2110,7 @@ async function loadStaffTable() {
     <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
-      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
+      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="setupStaffLogin('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Set up login</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
@@ -2351,34 +2351,38 @@ async function confirmStaffTypeCred(id, name) {
 }
 
 async function resetPassword(email, fullName, staffId) {
-  // Safeguard: a "reset password" only works if this person already has an
-  // account. If they never accepted an invite, there's nothing to reset —
-  // catch that here instead of silently sending a reset link that won't work.
-  const { data: existingProfile } = await sb.from('profiles').select('id').eq('email', email).maybeSingle();
-  if (!existingProfile) {
-    const wantsInvite = confirm(
-      `${fullName} (${email}) doesn't have an account yet — they haven't accepted an invite, so a password reset won't work for them.\n\nSend them a login invite instead?`
-    );
-    if (wantsInvite && staffId) {
-      await sendInvite(staffId, fullName, email);
-    }
-    return;
-  }
+  // Reworked to skip email entirely — same reasoning as setupStaffLogin():
+  // link formats and delivery (spam filters, link-scanning security
+  // software) turned out to be unreliable. This sets a fresh temp password
+  // directly whether or not they have an existing account, using the same
+  // secured function as initial setup.
+  if (!confirm(`Set a new temporary password for ${fullName} (${email})?`)) return;
 
-  if (!confirm(`Send a password reset email to ${fullName} at ${email}?`)) return;
+  const tempPassword = generateTempPassword();
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reset-password', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
-      body: JSON.stringify({ email, redirect_to: 'https://cred.selko360.com' }),
+      body: JSON.stringify({
+        email,
+        password: tempPassword,
+        name: fullName,
+        company_id: currentCompany.id,
+        role: 'staff',
+      }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
-    toast(`Password reset sent to ${fullName}`);
+
+    if (result.user_id && staffId) {
+      await sb.from('credtrack_staff').update({ profile_id: result.user_id }).eq('id', staffId);
+    }
+
+    showTempPasswordModal(fullName, email, tempPassword);
   } catch(e) {
     toast('Reset failed: ' + e.message, true);
   }
@@ -3519,56 +3523,78 @@ async function superInvite() {
   }
 }
 
-// ══ INVITE ══
-async function sendInvite(staffId, fullName, email) {
-  if (!confirm(`Send login invite to ${fullName} at ${email}?`)) return;
+// ══ STAFF LOGIN SETUP ══
+// Replaces the old email-invite-link flow. That flow depended on Supabase
+// sending a link in one of three possible formats, and on nothing (spam
+// filters, corporate link-scanners that pre-click and burn one-time tokens,
+// etc.) getting in the way before the person ever saw it — all of which
+// caused real problems in practice. This sets a temp password directly and
+// server-side, no email or link involved: the admin relays it to the person
+// however's fastest (text, verbally, sticky note), they log in normally,
+// and can change it from within the app afterward if you add that option.
+function generateTempPassword() {
+  const words = ['Coral','Amber','Delta','Cedar','Ember','Falcon','Granite','Harbor','Ivory','Juniper','Maple','Onyx','Quartz','River','Sable','Timber'];
+  const word = words[Math.floor(Math.random() * words.length)];
+  const digits = Math.floor(1000 + Math.random() * 9000);
+  return `${word}${digits}!`;
+}
+
+async function setupStaffLogin(staffId, fullName, email) {
+  const tempPassword = generateTempPassword();
+  if (!confirm(`Set up login for ${fullName} (${email})?\n\nA temporary password will be generated for you to share with them directly.`)) return;
+
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({
-        name:               fullName,
-        email:              email,
-        company_id:         currentCompany.id,
-        role:               'staff',
-        inviter_company_id: currentCompany.id,
-        app:                'cred',
+        email,
+        password: tempPassword,
+        name: fullName,
+        company_id: currentCompany.id,
+        role: 'staff',
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
-    // Link profile_id to credtrack_staff row.
-    // invite-staff creates (or already has) the auth user server-side and
-    // should return its id — check the common shapes defensively since the
-    // exact response field isn't guaranteed without checking the function itself.
-    const newProfileId = result.user_id || result.id || result.user?.id || result.profile_id || null;
-
-    if (newProfileId) {
-      const { error: linkErr } = await sb.from('credtrack_staff')
-        .update({ email, profile_id: newProfileId })
-        .eq('id', staffId);
-      if (linkErr) throw linkErr;
-    } else {
-      // invite-staff didn't return a usable id — email still gets updated so
-      // the record stays in sync, but profile_id is NOT linked yet. This will
-      // reproduce the "row violates row-level security policy" upload error
-      // until profile_id is backfilled (see SQL fix) or invite-staff is
-      // updated to return the created user's id.
-      await sb.from('credtrack_staff').update({ email }).eq('id', staffId);
-      console.warn('sendInvite: invite-staff response did not include a user id — profile_id not linked for', email, result);
-      toast(`Invite sent to ${fullName}, but profile_id could not be linked automatically — check invite-staff response shape.`, true);
-      return;
+    // Link profile_id on the credtrack_staff row directly — no separate
+    // trigger/lookup needed since set-user-password already returns it.
+    if (result.user_id) {
+      await sb.from('credtrack_staff').update({ profile_id: result.user_id }).eq('id', staffId);
     }
 
-    toast(`Invite sent to ${fullName}`);
+    // Show the temp password clearly so it can be copied/relayed. Not using
+    // alert() so it can actually be selected and copied on a tablet.
+    showTempPasswordModal(fullName, email, tempPassword);
+    await loadStaffTable();
   } catch(e) {
-    toast('Invite failed: ' + e.message, true);
+    toast('Setup failed: ' + e.message, true);
   }
+}
+
+function showTempPasswordModal(fullName, email, tempPassword) {
+  const div = document.createElement('div');
+  div.id = 'tempPassModal';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  div.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:24px;max-width:380px;width:90%;font-family:sans-serif;">
+      <h3 style="margin:0 0 10px;color:#0b2340;">Login ready for ${fullName}</h3>
+      <p style="font-size:13px;color:#475569;margin-bottom:14px;">Share these with them directly (text, call, or in person) — this isn't sent automatically.</p>
+      <div style="background:#f4f6f9;border-radius:6px;padding:12px;margin-bottom:14px;">
+        <div style="font-size:12px;color:#64748b;">Email</div>
+        <div style="font-size:14px;font-weight:600;margin-bottom:8px;user-select:all;">${email}</div>
+        <div style="font-size:12px;color:#64748b;">Temporary password</div>
+        <div style="font-size:16px;font-weight:700;font-family:monospace;user-select:all;">${tempPassword}</div>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:14px;">They should change this after logging in.</p>
+      <button onclick="document.getElementById('tempPassModal').remove()" style="width:100%;padding:10px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Done</button>
+    </div>`;
+  document.body.appendChild(div);
 }
 
 // ══ CSV EXPORT ══
