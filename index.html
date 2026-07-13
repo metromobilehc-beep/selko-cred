@@ -2351,11 +2351,11 @@ async function confirmStaffTypeCred(id, name) {
 }
 
 async function resetPassword(email, fullName, staffId) {
-  // Reworked to skip email entirely — same reasoning as setupStaffLogin():
-  // link formats and delivery (spam filters, link-scanning security
-  // software) turned out to be unreliable. This sets a fresh temp password
-  // directly whether or not they have an existing account, using the same
-  // secured function as initial setup.
+  // Skips email-link-based reset entirely — same reasoning as
+  // setupStaffLogin(): link formats and delivery (spam filters, link-
+  // scanning security software, and a since-fixed trigger bug) turned out
+  // to be unreliable. This sets a fresh temp password directly and emails
+  // it from Selko, whether or not they have an existing account.
   if (!confirm(`Set a new temporary password for ${fullName} (${email})?`)) return;
 
   const tempPassword = generateTempPassword();
@@ -2373,6 +2373,7 @@ async function resetPassword(email, fullName, staffId) {
         name: fullName,
         company_id: currentCompany.id,
         role: 'staff',
+        login_url: 'https://cred.selko360.com',
       }),
     });
     const result = await res.json();
@@ -2382,7 +2383,7 @@ async function resetPassword(email, fullName, staffId) {
       await sb.from('credtrack_staff').update({ profile_id: result.user_id }).eq('id', staffId);
     }
 
-    showTempPasswordModal(fullName, email, tempPassword);
+    showTempPasswordModal(fullName, email, tempPassword, result.email_sent, result.email_error);
   } catch(e) {
     toast('Reset failed: ' + e.message, true);
   }
@@ -3541,7 +3542,7 @@ function generateTempPassword() {
 
 async function setupStaffLogin(staffId, fullName, email) {
   const tempPassword = generateTempPassword();
-  if (!confirm(`Set up login for ${fullName} (${email})?\n\nA temporary password will be generated for you to share with them directly.`)) return;
+  if (!confirm(`Set up login for ${fullName} (${email})?\n\nA temporary password will be generated and emailed to them directly from Selko.`)) return;
 
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -3557,34 +3558,37 @@ async function setupStaffLogin(staffId, fullName, email) {
         name: fullName,
         company_id: currentCompany.id,
         role: 'staff',
+        login_url: 'https://cred.selko360.com',
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
-    // Link profile_id on the credtrack_staff row directly — no separate
-    // trigger/lookup needed since set-user-password already returns it.
     if (result.user_id) {
       await sb.from('credtrack_staff').update({ profile_id: result.user_id }).eq('id', staffId);
     }
 
-    // Show the temp password clearly so it can be copied/relayed. Not using
-    // alert() so it can actually be selected and copied on a tablet.
-    showTempPasswordModal(fullName, email, tempPassword);
+    // Still show the password in the modal even when email sends
+    // successfully — gives the admin a fallback and something to reference
+    // if the person says they never got it.
+    showTempPasswordModal(fullName, email, tempPassword, result.email_sent, result.email_error);
     await loadStaffTable();
   } catch(e) {
     toast('Setup failed: ' + e.message, true);
   }
 }
 
-function showTempPasswordModal(fullName, email, tempPassword) {
+function showTempPasswordModal(fullName, email, tempPassword, emailSent, emailError) {
   const div = document.createElement('div');
   div.id = 'tempPassModal';
   div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  const statusHtml = emailSent
+    ? `<p style="font-size:13px;color:#0d9488;margin-bottom:14px;">✓ Emailed to ${email} from Selko.</p>`
+    : `<p style="font-size:13px;color:#b3541e;margin-bottom:14px;">⚠ Email could not be sent${emailError ? ' (' + emailError + ')' : ''} — share these with them directly instead.</p>`;
   div.innerHTML = `
     <div style="background:#fff;border-radius:10px;padding:24px;max-width:380px;width:90%;font-family:sans-serif;">
       <h3 style="margin:0 0 10px;color:#0b2340;">Login ready for ${fullName}</h3>
-      <p style="font-size:13px;color:#475569;margin-bottom:14px;">Share these with them directly (text, call, or in person) — this isn't sent automatically.</p>
+      ${statusHtml}
       <div style="background:#f4f6f9;border-radius:6px;padding:12px;margin-bottom:14px;">
         <div style="font-size:12px;color:#64748b;">Email</div>
         <div style="font-size:14px;font-weight:600;margin-bottom:8px;user-select:all;">${email}</div>
