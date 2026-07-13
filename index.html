@@ -1014,6 +1014,17 @@ async function initSession(user) {
     if (!company) throw new Error('No company found.');
     if (!company.has_credtrack) throw new Error('Your organization does not have access to Selko Cred. Contact your administrator.');
 
+    // Access gate: having a shared profiles row for this company is not
+    // enough — only people with an actual credtrack_staff record should
+    // get into Cred.
+    if (!profile.is_super_admin) {
+      const { data: staffCheck } = await sb.from('credtrack_staff')
+        .select('id').eq('company_id', profile.company_id).eq('email', profile.email).maybeSingle();
+      if (!staffCheck) {
+        throw new Error("Your account doesn't have access to Selko Cred. Contact your admin if you believe this is a mistake.");
+      }
+    }
+
     currentProfile = profile;
     currentCompany = company;
     window._isPro  = ['pro','enterprise'].includes(company.plan);
