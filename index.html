@@ -522,6 +522,22 @@
       <div class="dark-panel">
         <h2>Staff management</h2>
         <div class="filter-bar">
+          <select class="filter-sel" id="fStaffLicType" onchange="loadStaffTable()">
+            <option value="">All license types</option>
+            <option value="PT">PT</option>
+            <option value="PTA">PTA</option>
+            <option value="OT">OT</option>
+            <option value="COTA">COTA</option>
+            <option value="SLP">SLP</option>
+            <option value="RN">RN</option>
+            <option value="LPN">LPN</option>
+            <option value="OTHER">Other / not set</option>
+          </select>
+          <select class="filter-sel" id="fStaffVerified" onchange="loadStaffTable()">
+            <option value="">All verification statuses</option>
+            <option value="1">✓ Fully verified</option>
+            <option value="0">Still needs verification</option>
+          </select>
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
         </div>
         <div class="inline-form" id="addStaffForm">
@@ -2007,23 +2023,28 @@ function toggleExpiredDetail() {
 }
 
 // ══ STAFF MANAGEMENT ══
-async function loadStaffTable() {
-  await loadStaffList();
-  const tbody = document.getElementById('staffTbody');
-  if (!staffList.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff added yet.</td></tr>';
+const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
+  const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
+
+  let filteredStaff = staffList;
+  if (licTypeFilter) {
+    filteredStaff = filteredStaff.filter(s =>
+      licTypeFilter === 'OTHER' ? !s.license_type : s.license_type === licTypeFilter
+    );
+  }
+  if (verifiedFilter) {
+    filteredStaff = filteredStaff.filter(s => {
+      const isVerified = !!(s.license_number && verifiedStaffIds.has(s.id));
+      return verifiedFilter === '1' ? isVerified : !isVerified;
+    });
+  }
+
+  if (!filteredStaff.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff match these filters.</td></tr>';
     return;
   }
 
-  // Find which staff have a "License Verification Record" on file, so we can
-  // show a combined "license number + verification proof" complete badge.
-  const { data: verifDocs } = await sb.from('credtrack_documents')
-    .select('staff_id, document_types!inner(name)')
-    .eq('company_id', currentCompany.id)
-    .eq('document_types.name', 'License Verification Record');
-  const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
-
-  tbody.innerHTML = staffList.map(s => {
+  tbody.innerHTML = filteredStaff.map(s => {
     const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
     const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
     const nameCell = fullyVerified
