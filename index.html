@@ -517,7 +517,7 @@
       </div>
     </div>
 
-   <!-- STAFF TAB -->
+    <!-- STAFF TAB -->
     <div id="tabStaff" style="display:none;">
       <div class="dark-panel">
         <h2>Staff management</h2>
@@ -1691,78 +1691,29 @@ async function exportProReportPDF() {
   toast('PDF report exported');
 }
 
-async function loadStaffTable() {
-  await loadStaffList();
-  const tbody = document.getElementById('staffTbody');
-  if (!staffList.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff added yet.</td></tr>';
-    return;
-  }
-
-  // Find which staff have a "License Verification Record" on file, so we can
-  // show a combined "license number + verification proof" complete badge.
-  const { data: verifDocs } = await sb.from('credtrack_documents')
-    .select('staff_id, document_types!inner(name)')
-    .eq('company_id', currentCompany.id)
-    .eq('document_types.name', 'License Verification Record');
-  const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
-
-  const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
-  const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
-
-  let filteredStaff = staffList;
-  if (licTypeFilter) {
-    filteredStaff = filteredStaff.filter(s =>
-      licTypeFilter === 'OTHER' ? !s.license_type : s.license_type === licTypeFilter
-    );
-  }
-  if (verifiedFilter) {
-    filteredStaff = filteredStaff.filter(s => {
-      const isVerified = !!(s.license_number && verifiedStaffIds.has(s.id));
-      return verifiedFilter === '1' ? isVerified : !isVerified;
-    });
-  }
-
-  filteredStaff = [...filteredStaff].sort((a, b) => {
-    let av = a[_staffSortKey], bv = b[_staffSortKey];
-    if (_staffSortKey === 'active') { av = av ? 1 : 0; bv = bv ? 1 : 0; }
-    else { av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase(); }
-    if (av < bv) return _staffSortDir === 'asc' ? -1 : 1;
-    if (av > bv) return _staffSortDir === 'asc' ?  1 : -1;
-    return 0;
-  });
-  updateSortIcons();
-
-  if (!filteredStaff.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff match these filters.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = filteredStaff.map(s => {
-    const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
-    const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
-    const nameCell = fullyVerified
-      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and a board verification record uploaded — does not cover CPR, driver's license, insurance, or other credential types" style="margin-left:6px;">✓ ${licenseLabel} Verified</span>`
-      : s.full_name;
-    return `<tr>
-    <td>${nameCell}</td>
-    <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
-    <td style="font-size:12px;">${s.job_title || '—'}</td>
-    <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
-    <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
-    <td><div class="td-actions">
-      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
-      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
-      <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
-      <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
-      <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
-      <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
-    </div></td>
-  </tr>`;
-  }).join('');
+async function loadStaffList() {
+  const { data } = await sb.from('credtrack_staff')
+    .select('*').eq('company_id', currentCompany.id).order('full_name');
+  staffList = data || [];
 }
 
+async function loadAdminFilters() {
+  const fEmp    = document.getElementById('fEmp');
+  const fExpEmp = document.getElementById('fExpEmp');
+  const fType   = document.getElementById('fType');
+  [fEmp, fExpEmp].forEach(sel => {
+    sel.innerHTML = '<option value="">All staff</option>';
+    staffList.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id; o.textContent = s.full_name; sel.appendChild(o);
+    });
+  });
+  fType.innerHTML = '<option value="">All types</option>';
+  docTypes.forEach(t => {
+    const o = document.createElement('option');
+    o.value = t.id; o.textContent = t.name; fType.appendChild(o);
+  });
+}
 
 async function loadAdminDocs() {
   const emp      = document.getElementById('fEmp')?.value      || '';
@@ -2098,6 +2049,78 @@ function toggleExpiredDetail() {
   btn.textContent = isHidden ? 'Hide details' : 'Show details';
 }
 
+// ══ STAFF MANAGEMENT ══
+async function loadStaffTable() {
+  await loadStaffList();
+  const tbody = document.getElementById('staffTbody');
+  if (!staffList.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff added yet.</td></tr>';
+    return;
+  }
+
+  // Find which staff have a "License Verification Record" on file, so we can
+  // show a combined "license number + verification proof" complete badge.
+  const { data: verifDocs } = await sb.from('credtrack_documents')
+    .select('staff_id, document_types!inner(name)')
+    .eq('company_id', currentCompany.id)
+    .eq('document_types.name', 'License Verification Record');
+  const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
+
+  const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
+  const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
+
+  let filteredStaff = staffList;
+  if (licTypeFilter) {
+    filteredStaff = filteredStaff.filter(s =>
+      licTypeFilter === 'OTHER' ? !s.license_type : s.license_type === licTypeFilter
+    );
+  }
+  if (verifiedFilter) {
+    filteredStaff = filteredStaff.filter(s => {
+      const isVerified = !!(s.license_number && verifiedStaffIds.has(s.id));
+      return verifiedFilter === '1' ? isVerified : !isVerified;
+    });
+  }
+
+  filteredStaff = [...filteredStaff].sort((a, b) => {
+    let av = a[_staffSortKey], bv = b[_staffSortKey];
+    if (_staffSortKey === 'active') { av = av ? 1 : 0; bv = bv ? 1 : 0; }
+    else { av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase(); }
+    if (av < bv) return _staffSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _staffSortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+  updateSortIcons();
+
+  if (!filteredStaff.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff match these filters.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filteredStaff.map(s => {
+    const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
+    const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
+    const nameCell = fullyVerified
+      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and a board verification record uploaded — does not cover CPR, driver's license, insurance, or other credential types" style="margin-left:6px;">✓ ${licenseLabel} Verified</span>`
+      : s.full_name;
+    return `<tr>
+    <td>${nameCell}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
+    <td style="font-size:12px;">${s.job_title || '—'}</td>
+    <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
+    <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
+    <td><div class="td-actions">
+      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
+      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
+      <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
+      <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
+      <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
+    </div></td>
+  </tr>`;
+  }).join('');
+}
 
 function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
@@ -3543,7 +3566,7 @@ function exportCsv() {
 // ══ PASSWORD RECOVERY ══
 const isRecoveryLink = location.hash.includes('type=recovery') || location.search.includes('type=recovery');
 const isInviteLink   = location.hash.includes('type=invite')   || location.search.includes('type=invite')
-                       || (location.hash.includes('access_token') && !location.hash.includes('type=recovery'));
+                       || (location.hash.includes('access_token') && !isRecoveryLink);
 const requiresPasswordSetup = isRecoveryLink || isInviteLink;
 
 sb.auth.onAuthStateChange((event, session) => {
