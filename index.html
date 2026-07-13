@@ -3585,17 +3585,24 @@ function exportCsv() {
   a.click();
 }
 
-// ══ PASSWORD RECOVERY ══
-// supabase-js@2.39.3 defaults to PKCE flow, so invite/recovery emails link to
-// "?code=..." — NOT the old "#access_token=...&type=recovery" hash format.
-// The checks below still cover the old format for safety, but hasAuthCode is
-// the one that actually matches what Supabase sends today.
-const urlParams = new URLSearchParams(location.search);
-const hasAuthCode = urlParams.has('code');
-const isRecoveryLink = location.hash.includes('type=recovery') || location.search.includes('type=recovery');
-const isInviteLink   = location.hash.includes('type=invite')   || location.search.includes('type=invite')
-                       || (location.hash.includes('access_token') && !isRecoveryLink);
-const requiresPasswordSetup = isRecoveryLink || isInviteLink || hasAuthCode;
+// ══ PASSWORD RECOVERY / INVITE LINK HANDLING ══
+// Supabase can deliver invite/recovery links in three different formats
+// depending on project settings and library defaults. Handle all three so
+// this can't silently break again if the format changes:
+//   1. Implicit/hash:  #access_token=...&type=recovery|invite
+//   2. OTP/query:      ?token_hash=...&type=recovery|invite   -> verifyOtp()
+//   3. PKCE:           ?code=...                              -> exchangeCodeForSession()
+const hashParams  = new URLSearchParams(location.hash.replace(/^#/, ''));
+const queryParams = new URLSearchParams(location.search);
+
+const linkType      = hashParams.get('type') || queryParams.get('type'); // 'recovery' | 'invite' | null
+const hasAccessToken = hashParams.has('access_token');
+const hasTokenHash   = queryParams.has('token_hash');
+const hasAuthCode    = queryParams.has('code');
+
+const isRecoveryLink = linkType === 'recovery';
+const isInviteLink   = linkType === 'invite' || (hasAccessToken && !isRecoveryLink);
+const requiresPasswordSetup = isRecoveryLink || isInviteLink || hasTokenHash || hasAuthCode;
 
 sb.auth.onAuthStateChange((event, session) => {
   if (event === 'PASSWORD_RECOVERY') {
@@ -3631,6 +3638,14 @@ function showSetNewPasswordForm() {
 
 // ══ SESSION RESTORE ══
 (async () => {
+  if (hasTokenHash) {
+    const { error: otpErr } = await sb.auth.verifyOtp({
+      token_hash: queryParams.get('token_hash'),
+      type: (queryParams.get('type') || 'invite'),
+    });
+    if (!otpErr) { showSetNewPasswordForm(); return; }
+    logError('recovery_verifyOtp_failed', otpErr.message, location.href);
+  }
   if (hasAuthCode) {
     const { error: exchangeErr } = await sb.auth.exchangeCodeForSession(window.location.href);
     if (!exchangeErr) { showSetNewPasswordForm(); return; }
