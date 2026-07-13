@@ -1701,7 +1701,7 @@ async function loadStaffTable() {
     return;
   }
 
-  tbody.innerHTML = filteredStaff.map(s => {
+  tbody.innerHTML = staffList.map(s => {
     const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
     const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
     const nameCell = fullyVerified
@@ -1724,7 +1724,6 @@ async function loadStaffTable() {
     </div></td>
   </tr>`;
   }).join('');
-}
 
 async function loadAdminDocs() {
   const emp      = document.getElementById('fEmp')?.value      || '';
