@@ -572,7 +572,14 @@
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Type</th><th>Status</th><th>Actions</th></tr></thead>
+            <thead><tr>
+              <th style="cursor:pointer;" onclick="setStaffSort('full_name')">Name <span id="sortIcon_full_name"></span></th>
+              <th style="cursor:pointer;" onclick="setStaffSort('email')">Email <span id="sortIcon_email"></span></th>
+              <th style="cursor:pointer;" onclick="setStaffSort('job_title')">Title <span id="sortIcon_job_title"></span></th>
+              <th style="cursor:pointer;" onclick="setStaffSort('staff_type')">Type <span id="sortIcon_staff_type"></span></th>
+              <th style="cursor:pointer;" onclick="setStaffSort('active')">Status <span id="sortIcon_active"></span></th>
+              <th>Actions</th>
+            </tr></thead>
             <tbody id="staffTbody"></tbody>
           </table>
         </div>
@@ -881,6 +888,26 @@ let currentProfile = null;
 let currentCompany = null;
 let docTypes       = [];
 let staffList      = [];
+let _staffSortKey  = 'full_name';
+let _staffSortDir  = 'asc';
+
+function setStaffSort(key) {
+  if (_staffSortKey === key) {
+    _staffSortDir = _staffSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    _staffSortKey = key;
+    _staffSortDir = 'asc';
+  }
+  loadStaffTable();
+}
+
+function updateSortIcons() {
+  ['full_name','email','job_title','staff_type','active'].forEach(k => {
+    const el = document.getElementById('sortIcon_' + k);
+    if (!el) return;
+    el.textContent = k === _staffSortKey ? (_staffSortDir === 'asc' ? '▲' : '▼') : '';
+  });
+}
 let boardConfig    = {}; // keyed by state_code, e.g. boardConfig['OK']
 
 async function loadBoardConfig() {
@@ -1696,12 +1723,22 @@ async function loadStaffTable() {
     });
   }
 
+  filteredStaff = [...filteredStaff].sort((a, b) => {
+    let av = a[_staffSortKey], bv = b[_staffSortKey];
+    if (_staffSortKey === 'active') { av = av ? 1 : 0; bv = bv ? 1 : 0; }
+    else { av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase(); }
+    if (av < bv) return _staffSortDir === 'asc' ? -1 : 1;
+    if (av > bv) return _staffSortDir === 'asc' ?  1 : -1;
+    return 0;
+  });
+  updateSortIcons();
+
   if (!filteredStaff.length) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff match these filters.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = staffList.map(s => {
+  tbody.innerHTML = filteredStaff.map(s => {
     const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
     const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
     const nameCell = fullyVerified
@@ -1724,6 +1761,8 @@ async function loadStaffTable() {
     </div></td>
   </tr>`;
   }).join('');
+}
+
 
 async function loadAdminDocs() {
   const emp      = document.getElementById('fEmp')?.value      || '';
@@ -2059,52 +2098,6 @@ function toggleExpiredDetail() {
   btn.textContent = isHidden ? 'Hide details' : 'Show details';
 }
 
-// ══ STAFF MANAGEMENT ══
-const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
-  const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
-
-  let filteredStaff = staffList;
-  if (licTypeFilter) {
-    filteredStaff = filteredStaff.filter(s =>
-      licTypeFilter === 'OTHER' ? !s.license_type : s.license_type === licTypeFilter
-    );
-  }
-  if (verifiedFilter) {
-    filteredStaff = filteredStaff.filter(s => {
-      const isVerified = !!(s.license_number && verifiedStaffIds.has(s.id));
-      return verifiedFilter === '1' ? isVerified : !isVerified;
-    });
-  }
-
-  if (!filteredStaff.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff match these filters.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = filteredStaff.map(s => {
-    const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
-    const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
-    const nameCell = fullyVerified
-      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and a board verification record uploaded — does not cover CPR, driver's license, insurance, or other credential types" style="margin-left:6px;">✓ ${licenseLabel} Verified</span>`
-      : s.full_name;
-    return `<tr>
-    <td>${nameCell}</td>
-    <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
-    <td style="font-size:12px;">${s.job_title || '—'}</td>
-    <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
-    <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
-    <td><div class="td-actions">
-      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="sendInvite('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Send invite</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
-      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
-      <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
-      <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
-      <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
-      <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
-    </div></td>
-  </tr>`;
-  }).join('');
-}
 
 function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
