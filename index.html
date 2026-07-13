@@ -3582,7 +3582,7 @@ function showSetNewPasswordForm() {
 
 // ══ SESSION RESTORE ══
 (async () => {
-  if (isRecoveryLink) return;
+  if (isRecoveryLink) { showSetNewPasswordForm(); return; }
   if (isInviteLink) { showSetNewPasswordForm(); return; }
   let session;
   try {
