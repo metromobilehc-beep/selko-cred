@@ -3549,7 +3549,8 @@ function exportCsv() {
 
 // ══ PASSWORD RECOVERY ══
 const isRecoveryLink = location.hash.includes('type=recovery') || location.search.includes('type=recovery');
-const isInviteLink   = location.hash.includes('type=invite')   || location.search.includes('type=invite');
+const isInviteLink   = location.hash.includes('type=invite')   || location.search.includes('type=invite')
+                       || (location.hash.includes('access_token') && !location.hash.includes('type=recovery'));
 const requiresPasswordSetup = isRecoveryLink || isInviteLink;
 
 sb.auth.onAuthStateChange((event, session) => {
