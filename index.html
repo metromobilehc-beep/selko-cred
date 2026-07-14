@@ -2383,6 +2383,7 @@ async function resetPassword(email, fullName, staffId) {
         role: 'staff',
         login_url: 'https://cred.selko360.com',
         app_label: 'Cred',
+        force_reset: true,
       }),
     });
     const result = await res.json();
@@ -3551,7 +3552,7 @@ function generateTempPassword() {
 
 async function setupStaffLogin(staffId, fullName, email) {
   const tempPassword = generateTempPassword();
-  if (!confirm(`Set up login for ${fullName} (${email})?\n\nA temporary password will be generated and emailed to them directly from Selko.`)) return;
+  if (!confirm(`Set up login for ${fullName} (${email})?\n\nIf they don't have a Selko account yet, one will be created and emailed to them. If they already have an account (e.g. from another Selko app), this just grants access — their existing password stays the same.`)) return;
 
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -3569,6 +3570,7 @@ async function setupStaffLogin(staffId, fullName, email) {
         role: 'staff',
         login_url: 'https://cred.selko360.com',
         app_label: 'Cred',
+        force_reset: false,
       }),
     });
     const result = await res.json();
@@ -3578,10 +3580,15 @@ async function setupStaffLogin(staffId, fullName, email) {
       await sb.from('credtrack_staff').update({ profile_id: result.user_id }).eq('id', staffId);
     }
 
-    // Still show the password in the modal even when email sends
-    // successfully — gives the admin a fallback and something to reference
-    // if the person says they never got it.
-    showTempPasswordModal(fullName, email, tempPassword, result.email_sent, result.email_error);
+    if (result.password_reset) {
+      // New account, or their first-ever password on an existing account —
+      // show the credentials same as always.
+      showTempPasswordModal(fullName, email, tempPassword, result.email_sent, result.email_error);
+    } else {
+      // They already had a working login (likely from another Selko app) —
+      // don't show a fake "new password," since we didn't set one.
+      toast(`✓ ${fullName} already has a Selko login — access to Cred granted, no password changed.`);
+    }
     await loadStaffTable();
   } catch(e) {
     toast('Setup failed: ' + e.message, true);
