@@ -1108,6 +1108,11 @@ async function initSession(user) {
       if (profile.is_super_admin) {
         document.getElementById('tab-super').style.display = 'inline-flex';
       }
+    } else if (profile.insurance_access) {
+      document.getElementById('hdrRole').textContent = 'Insurance Access';
+      showScreen('adminScreen');
+      await initAdmin();
+      restrictToInsuranceOnly();
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -2074,6 +2079,15 @@ async function loadStaffTable() {
     .eq('document_types.name', 'License Verification Record');
   const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
 
+  // Pull insurance_access for any staff who already have a linked login profile
+  const linkedProfileIds = staffList.filter(s => s.profile_id).map(s => s.profile_id);
+  let insuranceAccessMap = {};
+  if (linkedProfileIds.length) {
+    const { data: profRows } = await sb.from('profiles')
+      .select('id, insurance_access').in('id', linkedProfileIds);
+    (profRows || []).forEach(p => { insuranceAccessMap[p.id] = !!p.insurance_access; });
+  }
+
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
   const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
 
@@ -2120,6 +2134,9 @@ async function loadStaffTable() {
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="setupStaffLogin('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Set up login</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      ${s.profile_id
+        ? `<button class="btn btn-sm ${insuranceAccessMap[s.profile_id] ? 'btn-teal' : 'btn-ghost'}" style="${insuranceAccessMap[s.profile_id] ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" onclick="toggleInsuranceAccess('${s.profile_id}','${s.full_name.replace(/'/g,"\\'")}',${insuranceAccessMap[s.profile_id] ? 'true' : 'false'})">🛡 Insurance ${insuranceAccessMap[s.profile_id] ? 'ON' : 'OFF'}</button>`
+        : `<span style="font-size:11px;color:rgba(255,255,255,.3);" title="Set up their login first">🛡 Insurance access needs login</span>`}
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
       <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
@@ -2355,6 +2372,13 @@ async function confirmStaffTypeCred(id, name) {
   document.getElementById('staffTypeModalCred')?.remove();
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(`✓ ${name} set to ${newType}`);
+  await loadStaffTable();
+}
+
+async function toggleInsuranceAccess(profileId, name, current) {
+  const { error } = await sb.from('profiles').update({ insurance_access: !current }).eq('id', profileId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ ${name} — Insurance access ${!current ? 'granted' : 'revoked'}`);
   await loadStaffTable();
 }
 
@@ -3119,7 +3143,19 @@ function applyBranding(branding, logoUrl) {
 }
 
 // ══ TABS ══
+function restrictToInsuranceOnly() {
+  window._insuranceOnlyAccess = true;
+  ['tab-docs', 'tab-exp', 'tab-staff', 'tab-settings', 'tab-super'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) btn.style.display = 'none';
+  });
+  const myCreds = document.getElementById('hdrMyCreds');
+  if (myCreds) myCreds.style.display = 'none';
+  switchTab('insurance');
+}
+
 function switchTab(tab) {
+  if (window._insuranceOnlyAccess && tab !== 'insurance') tab = 'insurance';
   ['docs','exp','staff','insurance','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
