@@ -2382,6 +2382,7 @@ async function resetPassword(email, fullName, staffId) {
         company_id: currentCompany.id,
         role: 'staff',
         login_url: 'https://cred.selko360.com',
+        app_label: 'Cred',
       }),
     });
     const result = await res.json();
@@ -3567,6 +3568,7 @@ async function setupStaffLogin(staffId, fullName, email) {
         company_id: currentCompany.id,
         role: 'staff',
         login_url: 'https://cred.selko360.com',
+        app_label: 'Cred',
       }),
     });
     const result = await res.json();
