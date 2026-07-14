@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Selko Cred — Credential Manager</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -593,7 +594,10 @@
 
       <!-- Quick reference: who's in-network, grouped by payer -->
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:16px;margin-bottom:20px;">
-        <h3 style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:12px;">Quick reference — who's in-network</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+          <h3 style="font-size:13px;color:rgba(255,255,255,.7);margin:0;">Quick reference — who's in-network</h3>
+          <button class="btn btn-sm btn-teal" onclick="emailInNetworkSummary()">📧 Email This Summary</button>
+        </div>
         <div id="pnQuickRef" style="display:flex;flex-direction:column;gap:10px;"></div>
       </div>
       <div class="inline-form" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;">
@@ -879,6 +883,11 @@
 const SUPABASE_URL      = 'https://zxserlkhwkfoqiepurdr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
 const STORAGE_BUCKET    = 'compliance-documents';
+// ── EMAILJS CONFIG (same account/template used across Selko apps) ──
+const EMAILJS_SERVICE_ID  = 'service_wnhqs7e';
+const EMAILJS_TEMPLATE_ID = 'template_gq1z2x6';
+const EMAILJS_PUBLIC_KEY  = 'kc6pC-rqwD0xph-A0';
+const CRED_TOOL_URL = 'https://cred.selko360.com';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { storageKey: 'selko-cred-auth' }
 });
@@ -2835,6 +2844,51 @@ async function loadPayersTable() {
 async function loadInsuranceTab() {
   await loadStaffList();   // ensure staffList is fresh in case Staff tab hasn't loaded yet
   await loadPayerBoard();
+}
+
+async function emailInNetworkSummary() {
+  const defaultTo = currentProfile?.email || '';
+  const to = prompt('Send the current in-network summary to which email address?', defaultTo);
+  if (!to) return;
+
+  const { data, error } = await sb.from('staff_payer_networks')
+    .select('*, credtrack_staff(full_name), payers(name)')
+    .eq('company_id', currentCompany.id)
+    .eq('status', 'in_network')
+    .order('created_at', { ascending: false });
+
+  if (error) { toast('Could not load network data: ' + error.message, true); return; }
+
+  const inNetwork = data || [];
+  if (!inNetwork.length) { toast('No staff are confirmed in-network yet.', true); return; }
+
+  const byPayer = {};
+  inNetwork.forEach(r => {
+    const payerName = r.payers?.name || 'Unknown payer';
+    (byPayer[payerName] ||= new Set()).add(r.credtrack_staff?.full_name || 'Unknown staff');
+  });
+
+  const lines = Object.keys(byPayer).sort().map(payerName =>
+    payerName + ':\n  ' + [...byPayer[payerName]].sort().join(', ')
+  );
+  const generatedAt = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  const messageBody = 'In-network insurance summary — ' + (currentCompany?.name || 'Selko Cred') +
+    '\nGenerated ' + generatedAt + '\n\n' + lines.join('\n\n');
+
+  try {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+      to_email: to,
+      to_name: to,
+      subject_line: 'In-Network Insurance Summary — ' + (currentCompany?.name || 'Selko Cred'),
+      message_body: messageBody,
+      tool_url: CRED_TOOL_URL,
+      company_name: currentCompany?.name || 'Selko Cred'
+    });
+    toast('✓ Summary emailed to ' + to);
+  } catch(e) {
+    toast('Send failed: ' + (e?.text || e?.message || 'unknown error'), true);
+  }
 }
 
 function renderQuickRef(records) {
