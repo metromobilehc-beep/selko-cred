@@ -542,7 +542,7 @@
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
         </div>
         <div class="inline-form" id="addStaffForm">
-          <div class="inline-grid-4">
+          <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;">
             <div>
               <label class="inline-label">Full name</label>
               <input class="inline-input" type="text" id="nsName" placeholder="Jane Smith, PT" />
@@ -554,6 +554,18 @@
             <div>
               <label class="inline-label">Job title</label>
               <input class="inline-input" type="text" id="nsTitle" placeholder="Physical Therapist" />
+            </div>
+            <div>
+              <label class="inline-label">Discipline</label>
+              <select class="inline-select" id="nsDiscipline">
+                <option value="">— N/A —</option>
+                <option value="PT">PT</option>
+                <option value="PTA">PTA</option>
+                <option value="OT">OT</option>
+                <option value="COTA">COTA</option>
+                <option value="SLP">SLP</option>
+                <option value="Other">Other</option>
+              </select>
             </div>
             <div>
               <label class="inline-label">Staff type</label>
@@ -721,7 +733,7 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Tier</th><th>Required</th><th>Type</th><th>Actions</th>
+              <th>Name</th><th>Expires</th><th>Tier</th><th>Required</th><th>Applies To</th><th>Type</th><th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
@@ -2137,7 +2149,13 @@ async function loadStaffTable() {
     return `<tr>
     <td>${nameCell}</td>
     <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
-    <td style="font-size:12px;">${s.job_title || '—'}</td>
+    <td style="font-size:12px;">
+      ${s.job_title || '—'}
+      <button onclick="showDisciplineModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.discipline||''}')"
+        class="badge ${s.discipline ? 'badge-ok' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;margin-left:6px;font-size:10px;">
+        ${s.discipline || 'set discipline'} ✎
+      </button>
+    </td>
     <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
@@ -2259,6 +2277,7 @@ async function saveNewStaff() {
   const name  = document.getElementById('nsName').value.trim();
   const email = document.getElementById('nsEmail').value.trim();
   const title = document.getElementById('nsTitle').value.trim();
+  const disc  = document.getElementById('nsDiscipline').value;
   const type  = document.getElementById('nsType').value;
   const err   = document.getElementById('nsErr');
   err.style.display = 'none';
@@ -2270,6 +2289,7 @@ async function saveNewStaff() {
       full_name:  name,
       email:      email,
       job_title:  title || null,
+      discipline: disc || null,
       staff_type: type,
       active:     true,
     });
@@ -2337,6 +2357,57 @@ async function deleteStaff(id, fullName) {
 }
 
 // ── Staff type picker (clinician / office / admin) ──
+function showDisciplineModal(id, name, currentDiscipline) {
+  const existing = document.getElementById('disciplineModalCred');
+  if (existing) existing.remove();
+
+  const options = [
+    { value: '',      label: 'N/A',   desc: 'No clinical discipline (office/admin staff)' },
+    { value: 'PT',    label: 'PT',    desc: 'Physical Therapist' },
+    { value: 'PTA',   label: 'PTA',   desc: 'Physical Therapist Assistant' },
+    { value: 'OT',    label: 'OT',    desc: 'Occupational Therapist' },
+    { value: 'COTA',  label: 'COTA',  desc: 'Certified Occupational Therapy Assistant' },
+    { value: 'SLP',   label: 'SLP',   desc: 'Speech-Language Pathologist' },
+    { value: 'Other', label: 'Other', desc: 'Any other clinical discipline' },
+  ];
+
+  const modal = document.createElement('div');
+  modal.id = 'disciplineModalCred';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Set clinical discipline. Used to match discipline-specific document requirements (e.g. PT license only required for PTs, not PTAs).</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+        ${options.map(o => `
+          <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${o.value===currentDiscipline?'var(--teal)':'rgba(255,255,255,.15)'};background:${o.value===currentDiscipline?'rgba(13,148,136,.12)':'rgba(255,255,255,.03)'};border-radius:8px;cursor:pointer;">
+            <input type="radio" name="disciplineOption" value="${o.value}" ${o.value===currentDiscipline?'checked':''} style="margin-top:2px;accent-color:var(--teal);">
+            <div>
+              <div style="font-size:13px;font-weight:600;color:#fff;">${o.label}</div>
+              <div style="font-size:11px;color:rgba(255,255,255,.4);margin-top:1px;">${o.desc}</div>
+            </div>
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="confirmDisciplineCred('${id}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('disciplineModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function confirmDisciplineCred(id) {
+  const selected = document.querySelector('input[name="disciplineOption"]:checked');
+  if (!selected) return;
+  const newDiscipline = selected.value || null;
+  const { error } = await sb.from('credtrack_staff').update({ discipline: newDiscipline }).eq('id', id);
+  document.getElementById('disciplineModalCred').remove();
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Discipline updated');
+  await loadStaffTable();
+}
+
 function showStaffTypeModal(id, name, currentType) {
   const existing = document.getElementById('staffTypeModalCred');
   if (existing) existing.remove();
@@ -2776,11 +2847,14 @@ async function loadDocTypesTable() {
 
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
     return;
   }
 
-  tbody.innerHTML = data.map(t => `<tr>
+  tbody.innerHTML = data.map(t => {
+    const disciplines = t.required_for_disciplines || [];
+    const scopeLabel = !t.is_required ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
+    return `<tr>
     <td>
       <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;" 
         type="text" value="${t.name}" id="dtname_${t.id}" 
@@ -2794,6 +2868,12 @@ async function loadDocTypesTable() {
         ${t.is_required ? 'Required' : 'Optional'}
       </span>
     </td>
+    <td>
+      ${t.is_required
+        ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines)})"
+             class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${scopeLabel} ✎</button>`
+        : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
+    </td>
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
       ${(currentProfile.is_super_admin) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
@@ -2802,7 +2882,8 @@ async function loadDocTypesTable() {
       </button>` : ''}
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 }
 
 async function updateDocTypeName(id, name) {
@@ -2815,7 +2896,45 @@ async function updateDocTypeName(id, name) {
 async function toggleDocTypeRequired(id, currentlyRequired) {
   const { error } = await sb.from('document_types').update({ is_required: !currentlyRequired }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
-  toast(!currentlyRequired ? 'Marked as required — staff will be reminded if missing' : 'Marked as optional');
+  toast(!currentlyRequired ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
+  await loadDocTypesTable();
+}
+
+function showDocTypeScopeModal(id, name, currentDisciplines) {
+  const existing = document.getElementById('scopeModalCred');
+  if (existing) existing.remove();
+
+  const allDisciplines = ['PT', 'PTA', 'OT', 'COTA', 'SLP', 'Other'];
+
+  const modal = document.createElement('div');
+  modal.id = 'scopeModalCred';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Who is this required for? Leave everything unchecked for "required for everyone" — check specific disciplines to limit it (e.g. a PT license shouldn't be required for PTAs).</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
+        ${allDisciplines.map(d => `
+          <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border:1.5px solid rgba(255,255,255,.15);background:rgba(255,255,255,.03);border-radius:8px;cursor:pointer;">
+            <input type="checkbox" name="scopeOption" value="${d}" ${currentDisciplines.includes(d)?'checked':''} style="accent-color:var(--teal);">
+            <span style="font-size:13px;font-weight:600;color:#fff;">${d}</span>
+          </label>`).join('')}
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="confirmDocTypeScope(${id})" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('scopeModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function confirmDocTypeScope(id) {
+  const checked = Array.from(document.querySelectorAll('input[name="scopeOption"]:checked')).map(el => el.value);
+  const { error } = await sb.from('document_types').update({ required_for_disciplines: checked.length ? checked : null }).eq('id', id);
+  document.getElementById('scopeModalCred').remove();
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(checked.length ? `Now required only for: ${checked.join(', ')}` : 'Now required for everyone');
   await loadDocTypesTable();
 }
 
