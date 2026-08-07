@@ -721,7 +721,7 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Tier</th><th>Type</th><th>Actions</th>
+              <th>Name</th><th>Expires</th><th>Tier</th><th>Required</th><th>Type</th><th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
@@ -2143,6 +2143,7 @@ async function loadStaffTable() {
     <td><div class="td-actions">
       ${s.email ? `<button class="btn btn-sm btn-teal" onclick="setupStaffLogin('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Set up login</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
       ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.id}','${s.full_name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>` : ''}
       ${s.profile_id
         ? `<button class="btn btn-sm ${insuranceAccessMap[s.profile_id] ? 'btn-teal' : 'btn-ghost'}" style="${insuranceAccessMap[s.profile_id] ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" onclick="toggleInsuranceAccess('${s.profile_id}','${s.full_name.replace(/'/g,"\\'")}',${insuranceAccessMap[s.profile_id] ? 'true' : 'false'})">🛡 Insurance ${insuranceAccessMap[s.profile_id] ? 'ON' : 'OFF'}</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);" title="Set up their login first">🛡 Insurance access needs login</span>`}
@@ -2389,6 +2390,35 @@ async function toggleInsuranceAccess(profileId, name, current) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(`✓ ${name} — Insurance access ${!current ? 'granted' : 'revoked'}`);
   await loadStaffTable();
+}
+
+async function sendMissingDocsChecklist(staffId, fullName) {
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/send-missing-document-reminders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ staff_id: staffId }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    const entry = (result.results || [])[0];
+    if (!entry) { toast('No response from checklist function', true); return; }
+
+    if (entry.sent) {
+      toast(`✓ Checklist sent to ${fullName} — missing: ${entry.missing.join(', ')}`);
+    } else if (entry.reason === 'nothing missing') {
+      toast(`${fullName} already has all required documents on file — nothing to send.`);
+    } else {
+      toast(`No required document types are configured yet — set some as Required in Settings first.`, true);
+    }
+  } catch(e) {
+    toast('Send failed: ' + e.message, true);
+  }
 }
 
 async function resetPassword(email, fullName, staffId) {
@@ -2746,7 +2776,7 @@ async function loadDocTypesTable() {
 
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
     return;
   }
 
@@ -2758,6 +2788,12 @@ async function loadDocTypesTable() {
     </td>
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
     <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
+    <td>
+      <span class="badge ${t.is_required ? 'badge-warn' : 'badge-none'}" style="cursor:pointer;" 
+        onclick="toggleDocTypeRequired(${t.id}, ${!!t.is_required})" title="Click to toggle">
+        ${t.is_required ? 'Required' : 'Optional'}
+      </span>
+    </td>
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
       ${(currentProfile.is_super_admin) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
@@ -2774,6 +2810,13 @@ async function updateDocTypeName(id, name) {
   const { error } = await sb.from('document_types').update({ name: name.trim() }).eq('id', id);
   if (error) toast('Error: ' + error.message, true);
   else toast('Document type updated');
+}
+
+async function toggleDocTypeRequired(id, currentlyRequired) {
+  const { error } = await sb.from('document_types').update({ is_required: !currentlyRequired }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(!currentlyRequired ? 'Marked as required — staff will be reminded if missing' : 'Marked as optional');
+  await loadDocTypesTable();
 }
 
 async function toggleDocTypeTier(id, currentTier) {
