@@ -909,6 +909,7 @@ let currentProfile = null;
 let currentCompany = null;
 let docTypes       = [];
 let staffList      = [];
+let insuranceAccessMap = {};
 let _staffSortKey  = 'full_name';
 let _staffSortDir  = 'asc';
 
@@ -2102,7 +2103,7 @@ async function loadStaffTable() {
 
   // Pull insurance_access for any staff who already have a linked login profile
   const linkedProfileIds = staffList.filter(s => s.profile_id).map(s => s.profile_id);
-  let insuranceAccessMap = {};
+  insuranceAccessMap = {};
   if (linkedProfileIds.length) {
     const { data: profRows } = await sb.from('profiles')
       .select('id, insurance_access').in('id', linkedProfileIds);
@@ -2159,20 +2160,55 @@ async function loadStaffTable() {
     <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
-      ${s.email ? `<button class="btn btn-sm btn-teal" onclick="setupStaffLogin('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.email}')">Set up login</button>` : '<span style="font-size:11px;color:rgba(255,255,255,.3);">no email</span>'}
-      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="resetPassword('${s.email}','${s.full_name.replace(/'/g,"\\'")}','${s.id}') " style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
-      ${s.email ? `<button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.id}','${s.full_name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>` : ''}
-      ${s.profile_id
-        ? `<button class="btn btn-sm ${insuranceAccessMap[s.profile_id] ? 'btn-teal' : 'btn-ghost'}" style="${insuranceAccessMap[s.profile_id] ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" onclick="toggleInsuranceAccess('${s.profile_id}','${s.full_name.replace(/'/g,"\\'")}',${insuranceAccessMap[s.profile_id] ? 'true' : 'false'})">🛡 Insurance ${insuranceAccessMap[s.profile_id] ? 'ON' : 'OFF'}</button>`
-        : `<span style="font-size:11px;color:rgba(255,255,255,.3);" title="Set up their login first">🛡 Insurance access needs login</span>`}
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
-      <button class="btn btn-sm btn-ghost" onclick="editStaff('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
-      <button class="btn btn-sm btn-gold" onclick="toggleActive('${s.id}',${s.active})">${s.active ? 'Deactivate' : 'Reactivate'}</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteStaff('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Delete</button>
+      <button class="btn btn-sm btn-gold" onclick="showStaffActionsMenu('${s.id}')">⋮ More</button>
     </div></td>
   </tr>`;
   }).join('');
+}
+
+function showStaffActionsMenu(staffId) {
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+  const existing = document.getElementById('staffActionsModal');
+  if (existing) existing.remove();
+
+  const esc = (str) => (str || '').replace(/'/g, "\\'");
+  const insuranceOn = !!insuranceAccessMap[s.profile_id];
+
+  const rows = [];
+  if (s.email) {
+    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}','${esc(s.full_name)}','${s.email}')" style="width:100%;justify-content:flex-start;">Set up login</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPassword('${s.email}','${esc(s.full_name)}','${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
+  } else {
+    rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">No email on file — add one via Edit to enable login/checklist actions</span>`);
+  }
+  if (s.profile_id) {
+    rows.push(`<button class="btn ${insuranceOn ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleInsuranceAccess('${s.profile_id}','${esc(s.full_name)}',${insuranceOn ? 'true' : 'false'})" style="width:100%;justify-content:flex-start;${insuranceOn ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">🛡 Insurance ${insuranceOn ? 'ON' : 'OFF'}</button>`);
+  } else {
+    rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">🛡 Insurance access needs login set up first</span>`);
+  }
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();editStaff('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>`);
+  rows.push(`<button class="btn btn-gold" onclick="closeStaffActionsMenu();toggleActive('${s.id}',${s.active})" style="width:100%;justify-content:flex-start;">${s.active ? 'Deactivate' : 'Reactivate'}</button>`);
+  rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Delete</button>`);
+
+  const modal = document.createElement('div');
+  modal.id = 'staffActionsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:340px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">${s.full_name}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">${rows.join('')}</div>
+      <button class="btn btn-ghost" onclick="closeStaffActionsMenu()" style="width:100%;justify-content:center;margin-top:12px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function closeStaffActionsMenu() {
+  document.getElementById('staffActionsModal')?.remove();
 }
 
 function verifyLicense(staffId) {
