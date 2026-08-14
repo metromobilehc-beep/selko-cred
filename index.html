@@ -559,7 +559,7 @@
       <div class="tbl-wrap">
         <table>
           <thead><tr>
-            <th>Staff member</th><th>Document</th><th>Expiration</th><th>Days remaining</th><th>Status</th>
+            <th>Staff member</th><th>Document</th><th>Expiration</th><th>Days remaining</th><th>Status</th><th>Last reminder</th>
           </tr></thead>
           <tbody id="expTbody"></tbody>
         </table>
@@ -2081,16 +2081,81 @@ async function loadExpTracker() {
 
   const tbody = document.getElementById('expTbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No records found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No records found.</td></tr>';
     return;
   }
-  tbody.innerHTML = rows.map(r => `<tr>
+
+  // Pull the most recent reminder log entry per document shown, so we can
+  // show "Last reminder: 3 days ago" (or "None sent yet") right in the tracker.
+  const docIds = rows.map(r => r.id);
+  let latestByDoc = {};
+  if (docIds.length) {
+    const { data: logRows } = await sb.from('credential_reminder_log')
+      .select('document_id, sent_at, success, recipient_email')
+      .in('document_id', docIds)
+      .order('sent_at', { ascending: false });
+    (logRows || []).forEach(l => {
+      if (!latestByDoc[l.document_id]) latestByDoc[l.document_id] = l; // first hit per doc = most recent, since already ordered desc
+    });
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const last = latestByDoc[r.id];
+    const lastCell = last
+      ? `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}','${(r.credtrack_staff?.full_name||'').replace(/'/g,"\\'")}','${(r.document_types?.name||r.label||'').replace(/'/g,"\\'")}')" style="color:${last.success ? '#4ade80' : '#f87171'};border-color:rgba(255,255,255,.2);font-size:11px;">${last.success ? '✓' : '✕'} ${fmtDate(last.sent_at)}</button>`
+      : `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}','${(r.credtrack_staff?.full_name||'').replace(/'/g,"\\'")}','${(r.document_types?.name||r.label||'').replace(/'/g,"\\'")}')" style="color:rgba(255,255,255,.35);border-color:rgba(255,255,255,.15);font-size:11px;">None sent yet</button>`;
+    return `<tr>
     <td>${r.credtrack_staff?.full_name || '—'}</td>
     <td>${r.document_types?.name || r.label}</td>
     <td style="font-size:12px;">${fmtDate(r.expiry_date)}</td>
     <td>${daysLabel(r.expiry_date)}</td>
     <td>${statusBadge(r.expiry_date)}</td>
-  </tr>`).join('');
+    <td>${lastCell}</td>
+  </tr>`;
+  }).join('');
+}
+
+function showReminderHistory(documentId, staffName, docName) {
+  const existing = document.getElementById('reminderHistoryModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'reminderHistoryModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${docName} — reminder history</div>
+      <div id="reminderHistoryBody" style="color:rgba(255,255,255,.6);font-size:13px;">Loading…</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('reminderHistoryModal').remove()" style="width:100%;justify-content:center;margin-top:16px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  loadReminderHistoryBody(documentId);
+}
+
+async function loadReminderHistoryBody(documentId) {
+  const body = document.getElementById('reminderHistoryBody');
+  const { data, error } = await sb.from('credential_reminder_log')
+    .select('*')
+    .eq('document_id', documentId)
+    .order('sent_at', { ascending: false });
+
+  if (error) { body.innerHTML = `<span style="color:#f87171;">${error.message}</span>`; return; }
+  if (!data?.length) { body.innerHTML = 'No reminders have been sent for this document yet — it may not have crossed a 30-day or 7-day threshold, or the daily reminder job hasn\'t run since it did.'; return; }
+
+  const stageLabels = { staff_30day: '30-day notice to staff', staff_7day: '7-day notice to staff', admin_7day: '7-day notice to admin', admin_expired: 'Expired notice to admin' };
+  body.innerHTML = data.map(l => `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.08);">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-weight:600;color:#fff;">${stageLabels[l.reminder_stage] || l.reminder_stage}</span>
+        <span style="color:${l.success ? '#4ade80' : '#f87171'};font-size:12px;font-weight:700;">${l.success ? '✓ Sent' : '✕ Failed'}</span>
+      </div>
+      <div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:2px;">${new Date(l.sent_at).toLocaleString()} · to ${l.recipient_email}</div>
+      ${l.error_message ? `<div style="font-size:11px;color:#f87171;margin-top:4px;">${l.error_message}</div>` : ''}
+    </div>
+  `).join('');
 }
 
 async function loadAlertBanner() {
