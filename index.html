@@ -957,6 +957,7 @@ let currentProfile = null;
 let currentCompany = null;
 let docTypes       = [];
 let staffList      = [];
+let insuranceAccessMap = {};
 let _staffSortKey  = 'full_name';
 let _staffSortDir  = 'asc';
 
@@ -2151,7 +2152,7 @@ async function loadStaffTable() {
 
   // Pull insurance_access for any staff who already have a linked login profile
   const linkedProfileIds = staffList.filter(s => s.profile_id).map(s => s.profile_id);
-  let insuranceAccessMap = {};
+  insuranceAccessMap = {};
   if (linkedProfileIds.length) {
     const { data: profRows } = await sb.from('profiles')
       .select('id, insurance_access').in('id', linkedProfileIds);
