@@ -3664,10 +3664,122 @@ async function loadSuperAdmin() {
           onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
           ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
         </button>
+        ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
       </div>
     </div>`;
   }).join('');
+}
+
+// ══ DEMO COMPANY SEEDING ══
+// Fictional staff and credentials for the sales demo company (slug: 'demo').
+// None of this is real Metro staff data — safe to show prospects.
+const DEMO_STAFF = [
+  { full_name: 'Jordan Reyes, PT',     discipline: 'PT',   job_title: 'Physical Therapist',              staff_type: 'clinician', license_type: 'PT',   license_state: 'OK', license_number: 'PT-DEMO-1001' },
+  { full_name: 'Casey Whitfield, PTA', discipline: 'PTA',  job_title: 'Physical Therapist Assistant',    staff_type: 'clinician', license_type: 'PTA',  license_state: 'OK', license_number: 'PTA-DEMO-2001' },
+  { full_name: 'Morgan Delgado, OT',   discipline: 'OT',   job_title: 'Occupational Therapist',           staff_type: 'clinician', license_type: 'OT',   license_state: 'OK', license_number: 'OT-DEMO-3001' },
+  { full_name: 'Riley Chen, COTA',     discipline: 'COTA', job_title: 'Occupational Therapy Assistant',   staff_type: 'clinician', license_type: 'COTA', license_state: 'OK', license_number: 'COTA-DEMO-4001' },
+  { full_name: 'Avery Nakamura, SLP',  discipline: 'SLP',  job_title: 'Speech-Language Pathologist',      staff_type: 'clinician', license_type: 'SLP',  license_state: 'OK', license_number: 'SLP-DEMO-5001' },
+  { full_name: 'Taylor Brooks, PT',    discipline: 'PT',   job_title: 'Physical Therapist',               staff_type: 'clinician', license_type: 'PT',   license_state: 'OK', license_number: 'PT-DEMO-1002' },
+  { full_name: 'Sam Okafor, PTA',      discipline: 'PTA',  job_title: 'Physical Therapist Assistant',     staff_type: 'clinician', license_type: 'PTA',  license_state: 'OK', license_number: null },
+  { full_name: 'Devon Marsh',          discipline: '',     job_title: 'Office Coordinator',               staff_type: 'office',    license_type: null,   license_state: null, license_number: null },
+  { full_name: 'Alex Kowalski',        discipline: '',     job_title: 'Agency Administrator',             staff_type: 'admin',     license_type: null,   license_state: null, license_number: null },
+];
+
+function daysFromNow(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+async function resetDemoCompanyData(companyId) {
+  if (!confirm('Reset all demo data for this company? This deletes and re-seeds every staff member, document, and insurance record for the demo company. Safe to run anytime before a demo.')) return;
+
+  try {
+    // Wipe existing demo data (safe — this company should only ever contain seed data)
+    await sb.from('staff_payer_networks').delete().eq('company_id', companyId);
+    await sb.from('credtrack_documents').delete().eq('company_id', companyId);
+    await sb.from('credtrack_staff').delete().eq('company_id', companyId);
+
+    // Re-insert fictional staff
+    const { data: insertedStaff, error: staffErr } = await sb.from('credtrack_staff')
+      .insert(DEMO_STAFF.map(s => ({ ...s, company_id: companyId, active: true })))
+      .select();
+    if (staffErr) throw staffErr;
+
+    const byName = {};
+    insertedStaff.forEach(s => { byName[s.full_name] = s; });
+
+    // Pull document type IDs (global types) to attach sample credentials
+    const { data: types } = await sb.from('document_types').select('id, name').is('company_id', null);
+    const typeByName = {};
+    (types || []).forEach(t => { typeByName[t.name] = t.id; });
+
+    const licenseDocMap = {
+      'Jordan Reyes, PT':    'PT License',
+      'Casey Whitfield, PTA':'PTA License',
+      'Morgan Delgado, OT':  'OT License',
+      'Riley Chen, COTA':    'COTA License',
+      'Avery Nakamura, SLP': 'SLP License',
+      'Taylor Brooks, PT':   'PT License',
+      'Sam Okafor, PTA':     'PTA License',
+    };
+
+    const demoDocs = [];
+    // License docs with a spread of expiration states so prospects see the full tracker in action
+    const expiryOffsets = [120, -10, 15, 60, 400, 5, null]; // current, expired, expiring soon, current, current, expiring very soon, none-on-file
+    Object.keys(licenseDocMap).forEach((name, i) => {
+      const staff = byName[name];
+      const typeName = licenseDocMap[name];
+      const typeId = typeByName[typeName];
+      if (!staff || !typeId) return;
+      const offset = expiryOffsets[i % expiryOffsets.length];
+      if (offset === null) return; // Sam Okafor: no license doc yet — shows as a gap for the demo
+      demoDocs.push({
+        company_id: companyId,
+        staff_id: staff.id,
+        document_type_id: typeId,
+        label: typeName,
+        expiry_date: daysFromNow(offset),
+        issued_date: daysFromNow(offset - 730),
+        notes: 'Sample data for demo purposes',
+        verified: i % 3 !== 0, // mix of verified / pending review
+      });
+    });
+
+    // A CPR cert and a background check for a couple of staff, for variety
+    const cprTypeId = typeByName['CPR/BLS Certification'];
+    const bgTypeId  = typeByName['Background Check'];
+    if (cprTypeId && byName['Jordan Reyes, PT']) {
+      demoDocs.push({ company_id: companyId, staff_id: byName['Jordan Reyes, PT'].id, document_type_id: cprTypeId, label: 'CPR/BLS Certification', expiry_date: daysFromNow(25), verified: true, notes: 'Sample data for demo purposes' });
+    }
+    if (bgTypeId && byName['Casey Whitfield, PTA']) {
+      demoDocs.push({ company_id: companyId, staff_id: byName['Casey Whitfield, PTA'].id, document_type_id: bgTypeId, label: 'Background Check', expiry_date: null, verified: true, notes: 'Sample data for demo purposes' });
+    }
+
+    if (demoDocs.length) {
+      const { error: docErr } = await sb.from('credtrack_documents').insert(demoDocs);
+      if (docErr) throw docErr;
+    }
+
+    // Demo payer network entries, using whichever payers already exist globally (or skip if none)
+    const { data: payers } = await sb.from('payers').select('id, name').is('company_id', null).limit(2);
+    if (payers && payers.length && byName['Jordan Reyes, PT']) {
+      const networkRows = payers.map((p, i) => ({
+        company_id: companyId,
+        staff_id: byName['Jordan Reyes, PT'].id,
+        payer_id: p.id,
+        status: i === 0 ? 'in_network' : 'pending',
+        date_in_network: i === 0 ? daysFromNow(-90) : null,
+      }));
+      await sb.from('staff_payer_networks').insert(networkRows);
+    }
+
+    toast('✓ Demo data reset — fresh fictional staff and sample credentials loaded');
+    await loadSuperAdmin();
+  } catch (e) {
+    toast('Demo reset failed: ' + e.message, true);
+  }
 }
 
 // Edit company modal (inline within card area)
