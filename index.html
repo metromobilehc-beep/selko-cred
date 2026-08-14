@@ -864,6 +864,7 @@
             <option value="unhandled_rejection">Unhandled rejection</option>
           </select>
           <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
+          <button class="btn btn-sm btn-danger" onclick="clearBugLog()">🗑 Clear log</button>
         </div>
         <div class="tbl-wrap">
           <table>
@@ -3591,6 +3592,40 @@ async function loadBugLog() {
     <td style="font-size:11px;">${companyNames[r.company_id] || '—'}</td>
     <td style="max-width:200px;white-space:normal;font-size:11px;color:rgba(255,255,255,.4);">${r.context || '—'}</td>
   </tr>`).join('');
+}
+
+async function clearBugLog() {
+  const appFilter  = document.getElementById('bugAppFilter')?.value  || '';
+  const typeFilter = document.getElementById('bugTypeFilter')?.value || '';
+
+  let countQ = sb.from('error_logs').select('id', { count: 'exact', head: true });
+  if (appFilter)  countQ = countQ.eq('source_app', appFilter);
+  if (typeFilter) countQ = countQ.eq('error_type', typeFilter);
+  const { count, error: countErr } = await countQ;
+  if (countErr) { toast('Error: ' + countErr.message, true); return; }
+
+  if (!count) { toast('No matching log entries to clear.'); return; }
+
+  const scopeLabel = appFilter ? `${appFilter}` : 'ALL APPS';
+  const typeLabel  = typeFilter ? ` / ${typeFilter} errors only` : '';
+  const warning = appFilter
+    ? `Delete ${count} log entr${count === 1 ? 'y' : 'ies'} for ${scopeLabel}${typeLabel}? This only clears ${scopeLabel} — other apps' logs are untouched.`
+    : `⚠ No app filter is selected. This will delete ${count} log entr${count === 1 ? 'y' : 'ies'} across ALL apps (Cred, Comply, Billing, HEP)${typeLabel}. Select an app filter first if you only meant to clear Cred's log.`;
+
+  if (!confirm(warning)) return;
+
+  let delQ = sb.from('error_logs').delete();
+  // Supabase requires at least one filter on delete; scope to created_at in the past
+  // as a safety net if somehow no other filter is present.
+  delQ = delQ.lte('created_at', new Date().toISOString());
+  if (appFilter)  delQ = delQ.eq('source_app', appFilter);
+  if (typeFilter) delQ = delQ.eq('error_type', typeFilter);
+
+  const { error } = await delQ;
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  toast(`✓ Cleared ${count} log entr${count === 1 ? 'y' : 'ies'}${appFilter ? ' for ' + scopeLabel : ' across all apps'}`);
+  await loadBugLog();
 }
 
 // ══ SUPER ADMIN ══
