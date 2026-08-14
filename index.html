@@ -2964,7 +2964,7 @@ async function loadDocTypesTable() {
     </td>
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
-      ${(currentProfile.is_super_admin) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
+      ${(currentProfile.is_super_admin && !_superProfile) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
         style="font-size:11px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);">
         ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
       </button>` : ''}
