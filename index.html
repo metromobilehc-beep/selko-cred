@@ -416,10 +416,15 @@
 
     <div id="tabDocs" class="dark-panel" style="display:none;">
       <h2>All staff documents</h2>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="tab active" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
+        <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')">✓ Verified <span id="verifiedCount"></span></button>
+        <button class="tab" id="docViewToggle-all" onclick="setDocViewMode('all')">All</button>
+      </div>
       <div class="filter-bar">
         <select class="filter-sel" id="fEmp"      onchange="loadAdminDocs()"><option value="">All staff</option></select>
         <select class="filter-sel" id="fType"     onchange="loadAdminDocs()"><option value="">All types</option></select>
-        <select class="filter-sel" id="fVerified" onchange="loadAdminDocs()">
+        <select class="filter-sel" id="fVerified" onchange="loadAdminDocs()" style="display:none;">
           <option value="">All statuses</option>
           <option value="0">Unverified</option>
           <option value="1">Verified</option>
@@ -1800,10 +1805,47 @@ async function loadAdminFilters() {
   });
 }
 
+let _docViewMode = 'needs'; // 'needs' | 'verified' | 'all' — defaults to what actually needs action
+
+function setDocViewMode(mode) {
+  _docViewMode = mode;
+  document.getElementById('fVerified').value = mode === 'needs' ? '0' : mode === 'verified' ? '1' : '';
+  ['needs', 'verified', 'all'].forEach(m => {
+    const btn = document.getElementById('docViewToggle-' + m);
+    if (!btn) return;
+    const active = m === mode;
+    btn.classList.toggle('active', active);
+    if (m === 'needs') {
+      btn.style.background = active ? 'var(--danger)' : '';
+      btn.style.borderColor = active ? 'var(--danger)' : '';
+    } else {
+      btn.style.background = '';
+      btn.style.borderColor = '';
+    }
+  });
+  loadAdminDocs();
+}
+
+async function updateDocViewCounts() {
+  const { count: needsCount } = await sb.from('credtrack_documents')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', currentCompany.id)
+    .eq('verified', false);
+  const { count: verifiedCountNum } = await sb.from('credtrack_documents')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', currentCompany.id)
+    .eq('verified', true);
+  const needsEl = document.getElementById('needsVerifCount');
+  const verifEl = document.getElementById('verifiedCount');
+  if (needsEl) needsEl.textContent = needsCount ? `(${needsCount})` : '';
+  if (verifEl) verifEl.textContent = verifiedCountNum ? `(${verifiedCountNum})` : '';
+}
+
 async function loadAdminDocs() {
   const emp      = document.getElementById('fEmp')?.value      || '';
   const type     = document.getElementById('fType')?.value     || '';
   const verified = document.getElementById('fVerified')?.value || '';
+  updateDocViewCounts();
 
   let q = sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name)')
@@ -3532,7 +3574,7 @@ function switchTab(tab) {
     if (btn)   btn.classList.toggle('active', tab === t);
   });
   if (tab === 'overview')  loadOverview();
-  if (tab === 'docs')      loadAdminDocs();
+  if (tab === 'docs')      setDocViewMode(_docViewMode);
   if (tab === 'exp')       loadExpTracker();
   if (tab === 'staff')     loadStaffTable();
   if (tab === 'insurance') loadInsuranceTab();
