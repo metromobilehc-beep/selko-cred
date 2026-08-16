@@ -799,7 +799,7 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Tier</th><th>Required</th><th>Applies To</th><th id="partnerVisibleTh" style="display:none;">Partner visible</th><th>Type</th><th>Actions</th>
+              <th>Name</th><th>Expires</th><th>Required</th><th>Applies To</th><th id="partnerVisibleTh" style="display:none;">Partner visible</th><th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
@@ -919,6 +919,18 @@
 
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
+
+      <!-- Platform document types (tier + global/custom management) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Platform document types</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
+            <tbody id="platformDocTypesTbody"></tbody>
+          </table>
+        </div>
+      </div>
 
       <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
       <div class="dark-panel" style="margin-bottom:16px;">
@@ -3253,7 +3265,7 @@ async function loadDocTypesTable() {
 
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = `<tr><td colspan="${hasPartnerAccess ? 8 : 7}" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${hasPartnerAccess ? 6 : 5}" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
     return;
   }
 
@@ -3267,7 +3279,6 @@ async function loadDocTypesTable() {
         onblur="updateDocTypeName(${t.id}, this.value)" />
     </td>
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
-    <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
     <td>
       <span class="badge ${t.is_required ? 'badge-warn' : 'badge-none'}" style="cursor:pointer;" 
         onclick="toggleDocTypeRequired(${t.id}, ${!!t.is_required})" title="Click to toggle">
@@ -3288,12 +3299,7 @@ async function loadDocTypesTable() {
       ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || [])})"
              class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;margin-left:4px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : ''}
     </td>` : ''}
-    <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
-      ${(currentProfile.is_super_admin && !_superProfile) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
-        style="font-size:11px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);">
-        ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
-      </button>` : ''}
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
   </tr>`;
@@ -3405,7 +3411,8 @@ async function toggleDocTypeTier(id, currentTier) {
   const { error } = await sb.from('document_types').update({ tier: newTier }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Tier updated to ' + newTier);
-  await loadDocTypesTable();
+  if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
+  if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
 }
 
 async function deleteDocType(id, name) {
@@ -3413,7 +3420,8 @@ async function deleteDocType(id, name) {
   const { error } = await sb.from('document_types').delete().eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(name + ' deleted');
-  await loadDocTypesTable();
+  if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
+  if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
   await loadDocTypes();
 }
 
@@ -4277,8 +4285,35 @@ async function clearBugLog() {
 }
 
 // ══ SUPER ADMIN ══
+async function loadPlatformDocTypes() {
+  const { data } = await sb.from('document_types')
+    .select('*, companies(name)')
+    .order('sort_order');
+
+  const tbody = document.getElementById('platformDocTypesTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(t => `<tr>
+    <td>${t.name}</td>
+    <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
+    <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${t.companies?.name || '—'}</td>
+    <td><div class="td-actions">
+      <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
+        style="font-size:11px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.6);">
+        ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
+      </button>
+      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+    </div></td>
+  </tr>`).join('');
+}
+
 async function loadSuperAdmin() {
   await loadBugLog();
+  await loadPlatformDocTypes();
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
