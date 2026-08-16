@@ -2734,10 +2734,17 @@ async function deleteStaff(id, fullName) {
       }
     }
 
-    await sb.from('credtrack_staff').delete().eq('id', id);
+    // These two tables use NO ACTION (not CASCADE), so they must be cleared
+    // explicitly first or the staff delete below will be silently blocked.
+    await sb.from('staff_payer_networks').delete().eq('staff_id', id);
+    await sb.from('credtrack_staff_agencies').delete().eq('staff_id', id);
+
+    const { error } = await sb.from('credtrack_staff').delete().eq('id', id);
+    if (error) throw error;
+
     toast(fullName + ' deleted');
     await loadStaffTable();
-  } catch(e) { toast('Error: ' + e.message, true); }
+  } catch(e) { toast('Delete failed: ' + e.message, true); }
 }
 
 // ── Staff type picker (clinician / office / admin) ──
@@ -4623,11 +4630,50 @@ async function toggleCompanyFlag(id, flag, current) {
 }
 
 async function deleteCompany(id, name) {
-  if (!confirm(`Delete ${name}? This will remove all associated staff and documents. This cannot be undone.`)) return;
-  const { error } = await sb.from('companies').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast(name + ' deleted');
-  await loadSuperAdmin();
+  if (!confirm(`Delete ${name}?\n\nThis will permanently remove all associated staff, documents, completions, logins, and other records for this company. This cannot be undone.\n\nType the company name to confirm.`)) return;
+  const confirmName = prompt(`Type "${name}" to confirm deletion:`);
+  if (confirmName !== name) { toast('Name did not match — deletion cancelled'); return; }
+
+  try {
+    // Grab emails first so we can clean up their actual logins, not just the profile rows
+    const { data: profilesToDelete } = await sb.from('profiles').select('email').eq('company_id', id);
+
+    // Delete every child table that references this company, in dependency order.
+    // staff_payer_networks and credtrack_staff_agencies use NO ACTION (not CASCADE)
+    // on their staff_id FK, so they must be cleared before credtrack_staff.
+    await sb.from('compliance_completions').delete().eq('company_id', id);
+    await sb.from('compliance_staff').delete().eq('company_id', id);
+    await sb.from('credtrack_documents').delete().eq('company_id', id);
+    await sb.from('staff_payer_networks').delete().eq('company_id', id);
+    await sb.from('credtrack_staff_agencies').delete().eq('company_id', id);
+    await sb.from('agency_partner_users').delete().eq('company_id', id);
+    await sb.from('credtrack_staff').delete().eq('company_id', id);
+    await sb.from('credtrack_agencies').delete().eq('company_id', id);
+    await sb.from('payers').delete().eq('company_id', id);
+    await sb.from('document_types').delete().eq('company_id', id);
+    await sb.from('compliance_modules').delete().eq('company_id', id);
+
+    // Delete the actual auth logins (not just the profiles rows), best-effort —
+    // a failure here shouldn't block the rest of the cleanup
+    for (const p of (profilesToDelete || [])) {
+      if (!p.email) continue;
+      try {
+        await sb.functions.invoke('delete-staff-auth', { body: { email: p.email, company_id: id } });
+      } catch (authErr) {
+        console.warn('delete-staff-auth failed for', p.email, authErr);
+      }
+    }
+    await sb.from('profiles').delete().eq('company_id', id);
+
+    // Finally, the company itself
+    const { error } = await sb.from('companies').delete().eq('id', id);
+    if (error) throw error;
+
+    toast(name + ' fully deleted');
+    await loadSuperAdmin();
+  } catch(e) {
+    toast('Delete failed: ' + e.message, true);
+  }
 }
 
 function showAddCompany() { document.getElementById('addCompanyForm').style.display = 'block'; }
