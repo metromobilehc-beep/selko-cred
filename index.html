@@ -331,6 +331,19 @@
   </div>
 </div>
 
+<!-- AGENCY PARTNER SCREEN -->
+<div id="partnerScreen" class="screen">
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1 id="partnerGreeting">Staff Credentials</h1>
+        <p>Verified documents for your linked staff.</p>
+      </div>
+    </div>
+    <div id="partnerStaffList"></div>
+  </div>
+</div>
+
 <!-- ADMIN SCREEN -->
 <div id="adminScreen" class="screen">
   <div class="page">
@@ -786,10 +799,64 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Tier</th><th>Required</th><th>Applies To</th><th>Type</th><th>Actions</th>
+              <th>Name</th><th>Expires</th><th>Tier</th><th>Required</th><th>Applies To</th><th id="partnerVisibleTh" style="display:none;">Partner visible</th><th>Type</th><th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Agency partner access (only shown for companies with has_partner_access) -->
+      <div class="dark-panel" id="partnerAccessPanel" style="display:none;margin-bottom:16px;">
+        <h2>Agency partner access</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Give referral partners read-only access to their staff's verified documents — instead of emailing files one by one. Control exactly which document types are visible under "Document types" above. This is fully independent of any billing or invoicing data.</p>
+
+        <div style="margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Step 1 — Referral agencies</div>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">The list of agencies who can be given partner access.</p>
+          <div class="inline-form" id="addAgencyForm" style="display:flex;gap:10px;margin-bottom:14px;">
+            <input type="text" id="agencyName" placeholder="Agency name (e.g. Compassus)" style="flex:1;" />
+            <button class="btn btn-sm btn-gold" onclick="saveCredtrackAgency()">+ Add agency</button>
+          </div>
+          <div id="agencyErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Agency</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="credtrackAgenciesTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div style="margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Step 2 — Assign staff to agencies</div>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Choose which agencies can see each staff member's verified documents.</p>
+          <div class="filter-bar">
+            <select class="filter-sel" id="fAssignAgency" onchange="loadStaffAgencyAssignments()"><option value="">All agencies</option></select>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Staff member</th><th>Assigned agencies</th><th>Actions</th></tr></thead>
+              <tbody id="staffAgencyTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Step 3 — Agency partner logins</div>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Each login is scoped to one agency and can only see that agency's assigned staff and visible document types.</p>
+          <div class="inline-form" id="addPartnerUserForm" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+            <select class="inline-select" id="puAgency" style="flex:1;min-width:160px;"></select>
+            <input class="inline-input" type="text" id="puName" placeholder="Full name" style="flex:1;min-width:160px;" />
+            <input class="inline-input" type="email" id="puEmail" placeholder="email@agency.com" style="flex:1;min-width:180px;" />
+            <button class="btn btn-sm btn-gold" onclick="savePartnerUser()">+ Add partner login</button>
+          </div>
+          <div id="partnerUserErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Agency</th><th>Status</th><th>Actions</th></tr></thead>
+              <tbody id="partnerUsersTbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -1134,13 +1201,23 @@ async function initSession(user) {
     if (!company.has_credtrack) throw new Error('Your organization does not have access to Selko Cred. Contact your administrator.');
 
     // Access gate: having a shared profiles row for this company is not
-    // enough — only people with an actual credtrack_staff record should
-    // get into Cred.
+    // enough — only people with an actual credtrack_staff record (or, for
+    // agency partners, an active agency_partner_users record) should get in.
+    let partnerRecord = null;
     if (!profile.is_super_admin) {
-      const { data: staffCheck } = await sb.from('credtrack_staff')
-        .select('id').eq('company_id', profile.company_id).eq('email', profile.email).maybeSingle();
-      if (!staffCheck) {
-        throw new Error("Your account doesn't have access to Selko Cred. Contact your admin if you believe this is a mistake.");
+      if (profile.role === 'partner') {
+        const { data: puCheck } = await sb.from('agency_partner_users')
+          .select('*, credtrack_agencies(name)').eq('company_id', profile.company_id).eq('profile_id', profile.id).maybeSingle();
+        if (!puCheck || !puCheck.active) {
+          throw new Error("Your access has been disabled. Contact the agency you're partnered with if you believe this is a mistake.");
+        }
+        partnerRecord = puCheck;
+      } else {
+        const { data: staffCheck } = await sb.from('credtrack_staff')
+          .select('id').eq('company_id', profile.company_id).eq('email', profile.email).maybeSingle();
+        if (!staffCheck) {
+          throw new Error("Your account doesn't have access to Selko Cred. Contact your admin if you believe this is a mistake.");
+        }
       }
     }
 
@@ -1173,6 +1250,13 @@ async function initSession(user) {
 
     if (profile.role === 'admin' || profile.is_super_admin) {
       document.getElementById('hdrMyCreds').style.display = 'inline-block';
+    }
+
+    if (profile.role === 'partner') {
+      document.getElementById('hdrRole').textContent = 'Agency Partner';
+      showScreen('partnerScreen');
+      await initPartnerView(partnerRecord);
+      return;
     }
 
     await loadDocTypes();
@@ -1261,6 +1345,58 @@ async function initStaff() {
   await renderStatCards(window._staffId);
   await loadMyDocs(window._staffId);
   await restorePendingFrontPhoto();
+}
+
+async function initPartnerView(partnerRecord) {
+  const agencyName = partnerRecord?.credtrack_agencies?.name || 'your agency';
+  document.getElementById('partnerGreeting').textContent = agencyName + ' — Staff Credentials';
+
+  const container = document.getElementById('partnerStaffList');
+  container.innerHTML = '<div class="empty-state">Loading…</div>';
+
+  // Every filter below is belt-and-suspenders on top of the RLS policies
+  // already enforcing this server-side — verified-only, partner_visible-only,
+  // and scoped to this agency's assigned staff.
+  const { data: links } = await sb.from('credtrack_staff_agencies')
+    .select('credtrack_staff(id, full_name, job_title)')
+    .eq('agency_id', partnerRecord.agency_id)
+    .eq('company_id', currentCompany.id);
+
+  const assignedStaff = (links || []).map(l => l.credtrack_staff).filter(Boolean);
+
+  if (!assignedStaff.length) {
+    container.innerHTML = '<div class="empty-state"><div class="empty-icon">📂</div>No staff have been assigned to your agency yet. Contact your Metro contact if this seems wrong.</div>';
+    return;
+  }
+
+  const panels = await Promise.all(assignedStaff.map(async cs => {
+    const { data: docs } = await sb.from('credtrack_documents')
+      .select('*, document_types!inner(name, partner_visible)')
+      .eq('staff_id', cs.id)
+      .eq('verified', true)
+      .eq('document_types.partner_visible', true)
+      .order('created_at', { ascending: false });
+
+    const docRows = (docs || []).map(d => `<div class="doc-item">
+      <div class="doc-icon">📄</div>
+      <div class="doc-info">
+        <div class="doc-name">${d.document_types?.name || d.label}</div>
+        <div class="doc-meta">${d.expiry_date ? 'Expires ' + fmtDate(d.expiry_date) : 'No expiration'}</div>
+      </div>
+      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${d.file_url.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}')">⬇ Download</button>` : ''}
+    </div>`).join('');
+
+    return `<div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''}</span>
+        ${docs && docs.length ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
+      </div>
+      <div class="panel-body">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
+    </div>`;
+  }));
+
+  container.innerHTML = panels.join('');
 }
 
 async function renderStatCards(staffId) {
@@ -1966,6 +2102,54 @@ async function viewFile(filePath) {
     window.open(data.signedUrl, '_blank');
   } catch(e) {
     toast('Could not open file: ' + e.message, true);
+  }
+}
+
+async function downloadFile(filePath, fileName) {
+  try {
+    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600, { download: fileName || true });
+    if (error) throw error;
+    const a = document.createElement('a');
+    a.href = data.signedUrl;
+    a.download = fileName || '';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } catch(e) {
+    toast('Could not download file: ' + e.message, true);
+  }
+}
+
+async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
+  try {
+    const { data: docs, error } = await sb.from('credtrack_documents')
+      .select('*, document_types!inner(name, partner_visible)')
+      .eq('staff_id', credtrackStaffId)
+      .eq('verified', true)
+      .eq('document_types.partner_visible', true)
+      .not('file_url', 'is', null);
+    if (error) throw error;
+    if (!docs?.length) { toast('No files to download', true); return; }
+
+    toast('Preparing download…');
+    const zip = new JSZip();
+    for (const d of docs) {
+      const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(d.file_url);
+      if (dlErr) { console.warn('Skipped', d.file_url, dlErr); continue; }
+      const ext = (d.file_name || '').split('.').pop() || 'bin';
+      const typeName = (d.document_types?.name || 'document').replace(/[\/\\:*?"<>|]/g, '_');
+      zip.file(`${typeName}_${d.id.slice(0,8)}.${ext}`, blobData);
+    }
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${staffName.replace(/[^a-z0-9]/gi,'_')}_Documents.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast('✓ Download ready');
+  } catch(e) {
+    toast('Download failed: ' + e.message, true);
   }
 }
 
@@ -3032,6 +3216,17 @@ async function loadSettings() {
 
   // Payer list (add/delete management)
   await loadPayersTable();
+
+  // Agency partner access (only for companies with this enabled)
+  const partnerPanel = document.getElementById('partnerAccessPanel');
+  if (currentCompany.has_partner_access) {
+    partnerPanel.style.display = 'block';
+    await loadCredtrackAgencies();
+    await loadStaffAgencyAssignments();
+    await loadPartnerUsersTable();
+  } else {
+    partnerPanel.style.display = 'none';
+  }
 }
 
 async function loadDocTypesTable() {
@@ -3040,9 +3235,13 @@ async function loadDocTypesTable() {
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('sort_order');
 
+  const partnerCol = document.getElementById('partnerVisibleTh');
+  const hasPartnerAccess = !!currentCompany.has_partner_access;
+  if (partnerCol) partnerCol.style.display = hasPartnerAccess ? '' : 'none';
+
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="${hasPartnerAccess ? 8 : 7}" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
     return;
   }
 
@@ -3069,6 +3268,12 @@ async function loadDocTypesTable() {
              class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${scopeLabel} ✎</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
     </td>
+    ${hasPartnerAccess ? `<td>
+      <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
+        onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
+        ${t.partner_visible ? '✓ Visible' : 'Hidden'}
+      </span>
+    </td>` : ''}
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
       ${(currentProfile.is_super_admin && !_superProfile) ? `<button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
@@ -3092,6 +3297,13 @@ async function toggleDocTypeRequired(id, currentlyRequired) {
   const { error } = await sb.from('document_types').update({ is_required: !currentlyRequired }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(!currentlyRequired ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
+  await loadDocTypesTable();
+}
+
+async function toggleDocTypePartnerVisible(id, currentlyVisible) {
+  const { error } = await sb.from('document_types').update({ partner_visible: !currentlyVisible }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(!currentlyVisible ? 'Now visible to agency partners' : 'Hidden from agency partners');
   await loadDocTypesTable();
 }
 
@@ -3196,6 +3408,251 @@ async function loadPayersTable() {
   // populate the assignment form's payer dropdown too
   const sel = document.getElementById('pnPayer');
   sel.innerHTML = data.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+}
+
+// ══ AGENCY PARTNER ACCESS ══
+async function loadCredtrackAgencies() {
+  const { data } = await sb.from('credtrack_agencies')
+    .select('*').eq('company_id', currentCompany.id).order('name');
+
+  const tbody = document.getElementById('credtrackAgenciesTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No agencies added yet.</td></tr>';
+  } else {
+    tbody.innerHTML = data.map(a => `<tr>
+      <td>${a.name}</td>
+      <td><span style="color:${a.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:12px;">${a.active ? '● Active' : '○ Inactive'}</span></td>
+      <td><div class="td-actions">
+        <button class="btn btn-sm btn-gold" onclick="toggleCredtrackAgencyActive('${a.id}',${a.active})">${a.active ? 'Deactivate' : 'Reactivate'}</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCredtrackAgency('${a.id}','${a.name.replace(/'/g,"\\'")}')">Delete</button>
+      </div></td>
+    </tr>`).join('');
+  }
+
+  // populate the agency dropdowns used elsewhere on this panel
+  const options = (data || []).filter(a => a.active).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  const assignSel = document.getElementById('fAssignAgency');
+  const puAgencySel = document.getElementById('puAgency');
+  if (assignSel)   assignSel.innerHTML   = '<option value="">All agencies</option>' + options;
+  if (puAgencySel) puAgencySel.innerHTML = '<option value="">— Select agency —</option>' + options;
+
+  return data || [];
+}
+
+async function saveCredtrackAgency() {
+  const nameEl = document.getElementById('agencyName');
+  const name   = nameEl.value.trim();
+  const err    = document.getElementById('agencyErr');
+  err.style.display = 'none';
+  if (!name) { err.textContent = 'Agency name is required.'; err.style.display = 'block'; return; }
+  const { error } = await sb.from('credtrack_agencies').insert({ name, company_id: currentCompany.id, active: true });
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  toast('Agency "' + name + '" added');
+  nameEl.value = '';
+  await loadCredtrackAgencies();
+  await loadStaffAgencyAssignments();
+}
+
+async function toggleCredtrackAgencyActive(id, active) {
+  const { error } = await sb.from('credtrack_agencies').update({ active: !active }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(active ? 'Agency deactivated' : 'Agency reactivated');
+  await loadCredtrackAgencies();
+  await loadStaffAgencyAssignments();
+}
+
+async function deleteCredtrackAgency(id, name) {
+  if (!confirm(`Delete "${name}"? This removes all staff assignments and any partner logins tied to this agency.`)) return;
+  await sb.from('agency_partner_users').delete().eq('agency_id', id);
+  await sb.from('credtrack_staff_agencies').delete().eq('agency_id', id);
+  const { error } = await sb.from('credtrack_agencies').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(name + ' deleted');
+  await loadCredtrackAgencies();
+  await loadStaffAgencyAssignments();
+  await loadPartnerUsersTable();
+}
+
+async function loadStaffAgencyAssignments() {
+  const agencyFilter = document.getElementById('fAssignAgency')?.value || '';
+
+  const { data: assignments } = await sb.from('credtrack_staff_agencies')
+    .select('*, credtrack_agencies(name)')
+    .eq('company_id', currentCompany.id);
+
+  const byStaff = {};
+  (assignments || []).forEach(a => {
+    (byStaff[a.staff_id] ||= []).push(a);
+  });
+
+  let rows = staffList;
+  if (agencyFilter) {
+    rows = rows.filter(s => (byStaff[s.id] || []).some(a => a.agency_id === agencyFilter));
+  }
+
+  const tbody = document.getElementById('staffAgencyTbody');
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No staff match this filter.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = rows.map(s => {
+    const assigned = byStaff[s.id] || [];
+    const pills = assigned.length
+      ? assigned.map(a => `<span class="badge badge-verified" style="margin-right:4px;">${a.credtrack_agencies?.name || '—'}</span>`).join('')
+      : '<span style="font-size:11px;color:rgba(255,255,255,.3);">No agencies assigned</span>';
+    return `<tr>
+      <td>${s.full_name}</td>
+      <td>${pills}</td>
+      <td><div class="td-actions">
+        <button class="btn btn-sm btn-teal" onclick="showAssignAgenciesModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">Edit</button>
+      </div></td>
+    </tr>`;
+  }).join('');
+}
+
+async function showAssignAgenciesModal(staffId, staffName) {
+  const existing = document.getElementById('assignAgenciesModal');
+  if (existing) existing.remove();
+
+  const agencies = await loadCredtrackAgencies();
+  const { data: current } = await sb.from('credtrack_staff_agencies')
+    .select('agency_id').eq('staff_id', staffId).eq('company_id', currentCompany.id);
+  const currentIds = new Set((current || []).map(c => c.agency_id));
+
+  const checklist = agencies.filter(a => a.active).map(a => `
+    <label style="display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px;color:#fff;cursor:pointer;">
+      <input type="checkbox" class="assignAgencyCheck" value="${a.id}" ${currentIds.has(a.id) ? 'checked' : ''} />
+      ${a.name}
+    </label>
+  `).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'assignAgenciesModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:14px;">Which agencies can see this person's verified documents?</div>
+      <div style="max-height:220px;overflow-y:auto;margin-bottom:16px;">${checklist || '<span style="font-size:12px;color:rgba(255,255,255,.3);">No agencies yet — add one above first.</span>'}</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="confirmAssignAgencies('${staffId}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('assignAgenciesModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function confirmAssignAgencies(staffId) {
+  const checked = [...document.querySelectorAll('.assignAgencyCheck:checked')].map(c => c.value);
+
+  // Simplest correct approach: clear existing assignments for this staff member, then re-insert the checked ones
+  await sb.from('credtrack_staff_agencies').delete().eq('staff_id', staffId).eq('company_id', currentCompany.id);
+  if (checked.length) {
+    await sb.from('credtrack_staff_agencies').insert(
+      checked.map(agencyId => ({ company_id: currentCompany.id, staff_id: staffId, agency_id: agencyId }))
+    );
+  }
+
+  document.getElementById('assignAgenciesModal')?.remove();
+  toast('Agency assignments updated');
+  await loadStaffAgencyAssignments();
+}
+
+async function loadPartnerUsersTable() {
+  const { data } = await sb.from('agency_partner_users')
+    .select('*, credtrack_agencies(name)')
+    .eq('company_id', currentCompany.id)
+    .order('full_name');
+
+  const tbody = document.getElementById('partnerUsersTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No agency partner logins yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(u => `<tr>
+    <td>${u.full_name}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${u.email}</td>
+    <td style="font-size:12px;">${u.credtrack_agencies?.name || '—'}</td>
+    <td>
+      ${u.profile_id
+        ? `<span style="color:${u.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:12px;">${u.active ? '● Active' : '○ Inactive'}</span>`
+        : `<span class="badge badge-warn">Invite pending</span>`}
+    </td>
+    <td><div class="td-actions">
+      ${!u.profile_id ? `<button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">Send invite</button>` : ''}
+      ${u.profile_id ? `<button class="btn btn-sm btn-gold" onclick="togglePartnerUserActive('${u.id}',${u.active})">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
+      <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}','${u.full_name.replace(/'/g,"\\'")}')">Delete</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+async function savePartnerUser() {
+  const agencyId = document.getElementById('puAgency').value;
+  const name      = document.getElementById('puName').value.trim();
+  const email     = document.getElementById('puEmail').value.trim();
+  const err       = document.getElementById('partnerUserErr');
+  err.style.display = 'none';
+  if (!agencyId) { err.textContent = 'Agency is required.'; err.style.display = 'block'; return; }
+  if (!name)     { err.textContent = 'Name is required.';   err.style.display = 'block'; return; }
+  if (!email)    { err.textContent = 'Email is required.';  err.style.display = 'block'; return; }
+
+  const { data: created, error } = await sb.from('agency_partner_users').insert({
+    company_id: currentCompany.id, agency_id: agencyId, full_name: name, email, active: true,
+  }).select().single();
+
+  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  toast(name + ' added — click "Send invite" to email their login link');
+  document.getElementById('puName').value  = '';
+  document.getElementById('puEmail').value = '';
+  await loadPartnerUsersTable();
+}
+
+async function sendPartnerInvite(id, name, email) {
+  if (!confirm(`Send login invite to ${name} at ${email}?`)) return;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        name, email,
+        company_id: currentCompany.id,
+        role:       'partner',
+        app:        'cred',
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    // Link the new profile back to this partner user record
+    const { data: prof } = await sb.from('profiles').select('id').eq('email', email).maybeSingle();
+    if (prof) {
+      await sb.from('agency_partner_users').update({ profile_id: prof.id }).eq('id', id);
+    }
+
+    toast('Invite sent to ' + name);
+    await loadPartnerUsersTable();
+  } catch(e) {
+    toast('Invite failed: ' + e.message, true);
+  }
+}
+
+async function togglePartnerUserActive(id, active) {
+  const { error } = await sb.from('agency_partner_users').update({ active: !active }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(active ? 'Partner login deactivated' : 'Partner login reactivated');
+  await loadPartnerUsersTable();
+}
+
+async function deletePartnerUser(id, name) {
+  if (!confirm(`Remove partner login for ${name}? This cannot be undone.`)) return;
+  const { error } = await sb.from('agency_partner_users').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(name + ' removed');
+  await loadPartnerUsersTable();
 }
 
 async function loadInsuranceTab() {
