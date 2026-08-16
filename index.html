@@ -833,6 +833,11 @@
           <div class="filter-bar">
             <select class="filter-sel" id="fAssignAgency" onchange="loadStaffAgencyAssignments()"><option value="">All agencies</option></select>
           </div>
+          <div class="filter-bar" style="background:rgba(255,255,255,.03);border-radius:8px;padding:10px 12px;">
+            <span style="font-size:12px;color:rgba(255,255,255,.5);">Quick add —</span>
+            <select class="filter-sel" id="bulkAssignAgency"><option value="">Select agency…</option></select>
+            <button class="btn btn-sm btn-gold" onclick="bulkAssignAllStaff()">+ Assign all active staff</button>
+          </div>
           <div class="tbl-wrap">
             <table>
               <thead><tr><th>Staff member</th><th>Assigned agencies</th><th>Actions</th></tr></thead>
@@ -3433,8 +3438,10 @@ async function loadCredtrackAgencies() {
   const options = (data || []).filter(a => a.active).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
   const assignSel = document.getElementById('fAssignAgency');
   const puAgencySel = document.getElementById('puAgency');
+  const bulkAgencySel = document.getElementById('bulkAssignAgency');
   if (assignSel)   assignSel.innerHTML   = '<option value="">All agencies</option>' + options;
   if (puAgencySel) puAgencySel.innerHTML = '<option value="">— Select agency —</option>' + options;
+  if (bulkAgencySel) bulkAgencySel.innerHTML = '<option value="">Select agency…</option>' + options;
 
   return data || [];
 }
@@ -3557,6 +3564,33 @@ async function confirmAssignAgencies(staffId) {
 
   document.getElementById('assignAgenciesModal')?.remove();
   toast('Agency assignments updated');
+  await loadStaffAgencyAssignments();
+}
+
+async function bulkAssignAllStaff() {
+  const agencyId = document.getElementById('bulkAssignAgency').value;
+  if (!agencyId) { toast('Select an agency first', true); return; }
+
+  const activeStaff = staffList.filter(s => s.active);
+  if (!activeStaff.length) { toast('No active staff to assign', true); return; }
+
+  if (!confirm(`Assign all ${activeStaff.length} active staff to this agency? This adds the agency to everyone who doesn't already have it — existing assignments to other agencies are kept.`)) return;
+
+  // Only insert for staff who aren't already assigned, to avoid duplicate rows
+  const { data: existing } = await sb.from('credtrack_staff_agencies')
+    .select('staff_id').eq('company_id', currentCompany.id).eq('agency_id', agencyId);
+  const alreadyAssigned = new Set((existing || []).map(e => e.staff_id));
+
+  const toInsert = activeStaff
+    .filter(s => !alreadyAssigned.has(s.id))
+    .map(s => ({ company_id: currentCompany.id, staff_id: s.id, agency_id: agencyId }));
+
+  if (!toInsert.length) { toast('Everyone is already assigned to this agency'); return; }
+
+  const { error } = await sb.from('credtrack_staff_agencies').insert(toInsert);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  toast(`✓ Assigned ${toInsert.length} staff member(s)`);
   await loadStaffAgencyAssignments();
 }
 
