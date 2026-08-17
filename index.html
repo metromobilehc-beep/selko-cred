@@ -1442,8 +1442,8 @@ async function initPartnerView(partnerRecord) {
         <div class="doc-name">${d.document_types?.name || d.label}</div>
         <div class="doc-meta">${d.expiry_date ? 'Expires ' + fmtDate(d.expiry_date) : 'No expiration'}</div>
       </div>
-      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${d.file_url.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
-      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}')">⬇ Download</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${d.file_url.replace(/'/g,"\\'")}','${d.id}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}','${d.id}')">⬇ Download</button>` : ''}
     </div>`).join('');
 
     return `<div class="panel">
@@ -2071,8 +2071,8 @@ async function loadAdminDocs() {
       ? '<span class="badge badge-verified">✓ Verified</span>'
       : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`;
     const fileHtml = [
-      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
-      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View back</button>` : '',
+      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
+      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View back</button>` : '',
     ].join(' ') || '<span style="color:rgba(255,255,255,.3);font-size:12px;">No file</span>';
     return `<tr>
       <td>${name}</td>
@@ -2201,17 +2201,45 @@ async function verifyDoc(id) {
   await loadAdminDocs();
 }
 
-async function viewFile(filePath) {
+async function logDocumentAccess(documentId, action) {
+  // Best-effort — logging failures should never block someone from
+  // actually viewing/downloading their own work documents.
+  if (!documentId) return;
+  try {
+    const { data: doc } = await sb.from('credtrack_documents')
+      .select('staff_id, label, company_id, document_types(name), credtrack_staff(full_name)')
+      .eq('id', documentId)
+      .maybeSingle();
+    await sb.from('credtrack_access_log').insert({
+      document_id: documentId,
+      staff_id: doc?.staff_id || null,
+      // company_id reflects who OWNS this document (whose data is being
+      // accessed), not the viewer's own company — matters for agency
+      // partners viewing another company's staff documents.
+      company_id: doc?.company_id || currentCompany?.id || currentProfile?.company_id,
+      accessed_by_profile_id: currentProfile.id,
+      accessed_by_name: currentProfile.full_name,
+      action,
+      document_type_name: doc?.document_types?.name || doc?.label || null,
+      staff_full_name: doc?.credtrack_staff?.full_name || null,
+    });
+  } catch (e) {
+    console.warn('Access log write failed (non-blocking):', e);
+  }
+}
+
+async function viewFile(filePath, documentId) {
   try {
     const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600);
     if (error) throw error;
     window.open(data.signedUrl, '_blank');
+    logDocumentAccess(documentId, 'view');
   } catch(e) {
     toast('Could not open file: ' + e.message, true);
   }
 }
 
-async function downloadFile(filePath, fileName) {
+async function downloadFile(filePath, fileName, documentId) {
   try {
     const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600, { download: fileName || true });
     if (error) throw error;
@@ -2221,6 +2249,7 @@ async function downloadFile(filePath, fileName) {
     document.body.appendChild(a);
     a.click();
     a.remove();
+    logDocumentAccess(documentId, 'download');
   } catch(e) {
     toast('Could not download file: ' + e.message, true);
   }
@@ -3791,7 +3820,8 @@ async function loadPartnerUsersTable() {
         : `<span class="badge badge-warn">Invite pending</span>`}
     </td>
     <td><div class="td-actions">
-      ${!u.profile_id ? `<button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">Send invite</button>` : ''}
+      <button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">${u.profile_id ? 'Resend / Set up login' : 'Send invite'}</button>
+      ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       ${u.profile_id ? `<button class="btn btn-sm btn-gold" onclick="togglePartnerUserActive('${u.id}',${u.active})">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}','${u.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
@@ -3820,32 +3850,77 @@ async function savePartnerUser() {
 }
 
 async function sendPartnerInvite(id, name, email) {
-  if (!confirm(`Send login invite to ${name} at ${email}?`)) return;
+  if (!confirm(`Set up login for ${name} (${email})?\n\nA temporary password will be generated and emailed to them. If they already have a Selko login elsewhere, this just grants partner access without changing their existing password.`)) return;
+
+  const tempPassword = generateTempPassword();
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({
-        name, email,
+        email,
+        password: tempPassword,
+        name,
         company_id: currentCompany.id,
-        role:       'partner',
-        app:        'cred',
+        role: 'partner',
+        login_url: 'https://cred.selko360.com',
+        app_label: 'Cred',
+        force_reset: false,
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
-    // Link the new profile back to this partner user record
-    const { data: prof } = await sb.from('profiles').select('id').eq('email', email).maybeSingle();
-    if (prof) {
-      await sb.from('agency_partner_users').update({ profile_id: prof.id }).eq('id', id);
+    if (result.user_id) {
+      await sb.from('agency_partner_users').update({ profile_id: result.user_id }).eq('id', id);
     }
 
-    toast('Invite sent to ' + name);
+    if (result.password_reset) {
+      showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
+    } else {
+      toast(`✓ ${name} already has a Selko login — partner access granted, no password changed.`);
+    }
     await loadPartnerUsersTable();
   } catch(e) {
-    toast('Invite failed: ' + e.message, true);
+    toast('Setup failed: ' + e.message, true);
+  }
+}
+
+async function resetPartnerPassword(id, name, email) {
+  // Unlike sendPartnerInvite (which won't re-send an email to someone who
+  // already has an account, to avoid clobbering a password they already
+  // know), this always forces a brand new password and email — the right
+  // tool when someone genuinely never received their original invite.
+  if (!confirm(`Set a new temporary password for ${name} (${email})?`)) return;
+
+  const tempPassword = generateTempPassword();
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        email,
+        password: tempPassword,
+        name,
+        company_id: currentCompany.id,
+        role: 'partner',
+        login_url: 'https://cred.selko360.com',
+        app_label: 'Cred',
+        force_reset: true,
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    if (result.user_id) {
+      await sb.from('agency_partner_users').update({ profile_id: result.user_id }).eq('id', id);
+    }
+
+    showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
+  } catch(e) {
+    toast('Reset failed: ' + e.message, true);
   }
 }
 
@@ -4910,26 +4985,40 @@ async function superInvite() {
   err.style.display = 'none';
   if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
   if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
+  if (!companyId) { err.textContent = 'Company is required.'; err.style.display = 'block'; return; }
+
+  const tempPassword = generateTempPassword();
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({
-        name, email,
+        email,
+        password: tempPassword,
+        name,
         company_id: companyId,
-        role:       'admin',
-        app:        'cred',
+        role: 'admin',
+        login_url: 'https://cred.selko360.com',
+        app_label: 'Cred',
+        force_reset: false,
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
+
     // Add to credtrack_staff for that company
-    await sb.from('credtrack_staff').insert({
+    const { data: newStaff } = await sb.from('credtrack_staff').insert({
       company_id: companyId, full_name: name, email,
       staff_type: 'admin', active: true,
-    });
-    toast('Invite sent to ' + name);
+      profile_id: result.user_id || null,
+    }).select().maybeSingle();
+
+    if (result.password_reset) {
+      showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
+    } else {
+      toast(`✓ ${name} already has a Selko login — admin access granted for this company, no password changed.`);
+    }
     document.getElementById('invName').value  = '';
     document.getElementById('invEmail').value = '';
   } catch(e) {
