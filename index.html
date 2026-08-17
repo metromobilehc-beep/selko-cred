@@ -2624,6 +2624,7 @@ async function loadStaffTable() {
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
+      <button class="btn btn-sm btn-ghost" onclick="showEditLicenseModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit license #</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
       <button class="btn btn-sm btn-gold" onclick="showStaffActionsMenu('${s.id}')">⋮ More</button>
     </div></td>
@@ -2925,6 +2926,64 @@ async function confirmDisciplineCred(id) {
   document.getElementById('disciplineModalCred').remove();
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Discipline updated');
+  await loadStaffTable();
+}
+
+function showEditLicenseModal(id, name, currentNumber, currentType, currentState) {
+  const existing = document.getElementById('editLicenseModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'editLicenseModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">The license number is required (along with a "License Verification Record" document) for the verified checkmark to show — this lets you set or correct it directly, without needing to upload a new document.</div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">License number</label>
+        <input class="inline-input" type="text" id="editLicenseNumber" value="${currentNumber || ''}" />
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        <div>
+          <label class="inline-label">License type</label>
+          <input class="inline-input" type="text" id="editLicenseType" value="${currentType || ''}" placeholder="PT, PTA, OT..." />
+        </div>
+        <div>
+          <label class="inline-label">License state</label>
+          <input class="inline-input" type="text" id="editLicenseState" value="${currentState || ''}" placeholder="OK" maxlength="2" />
+        </div>
+      </div>
+      <div id="editLicenseErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveEditLicense('${id}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editLicenseModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveEditLicense(id) {
+  const number = document.getElementById('editLicenseNumber').value.trim();
+  const type   = document.getElementById('editLicenseType').value.trim();
+  const state  = document.getElementById('editLicenseState').value.trim();
+  const errEl  = document.getElementById('editLicenseErr');
+
+  const { error } = await sb.from('credtrack_staff').update({
+    license_number: number || null,
+    license_type:   type || null,
+    license_state:  state || null,
+  }).eq('id', id);
+
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('editLicenseModal')?.remove();
+  toast('License info updated');
   await loadStaffTable();
 }
 
