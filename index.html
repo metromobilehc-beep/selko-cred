@@ -159,6 +159,10 @@
   .ov-attention-row { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,.03); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
   .ov-attention-row .ov-days-badge { font-weight: 700; font-size: 12px; padding: 3px 9px; border-radius: 12px; }
   .dark-panel h2 { font-size: 12px; color: var(--teal-l); margin-bottom: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+  .panel-header-collapsible { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
+  .panel-chevron { display: inline-block; font-size: 11px; color: rgba(255,255,255,.4); transition: transform .18s ease; margin-left: 10px; }
+  .panel-chevron.open { transform: rotate(90deg); }
+  .panel-body { overflow: hidden; }
 
   .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
   .filter-sel { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
@@ -734,7 +738,7 @@
     <div id="tabSettings" style="display:none;">
 
       <!-- Company settings -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>Company settings</h2>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div>
@@ -759,7 +763,7 @@
       </div>
 
       <!-- Branding (Pro only) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>Branding <span id="brandingProTag" style="font-size:10px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h2>
         <div id="brandingLocked" style="color:rgba(255,255,255,.4);font-size:13px;display:none;">Branding customization is available on the Pro plan.</div>
         <div id="brandingForm">
@@ -1029,6 +1033,52 @@
     </div>
 
 <script>
+
+function initCollapsiblePanels() {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel').forEach(panel => {
+    if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
+    const h2 = panel.querySelector('h2');
+    if (!h2) return;
+    panel.dataset.collapsibleInit = '1';
+
+    // Move everything after the h2 into a dedicated body wrapper we can hide
+    const body = document.createElement('div');
+    body.className = 'panel-body';
+    let node = h2.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      body.appendChild(node);
+      node = next;
+    }
+    panel.appendChild(body);
+
+    h2.classList.add('panel-header-collapsible');
+    const chevron = document.createElement('span');
+    chevron.className = 'panel-chevron';
+    chevron.textContent = '▸';
+    h2.appendChild(chevron);
+
+    const storageKey = 'cred_panel_open_' + h2.textContent.trim().replace(/\s+/g, '_').toLowerCase();
+    const defaultOpen = panel.dataset.defaultOpen === 'true';
+    const saved = localStorage.getItem(storageKey);
+    const isOpen = saved !== null ? saved === '1' : defaultOpen;
+
+    body.style.display = isOpen ? '' : 'none';
+    if (isOpen) chevron.classList.add('open');
+
+    h2.addEventListener('click', () => {
+      const nowOpen = body.style.display === 'none';
+      body.style.display = nowOpen ? '' : 'none';
+      chevron.classList.toggle('open', nowOpen);
+      localStorage.setItem(storageKey, nowOpen ? '1' : '0');
+    });
+  });
+}
+// Panels above this point are already parsed into the DOM by the time this
+// script runs, so this is safe to call immediately rather than waiting for
+// a load event.
+initCollapsiblePanels();
+</script>
 // ══ CONFIG ══
 const SUPABASE_URL      = 'https://zxserlkhwkfoqiepurdr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
@@ -2044,6 +2094,7 @@ async function loadAdminDocs() {
       <td><div class="td-actions">
         ${fileHtml}
         <button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>
+        <button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>
         <button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>
       </div></td>
     </tr>`;
@@ -2100,6 +2151,55 @@ async function saveDocDates(docId) {
   await loadAdminDocs();
   await loadAlertBanner();
   await loadExpTracker();
+}
+
+function editDocType(docId, currentTypeId) {
+  const existing = document.getElementById('editTypeModal');
+  if (existing) existing.remove();
+
+  const options = docTypes.map(t =>
+    `<option value="${t.id}" ${String(t.id) === String(currentTypeId) ? 'selected' : ''}>${t.name}</option>`
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'editTypeModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Edit document type</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Fixes a document that was accidentally uploaded under the wrong type — e.g. a license verification screenshot uploaded as a plain "License" instead of "License Verification Record," which is why the verified checkmark wasn't showing.</div>
+      <div style="margin-bottom:18px;">
+        <label class="inline-label">Document type</label>
+        <select class="inline-select" id="editTypeSelect" style="width:100%;">${options}</select>
+      </div>
+      <div id="editTypeErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveDocType('${docId}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editTypeModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveDocType(docId) {
+  const newTypeId = document.getElementById('editTypeSelect').value;
+  const errEl = document.getElementById('editTypeErr');
+
+  const { error } = await sb.from('credtrack_documents').update({
+    document_type_id: newTypeId,
+  }).eq('id', docId);
+
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('editTypeModal')?.remove();
+  toast('Document type updated');
+  await loadAdminDocs();
+  await loadStaffTable();
 }
 
 async function verifyDoc(id) {
@@ -2646,8 +2746,20 @@ function attachVerificationProof(staffId) {
     document.getElementById('auStaff').value = staffId;
 
     const verifType = docTypes.find(t => t.name.toLowerCase() === 'license verification record');
+    const auType = document.getElementById('auType');
     if (verifType) {
-      document.getElementById('auType').value = verifType.id;
+      auType.value = verifType.id;
+      // Lock the type field so it can't get accidentally changed away from
+      // "License Verification Record" mid-upload — that's exactly what
+      // silently breaks the verified checkmark, since the badge matches on
+      // this exact type. Small unlock link for the rare real exception.
+      auType.disabled = true;
+      auType.style.opacity = '0.6';
+      const hint = document.createElement('div');
+      hint.id = 'auTypeLockHint';
+      hint.style.cssText = 'font-size:11px;color:rgba(255,255,255,.4);margin-top:4px;';
+      hint.innerHTML = `Locked to "License Verification Record" so the verified checkmark works correctly. <a href="#" onclick="document.getElementById('auType').disabled=false;document.getElementById('auType').style.opacity=1;this.parentElement.remove();return false;" style="color:var(--teal-l);">Unlock</a>`;
+      auType.insertAdjacentElement('afterend', hint);
     } else {
       toast('Set up "License Verification Record" as a document type first (Settings → Document types)', true);
     }
