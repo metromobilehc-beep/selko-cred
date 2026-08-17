@@ -2179,7 +2179,7 @@ function editDocType(docId, currentTypeId) {
       </div>
       <div id="editTypeErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveDocType('${docId}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-teal" onclick="saveDocTypeAssignment('${docId}')" style="flex:1;justify-content:center;">Save</button>
         <button class="btn btn-ghost" onclick="document.getElementById('editTypeModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -2187,7 +2187,7 @@ function editDocType(docId, currentTypeId) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-async function saveDocType(docId) {
+async function saveDocTypeAssignment(docId) {
   const newTypeId = document.getElementById('editTypeSelect').value;
   const errEl = document.getElementById('editTypeErr');
 
