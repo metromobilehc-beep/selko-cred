@@ -1258,6 +1258,9 @@ async function initSession(user) {
     if (compErr) throw new Error('Company error: ' + compErr.message);
     if (!company) throw new Error('No company found.');
     if (!company.has_credtrack) throw new Error('Your organization does not have access to Selko Cred. Contact your administrator.');
+    if (company.deleted_at && !profile.is_super_admin) {
+      throw new Error('This account is no longer active. Contact Selko support if you believe this is a mistake.');
+    }
 
     // Access gate: having a shared profiles row for this company is not
     // enough — only people with an actual credtrack_staff record (or, for
@@ -4565,17 +4568,23 @@ async function loadSuperAdmin() {
         <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '✓' : '✕'}</span>
         <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '✓' : '✕'}</span>
         <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
+        ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">🗑 Deleted — purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
       </div>
 
       <div class="company-card-actions">
-        <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
-        <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
-        <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
-          onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
-          ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
-        </button>
-        ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
+        ${c.deleted_at ? `
+          <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">↩ Restore</button>
+          <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${c.name.replace(/'/g,"\\'")}')">⚠ Purge now</button>
+        ` : `
+          <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
+          <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
+          <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
+            onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
+            ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
+          </button>
+          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
+          <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
+        `}
       </div>
     </div>`;
   }).join('');
@@ -4899,10 +4908,62 @@ async function toggleCompanyFlag(id, flag, current) {
   await loadSuperAdmin();
 }
 
-async function deleteCompany(id, name) {
-  if (!confirm(`Delete ${name}?\n\nThis will permanently remove all associated staff, documents, completions, logins, and other records for this company. This cannot be undone.\n\nType the company name to confirm.`)) return;
-  const confirmName = prompt(`Type "${name}" to confirm deletion:`);
-  if (confirmName !== name) { toast('Name did not match — deletion cancelled'); return; }
+async function softDeleteCompany(id, name) {
+  if (!currentProfile?.is_super_admin) { toast('Only super admins can delete a company.', true); return; }
+  if (!confirm(`Delete ${name}?\n\nThis blocks their access immediately and schedules permanent deletion in 30 days. Nothing is actually removed yet — you can restore it anytime before the purge date.\n\nType the company name to confirm.`)) return;
+  const confirmName = prompt(`Type "${name}" to confirm:`);
+  if (confirmName !== name) { toast('Name did not match — cancelled'); return; }
+
+  try {
+    const purgeDate = new Date();
+    purgeDate.setDate(purgeDate.getDate() + 30);
+    const { error } = await sb.from('companies').update({
+      deleted_at: new Date().toISOString(),
+      purge_scheduled_at: purgeDate.toISOString(),
+      deleted_by_profile_id: currentProfile.id,
+    }).eq('id', id);
+    if (error) throw error;
+
+    toast(`${name} deleted — permanently purged in 30 days unless restored`);
+    await loadSuperAdmin();
+  } catch(e) {
+    toast('Delete failed: ' + e.message, true);
+  }
+}
+
+async function restoreCompany(id, name) {
+  if (!currentProfile?.is_super_admin) { toast('Only super admins can restore a company.', true); return; }
+  if (!confirm(`Restore ${name}? This cancels the scheduled purge and immediately restores their access.`)) return;
+
+  try {
+    const { error } = await sb.from('companies').update({
+      deleted_at: null,
+      purge_scheduled_at: null,
+      deleted_by_profile_id: null,
+    }).eq('id', id);
+    if (error) throw error;
+
+    toast(`${name} restored`);
+    await loadSuperAdmin();
+  } catch(e) {
+    toast('Restore failed: ' + e.message, true);
+  }
+}
+
+async function purgeCompanyPermanently(id, name) {
+  // This is the actual, irreversible destruction step — no longer the
+  // primary "Delete" action. Reached either automatically (30 days after
+  // softDeleteCompany, via the purge-deleted-companies cron) or manually
+  // via "Purge now" on an already soft-deleted company. Never call this
+  // directly on a company that hasn't been through soft-delete first.
+  const { data: co } = await sb.from('companies').select('deleted_at').eq('id', id).maybeSingle();
+  if (!co?.deleted_at) {
+    toast('This company must be deleted (soft-deleted) first before it can be purged.', true);
+    return;
+  }
+  if (!confirm(`Permanently and immediately purge ${name}?\n\nThis will remove all associated staff, documents, completions, logins, and other records for this company. This cannot be undone.\n\nType the company name to confirm.`)) return;
+  const confirmName = prompt(`Type "${name}" to confirm permanent purge:`);
+  if (confirmName !== name) { toast('Name did not match — purge cancelled'); return; }
 
   try {
     // Grab emails first so we can clean up their actual logins, not just the profile rows
@@ -4939,10 +5000,10 @@ async function deleteCompany(id, name) {
     const { error } = await sb.from('companies').delete().eq('id', id);
     if (error) throw error;
 
-    toast(name + ' fully deleted');
+    toast(name + ' permanently purged');
     await loadSuperAdmin();
   } catch(e) {
-    toast('Delete failed: ' + e.message, true);
+    toast('Purge failed: ' + e.message, true);
   }
 }
 
