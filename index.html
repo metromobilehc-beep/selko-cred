@@ -356,9 +356,6 @@
         <h1>Credential Admin</h1>
         <p>Manage staff credentials and track expirations.</p>
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
-      <button class="btn btn-sm btn-teal" id="exportProExcelBtn" onclick="exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
-      <button class="btn btn-sm btn-gold" id="exportProPdfBtn" onclick="exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
     </div>
 
     <!-- View as Admin banner -->
@@ -448,6 +445,9 @@
         </select>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
         <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
+        <button class="btn btn-sm btn-teal" id="exportProExcelBtn" onclick="exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
+        <button class="btn btn-sm btn-gold" id="exportProPdfBtn" onclick="exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
       </div>
 
