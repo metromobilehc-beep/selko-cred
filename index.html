@@ -3338,6 +3338,12 @@ async function resetPassword(email, fullName, staffId) {
   if (!confirm(`Set a new temporary password for ${fullName} (${email})?`)) return;
 
   const tempPassword = generateTempPassword();
+  // This person's *actual* staff_type determines whether they should get
+  // admin-level access — never hardcode 'staff' here, or an admin gets
+  // silently downgraded to the limited self-service view every time their
+  // login is set up or reset (exactly what happened to Kym Crane).
+  const staffRecord = staffList.find(s => s.id === staffId);
+  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : 'staff';
   try {
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
@@ -3351,7 +3357,7 @@ async function resetPassword(email, fullName, staffId) {
         password: tempPassword,
         name: fullName,
         company_id: currentCompany.id,
-        role: 'staff',
+        role: actualRole,
         login_url: 'https://cred.selko360.com',
         app_label: 'Cred',
         force_reset: true,
@@ -5707,6 +5713,12 @@ async function setupStaffLogin(staffId, fullName, email) {
   const tempPassword = generateTempPassword();
   if (!confirm(`Set up login for ${fullName} (${email})?\n\nIf they don't have a Selko account yet, one will be created and emailed to them. If they already have an account (e.g. from another Selko app), this just grants access — their existing password stays the same.`)) return;
 
+  // This person's *actual* staff_type determines whether they should get
+  // admin-level access — never hardcode 'staff' here, or an admin gets
+  // silently downgraded to the limited self-service view.
+  const staffRecord = staffList.find(s => s.id === staffId);
+  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : 'staff';
+
   try {
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
@@ -5720,7 +5732,7 @@ async function setupStaffLogin(staffId, fullName, email) {
         password: tempPassword,
         name: fullName,
         company_id: currentCompany.id,
-        role: 'staff',
+        role: actualRole,
         login_url: 'https://cred.selko360.com',
         app_label: 'Cred',
         force_reset: false,
