@@ -5052,6 +5052,9 @@ async function saveSetDemoPassword(companyId) {
         // role) since a client-side update here gets silently filtered by
         // the profiles table's self-only RLS policy.
         require_password_change: false,
+        // The admin already knows the password (they just typed it in) —
+        // no need to also email it, that's just redundant noise here.
+        send_email: false,
       }),
     });
     const result = await res.json();
@@ -5081,7 +5084,7 @@ async function saveSetDemoPassword(companyId) {
     }
 
     document.getElementById('setDemoPasswordModal')?.remove();
-    toast(`✓ Demo password set for ${email}${result.email_sent ? ' (confirmation emailed too)' : ''}`);
+    toast(`✓ Demo password set for ${email}`);
   } catch(e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
