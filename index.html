@@ -5051,6 +5051,29 @@ async function saveSetDemoPassword(companyId) {
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
+    // set-user-password only ever touches auth.users/profiles — it never
+    // creates a credtrack_staff row. The login access-gate requires one
+    // (matching company_id + email) for anyone who isn't a super admin, so
+    // without this the account can authenticate but still gets blocked at
+    // "doesn't have access to Selko Cred." Make sure one exists.
+    const { data: existingStaff } = await sb.from('credtrack_staff')
+      .select('id').eq('company_id', companyId).eq('email', email).maybeSingle();
+    if (!existingStaff) {
+      const { error: staffErr } = await sb.from('credtrack_staff').insert({
+        company_id: companyId,
+        full_name: 'Demo Admin',
+        email,
+        staff_type: 'admin',
+        active: true,
+        profile_id: result.user_id || null,
+      });
+      if (staffErr) throw staffErr;
+    } else if (result.user_id) {
+      // Staff row already existed (e.g. re-running this on the same email) —
+      // make sure it's linked to the right profile_id too.
+      await sb.from('credtrack_staff').update({ profile_id: result.user_id, active: true }).eq('id', existingStaff.id);
+    }
+
     // set-user-password always flags force_reset accounts as
     // must_change_password=true — correct for real staff, but wrong here:
     // the entire point of this feature is a fixed password that keeps
