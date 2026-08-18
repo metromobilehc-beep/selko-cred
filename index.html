@@ -3300,7 +3300,7 @@ async function confirmStaffTypeCred(id, name) {
   if (updated?.profile_id) {
     try {
       const { data: { session } } = await sb.auth.getSession();
-      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role', {
+      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role-ts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({
