@@ -3286,9 +3286,41 @@ async function confirmStaffTypeCred(id, name) {
   if (!selected) return;
   const newType = selected.value;
 
-  const { error } = await sb.from('credtrack_staff').update({ staff_type: newType }).eq('id', id);
+  const { data: updated, error } = await sb.from('credtrack_staff')
+    .update({ staff_type: newType }).eq('id', id).select('profile_id').maybeSingle();
   document.getElementById('staffTypeModalCred')?.remove();
   if (error) { toast('Error: ' + error.message, true); return; }
+
+  // If this person already has a login, their actual access level needs to
+  // follow the new staff_type — otherwise an admin promotion silently does
+  // nothing until they separately reset their password (exactly the bug
+  // that got Kym stuck on the limited self-service view). credtrack_staff
+  // only recognizes 'admin' as a distinct access tier; office/clinician
+  // both map to the regular 'staff' role.
+  if (updated?.profile_id) {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          profile_id: updated.profile_id,
+          role: newType === 'admin' ? 'admin' : 'staff',
+        }),
+      });
+      const result = await res.json();
+      if (result.error) {
+        toast(`${name} set to ${newType}, but access level couldn't sync: ${result.error}`, true);
+        await loadStaffTable();
+        return;
+      }
+    } catch (e) {
+      toast(`${name} set to ${newType}, but access level couldn't sync: ${e.message}`, true);
+      await loadStaffTable();
+      return;
+    }
+  }
+
   toast(`✓ ${name} set to ${newType}`);
   await loadStaffTable();
 }
