@@ -159,10 +159,6 @@
   .ov-attention-row { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,.03); border-radius: 8px; padding: 10px 14px; font-size: 13px; }
   .ov-attention-row .ov-days-badge { font-weight: 700; font-size: 12px; padding: 3px 9px; border-radius: 12px; }
   .dark-panel h2 { font-size: 12px; color: var(--teal-l); margin-bottom: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
-  .panel-header-collapsible { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
-  .panel-chevron { display: inline-block; font-size: 11px; color: rgba(255,255,255,.4); transition: transform .18s ease; margin-left: 10px; }
-  .panel-chevron.open { transform: rotate(90deg); }
-  .panel-body { overflow: hidden; }
 
   .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
   .filter-sel { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
@@ -338,19 +334,11 @@
 <!-- AGENCY PARTNER SCREEN -->
 <div id="partnerScreen" class="screen">
   <div class="page">
-    <div id="partnerPreviewBanner" style="display:none;background:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <span style="color:#fef3c7;font-size:13px;">👁 Previewing what <strong id="partnerPreviewAgencyName"></strong> sees when they log in — this is read-only, no real partner account is involved.</span>
-      <button class="btn btn-sm btn-gold" onclick="exitPartnerPreview()">Exit preview</button>
-    </div>
     <div class="page-header">
       <div>
         <h1 id="partnerGreeting">Staff Credentials</h1>
         <p>Verified documents for your linked staff.</p>
       </div>
-    </div>
-    <div style="margin-bottom:16px;">
-      <input type="text" id="partnerStaffSearch" placeholder="Search by name…" oninput="filterPartnerStaffList()"
-        style="width:100%;max-width:340px;padding:10px 14px;border-radius:8px;border:1px solid var(--gray-200);font-size:14px;" />
     </div>
     <div id="partnerStaffList"></div>
   </div>
@@ -364,12 +352,28 @@
         <h1>Credential Admin</h1>
         <p>Manage staff credentials and track expirations.</p>
       </div>
+      <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
+      <button class="btn btn-sm btn-teal" id="exportProExcelBtn" onclick="exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
+      <button class="btn btn-sm btn-gold" id="exportProPdfBtn" onclick="exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
     </div>
 
     <!-- View as Admin banner -->
     <div id="viewAsBanner" style="display:none;background:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:16px;display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
       <span style="color:#fcd34d;font-size:13px;font-weight:700;">⚡ Viewing as Admin — <span id="viewAsName"></span></span>
       <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
+    </div>
+
+    <div class="banner banner-danger" id="expiredBanner" style="cursor:default;">
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <span id="expiredSummary" class="banner-title" style="margin:0;"></span>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-ghost" id="expiredToggleBtn" onclick="toggleExpiredDetail()" style="border-color:rgba(153,27,27,.3);color:#b91c1c;">Show details</button>
+          <button class="btn btn-sm btn-gold" onclick="switchTab('exp')">View in tracker</button>
+        </div>
+      </div>
+      <div class="banner-list" id="expiredList" style="display:none;margin-top:10px;"></div>
     </div>
 
     <div class="tabs">
@@ -438,11 +442,13 @@
           <option value="0">Unverified</option>
           <option value="1">Verified</option>
         </select>
+        <select class="filter-sel" id="fArchived" onchange="loadAdminDocs()">
+          <option value="active">Active documents</option>
+          <option value="archived">Archived (expired 3+ months)</option>
+          <option value="all">All (active + archived)</option>
+        </select>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
         <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
-        <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
-        <button class="btn btn-sm btn-teal" id="exportProExcelBtn" onclick="exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
-        <button class="btn btn-sm btn-gold" id="exportProPdfBtn" onclick="exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
       </div>
 
@@ -562,24 +568,9 @@
     <!-- EXPIRATION TAB -->
     <div id="tabExp" class="dark-panel" style="display:none;">
       <h2>Expiration tracker</h2>
-      <div id="expStatBar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"></div>
-      <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <button class="tab active" id="expViewToggle-attention" onclick="setExpViewMode('attention')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs attention <span id="expAttentionCount"></span></button>
-        <button class="tab" id="expViewToggle-current" onclick="setExpViewMode('current')">✓ Current <span id="expCurrentCount"></span></button>
-        <button class="tab" id="expViewToggle-all" onclick="setExpViewMode('all')">All</button>
-      </div>
       <div class="filter-bar">
         <select class="filter-sel" id="fExpEmp" onchange="loadExpTracker()"><option value="">All staff</option></select>
-        <select class="filter-sel" id="fExpDiscipline" onchange="filterExpStaffDropdown();loadExpTracker()">
-          <option value="">All disciplines</option>
-          <option value="PT">PT</option>
-          <option value="PTA">PTA</option>
-          <option value="OT">OT</option>
-          <option value="COTA">COTA</option>
-          <option value="SLP">SLP</option>
-          <option value="Other">Other</option>
-        </select>
-        <select class="filter-sel" id="fExpWin" onchange="loadExpTracker()" style="display:none;">
+        <select class="filter-sel" id="fExpWin" onchange="loadExpTracker()">
           <option value="">All</option>
           <option value="expired">Expired</option>
           <option value="30">Within 30 days</option>
@@ -748,7 +739,7 @@
     <div id="tabSettings" style="display:none;">
 
       <!-- Company settings -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+      <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Company settings</h2>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div>
@@ -773,7 +764,7 @@
       </div>
 
       <!-- Branding (Pro only) -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+      <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Branding <span id="brandingProTag" style="font-size:10px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h2>
         <div id="brandingLocked" style="color:rgba(255,255,255,.4);font-size:13px;display:none;">Branding customization is available on the Pro plan.</div>
         <div id="brandingForm">
@@ -851,8 +842,6 @@
             <span style="font-size:12px;color:rgba(255,255,255,.5);">Quick add —</span>
             <select class="filter-sel" id="bulkAssignAgency"><option value="">Select agency…</option></select>
             <button class="btn btn-sm btn-gold" onclick="bulkAssignAllStaff()">+ Assign all active staff</button>
-            <span style="font-size:12px;color:rgba(255,255,255,.5);margin-left:14px;">Quick remove —</span>
-            <button class="btn btn-sm btn-danger" onclick="bulkRemoveAllStaffFromAgency()">✕ Remove everyone</button>
           </div>
           <div class="tbl-wrap">
             <table>
@@ -935,6 +924,18 @@
 
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
+
+      <!-- Records eligible for permanent deletion (6+ years archived — manual review only, never automatic) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🗄 Records eligible for permanent deletion</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Documents archived for 6+ years. Nothing here is ever deleted automatically — review and confirm each one individually. Consider your retention obligations (state law, insurance, HIPAA) before deleting.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Company</th><th>Staff member</th><th>Document</th><th>Expired</th><th>Archived</th><th>Actions</th></tr></thead>
+            <tbody id="deletionReviewTbody"></tbody>
+          </table>
+        </div>
+      </div>
 
       <!-- Platform document types (tier + global/custom management) -->
       <div class="dark-panel" style="margin-bottom:16px;">
@@ -1043,59 +1044,8 @@
       </div>
 
     </div>
-    <!-- closes the outer "page" wrapper -->
-    </div>
-    <!-- closes the outer "adminScreen" wrapper -->
-    </div>
-    <!-- closes remaining unbalanced wrapper, confirmed via tag-count script -->
 
 <script>
-
-function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel').forEach(panel => {
-    if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
-    const h2 = panel.querySelector('h2');
-    if (!h2) return;
-    panel.dataset.collapsibleInit = '1';
-
-    // Move everything after the h2 into a dedicated body wrapper we can hide
-    const body = document.createElement('div');
-    body.className = 'panel-body';
-    let node = h2.nextSibling;
-    while (node) {
-      const next = node.nextSibling;
-      body.appendChild(node);
-      node = next;
-    }
-    panel.appendChild(body);
-
-    h2.classList.add('panel-header-collapsible');
-    const chevron = document.createElement('span');
-    chevron.className = 'panel-chevron';
-    chevron.textContent = '▸';
-    h2.appendChild(chevron);
-
-    const storageKey = 'cred_panel_open_' + h2.textContent.trim().replace(/\s+/g, '_').toLowerCase();
-    const defaultOpen = panel.dataset.defaultOpen === 'true';
-    const saved = localStorage.getItem(storageKey);
-    const isOpen = saved !== null ? saved === '1' : defaultOpen;
-
-    body.style.display = isOpen ? '' : 'none';
-    if (isOpen) chevron.classList.add('open');
-
-    h2.addEventListener('click', () => {
-      const nowOpen = body.style.display === 'none';
-      body.style.display = nowOpen ? '' : 'none';
-      chevron.classList.toggle('open', nowOpen);
-      localStorage.setItem(storageKey, nowOpen ? '1' : '0');
-    });
-  });
-}
-// Panels above this point are already parsed into the DOM by the time this
-// script runs, so this is safe to call immediately rather than waiting for
-// a load event.
-initCollapsiblePanels();
-
 // ══ CONFIG ══
 const SUPABASE_URL      = 'https://zxserlkhwkfoqiepurdr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
@@ -1283,9 +1233,6 @@ async function initSession(user) {
     if (compErr) throw new Error('Company error: ' + compErr.message);
     if (!company) throw new Error('No company found.');
     if (!company.has_credtrack) throw new Error('Your organization does not have access to Selko Cred. Contact your administrator.');
-    if (company.deleted_at && !profile.is_super_admin) {
-      throw new Error('This account is no longer active. Contact Selko support if you believe this is a mistake.');
-    }
 
     // Access gate: having a shared profiles row for this company is not
     // enough — only people with an actual credtrack_staff record (or, for
@@ -1470,67 +1417,20 @@ async function initPartnerView(partnerRecord) {
         <div class="doc-name">${d.document_types?.name || d.label}</div>
         <div class="doc-meta">${d.expiry_date ? 'Expires ' + fmtDate(d.expiry_date) : 'No expiration'}</div>
       </div>
-      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${d.file_url.replace(/'/g,"\\'")}','${d.id}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
-      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}','${d.id}')">⬇ Download</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${d.file_url.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}')">⬇ Download</button>` : ''}
     </div>`).join('');
 
-    return `<div class="panel" data-staff-name="${cs.full_name.toLowerCase().replace(/"/g,'&quot;')}">
-      <div class="panel-head panel-header-collapsible" onclick="togglePartnerPanel(this)">
-        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''} <span style="font-weight:400;color:var(--gray-500,#888);font-size:13px;">(${(docs||[]).length} doc${(docs||[]).length!==1?'s':''})</span></span>
-        <div style="display:flex;align-items:center;gap:10px;" onclick="event.stopPropagation()">
-          ${docs && docs.length ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
-        </div>
-        <span class="panel-chevron">▸</span>
+    return `<div class="panel">
+      <div class="panel-head">
+        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''}</span>
+        ${docs && docs.length ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
       </div>
-      <div class="panel-body" style="display:none;">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
+      <div class="panel-body">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
     </div>`;
   }));
 
   container.innerHTML = panels.join('');
-  filterPartnerStaffList();
-}
-
-function togglePartnerPanel(headEl) {
-  const panel = headEl.closest('.panel');
-  const body = panel.querySelector('.panel-body');
-  const chevron = headEl.querySelector('.panel-chevron');
-  const isOpen = body.style.display !== 'none';
-  body.style.display = isOpen ? 'none' : 'block';
-  if (chevron) chevron.classList.toggle('open', !isOpen);
-}
-
-function filterPartnerStaffList() {
-  const q = (document.getElementById('partnerStaffSearch')?.value || '').trim().toLowerCase();
-  const panels = document.querySelectorAll('#partnerStaffList .panel');
-  let visibleCount = 0;
-  panels.forEach(p => {
-    const name = p.dataset.staffName || '';
-    const matches = !q || name.includes(q);
-    p.style.display = matches ? '' : 'none';
-    if (matches) visibleCount++;
-    // Auto-expand the panel when actively searching for someone specific,
-    // so a match shows their documents immediately rather than requiring
-    // an extra click — but collapse back down once the search is cleared.
-    const body = p.querySelector('.panel-body');
-    const chevron = p.querySelector('.panel-chevron');
-    if (body) {
-      const shouldBeOpen = q && matches;
-      body.style.display = shouldBeOpen ? 'block' : 'none';
-      if (chevron) chevron.classList.toggle('open', shouldBeOpen);
-    }
-  });
-  let noResultsEl = document.getElementById('partnerNoResults');
-  if (q && visibleCount === 0) {
-    if (!noResultsEl) {
-      noResultsEl = document.createElement('div');
-      noResultsEl.id = 'partnerNoResults';
-      noResultsEl.className = 'empty-state';
-      noResultsEl.textContent = `No staff match "${q}".`;
-      document.getElementById('partnerStaffList').appendChild(noResultsEl);
-    }
-  } else if (noResultsEl) {
-    noResultsEl.remove();
-  }
 }
 
 async function renderStatCards(staffId) {
@@ -1831,7 +1731,9 @@ function showUpStatus(msg, type) {
 async function initAdmin() {
   await loadStaffList();
   await loadAdminFilters();
+  await autoArchiveExpiredDocs();
   await loadAdminDocs();
+  await loadAlertBanner();
   await loadOverview();
   if (window._isPro) {
     document.getElementById('addDocTypeBtn').style.display     = 'inline-flex';
@@ -1839,6 +1741,22 @@ async function initAdmin() {
     document.getElementById('exportProExcelBtn').style.display = 'inline-flex';
     document.getElementById('exportProPdfBtn').style.display   = 'inline-flex';
   }
+}
+
+// Auto-archive: any document expired 3+ months ago gets hidden from the
+// default view. This never deletes anything — fully reversible, and the
+// record stays in the database and remains visible under the "Archived" filter.
+async function autoArchiveExpiredDocs() {
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const cutoff = threeMonthsAgo.toISOString().slice(0, 10);
+
+  await sb.from('credtrack_documents')
+    .update({ archived: true, archived_at: new Date().toISOString() })
+    .eq('company_id', currentCompany.id)
+    .eq('archived', false)
+    .not('expiry_date', 'is', null)
+    .lt('expiry_date', cutoff);
 }
 
 // ── Shared data fetch for both Pro export formats ──
@@ -2114,6 +2032,7 @@ async function loadAdminDocs() {
   const emp      = document.getElementById('fEmp')?.value      || '';
   const type     = document.getElementById('fType')?.value     || '';
   const verified = document.getElementById('fVerified')?.value || '';
+  const archived = document.getElementById('fArchived')?.value || 'active';
   updateDocViewCounts();
 
   let q = sb.from('credtrack_documents')
@@ -2125,6 +2044,9 @@ async function loadAdminDocs() {
   if (type) q = q.eq('document_type_id', type);
   if (verified === '1') q = q.eq('verified', true);
   if (verified === '0') q = q.eq('verified', false);
+  if (archived === 'active')   q = q.eq('archived', false);
+  if (archived === 'archived') q = q.eq('archived', true);
+  // 'all' applies no archive filter
 
   const { data, error } = await q;
   const tbody = document.getElementById('adminDocsTbody');
@@ -2146,8 +2068,8 @@ async function loadAdminDocs() {
       ? '<span class="badge badge-verified">✓ Verified</span>'
       : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`;
     const fileHtml = [
-      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
-      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View back</button>` : '',
+      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
+      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View back</button>` : '',
     ].join(' ') || '<span style="color:rgba(255,255,255,.3);font-size:12px;">No file</span>';
     return `<tr>
       <td>${name}</td>
@@ -2160,7 +2082,7 @@ async function loadAdminDocs() {
       <td><div class="td-actions">
         ${fileHtml}
         <button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>
-        <button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>
+        ${r.archived ? `<button class="btn btn-sm btn-gold" onclick="unarchiveDoc('${r.id}')">Unarchive</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>
       </div></td>
     </tr>`;
@@ -2215,56 +2137,8 @@ async function saveDocDates(docId) {
   document.getElementById('editDatesModal')?.remove();
   toast('Dates updated');
   await loadAdminDocs();
+  await loadAlertBanner();
   await loadExpTracker();
-}
-
-function editDocType(docId, currentTypeId) {
-  const existing = document.getElementById('editTypeModal');
-  if (existing) existing.remove();
-
-  const options = docTypes.map(t =>
-    `<option value="${t.id}" ${String(t.id) === String(currentTypeId) ? 'selected' : ''}>${t.name}</option>`
-  ).join('');
-
-  const modal = document.createElement('div');
-  modal.id = 'editTypeModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Edit document type</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Fixes a document that was accidentally uploaded under the wrong type — e.g. a license verification screenshot uploaded as a plain "License" instead of "License Verification Record," which is why the verified checkmark wasn't showing.</div>
-      <div style="margin-bottom:18px;">
-        <label class="inline-label">Document type</label>
-        <select class="inline-select" id="editTypeSelect" style="width:100%;">${options}</select>
-      </div>
-      <div id="editTypeErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveDocTypeAssignment('${docId}')" style="flex:1;justify-content:center;">Save</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('editTypeModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function saveDocTypeAssignment(docId) {
-  const newTypeId = document.getElementById('editTypeSelect').value;
-  const errEl = document.getElementById('editTypeErr');
-
-  const { error } = await sb.from('credtrack_documents').update({
-    document_type_id: newTypeId,
-  }).eq('id', docId);
-
-  if (error) {
-    errEl.textContent = error.message;
-    errEl.style.display = 'block';
-    return;
-  }
-
-  document.getElementById('editTypeModal')?.remove();
-  toast('Document type updated');
-  await loadAdminDocs();
-  await loadStaffTable();
 }
 
 async function verifyDoc(id) {
@@ -2274,67 +2148,20 @@ async function verifyDoc(id) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Document verified');
   await loadAdminDocs();
+  await loadAlertBanner();
 }
 
-async function logDocumentAccess(documentId, action) {
-  // Best-effort — logging failures should never block someone from
-  // actually viewing/downloading their own work documents.
-  if (!documentId) return;
+async function viewFile(filePath) {
   try {
-    const { data: doc } = await sb.from('credtrack_documents')
-      .select('staff_id, label, company_id, document_types(name), credtrack_staff(full_name)')
-      .eq('id', documentId)
-      .maybeSingle();
-    await sb.from('credtrack_access_log').insert({
-      document_id: documentId,
-      staff_id: doc?.staff_id || null,
-      // company_id reflects who OWNS this document (whose data is being
-      // accessed), not the viewer's own company — matters for agency
-      // partners viewing another company's staff documents.
-      company_id: doc?.company_id || currentCompany?.id || currentProfile?.company_id,
-      accessed_by_profile_id: currentProfile.id,
-      accessed_by_name: currentProfile.full_name,
-      action,
-      document_type_name: doc?.document_types?.name || doc?.label || null,
-      staff_full_name: doc?.credtrack_staff?.full_name || null,
-    });
-  } catch (e) {
-    console.warn('Access log write failed (non-blocking):', e);
-  }
-}
-
-async function viewFile(filePath, documentId) {
-  // Open the tab synchronously, before the await below — some browsers'
-  // popup blockers will silently block window.open() if it happens after
-  // an async operation, even though it originated from a real click.
-  const newTab = window.open('', '_blank');
-  try {
-    // Fetching as a blob and navigating the tab to an object URL (instead
-    // of just pointing at the signed URL directly) sidesteps browsers/
-    // devices that default to downloading certain file types (PDFs
-    // especially, common on mobile) instead of displaying them inline —
-    // we take control of the MIME type explicitly rather than relying on
-    // ambient browser behavior for the raw signed URL.
-    const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(filePath);
-    if (dlErr) throw dlErr;
-    const objectUrl = URL.createObjectURL(blobData);
-    if (newTab) {
-      newTab.location.href = objectUrl;
-    } else {
-      // Even the synchronous open got blocked — fall back and try anyway.
-      window.open(objectUrl, '_blank');
-    }
-    // Release the object URL after giving the new tab time to load it —
-    // revoking too early can blank out the tab before it finishes reading.
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
-    logDocumentAccess(documentId, 'view');
+    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600);
+    if (error) throw error;
+    window.open(data.signedUrl, '_blank');
   } catch(e) {
-    if (newTab) newTab.close();
     toast('Could not open file: ' + e.message, true);
   }
 }
 
-async function downloadFile(filePath, fileName, documentId) {
+async function downloadFile(filePath, fileName) {
   try {
     const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600, { download: fileName || true });
     if (error) throw error;
@@ -2344,7 +2171,6 @@ async function downloadFile(filePath, fileName, documentId) {
     document.body.appendChild(a);
     a.click();
     a.remove();
-    logDocumentAccess(documentId, 'download');
   } catch(e) {
     toast('Could not download file: ' + e.message, true);
   }
@@ -2392,7 +2218,15 @@ async function deleteDoc(id, filePath) {
     await sb.from('credtrack_documents').delete().eq('id', id);
     toast('Document deleted');
     await loadAdminDocs();
+    await loadAlertBanner();
   } catch(e) { toast('Error: ' + e.message, true); }
+}
+
+async function unarchiveDoc(id) {
+  const { error } = await sb.from('credtrack_documents').update({ archived: false, archived_at: null }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Moved back to active documents');
+  await loadAdminDocs();
 }
 
 // ── Bulk document download (Pro) ──
@@ -2511,38 +2345,9 @@ async function runBulkDownload(mode) {
   toast(failed > 0 ? `Downloaded ${done} file(s), ${failed} failed` : `✓ ${done} file(s) downloaded`);
 }
 
-let expViewMode = 'attention';
-
-function setExpViewMode(mode) {
-  expViewMode = mode;
-  ['attention', 'current', 'all'].forEach(m => {
-    const btn = document.getElementById('expViewToggle-' + m);
-    if (m === mode) {
-      btn.classList.add('active');
-      btn.style.background = 'var(--danger)'; btn.style.borderColor = 'var(--danger)';
-    } else {
-      btn.classList.remove('active');
-      btn.style.background = ''; btn.style.borderColor = '';
-    }
-  });
-  loadExpTracker();
-}
-
-function filterExpStaffDropdown() {
-  const discipline = document.getElementById('fExpDiscipline')?.value || '';
-  const fExpEmp = document.getElementById('fExpEmp');
-  const matching = discipline ? staffList.filter(s => s.discipline === discipline) : staffList;
-  fExpEmp.innerHTML = '<option value="">All staff</option>';
-  matching.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.full_name; fExpEmp.appendChild(o);
-  });
-}
-
 async function loadExpTracker() {
   const emp = document.getElementById('fExpEmp')?.value || '';
   const win = document.getElementById('fExpWin')?.value || '';
-  const discipline = document.getElementById('fExpDiscipline')?.value || '';
 
   let q = sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name)')
@@ -2550,51 +2355,13 @@ async function loadExpTracker() {
     .not('expiry_date', 'is', null)
     .order('expiry_date');
 
-  if (emp) {
-    q = q.eq('staff_id', emp);
-  } else if (discipline) {
-    // No specific staff picked, but a discipline is — narrow to everyone
-    // in that discipline using the staff list we already have in memory,
-    // rather than adding a discipline column to this query's select.
-    const matchingIds = staffList.filter(s => s.discipline === discipline).map(s => s.id);
-    if (!matchingIds.length) {
-      document.getElementById('expTbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff found for this discipline.</td></tr>';
-      document.getElementById('expStatBar').innerHTML = '';
-      return;
-    }
-    q = q.in('staff_id', matchingIds);
-  }
+  if (emp) q = q.eq('staff_id', emp);
   const { data } = await q;
 
-  let allRows = data || [];
-
-  // Stat bar + toggle counts, computed against the full unfiltered set so
-  // they stay accurate regardless of which view is currently showing.
-  const withDays = allRows.map(r => ({ ...r, _days: Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000) }));
-  const expiredCount   = withDays.filter(r => r._days < 0).length;
-  const soonCount      = withDays.filter(r => r._days >= 0 && r._days < 30).length;
-  const attentionCount = expiredCount + soonCount;
-  const currentCount   = withDays.filter(r => r._days >= 30).length;
-  const total          = withDays.length;
-  const complianceRate = total ? Math.round((currentCount / total) * 100) : 100;
-
-  document.getElementById('expAttentionCount').textContent = attentionCount ? `(${attentionCount})` : '';
-  document.getElementById('expCurrentCount').textContent   = currentCount ? `(${currentCount})` : '';
-
-  document.getElementById('expStatBar').innerHTML = `
-    <div class="stat-card ${expiredCount ? 'danger' : 'ok'}"><div class="stat-num">${expiredCount}</div><div class="stat-label">Expired</div></div>
-    <div class="stat-card ${soonCount ? 'warn' : 'ok'}"><div class="stat-num">${soonCount}</div><div class="stat-label">Expiring within 30d</div></div>
-    <div class="stat-card ok"><div class="stat-num">${currentCount}</div><div class="stat-label">Current</div></div>
-    <div class="stat-card ${complianceRate < 70 ? 'danger' : complianceRate < 90 ? 'warn' : 'ok'}"><div class="stat-num">${complianceRate}%</div><div class="stat-label">Compliant</div></div>`;
-
-  let rows = withDays;
-  if (expViewMode === 'attention') rows = rows.filter(r => r._days < 30);
-  else if (expViewMode === 'current') rows = rows.filter(r => r._days >= 30);
-  // 'all' — no filter beyond staff
-
+  let rows = data || [];
   if (win) {
     rows = rows.filter(r => {
-      const days = r._days;
+      const days = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000);
       if (win === 'expired') return days < 0;
       if (win === 'ok')      return days >= 90;
       return days >= 0 && days < parseInt(win);
@@ -2680,6 +2447,47 @@ async function loadReminderHistoryBody(documentId) {
   `).join('');
 }
 
+async function loadAlertBanner() {
+  const { data } = await sb.from('credtrack_documents')
+    .select('expiry_date, credtrack_staff(full_name), document_types(name)')
+    .eq('company_id', currentCompany.id)
+    .not('expiry_date', 'is', null);
+
+  const withDays = (data || []).map(r => ({
+    ...r,
+    days: Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000),
+  }));
+  const urgent = withDays.filter(r => r.days < 30).sort((a, b) => a.days - b.days);
+
+  const banner = document.getElementById('expiredBanner');
+  if (!urgent.length) { banner.style.display = 'none'; return; }
+
+  banner.style.display = 'block';
+
+  const expiredCount = urgent.filter(r => r.days < 0).length;
+  const soonCount     = urgent.length - expiredCount;
+  const parts = [];
+  if (expiredCount) parts.push(`${expiredCount} expired`);
+  if (soonCount)    parts.push(`${soonCount} expiring within 30 days`);
+  document.getElementById('expiredSummary').textContent = `🔴 ${parts.join(' · ')}`;
+
+  document.getElementById('expiredList').innerHTML = urgent.map(r =>
+    `• ${r.credtrack_staff?.full_name || '?'} — ${r.document_types?.name || r.label} (${r.days < 0 ? 'EXPIRED ' + Math.abs(r.days) + 'd ago' : r.days + 'd remaining'})`
+  ).join('<br>');
+
+  // Collapse by default each time it reloads, so it never silently stays open and bulky
+  document.getElementById('expiredList').style.display = 'none';
+  document.getElementById('expiredToggleBtn').textContent = 'Show details';
+}
+
+function toggleExpiredDetail() {
+  const list = document.getElementById('expiredList');
+  const btn  = document.getElementById('expiredToggleBtn');
+  const isHidden = list.style.display === 'none';
+  list.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? 'Hide details' : 'Show details';
+}
+
 // ══ STAFF MANAGEMENT ══
 async function loadStaffTable() {
   await loadStaffList();
@@ -2757,7 +2565,6 @@ async function loadStaffTable() {
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
-      <button class="btn btn-sm btn-ghost" onclick="showEditLicenseModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit license #</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
       <button class="btn btn-sm btn-gold" onclick="showStaffActionsMenu('${s.id}')">⋮ More</button>
     </div></td>
@@ -2885,20 +2692,8 @@ function attachVerificationProof(staffId) {
     document.getElementById('auStaff').value = staffId;
 
     const verifType = docTypes.find(t => t.name.toLowerCase() === 'license verification record');
-    const auType = document.getElementById('auType');
     if (verifType) {
-      auType.value = verifType.id;
-      // Lock the type field so it can't get accidentally changed away from
-      // "License Verification Record" mid-upload — that's exactly what
-      // silently breaks the verified checkmark, since the badge matches on
-      // this exact type. Small unlock link for the rare real exception.
-      auType.disabled = true;
-      auType.style.opacity = '0.6';
-      const hint = document.createElement('div');
-      hint.id = 'auTypeLockHint';
-      hint.style.cssText = 'font-size:11px;color:rgba(255,255,255,.4);margin-top:4px;';
-      hint.innerHTML = `Locked to "License Verification Record" so the verified checkmark works correctly. <a href="#" onclick="document.getElementById('auType').disabled=false;document.getElementById('auType').style.opacity=1;this.parentElement.remove();return false;" style="color:var(--teal-l);">Unlock</a>`;
-      auType.insertAdjacentElement('afterend', hint);
+      document.getElementById('auType').value = verifType.id;
     } else {
       toast('Set up "License Verification Record" as a document type first (Settings → Document types)', true);
     }
@@ -3059,64 +2854,6 @@ async function confirmDisciplineCred(id) {
   document.getElementById('disciplineModalCred').remove();
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Discipline updated');
-  await loadStaffTable();
-}
-
-function showEditLicenseModal(id, name, currentNumber, currentType, currentState) {
-  const existing = document.getElementById('editLicenseModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'editLicenseModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">The license number is required (along with a "License Verification Record" document) for the verified checkmark to show — this lets you set or correct it directly, without needing to upload a new document.</div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">License number</label>
-        <input class="inline-input" type="text" id="editLicenseNumber" value="${currentNumber || ''}" />
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
-        <div>
-          <label class="inline-label">License type</label>
-          <input class="inline-input" type="text" id="editLicenseType" value="${currentType || ''}" placeholder="PT, PTA, OT..." />
-        </div>
-        <div>
-          <label class="inline-label">License state</label>
-          <input class="inline-input" type="text" id="editLicenseState" value="${currentState || ''}" placeholder="OK" maxlength="2" />
-        </div>
-      </div>
-      <div id="editLicenseErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveEditLicense('${id}')" style="flex:1;justify-content:center;">Save</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('editLicenseModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function saveEditLicense(id) {
-  const number = document.getElementById('editLicenseNumber').value.trim();
-  const type   = document.getElementById('editLicenseType').value.trim();
-  const state  = document.getElementById('editLicenseState').value.trim();
-  const errEl  = document.getElementById('editLicenseErr');
-
-  const { error } = await sb.from('credtrack_staff').update({
-    license_number: number || null,
-    license_type:   type || null,
-    license_state:  state || null,
-  }).eq('id', id);
-
-  if (error) {
-    errEl.textContent = error.message;
-    errEl.style.display = 'block';
-    return;
-  }
-
-  document.getElementById('editLicenseModal')?.remove();
-  toast('License info updated');
   await loadStaffTable();
 }
 
@@ -3482,6 +3219,7 @@ async function adminUploadDoc() {
     document.getElementById('auFileName2').textContent = 'No file selected';
     toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
     await loadAdminDocs();
+    await loadAlertBanner();
   } catch(e) {
     showAuStatus('Error: ' + e.message, 'err');
   }
@@ -3791,14 +3529,9 @@ async function loadCredtrackAgencies() {
     tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No agencies added yet.</td></tr>';
   } else {
     tbody.innerHTML = data.map(a => `<tr>
-      <td>
-        <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;"
-          type="text" value="${a.name}" id="agname_${a.id}"
-          onblur="updateCredtrackAgencyName('${a.id}', this.value)" />
-      </td>
+      <td>${a.name}</td>
       <td><span style="color:${a.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:12px;">${a.active ? '● Active' : '○ Inactive'}</span></td>
       <td><div class="td-actions">
-        <button class="btn btn-sm btn-teal" onclick="previewAsPartner('${a.id}','${a.name.replace(/'/g,"\\'")}')">👁 Preview portal</button>
         <button class="btn btn-sm btn-gold" onclick="toggleCredtrackAgencyActive('${a.id}',${a.active})">${a.active ? 'Deactivate' : 'Reactivate'}</button>
         <button class="btn btn-sm btn-danger" onclick="deleteCredtrackAgency('${a.id}','${a.name.replace(/'/g,"\\'")}')">Delete</button>
       </div></td>
@@ -3827,16 +3560,6 @@ async function saveCredtrackAgency() {
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
   toast('Agency "' + name + '" added');
   nameEl.value = '';
-  await loadCredtrackAgencies();
-  await loadStaffAgencyAssignments();
-}
-
-async function updateCredtrackAgencyName(id, name) {
-  const trimmed = name.trim();
-  if (!trimmed) { toast('Agency name cannot be empty', true); await loadCredtrackAgencies(); return; }
-  const { error } = await sb.from('credtrack_agencies').update({ name: trimmed }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast('Agency name updated');
   await loadCredtrackAgencies();
   await loadStaffAgencyAssignments();
 }
@@ -3975,29 +3698,6 @@ async function bulkAssignAllStaff() {
   await loadStaffAgencyAssignments();
 }
 
-async function bulkRemoveAllStaffFromAgency() {
-  const agencyId = document.getElementById('bulkAssignAgency').value;
-  if (!agencyId) { toast('Select an agency first', true); return; }
-
-  const agency = (await loadCredtrackAgencies()).find(a => a.id === agencyId);
-  const agencyName = agency?.name || 'this agency';
-
-  const { count } = await sb.from('credtrack_staff_agencies')
-    .select('*', { count: 'exact', head: true })
-    .eq('company_id', currentCompany.id).eq('agency_id', agencyId);
-
-  if (!count) { toast('No one is currently assigned to this agency'); return; }
-
-  if (!confirm(`Remove all ${count} staff currently assigned to ${agencyName}?\n\nThis only removes their document visibility to this agency — it does not delete any staff records, documents, or the agency itself. Any partner logins for ${agencyName} will no longer see anyone until staff are reassigned.`)) return;
-
-  const { error } = await sb.from('credtrack_staff_agencies')
-    .delete().eq('company_id', currentCompany.id).eq('agency_id', agencyId);
-  if (error) { toast('Error: ' + error.message, true); return; }
-
-  toast(`✓ Removed ${count} staff member(s) from ${agencyName}`);
-  await loadStaffAgencyAssignments();
-}
-
 async function loadPartnerUsersTable() {
   const { data } = await sb.from('agency_partner_users')
     .select('*, credtrack_agencies(name)')
@@ -4020,81 +3720,11 @@ async function loadPartnerUsersTable() {
         : `<span class="badge badge-warn">Invite pending</span>`}
     </td>
     <td><div class="td-actions">
-      <button class="btn btn-sm btn-ghost" onclick="showEditPartnerUserModal('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}','${u.agency_id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
-      <button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">${u.profile_id ? 'Resend / Set up login' : 'Send invite'}</button>
-      ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      ${!u.profile_id ? `<button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">Send invite</button>` : ''}
       ${u.profile_id ? `<button class="btn btn-sm btn-gold" onclick="togglePartnerUserActive('${u.id}',${u.active})">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}','${u.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
   </tr>`).join('');
-}
-
-async function showEditPartnerUserModal(id, name, email, currentAgencyId) {
-  const existing = document.getElementById('editPartnerUserModal');
-  if (existing) existing.remove();
-
-  const { data: agencies } = await sb.from('credtrack_agencies')
-    .select('id, name').eq('company_id', currentCompany.id).order('name');
-  const options = (agencies || []).map(a =>
-    `<option value="${a.id}" ${String(a.id) === String(currentAgencyId) ? 'selected' : ''}>${a.name}</option>`
-  ).join('');
-
-  const modal = document.createElement('div');
-  modal.id = 'editPartnerUserModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:18px;">Edit partner contact</div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">Full name</label>
-        <input class="inline-input" type="text" id="editPuName" value="${name.replace(/"/g,'&quot;')}" />
-      </div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">Email</label>
-        <input class="inline-input" type="email" id="editPuEmail" value="${email.replace(/"/g,'&quot;')}" />
-      </div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">Agency</label>
-        <select class="inline-select" id="editPuAgency" style="width:100%;">${options}</select>
-      </div>
-      <div style="color:rgba(255,255,255,.4);font-size:11.5px;margin-bottom:14px;">
-        Changing the email here only updates their contact record — it does not change their actual login email. Use "Reset password" separately if they need a new login.
-      </div>
-      <div id="editPuErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveEditPartnerUser('${id}')" style="flex:1;justify-content:center;">Save</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('editPartnerUserModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function saveEditPartnerUser(id) {
-  const name     = document.getElementById('editPuName').value.trim();
-  const email    = document.getElementById('editPuEmail').value.trim();
-  const agencyId = document.getElementById('editPuAgency').value;
-  const errEl    = document.getElementById('editPuErr');
-
-  if (!name || !email || !agencyId) {
-    errEl.textContent = 'Name, email, and agency are all required.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const { error } = await sb.from('agency_partner_users').update({
-    full_name: name, email, agency_id: agencyId,
-  }).eq('id', id);
-
-  if (error) {
-    errEl.textContent = error.message;
-    errEl.style.display = 'block';
-    return;
-  }
-
-  document.getElementById('editPartnerUserModal')?.remove();
-  toast('Partner contact updated');
-  await loadPartnerUsersTable();
 }
 
 async function savePartnerUser() {
@@ -4119,77 +3749,32 @@ async function savePartnerUser() {
 }
 
 async function sendPartnerInvite(id, name, email) {
-  if (!confirm(`Set up login for ${name} (${email})?\n\nA temporary password will be generated and emailed to them. If they already have a Selko login elsewhere, this just grants partner access without changing their existing password.`)) return;
-
-  const tempPassword = generateTempPassword();
+  if (!confirm(`Send login invite to ${name} at ${email}?`)) return;
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({
-        email,
-        password: tempPassword,
-        name,
+        name, email,
         company_id: currentCompany.id,
-        role: 'partner',
-        login_url: 'https://cred.selko360.com',
-        app_label: 'Cred',
-        force_reset: false,
+        role:       'partner',
+        app:        'cred',
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
-    if (result.user_id) {
-      await sb.from('agency_partner_users').update({ profile_id: result.user_id }).eq('id', id);
+    // Link the new profile back to this partner user record
+    const { data: prof } = await sb.from('profiles').select('id').eq('email', email).maybeSingle();
+    if (prof) {
+      await sb.from('agency_partner_users').update({ profile_id: prof.id }).eq('id', id);
     }
 
-    if (result.password_reset) {
-      showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
-    } else {
-      toast(`✓ ${name} already has a Selko login — partner access granted, no password changed.`);
-    }
+    toast('Invite sent to ' + name);
     await loadPartnerUsersTable();
   } catch(e) {
-    toast('Setup failed: ' + e.message, true);
-  }
-}
-
-async function resetPartnerPassword(id, name, email) {
-  // Unlike sendPartnerInvite (which won't re-send an email to someone who
-  // already has an account, to avoid clobbering a password they already
-  // know), this always forces a brand new password and email — the right
-  // tool when someone genuinely never received their original invite.
-  if (!confirm(`Set a new temporary password for ${name} (${email})?`)) return;
-
-  const tempPassword = generateTempPassword();
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({
-        email,
-        password: tempPassword,
-        name,
-        company_id: currentCompany.id,
-        role: 'partner',
-        login_url: 'https://cred.selko360.com',
-        app_label: 'Cred',
-        force_reset: true,
-      }),
-    });
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-
-    if (result.user_id) {
-      await sb.from('agency_partner_users').update({ profile_id: result.user_id }).eq('id', id);
-    }
-
-    showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
-  } catch(e) {
-    toast('Reset failed: ' + e.message, true);
+    toast('Invite failed: ' + e.message, true);
   }
 }
 
@@ -4507,28 +4092,6 @@ async function saveTrialSettings() {
 let _superProfile = null;
 let _superCompany = null;
 
-async function previewAsPartner(agencyId, agencyName) {
-  // Lets an admin see exactly what a specific agency's portal looks like —
-  // read-only, no real partner login involved. Reuses initPartnerView()
-  // directly with a constructed record, same shape it expects when a real
-  // partner logs in.
-  const fakePartnerRecord = {
-    agency_id: agencyId,
-    credtrack_agencies: { name: agencyName },
-  };
-
-  document.getElementById('partnerPreviewBanner').style.display = 'flex';
-  document.getElementById('partnerPreviewAgencyName').textContent = agencyName;
-
-  showScreen('partnerScreen');
-  await initPartnerView(fakePartnerRecord);
-}
-
-function exitPartnerPreview() {
-  document.getElementById('partnerPreviewBanner').style.display = 'none';
-  showScreen('adminScreen');
-}
-
 async function viewAsAdmin(companyId, companyName) {
   _superProfile = { ...currentProfile };
   _superCompany = { ...currentCompany };
@@ -4794,9 +4357,51 @@ async function loadPlatformDocTypes() {
   </tr>`).join('');
 }
 
+async function loadDeletionReview() {
+  const sixYearsAgo = new Date();
+  sixYearsAgo.setFullYear(sixYearsAgo.getFullYear() - 6);
+  const cutoff = sixYearsAgo.toISOString();
+
+  const { data } = await sb.from('credtrack_documents')
+    .select('*, credtrack_staff(full_name), document_types(name), companies(name)')
+    .eq('archived', true)
+    .not('archived_at', 'is', null)
+    .lt('archived_at', cutoff)
+    .order('archived_at');
+
+  const tbody = document.getElementById('deletionReviewTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">Nothing currently eligible.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => `<tr>
+    <td style="font-size:12px;">${r.companies?.name || '—'}</td>
+    <td>${r.credtrack_staff?.full_name || '—'}</td>
+    <td>${r.document_types?.name || r.label}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${fmtDate(r.expiry_date)}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${fmtDate(r.archived_at)}</td>
+    <td><div class="td-actions">
+      <button class="btn btn-sm btn-danger" onclick="permanentlyDeleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Permanently delete</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+async function permanentlyDeleteDoc(id, filePath) {
+  if (!confirm('Permanently delete this record? This cannot be undone and should only be done after confirming your retention obligations for this document type.')) return;
+  try {
+    if (filePath) await sb.storage.from(STORAGE_BUCKET).remove([filePath]);
+    const { error } = await sb.from('credtrack_documents').delete().eq('id', id);
+    if (error) throw error;
+    toast('Record permanently deleted');
+    await loadDeletionReview();
+  } catch(e) { toast('Delete failed: ' + e.message, true); }
+}
+
 async function loadSuperAdmin() {
   await loadBugLog();
   await loadPlatformDocTypes();
+  await loadDeletionReview();
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
@@ -4856,24 +4461,17 @@ async function loadSuperAdmin() {
         <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '✓' : '✕'}</span>
         <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '✓' : '✕'}</span>
         <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
-        ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">🗑 Deleted — purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
       </div>
 
       <div class="company-card-actions">
-        ${c.deleted_at ? `
-          <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">↩ Restore</button>
-          <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${c.name.replace(/'/g,"\\'")}')">⚠ Purge now</button>
-        ` : `
-          <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
-          <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
-          <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
-            onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
-            ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
-          </button>
-          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
-          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
-          <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
-        `}
+        <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
+        <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
+        <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
+          onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
+          ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
+        </button>
+        ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="deleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
       </div>
     </div>`;
   }).join('');
@@ -4987,107 +4585,6 @@ async function resetDemoCompanyData(companyId) {
     await loadSuperAdmin();
   } catch (e) {
     toast('Demo reset failed: ' + e.message, true);
-  }
-}
-
-function showSetDemoPasswordModal(companyId, defaultEmail) {
-  const existing = document.getElementById('setDemoPasswordModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'setDemoPasswordModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Set a fixed demo password</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">
-        Unlike the temp passwords used for real staff, this sets a permanent, known password for the demo account —
-        safe to reuse and hand out to prospects since this company only ever contains fictional data.
-      </div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">Demo login email</label>
-        <input class="inline-input" type="email" id="demoPwEmail" value="${defaultEmail}" style="width:100%;" />
-      </div>
-      <div style="margin-bottom:6px;">
-        <label class="inline-label">Password</label>
-        <input class="inline-input" type="text" id="demoPwValue" placeholder="e.g. SelkoDemo2026!" style="width:100%;" />
-      </div>
-      <div style="color:rgba(255,255,255,.35);font-size:11px;margin-bottom:14px;">At least 6 characters. Write this down somewhere — same rule as any other password, it won't be recoverable later.</div>
-      <div id="demoPwErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveSetDemoPassword('${companyId}')" style="flex:1;justify-content:center;">Set password</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('setDemoPasswordModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function saveSetDemoPassword(companyId) {
-  const email = document.getElementById('demoPwEmail').value.trim();
-  const password = document.getElementById('demoPwValue').value;
-  const errEl = document.getElementById('demoPwErr');
-  errEl.style.display = 'none';
-
-  if (!email) { errEl.textContent = 'Email is required.'; errEl.style.display = 'block'; return; }
-  if (!password || password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
-
-  try {
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({
-        email,
-        password, // caller-chosen, not auto-generated — that's the whole point here
-        name: 'Demo Admin',
-        company_id: companyId,
-        role: 'admin',
-        login_url: 'https://cred.selko360.com',
-        app_label: 'Cred',
-        force_reset: true,
-        // The whole point of this feature is a fixed password that keeps
-        // working across future logins, not one gated behind a forced
-        // change on first use — handled server-side now (with the service
-        // role) since a client-side update here gets silently filtered by
-        // the profiles table's self-only RLS policy.
-        require_password_change: false,
-        // The admin already knows the password (they just typed it in) —
-        // no need to also email it, that's just redundant noise here.
-        send_email: false,
-      }),
-    });
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-
-    // set-user-password only ever touches auth.users/profiles — it never
-    // creates a credtrack_staff row. The login access-gate requires one
-    // (matching company_id + email) for anyone who isn't a super admin, so
-    // without this the account can authenticate but still gets blocked at
-    // "doesn't have access to Selko Cred." Make sure one exists.
-    const { data: existingStaff } = await sb.from('credtrack_staff')
-      .select('id').eq('company_id', companyId).eq('email', email).maybeSingle();
-    if (!existingStaff) {
-      const { error: staffErr } = await sb.from('credtrack_staff').insert({
-        company_id: companyId,
-        full_name: 'Demo Admin',
-        email,
-        staff_type: 'admin',
-        active: true,
-        profile_id: result.user_id || null,
-      });
-      if (staffErr) throw staffErr;
-    } else if (result.user_id) {
-      // Staff row already existed (e.g. re-running this on the same email) —
-      // make sure it's linked to the right profile_id too.
-      await sb.from('credtrack_staff').update({ profile_id: result.user_id, active: true }).eq('id', existingStaff.id);
-    }
-
-    document.getElementById('setDemoPasswordModal')?.remove();
-    toast(`✓ Demo password set for ${email}`);
-  } catch(e) {
-    errEl.textContent = e.message;
-    errEl.style.display = 'block';
   }
 }
 
@@ -5298,62 +4795,10 @@ async function toggleCompanyFlag(id, flag, current) {
   await loadSuperAdmin();
 }
 
-async function softDeleteCompany(id, name) {
-  if (!currentProfile?.is_super_admin) { toast('Only super admins can delete a company.', true); return; }
-  if (!confirm(`Delete ${name}?\n\nThis blocks their access immediately and schedules permanent deletion in 30 days. Nothing is actually removed yet — you can restore it anytime before the purge date.\n\nType the company name to confirm.`)) return;
-  const confirmName = prompt(`Type "${name}" to confirm:`);
-  if (confirmName !== name) { toast('Name did not match — cancelled'); return; }
-
-  try {
-    const purgeDate = new Date();
-    purgeDate.setDate(purgeDate.getDate() + 30);
-    const { error } = await sb.from('companies').update({
-      deleted_at: new Date().toISOString(),
-      purge_scheduled_at: purgeDate.toISOString(),
-      deleted_by_profile_id: currentProfile.id,
-    }).eq('id', id);
-    if (error) throw error;
-
-    toast(`${name} deleted — permanently purged in 30 days unless restored`);
-    await loadSuperAdmin();
-  } catch(e) {
-    toast('Delete failed: ' + e.message, true);
-  }
-}
-
-async function restoreCompany(id, name) {
-  if (!currentProfile?.is_super_admin) { toast('Only super admins can restore a company.', true); return; }
-  if (!confirm(`Restore ${name}? This cancels the scheduled purge and immediately restores their access.`)) return;
-
-  try {
-    const { error } = await sb.from('companies').update({
-      deleted_at: null,
-      purge_scheduled_at: null,
-      deleted_by_profile_id: null,
-    }).eq('id', id);
-    if (error) throw error;
-
-    toast(`${name} restored`);
-    await loadSuperAdmin();
-  } catch(e) {
-    toast('Restore failed: ' + e.message, true);
-  }
-}
-
-async function purgeCompanyPermanently(id, name) {
-  // This is the actual, irreversible destruction step — no longer the
-  // primary "Delete" action. Reached either automatically (30 days after
-  // softDeleteCompany, via the purge-deleted-companies cron) or manually
-  // via "Purge now" on an already soft-deleted company. Never call this
-  // directly on a company that hasn't been through soft-delete first.
-  const { data: co } = await sb.from('companies').select('deleted_at').eq('id', id).maybeSingle();
-  if (!co?.deleted_at) {
-    toast('This company must be deleted (soft-deleted) first before it can be purged.', true);
-    return;
-  }
-  if (!confirm(`Permanently and immediately purge ${name}?\n\nThis will remove all associated staff, documents, completions, logins, and other records for this company. This cannot be undone.\n\nType the company name to confirm.`)) return;
-  const confirmName = prompt(`Type "${name}" to confirm permanent purge:`);
-  if (confirmName !== name) { toast('Name did not match — purge cancelled'); return; }
+async function deleteCompany(id, name) {
+  if (!confirm(`Delete ${name}?\n\nThis will permanently remove all associated staff, documents, completions, logins, and other records for this company. This cannot be undone.\n\nType the company name to confirm.`)) return;
+  const confirmName = prompt(`Type "${name}" to confirm deletion:`);
+  if (confirmName !== name) { toast('Name did not match — deletion cancelled'); return; }
 
   try {
     // Grab emails first so we can clean up their actual logins, not just the profile rows
@@ -5390,10 +4835,10 @@ async function purgeCompanyPermanently(id, name) {
     const { error } = await sb.from('companies').delete().eq('id', id);
     if (error) throw error;
 
-    toast(name + ' permanently purged');
+    toast(name + ' fully deleted');
     await loadSuperAdmin();
   } catch(e) {
-    toast('Purge failed: ' + e.message, true);
+    toast('Delete failed: ' + e.message, true);
   }
 }
 
@@ -5436,40 +4881,26 @@ async function superInvite() {
   err.style.display = 'none';
   if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
   if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
-  if (!companyId) { err.textContent = 'Company is required.'; err.style.display = 'block'; return; }
-
-  const tempPassword = generateTempPassword();
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/invite-staff', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({
-        email,
-        password: tempPassword,
-        name,
+        name, email,
         company_id: companyId,
-        role: 'admin',
-        login_url: 'https://cred.selko360.com',
-        app_label: 'Cred',
-        force_reset: false,
+        role:       'admin',
+        app:        'cred',
       }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
-
     // Add to credtrack_staff for that company
-    const { data: newStaff } = await sb.from('credtrack_staff').insert({
+    await sb.from('credtrack_staff').insert({
       company_id: companyId, full_name: name, email,
       staff_type: 'admin', active: true,
-      profile_id: result.user_id || null,
-    }).select().maybeSingle();
-
-    if (result.password_reset) {
-      showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
-    } else {
-      toast(`✓ ${name} already has a Selko login — admin access granted for this company, no password changed.`);
-    }
+    });
+    toast('Invite sent to ' + name);
     document.getElementById('invName').value  = '';
     document.getElementById('invEmail').value = '';
   } catch(e) {
