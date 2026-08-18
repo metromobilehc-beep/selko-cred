@@ -554,9 +554,24 @@
     <!-- EXPIRATION TAB -->
     <div id="tabExp" class="dark-panel" style="display:none;">
       <h2>Expiration tracker</h2>
+      <div id="expStatBar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"></div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="tab active" id="expViewToggle-attention" onclick="setExpViewMode('attention')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs attention <span id="expAttentionCount"></span></button>
+        <button class="tab" id="expViewToggle-current" onclick="setExpViewMode('current')">✓ Current <span id="expCurrentCount"></span></button>
+        <button class="tab" id="expViewToggle-all" onclick="setExpViewMode('all')">All</button>
+      </div>
       <div class="filter-bar">
         <select class="filter-sel" id="fExpEmp" onchange="loadExpTracker()"><option value="">All staff</option></select>
-        <select class="filter-sel" id="fExpWin" onchange="loadExpTracker()">
+        <select class="filter-sel" id="fExpDiscipline" onchange="filterExpStaffDropdown();loadExpTracker()">
+          <option value="">All disciplines</option>
+          <option value="PT">PT</option>
+          <option value="PTA">PTA</option>
+          <option value="OT">OT</option>
+          <option value="COTA">COTA</option>
+          <option value="SLP">SLP</option>
+          <option value="Other">Other</option>
+        </select>
+        <select class="filter-sel" id="fExpWin" onchange="loadExpTracker()" style="display:none;">
           <option value="">All</option>
           <option value="expired">Expired</option>
           <option value="30">Within 30 days</option>
@@ -2419,9 +2434,38 @@ async function runBulkDownload(mode) {
   toast(failed > 0 ? `Downloaded ${done} file(s), ${failed} failed` : `✓ ${done} file(s) downloaded`);
 }
 
+let expViewMode = 'attention';
+
+function setExpViewMode(mode) {
+  expViewMode = mode;
+  ['attention', 'current', 'all'].forEach(m => {
+    const btn = document.getElementById('expViewToggle-' + m);
+    if (m === mode) {
+      btn.classList.add('active');
+      btn.style.background = 'var(--danger)'; btn.style.borderColor = 'var(--danger)';
+    } else {
+      btn.classList.remove('active');
+      btn.style.background = ''; btn.style.borderColor = '';
+    }
+  });
+  loadExpTracker();
+}
+
+function filterExpStaffDropdown() {
+  const discipline = document.getElementById('fExpDiscipline')?.value || '';
+  const fExpEmp = document.getElementById('fExpEmp');
+  const matching = discipline ? staffList.filter(s => s.discipline === discipline) : staffList;
+  fExpEmp.innerHTML = '<option value="">All staff</option>';
+  matching.forEach(s => {
+    const o = document.createElement('option');
+    o.value = s.id; o.textContent = s.full_name; fExpEmp.appendChild(o);
+  });
+}
+
 async function loadExpTracker() {
   const emp = document.getElementById('fExpEmp')?.value || '';
   const win = document.getElementById('fExpWin')?.value || '';
+  const discipline = document.getElementById('fExpDiscipline')?.value || '';
 
   let q = sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name)')
@@ -2429,13 +2473,51 @@ async function loadExpTracker() {
     .not('expiry_date', 'is', null)
     .order('expiry_date');
 
-  if (emp) q = q.eq('staff_id', emp);
+  if (emp) {
+    q = q.eq('staff_id', emp);
+  } else if (discipline) {
+    // No specific staff picked, but a discipline is — narrow to everyone
+    // in that discipline using the staff list we already have in memory,
+    // rather than adding a discipline column to this query's select.
+    const matchingIds = staffList.filter(s => s.discipline === discipline).map(s => s.id);
+    if (!matchingIds.length) {
+      document.getElementById('expTbody').innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:24px;">No staff found for this discipline.</td></tr>';
+      document.getElementById('expStatBar').innerHTML = '';
+      return;
+    }
+    q = q.in('staff_id', matchingIds);
+  }
   const { data } = await q;
 
-  let rows = data || [];
+  let allRows = data || [];
+
+  // Stat bar + toggle counts, computed against the full unfiltered set so
+  // they stay accurate regardless of which view is currently showing.
+  const withDays = allRows.map(r => ({ ...r, _days: Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000) }));
+  const expiredCount   = withDays.filter(r => r._days < 0).length;
+  const soonCount      = withDays.filter(r => r._days >= 0 && r._days < 30).length;
+  const attentionCount = expiredCount + soonCount;
+  const currentCount   = withDays.filter(r => r._days >= 30).length;
+  const total          = withDays.length;
+  const complianceRate = total ? Math.round((currentCount / total) * 100) : 100;
+
+  document.getElementById('expAttentionCount').textContent = attentionCount ? `(${attentionCount})` : '';
+  document.getElementById('expCurrentCount').textContent   = currentCount ? `(${currentCount})` : '';
+
+  document.getElementById('expStatBar').innerHTML = `
+    <div class="stat-card ${expiredCount ? 'danger' : 'ok'}"><div class="stat-num">${expiredCount}</div><div class="stat-label">Expired</div></div>
+    <div class="stat-card ${soonCount ? 'warn' : 'ok'}"><div class="stat-num">${soonCount}</div><div class="stat-label">Expiring within 30d</div></div>
+    <div class="stat-card ok"><div class="stat-num">${currentCount}</div><div class="stat-label">Current</div></div>
+    <div class="stat-card ${complianceRate < 70 ? 'danger' : complianceRate < 90 ? 'warn' : 'ok'}"><div class="stat-num">${complianceRate}%</div><div class="stat-label">Compliant</div></div>`;
+
+  let rows = withDays;
+  if (expViewMode === 'attention') rows = rows.filter(r => r._days < 30);
+  else if (expViewMode === 'current') rows = rows.filter(r => r._days >= 30);
+  // 'all' — no filter beyond staff
+
   if (win) {
     rows = rows.filter(r => {
-      const days = Math.ceil((new Date(r.expiry_date) - new Date()) / 86400000);
+      const days = r._days;
       if (win === 'expired') return days < 0;
       if (win === 'ok')      return days >= 90;
       return days >= 0 && days < parseInt(win);
