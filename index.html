@@ -965,6 +965,20 @@
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
+      <!-- Theme preview — client-side only, nothing saved, doesn't affect any other user's screen -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🎨 Theme preview</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
+          Try different color directions live in this browser tab only — nothing is saved and no one else sees this. Refresh the page to reset to the real theme at any time.
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-sm btn-ghost" onclick="previewTheme('current')" style="color:#fff;border-color:rgba(255,255,255,.2);">Current (Navy/Teal/Gold)</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('slateIndigo')">Slate & Indigo</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('emeraldCharcoal')">Emerald & Charcoal</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('cleanLight')">Clean Light</button>
+        </div>
+      </div>
+
       <!-- Records eligible for permanent deletion (6+ years archived — manual review only, never automatic) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🗄 Records eligible for permanent deletion</h2>
@@ -1091,6 +1105,46 @@
     <!-- closes remaining unbalanced wrapper, confirmed via tag-count script -->
 
 <script>
+
+// ══ THEME PREVIEW (client-side only — never saved, never seen by anyone else) ══
+const THEME_PRESETS = {
+  current: {
+    '--navy': '#0f1f2e', '--navy2': '#172333', '--navy3': '#1e2d3d',
+    '--teal': '#0d9488', '--teal-l': '#14b8a6', '--teal-ll': '#99f6e4',
+    '--gold': '#f59e0b', '--gold-l': '#fcd34d',
+  },
+  // Cooler, near-black base with an indigo primary instead of teal —
+  // closer to the current "dev-tool modern" look (Linear/Vercel-adjacent).
+  slateIndigo: {
+    '--navy': '#0a0e17', '--navy2': '#131a29', '--navy3': '#1c2438',
+    '--teal': '#6366f1', '--teal-l': '#818cf8', '--teal-ll': '#c7d2fe',
+    '--gold': '#22d3ee', '--gold-l': '#67e8f9',
+  },
+  // Charcoal base with emerald as primary — closer to a lot of current
+  // fintech/SaaS dashboards.
+  emeraldCharcoal: {
+    '--navy': '#111827', '--navy2': '#1a2333', '--navy3': '#242f42',
+    '--teal': '#10b981', '--teal-l': '#34d399', '--teal-ll': '#a7f3d0',
+    '--gold': '#f59e0b', '--gold-l': '#fbbf24',
+  },
+  // A full light theme, in case "modern" for this audience actually means
+  // NOT dark mode — some enterprise/healthcare buyers read light UI as
+  // more "professional software," not less modern.
+  cleanLight: {
+    '--navy': '#f8fafc', '--navy2': '#ffffff', '--navy3': '#f1f5f9',
+    '--teal': '#0d9488', '--teal-l': '#0f766e', '--teal-ll': '#134e4a',
+    '--gold': '#d97706', '--gold-l': '#b45309',
+  },
+};
+
+function previewTheme(name) {
+  const preset = THEME_PRESETS[name];
+  if (!preset) return;
+  Object.entries(preset).forEach(([varName, value]) => {
+    document.documentElement.style.setProperty(varName, value);
+  });
+  toast(name === 'current' ? 'Back to current theme' : `Previewing: ${name} — refresh to reset`);
+}
 
 function initCollapsiblePanels() {
   document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel').forEach(panel => {
