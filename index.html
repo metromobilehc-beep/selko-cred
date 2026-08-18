@@ -2247,12 +2247,32 @@ async function logDocumentAccess(documentId, action) {
 }
 
 async function viewFile(filePath, documentId) {
+  // Open the tab synchronously, before the await below — some browsers'
+  // popup blockers will silently block window.open() if it happens after
+  // an async operation, even though it originated from a real click.
+  const newTab = window.open('', '_blank');
   try {
-    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600);
-    if (error) throw error;
-    window.open(data.signedUrl, '_blank');
+    // Fetching as a blob and navigating the tab to an object URL (instead
+    // of just pointing at the signed URL directly) sidesteps browsers/
+    // devices that default to downloading certain file types (PDFs
+    // especially, common on mobile) instead of displaying them inline —
+    // we take control of the MIME type explicitly rather than relying on
+    // ambient browser behavior for the raw signed URL.
+    const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(filePath);
+    if (dlErr) throw dlErr;
+    const objectUrl = URL.createObjectURL(blobData);
+    if (newTab) {
+      newTab.location.href = objectUrl;
+    } else {
+      // Even the synchronous open got blocked — fall back and try anyway.
+      window.open(objectUrl, '_blank');
+    }
+    // Release the object URL after giving the new tab time to load it —
+    // revoking too early can blank out the tab before it finishes reading.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
     logDocumentAccess(documentId, 'view');
   } catch(e) {
+    if (newTab) newTab.close();
     toast('Could not open file: ' + e.message, true);
   }
 }
@@ -3714,7 +3734,11 @@ async function loadCredtrackAgencies() {
     tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No agencies added yet.</td></tr>';
   } else {
     tbody.innerHTML = data.map(a => `<tr>
-      <td>${a.name}</td>
+      <td>
+        <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;"
+          type="text" value="${a.name}" id="agname_${a.id}"
+          onblur="updateCredtrackAgencyName('${a.id}', this.value)" />
+      </td>
       <td><span style="color:${a.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:12px;">${a.active ? '● Active' : '○ Inactive'}</span></td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-gold" onclick="toggleCredtrackAgencyActive('${a.id}',${a.active})">${a.active ? 'Deactivate' : 'Reactivate'}</button>
@@ -3745,6 +3769,16 @@ async function saveCredtrackAgency() {
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
   toast('Agency "' + name + '" added');
   nameEl.value = '';
+  await loadCredtrackAgencies();
+  await loadStaffAgencyAssignments();
+}
+
+async function updateCredtrackAgencyName(id, name) {
+  const trimmed = name.trim();
+  if (!trimmed) { toast('Agency name cannot be empty', true); await loadCredtrackAgencies(); return; }
+  const { error } = await sb.from('credtrack_agencies').update({ name: trimmed }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Agency name updated');
   await loadCredtrackAgencies();
   await loadStaffAgencyAssignments();
 }
@@ -3905,12 +3939,81 @@ async function loadPartnerUsersTable() {
         : `<span class="badge badge-warn">Invite pending</span>`}
     </td>
     <td><div class="td-actions">
+      <button class="btn btn-sm btn-ghost" onclick="showEditPartnerUserModal('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}','${u.agency_id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       <button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">${u.profile_id ? 'Resend / Set up login' : 'Send invite'}</button>
       ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       ${u.profile_id ? `<button class="btn btn-sm btn-gold" onclick="togglePartnerUserActive('${u.id}',${u.active})">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}','${u.full_name.replace(/'/g,"\\'")}')">Delete</button>
     </div></td>
   </tr>`).join('');
+}
+
+async function showEditPartnerUserModal(id, name, email, currentAgencyId) {
+  const existing = document.getElementById('editPartnerUserModal');
+  if (existing) existing.remove();
+
+  const { data: agencies } = await sb.from('credtrack_agencies')
+    .select('id, name').eq('company_id', currentCompany.id).order('name');
+  const options = (agencies || []).map(a =>
+    `<option value="${a.id}" ${String(a.id) === String(currentAgencyId) ? 'selected' : ''}>${a.name}</option>`
+  ).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'editPartnerUserModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:18px;">Edit partner contact</div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">Full name</label>
+        <input class="inline-input" type="text" id="editPuName" value="${name.replace(/"/g,'&quot;')}" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">Email</label>
+        <input class="inline-input" type="email" id="editPuEmail" value="${email.replace(/"/g,'&quot;')}" />
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">Agency</label>
+        <select class="inline-select" id="editPuAgency" style="width:100%;">${options}</select>
+      </div>
+      <div style="color:rgba(255,255,255,.4);font-size:11.5px;margin-bottom:14px;">
+        Changing the email here only updates their contact record — it does not change their actual login email. Use "Reset password" separately if they need a new login.
+      </div>
+      <div id="editPuErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveEditPartnerUser('${id}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editPartnerUserModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveEditPartnerUser(id) {
+  const name     = document.getElementById('editPuName').value.trim();
+  const email    = document.getElementById('editPuEmail').value.trim();
+  const agencyId = document.getElementById('editPuAgency').value;
+  const errEl    = document.getElementById('editPuErr');
+
+  if (!name || !email || !agencyId) {
+    errEl.textContent = 'Name, email, and agency are all required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const { error } = await sb.from('agency_partner_users').update({
+    full_name: name, email, agency_id: agencyId,
+  }).eq('id', id);
+
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  document.getElementById('editPartnerUserModal')?.remove();
+  toast('Partner contact updated');
+  await loadPartnerUsersTable();
 }
 
 async function savePartnerUser() {
