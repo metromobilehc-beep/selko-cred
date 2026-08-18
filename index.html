@@ -4871,6 +4871,7 @@ async function loadSuperAdmin() {
             ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
           </button>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
+          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
         `}
       </div>
@@ -4986,6 +4987,84 @@ async function resetDemoCompanyData(companyId) {
     await loadSuperAdmin();
   } catch (e) {
     toast('Demo reset failed: ' + e.message, true);
+  }
+}
+
+function showSetDemoPasswordModal(companyId, defaultEmail) {
+  const existing = document.getElementById('setDemoPasswordModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'setDemoPasswordModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Set a fixed demo password</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">
+        Unlike the temp passwords used for real staff, this sets a permanent, known password for the demo account —
+        safe to reuse and hand out to prospects since this company only ever contains fictional data.
+      </div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">Demo login email</label>
+        <input class="inline-input" type="email" id="demoPwEmail" value="${defaultEmail}" style="width:100%;" />
+      </div>
+      <div style="margin-bottom:6px;">
+        <label class="inline-label">Password</label>
+        <input class="inline-input" type="text" id="demoPwValue" placeholder="e.g. SelkoDemo2026!" style="width:100%;" />
+      </div>
+      <div style="color:rgba(255,255,255,.35);font-size:11px;margin-bottom:14px;">At least 6 characters. Write this down somewhere — same rule as any other password, it won't be recoverable later.</div>
+      <div id="demoPwErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveSetDemoPassword('${companyId}')" style="flex:1;justify-content:center;">Set password</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('setDemoPasswordModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveSetDemoPassword(companyId) {
+  const email = document.getElementById('demoPwEmail').value.trim();
+  const password = document.getElementById('demoPwValue').value;
+  const errEl = document.getElementById('demoPwErr');
+  errEl.style.display = 'none';
+
+  if (!email) { errEl.textContent = 'Email is required.'; errEl.style.display = 'block'; return; }
+  if (!password || password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        email,
+        password, // caller-chosen, not auto-generated — that's the whole point here
+        name: 'Demo Admin',
+        company_id: companyId,
+        role: 'admin',
+        login_url: 'https://cred.selko360.com',
+        app_label: 'Cred',
+        force_reset: true,
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    // set-user-password always flags force_reset accounts as
+    // must_change_password=true — correct for real staff, but wrong here:
+    // the entire point of this feature is a fixed password that keeps
+    // working across many future logins, not one that gets immediately
+    // gated behind a forced change on first use.
+    if (result.user_id) {
+      await sb.from('profiles').update({ must_change_password: false }).eq('id', result.user_id);
+    }
+
+    document.getElementById('setDemoPasswordModal')?.remove();
+    toast(`✓ Demo password set for ${email}${result.email_sent ? ' (confirmation emailed too)' : ''}`);
+  } catch(e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
   }
 }
 
