@@ -344,6 +344,10 @@
         <p>Verified documents for your linked staff.</p>
       </div>
     </div>
+    <div style="margin-bottom:16px;">
+      <input type="text" id="partnerStaffSearch" placeholder="Search by name…" oninput="filterPartnerStaffList()"
+        style="width:100%;max-width:340px;padding:10px 14px;border-radius:8px;border:1px solid var(--gray-200);font-size:14px;" />
+    </div>
     <div id="partnerStaffList"></div>
   </div>
 </div>
@@ -1464,16 +1468,63 @@ async function initPartnerView(partnerRecord) {
       ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}','${d.id}')">⬇ Download</button>` : ''}
     </div>`).join('');
 
-    return `<div class="panel">
-      <div class="panel-head">
-        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''}</span>
-        ${docs && docs.length ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
+    return `<div class="panel" data-staff-name="${cs.full_name.toLowerCase().replace(/"/g,'&quot;')}">
+      <div class="panel-head panel-header-collapsible" onclick="togglePartnerPanel(this)">
+        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''} <span style="font-weight:400;color:var(--gray-500,#888);font-size:13px;">(${(docs||[]).length} doc${(docs||[]).length!==1?'s':''})</span></span>
+        <div style="display:flex;align-items:center;gap:10px;" onclick="event.stopPropagation()">
+          ${docs && docs.length ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
+        </div>
+        <span class="panel-chevron">▸</span>
       </div>
-      <div class="panel-body">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
+      <div class="panel-body" style="display:none;">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
     </div>`;
   }));
 
   container.innerHTML = panels.join('');
+  filterPartnerStaffList();
+}
+
+function togglePartnerPanel(headEl) {
+  const panel = headEl.closest('.panel');
+  const body = panel.querySelector('.panel-body');
+  const chevron = headEl.querySelector('.panel-chevron');
+  const isOpen = body.style.display !== 'none';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.classList.toggle('open', !isOpen);
+}
+
+function filterPartnerStaffList() {
+  const q = (document.getElementById('partnerStaffSearch')?.value || '').trim().toLowerCase();
+  const panels = document.querySelectorAll('#partnerStaffList .panel');
+  let visibleCount = 0;
+  panels.forEach(p => {
+    const name = p.dataset.staffName || '';
+    const matches = !q || name.includes(q);
+    p.style.display = matches ? '' : 'none';
+    if (matches) visibleCount++;
+    // Auto-expand the panel when actively searching for someone specific,
+    // so a match shows their documents immediately rather than requiring
+    // an extra click — but collapse back down once the search is cleared.
+    const body = p.querySelector('.panel-body');
+    const chevron = p.querySelector('.panel-chevron');
+    if (body) {
+      const shouldBeOpen = q && matches;
+      body.style.display = shouldBeOpen ? 'block' : 'none';
+      if (chevron) chevron.classList.toggle('open', shouldBeOpen);
+    }
+  });
+  let noResultsEl = document.getElementById('partnerNoResults');
+  if (q && visibleCount === 0) {
+    if (!noResultsEl) {
+      noResultsEl = document.createElement('div');
+      noResultsEl.id = 'partnerNoResults';
+      noResultsEl.className = 'empty-state';
+      noResultsEl.textContent = `No staff match "${q}".`;
+      document.getElementById('partnerStaffList').appendChild(noResultsEl);
+    }
+  } else if (noResultsEl) {
+    noResultsEl.remove();
+  }
 }
 
 async function renderStatCards(staffId) {
