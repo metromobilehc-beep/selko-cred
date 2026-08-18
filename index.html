@@ -338,6 +338,10 @@
 <!-- AGENCY PARTNER SCREEN -->
 <div id="partnerScreen" class="screen">
   <div class="page">
+    <div id="partnerPreviewBanner" style="display:none;background:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <span style="color:#fef3c7;font-size:13px;">👁 Previewing what <strong id="partnerPreviewAgencyName"></strong> sees when they log in — this is read-only, no real partner account is involved.</span>
+      <button class="btn btn-sm btn-gold" onclick="exitPartnerPreview()">Exit preview</button>
+    </div>
     <div class="page-header">
       <div>
         <h1 id="partnerGreeting">Staff Credentials</h1>
@@ -3792,6 +3796,7 @@ async function loadCredtrackAgencies() {
       </td>
       <td><span style="color:${a.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:12px;">${a.active ? '● Active' : '○ Inactive'}</span></td>
       <td><div class="td-actions">
+        <button class="btn btn-sm btn-teal" onclick="previewAsPartner('${a.id}','${a.name.replace(/'/g,"\\'")}')">👁 Preview portal</button>
         <button class="btn btn-sm btn-gold" onclick="toggleCredtrackAgencyActive('${a.id}',${a.active})">${a.active ? 'Deactivate' : 'Reactivate'}</button>
         <button class="btn btn-sm btn-danger" onclick="deleteCredtrackAgency('${a.id}','${a.name.replace(/'/g,"\\'")}')">Delete</button>
       </div></td>
@@ -4476,6 +4481,28 @@ async function saveTrialSettings() {
 }
 let _superProfile = null;
 let _superCompany = null;
+
+async function previewAsPartner(agencyId, agencyName) {
+  // Lets an admin see exactly what a specific agency's portal looks like —
+  // read-only, no real partner login involved. Reuses initPartnerView()
+  // directly with a constructed record, same shape it expects when a real
+  // partner logs in.
+  const fakePartnerRecord = {
+    agency_id: agencyId,
+    credtrack_agencies: { name: agencyName },
+  };
+
+  document.getElementById('partnerPreviewBanner').style.display = 'flex';
+  document.getElementById('partnerPreviewAgencyName').textContent = agencyName;
+
+  showScreen('partnerScreen');
+  await initPartnerView(fakePartnerRecord);
+}
+
+function exitPartnerPreview() {
+  document.getElementById('partnerPreviewBanner').style.display = 'none';
+  showScreen('adminScreen');
+}
 
 async function viewAsAdmin(companyId, companyName) {
   _superProfile = { ...currentProfile };
