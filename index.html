@@ -438,6 +438,11 @@
           <option value="0">Unverified</option>
           <option value="1">Verified</option>
         </select>
+        <select class="filter-sel" id="fArchived" onchange="loadAdminDocs()">
+          <option value="active">Active documents</option>
+          <option value="archived">Archived (expired 3+ months)</option>
+          <option value="all">All (active + archived)</option>
+        </select>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
         <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
         <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
@@ -959,6 +964,18 @@
 
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
+
+      <!-- Records eligible for permanent deletion (6+ years archived — manual review only, never automatic) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🗄 Records eligible for permanent deletion</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Company</th><th>Staff member</th><th>Document</th><th>Expired</th><th>Archived</th><th>Actions</th></tr></thead>
+            <tbody id="deletionReviewTbody"></tbody>
+          </table>
+        </div>
+      </div>
 
       <!-- Platform document types (tier + global/custom management) -->
       <div class="dark-panel" style="margin-bottom:16px;">
@@ -1855,6 +1872,7 @@ function showUpStatus(msg, type) {
 async function initAdmin() {
   await loadStaffList();
   await loadAdminFilters();
+  await autoArchiveExpiredDocs();
   await loadAdminDocs();
   await loadOverview();
   if (window._isPro) {
@@ -1863,6 +1881,22 @@ async function initAdmin() {
     document.getElementById('exportProExcelBtn').style.display = 'inline-flex';
     document.getElementById('exportProPdfBtn').style.display   = 'inline-flex';
   }
+}
+
+// Auto-archive: any document expired 3+ months ago gets hidden from the
+// default view. This never deletes anything — fully reversible, and the
+// record stays in the database and remains visible under the "Archived" filter.
+async function autoArchiveExpiredDocs() {
+  const threeMonthsAgo = new Date();
+  threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+  const cutoff = threeMonthsAgo.toISOString().slice(0, 10);
+
+  await sb.from('credtrack_documents')
+    .update({ archived: true, archived_at: new Date().toISOString() })
+    .eq('company_id', currentCompany.id)
+    .eq('archived', false)
+    .not('expiry_date', 'is', null)
+    .lt('expiry_date', cutoff);
 }
 
 // ── Shared data fetch for both Pro export formats ──
@@ -2138,6 +2172,7 @@ async function loadAdminDocs() {
   const emp      = document.getElementById('fEmp')?.value      || '';
   const type     = document.getElementById('fType')?.value     || '';
   const verified = document.getElementById('fVerified')?.value || '';
+  const archived = document.getElementById('fArchived')?.value || 'active';
   updateDocViewCounts();
 
   let q = sb.from('credtrack_documents')
@@ -2149,6 +2184,9 @@ async function loadAdminDocs() {
   if (type) q = q.eq('document_type_id', type);
   if (verified === '1') q = q.eq('verified', true);
   if (verified === '0') q = q.eq('verified', false);
+  if (archived === 'active')   q = q.eq('archived', false);
+  if (archived === 'archived') q = q.eq('archived', true);
+  // 'all' applies no archive filter
 
   const { data, error } = await q;
   const tbody = document.getElementById('adminDocsTbody');
@@ -2185,10 +2223,18 @@ async function loadAdminDocs() {
         ${fileHtml}
         <button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>
         <button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>
+        ${r.archived ? `<button class="btn btn-sm btn-gold" onclick="unarchiveDoc('${r.id}')">Unarchive</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>
       </div></td>
     </tr>`;
   }).join('');
+}
+
+async function unarchiveDoc(id) {
+  const { error } = await sb.from('credtrack_documents').update({ archived: false, archived_at: null }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Moved back to active documents');
+  await loadAdminDocs();
 }
 
 function editDocDates(docId, currentIssued, currentExpiry) {
@@ -4861,9 +4907,51 @@ async function loadPlatformDocTypes() {
   </tr>`).join('');
 }
 
+async function loadDeletionReview() {
+  const sixYearsAgo = new Date();
+  sixYearsAgo.setFullYear(sixYearsAgo.getFullYear() - 6);
+  const cutoff = sixYearsAgo.toISOString();
+
+  const { data } = await sb.from('credtrack_documents')
+    .select('*, credtrack_staff(full_name), document_types(name), companies(name)')
+    .eq('archived', true)
+    .not('archived_at', 'is', null)
+    .lt('archived_at', cutoff)
+    .order('archived_at');
+
+  const tbody = document.getElementById('deletionReviewTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">Nothing currently eligible.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => `<tr>
+    <td style="font-size:12px;">${r.companies?.name || '—'}</td>
+    <td>${r.credtrack_staff?.full_name || '—'}</td>
+    <td>${r.document_types?.name || r.label}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${fmtDate(r.expiry_date)}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${fmtDate(r.archived_at)}</td>
+    <td><div class="td-actions">
+      <button class="btn btn-sm btn-danger" onclick="permanentlyDeleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Permanently delete</button>
+    </div></td>
+  </tr>`).join('');
+}
+
+async function permanentlyDeleteDoc(id, filePath) {
+  if (!confirm('Permanently delete this record? This cannot be undone and should only be done after confirming your retention obligations for this document type.')) return;
+  try {
+    if (filePath) await sb.storage.from(STORAGE_BUCKET).remove([filePath]);
+    const { error } = await sb.from('credtrack_documents').delete().eq('id', id);
+    if (error) throw error;
+    toast('Record permanently deleted');
+    await loadDeletionReview();
+  } catch(e) { toast('Delete failed: ' + e.message, true); }
+}
+
 async function loadSuperAdmin() {
   await loadBugLog();
   await loadPlatformDocTypes();
+  await loadDeletionReview();
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
