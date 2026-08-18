@@ -5046,6 +5046,12 @@ async function saveSetDemoPassword(companyId) {
         login_url: 'https://cred.selko360.com',
         app_label: 'Cred',
         force_reset: true,
+        // The whole point of this feature is a fixed password that keeps
+        // working across future logins, not one gated behind a forced
+        // change on first use — handled server-side now (with the service
+        // role) since a client-side update here gets silently filtered by
+        // the profiles table's self-only RLS policy.
+        require_password_change: false,
       }),
     });
     const result = await res.json();
@@ -5072,15 +5078,6 @@ async function saveSetDemoPassword(companyId) {
       // Staff row already existed (e.g. re-running this on the same email) —
       // make sure it's linked to the right profile_id too.
       await sb.from('credtrack_staff').update({ profile_id: result.user_id, active: true }).eq('id', existingStaff.id);
-    }
-
-    // set-user-password always flags force_reset accounts as
-    // must_change_password=true — correct for real staff, but wrong here:
-    // the entire point of this feature is a fixed password that keeps
-    // working across many future logins, not one that gets immediately
-    // gated behind a forced change on first use.
-    if (result.user_id) {
-      await sb.from('profiles').update({ must_change_password: false }).eq('id', result.user_id);
     }
 
     document.getElementById('setDemoPasswordModal')?.remove();
