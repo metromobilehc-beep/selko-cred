@@ -851,6 +851,8 @@
             <span style="font-size:12px;color:rgba(255,255,255,.5);">Quick add —</span>
             <select class="filter-sel" id="bulkAssignAgency"><option value="">Select agency…</option></select>
             <button class="btn btn-sm btn-gold" onclick="bulkAssignAllStaff()">+ Assign all active staff</button>
+            <span style="font-size:12px;color:rgba(255,255,255,.5);margin-left:14px;">Quick remove —</span>
+            <button class="btn btn-sm btn-danger" onclick="bulkRemoveAllStaffFromAgency()">✕ Remove everyone</button>
           </div>
           <div class="tbl-wrap">
             <table>
@@ -3970,6 +3972,29 @@ async function bulkAssignAllStaff() {
   if (error) { toast('Error: ' + error.message, true); return; }
 
   toast(`✓ Assigned ${toInsert.length} staff member(s)`);
+  await loadStaffAgencyAssignments();
+}
+
+async function bulkRemoveAllStaffFromAgency() {
+  const agencyId = document.getElementById('bulkAssignAgency').value;
+  if (!agencyId) { toast('Select an agency first', true); return; }
+
+  const agency = (await loadCredtrackAgencies()).find(a => a.id === agencyId);
+  const agencyName = agency?.name || 'this agency';
+
+  const { count } = await sb.from('credtrack_staff_agencies')
+    .select('*', { count: 'exact', head: true })
+    .eq('company_id', currentCompany.id).eq('agency_id', agencyId);
+
+  if (!count) { toast('No one is currently assigned to this agency'); return; }
+
+  if (!confirm(`Remove all ${count} staff currently assigned to ${agencyName}?\n\nThis only removes their document visibility to this agency — it does not delete any staff records, documents, or the agency itself. Any partner logins for ${agencyName} will no longer see anyone until staff are reassigned.`)) return;
+
+  const { error } = await sb.from('credtrack_staff_agencies')
+    .delete().eq('company_id', currentCompany.id).eq('agency_id', agencyId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  toast(`✓ Removed ${count} staff member(s) from ${agencyName}`);
   await loadStaffAgencyAssignments();
 }
 
