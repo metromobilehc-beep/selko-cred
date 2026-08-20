@@ -991,6 +991,18 @@
         </div>
       </div>
 
+      <!-- Recent uploads across every company — live view, complements the daily email digest -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>📤 Recent uploads</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Most recent 200 document uploads across every company, newest first.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Company</th><th>Staff member</th><th>Document</th></tr></thead>
+            <tbody id="recentUploadsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Platform document types (tier + global/custom management) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Platform document types</h2>
@@ -1426,7 +1438,7 @@ async function initSession(user) {
 
     document.getElementById('hdrUser').textContent    = profile.full_name;
     document.getElementById('hdrUser').style.display   = 'block';
-    document.getElementById('hdrRole').textContent    = (profile.role === 'admin' || profile.is_super_admin) ? 'Admin' : 'Staff';
+    document.getElementById('hdrRole').textContent    = (profile.role === 'admin' || profile.is_super_admin) ? 'Admin' : (profile.role === 'office' ? 'Office' : 'Staff');
     document.getElementById('hdrRole').style.display   = 'block';
     document.getElementById('hdrLogout').style.display = 'block';
 
@@ -1444,12 +1456,15 @@ async function initSession(user) {
     await loadDocTypes();
     await loadBoardConfig();
 
-    if (profile.role === 'admin' || profile.is_super_admin) {
+    if (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin) {
       showScreen('adminScreen');
       await initAdmin();
-      if (profile.is_super_admin) {
-        document.getElementById('tab-super').style.display = 'inline-flex';
-      }
+      // Explicit both-ways set, not just a conditional show — this is what
+      // actually closes the gap: a prior session's tab-super could stay
+      // visible into this one otherwise, since nothing else in the login
+      // path ever hides it if this specific profile isn't a super admin.
+      document.getElementById('tab-super').style.display = profile.is_super_admin ? 'inline-flex' : 'none';
+      document.getElementById('tab-settings').style.display = (profile.role === 'admin' || profile.is_super_admin) ? 'inline-flex' : 'none';
     } else if (profile.insurance_access) {
       document.getElementById('hdrRole').textContent = 'Insurance Access';
       showScreen('adminScreen');
@@ -1470,7 +1485,15 @@ async function initSession(user) {
 async function logout() {
   await sb.auth.signOut();
   currentProfile = null; currentCompany = null;
+  _superProfile = null; _superCompany = null;
   ['hdrUser','hdrRole','hdrLogout'].forEach(id => document.getElementById(id).style.display = 'none');
+  // Explicitly hide every privilege-gated element on logout — previously
+  // this only ever got SHOWN when conditions were met, never explicitly
+  // hidden otherwise, so a prior session's visible super-admin tab could
+  // persist into a subsequent, lower-privilege login in the same tab.
+  document.getElementById('tab-super').style.display = 'none';
+  const viewAsBanner = document.getElementById('viewAsBanner');
+  if (viewAsBanner) viewAsBanner.style.display = 'none';
   document.getElementById('loginEmail').value    = '';
   document.getElementById('loginPassword').value = '';
   document.getElementById('loginBtn').disabled   = false;
@@ -1836,6 +1859,53 @@ function clearPhoto() {
   refreshUpFileDisplay();
 }
 
+// Real-time check: after any document upload, see if this specific staff
+// member now has every required document on file. Fires an immediate
+// celebratory alert the moment the LAST missing piece gets uploaded,
+// rather than waiting for the next day's reminder sweep. Reuses the same
+// discipline-aware "what's actually required for this person" logic as
+// send-missing-document-reminders, just evaluated client-side for instant
+// feedback right after an upload.
+async function checkStaffCompliance(staffId) {
+  try {
+    const { data: staff } = await sb.from('credtrack_staff')
+      .select('id, full_name, company_id, discipline, fully_compliant_alerted_at')
+      .eq('id', staffId).maybeSingle();
+    if (!staff) return;
+
+    const { data: requiredTypes } = await sb.from('document_types')
+      .select('id, name, company_id, required_for_disciplines')
+      .eq('is_required', true);
+
+    const applicable = (requiredTypes || []).filter(t => {
+      const companyMatch = t.company_id === null || t.company_id === staff.company_id;
+      const disciplineList = t.required_for_disciplines || [];
+      const disciplineMatch = disciplineList.length === 0 || disciplineList.includes(staff.discipline);
+      return companyMatch && disciplineMatch;
+    });
+    if (!applicable.length) return; // nothing required configured — nothing to celebrate
+
+    const { data: existingDocs } = await sb.from('credtrack_documents')
+      .select('document_type_id').eq('staff_id', staffId);
+    const haveTypeIds = new Set((existingDocs || []).map(d => d.document_type_id));
+    const stillMissing = applicable.filter(t => !haveTypeIds.has(t.id));
+
+    if (!stillMissing.length && !staff.fully_compliant_alerted_at) {
+      // Newly complete — fire the alert once, and remember so we don't
+      // repeat it on every subsequent upload once they're already caught up.
+      await sb.from('credtrack_staff').update({ fully_compliant_alerted_at: new Date().toISOString() }).eq('id', staffId);
+      toast(`🎉 ${staff.full_name} now has every required document on file!`);
+    } else if (stillMissing.length && staff.fully_compliant_alerted_at) {
+      // They'd previously completed everything but something's missing
+      // again (a doc expired/was removed) — clear the flag so a future
+      // completion re-triggers the celebration instead of staying silent.
+      await sb.from('credtrack_staff').update({ fully_compliant_alerted_at: null }).eq('id', staffId);
+    }
+  } catch (e) {
+    console.warn('Compliance check failed (non-blocking):', e);
+  }
+}
+
 async function uploadDoc() {
   const typeId  = document.getElementById('upType').value;
   const expDate = document.getElementById('upExp').value;
@@ -1907,6 +1977,7 @@ async function uploadDoc() {
     clearPhoto();
     await renderStatCards(window._staffId);
     await loadMyDocs(window._staffId);
+    await checkStaffCompliance(window._staffId);
     toast('Document uploaded');
   } catch(e) {
     showUpStatus('Upload failed: ' + e.message, 'err');
@@ -2511,12 +2582,14 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
 async function deleteDoc(id, filePath) {
   if (!confirm('Delete this document record? This cannot be undone.')) return;
   try {
+    const { data: docRow } = await sb.from('credtrack_documents').select('staff_id').eq('id', id).maybeSingle();
     if (filePath) {
       await sb.storage.from(STORAGE_BUCKET).remove([filePath]);
     }
     await sb.from('credtrack_documents').delete().eq('id', id);
     toast('Document deleted');
     await loadAdminDocs();
+    if (docRow?.staff_id) await checkStaffCompliance(docRow.staff_id);
   } catch(e) { toast('Error: ' + e.message, true); }
 }
 
@@ -3644,6 +3717,7 @@ async function adminUploadDoc() {
     document.getElementById('auCamera2').value = '';
     document.getElementById('auFileName2').textContent = 'No file selected';
     toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
+    await checkStaffCompliance(staffId);
     await loadAdminDocs();
   } catch(e) {
     showAuStatus('Error: ' + e.message, 'err');
@@ -4999,6 +5073,26 @@ async function loadPlatformDocTypes() {
   </tr>`).join('');
 }
 
+async function loadRecentUploads() {
+  const { data } = await sb.from('credtrack_documents')
+    .select('created_at, label, credtrack_staff(full_name), document_types(name), companies(name)')
+    .order('created_at', { ascending: false })
+    .limit(200);
+
+  const tbody = document.getElementById('recentUploadsTbody');
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No uploads recorded yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => `<tr>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${new Date(r.created_at).toLocaleString()}</td>
+    <td style="font-size:12px;">${r.companies?.name || '—'}</td>
+    <td>${r.credtrack_staff?.full_name || '—'}</td>
+    <td>${r.document_types?.name || r.label || '—'}</td>
+  </tr>`).join('');
+}
+
 async function loadDeletionReview() {
   const sixYearsAgo = new Date();
   sixYearsAgo.setFullYear(sixYearsAgo.getFullYear() - 6);
@@ -5044,6 +5138,7 @@ async function loadSuperAdmin() {
   await loadBugLog();
   await loadPlatformDocTypes();
   await loadDeletionReview();
+  await loadRecentUploads();
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
