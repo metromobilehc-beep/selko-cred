@@ -448,11 +448,11 @@
           <option value="all">All (active + archived)</option>
         </select>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
-        <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
+        <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
         <div style="position:relative;display:inline-block;">
-          <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⋮ More</button>
+          <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Downloads</button>
           <div id="docsMoreMenu" style="display:none;position:absolute;top:36px;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:180px;z-index:20;padding:4px;">
-            <button class="btn-more-item" id="addDocTypeBtn" onclick="closeDocsMoreMenu();proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
+            <button class="btn-more-item" id="bulkDownloadBtn" onclick="closeDocsMoreMenu();showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
             <button class="btn-more-item" onclick="closeDocsMoreMenu();exportCsv()">⬇ Export CSV</button>
             <button class="btn-more-item" id="exportProExcelBtn" onclick="closeDocsMoreMenu();exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
             <button class="btn-more-item" id="exportProPdfBtn" onclick="closeDocsMoreMenu();exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
