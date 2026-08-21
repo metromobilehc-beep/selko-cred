@@ -164,6 +164,8 @@
   .panel-chevron { display: inline-block; font-size: 11px; color: rgba(255,255,255,.4); transition: transform .18s ease; margin-left: 10px; }
   .panel-chevron.open { transform: rotate(90deg); }
   .panel-body { overflow: hidden; }
+  .btn-more-item { display: block; width: 100%; text-align: left; font-size: 13px; padding: 8px 10px; border: none; background: none; color: #fff; cursor: pointer; border-radius: 6px; }
+  .btn-more-item:hover { background: rgba(255,255,255,.08); }
 
   .filter-bar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
   .filter-sel { padding: 6px 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
@@ -445,12 +447,17 @@
           <option value="archived">Archived (expired 3+ months)</option>
           <option value="all">All (active + archived)</option>
         </select>
-        <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
-        <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
-        <button class="btn btn-sm btn-ghost" onclick="exportCsv()">⬇ Export CSV</button>
-        <button class="btn btn-sm btn-teal" id="exportProExcelBtn" onclick="exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
-        <button class="btn btn-sm btn-gold" id="exportProPdfBtn" onclick="exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
+        <button class="btn btn-sm btn-gold" id="bulkDownloadBtn" onclick="showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
+        <div style="position:relative;display:inline-block;">
+          <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⋮ More</button>
+          <div id="docsMoreMenu" style="display:none;position:absolute;top:36px;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:180px;z-index:20;padding:4px;">
+            <button class="btn-more-item" id="addDocTypeBtn" onclick="closeDocsMoreMenu();proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
+            <button class="btn-more-item" onclick="closeDocsMoreMenu();exportCsv()">⬇ Export CSV</button>
+            <button class="btn-more-item" id="exportProExcelBtn" onclick="closeDocsMoreMenu();exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
+            <button class="btn-more-item" id="exportProPdfBtn" onclick="closeDocsMoreMenu();exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
+          </div>
+        </div>
       </div>
 
       <!-- Admin upload form -->
@@ -1163,6 +1170,20 @@ function previewTheme(name) {
   });
   toast(name === 'current' ? 'Back to current theme' : `Previewing: ${name} — refresh to reset`);
 }
+
+function toggleDocsMoreMenu() {
+  const menu = document.getElementById('docsMoreMenu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+function closeDocsMoreMenu() {
+  document.getElementById('docsMoreMenu').style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('docsMoreMenu');
+  const btn = document.getElementById('docsMoreBtn');
+  if (!menu || menu.style.display === 'none') return;
+  if (!menu.contains(e.target) && e.target !== btn) menu.style.display = 'none';
+});
 
 function initCollapsiblePanels() {
   document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel').forEach(panel => {
