@@ -577,12 +577,6 @@
         <select class="filter-sel" id="fExpEmp" onchange="loadExpTracker()"><option value="">All staff</option></select>
         <select class="filter-sel" id="fExpDiscipline" onchange="filterExpStaffDropdown();loadExpTracker()">
           <option value="">All disciplines</option>
-          <option value="PT">PT</option>
-          <option value="PTA">PTA</option>
-          <option value="OT">OT</option>
-          <option value="COTA">COTA</option>
-          <option value="SLP">SLP</option>
-          <option value="Other">Other</option>
         </select>
         <select class="filter-sel" id="fExpWin" onchange="loadExpTracker()" style="display:none;">
           <option value="">All</option>
@@ -644,12 +638,6 @@
               <label class="inline-label">Discipline</label>
               <select class="inline-select" id="nsDiscipline">
                 <option value="">— N/A —</option>
-                <option value="PT">PT</option>
-                <option value="PTA">PTA</option>
-                <option value="OT">OT</option>
-                <option value="COTA">COTA</option>
-                <option value="SLP">SLP</option>
-                <option value="Other">Other</option>
               </select>
             </div>
             <div>
@@ -809,6 +797,21 @@
           <button class="btn btn-sm btn-teal" onclick="saveBranding()">Save branding</button>
         </div>
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Clinical disciplines — per-company, since a PT/OT staffing company
+           and an urgent care clinic (MD/DO/PA/NP/RN) need completely
+           different values here -->
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+        <h2>Clinical disciplines</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
+          Define the clinical disciplines used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, or MD/DO/PA/NP/RN for an urgent care clinic. These appear anywhere discipline is selected: adding staff, editing a staff member's discipline, and scoping which document types apply to which disciplines.
+        </p>
+        <div id="disciplinesListCred" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN" style="max-width:160px;" />
+          <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add discipline</button>
+        </div>
       </div>
 
       <!-- Document type management -->
@@ -994,7 +997,7 @@
       <!-- Recent uploads across every company — live view, complements the daily email digest -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>📤 Recent uploads</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Most recent 200 document uploads across every company, newest first.</p>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Document uploads across every company in the last 7 days, newest first.</p>
         <div class="tbl-wrap">
           <table>
             <thead><tr><th>When</th><th>Company</th><th>Staff member</th><th>Document</th></tr></thead>
@@ -2255,6 +2258,10 @@ async function loadAdminFilters() {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name; fType.appendChild(o);
   });
+
+  const fExpDiscipline = document.getElementById('fExpDiscipline');
+  fExpDiscipline.innerHTML = '<option value="">All disciplines</option>' +
+    getCompanyDisciplines().map(d => `<option value="${d}">${d}</option>`).join('');
 }
 
 let _docViewMode = 'needs'; // 'needs' | 'verified' | 'all' — defaults to what actually needs action
@@ -2726,6 +2733,23 @@ function setExpViewMode(mode) {
   loadExpTracker();
 }
 
+// Each company has its own list of clinical disciplines — a PT/OT staffing
+// company and an urgent care clinic (MD/DO/PA/NP/RN) need completely
+// different values here, so this is never hardcoded. Falls back to the
+// original PT/PTA/OT/COTA/SLP list only if a company somehow has no list
+// configured at all.
+function getCompanyDisciplines() {
+  return (currentCompany?.available_disciplines?.length)
+    ? currentCompany.available_disciplines
+    : ['PT', 'PTA', 'OT', 'COTA', 'SLP', 'Other'];
+}
+
+function populateDisciplineSelect(selectEl, currentValue, blankLabel) {
+  const disciplines = getCompanyDisciplines();
+  selectEl.innerHTML = `<option value="">${blankLabel || '— N/A —'}</option>` +
+    disciplines.map(d => `<option value="${d}" ${d === currentValue ? 'selected' : ''}>${d}</option>`).join('');
+}
+
 function filterExpStaffDropdown() {
   const discipline = document.getElementById('fExpDiscipline')?.value || '';
   const fExpEmp = document.getElementById('fExpEmp');
@@ -3111,7 +3135,10 @@ function attachVerificationProof(staffId) {
   }, 50);
 }
 
-function showAddStaff() { document.getElementById('addStaffForm').style.display = 'block'; }
+function showAddStaff() {
+  document.getElementById('addStaffForm').style.display = 'block';
+  populateDisciplineSelect(document.getElementById('nsDiscipline'), '', '— N/A —');
+}
 function hideAddStaff() {
   document.getElementById('addStaffForm').style.display = 'none';
   ['nsName','nsEmail','nsTitle'].forEach(id => document.getElementById(id).value = '');
@@ -3214,13 +3241,8 @@ function showDisciplineModal(id, name, currentDiscipline) {
   if (existing) existing.remove();
 
   const options = [
-    { value: '',      label: 'N/A',   desc: 'No clinical discipline (office/admin staff)' },
-    { value: 'PT',    label: 'PT',    desc: 'Physical Therapist' },
-    { value: 'PTA',   label: 'PTA',   desc: 'Physical Therapist Assistant' },
-    { value: 'OT',    label: 'OT',    desc: 'Occupational Therapist' },
-    { value: 'COTA',  label: 'COTA',  desc: 'Certified Occupational Therapy Assistant' },
-    { value: 'SLP',   label: 'SLP',   desc: 'Speech-Language Pathologist' },
-    { value: 'Other', label: 'Other', desc: 'Any other clinical discipline' },
+    { value: '', label: 'N/A', desc: 'No clinical discipline (office/admin staff)' },
+    ...getCompanyDisciplines().map(d => ({ value: d, label: d, desc: 'Clinical discipline' })),
   ];
 
   const modal = document.createElement('div');
@@ -3771,8 +3793,53 @@ async function loadAccessLog() {
   </tr>`).join('');
 }
 
+function loadDisciplinesPanel() {
+  const container = document.getElementById('disciplinesListCred');
+  const disciplines = getCompanyDisciplines();
+  container.innerHTML = disciplines.map(d => `
+    <span class="badge badge-ok" style="display:flex;align-items:center;gap:6px;padding:6px 10px;">
+      ${d}
+      <span onclick="removeCompanyDiscipline('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
+    </span>`).join('');
+}
+
+async function addCompanyDiscipline() {
+  const input = document.getElementById('newDisciplineInput');
+  const value = input.value.trim();
+  if (!value) return;
+
+  const current = getCompanyDisciplines();
+  if (current.some(d => d.toLowerCase() === value.toLowerCase())) {
+    toast('That discipline is already in the list', true);
+    return;
+  }
+
+  const updated = [...current, value];
+  const { error } = await sb.from('companies').update({ available_disciplines: updated }).eq('id', currentCompany.id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  currentCompany.available_disciplines = updated;
+  input.value = '';
+  loadDisciplinesPanel();
+  toast(`✓ Added "${value}"`);
+}
+
+async function removeCompanyDiscipline(discipline) {
+  if (!confirm(`Remove "${discipline}" from your discipline list? Staff already set to this discipline will keep it, but it won't be selectable for new assignments.`)) return;
+
+  const updated = getCompanyDisciplines().filter(d => d !== discipline);
+  const { error } = await sb.from('companies').update({ available_disciplines: updated }).eq('id', currentCompany.id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  currentCompany.available_disciplines = updated;
+  loadDisciplinesPanel();
+  toast(`Removed "${discipline}"`);
+}
+
 async function loadSettings() {
   const c = currentCompany;
+
+  loadDisciplinesPanel();
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
@@ -3959,7 +4026,7 @@ function showDocTypeScopeModal(id, name, currentDisciplines) {
   const existing = document.getElementById('scopeModalCred');
   if (existing) existing.remove();
 
-  const allDisciplines = ['PT', 'PTA', 'OT', 'COTA', 'SLP', 'Other'];
+  const allDisciplines = getCompanyDisciplines();
 
   const modal = document.createElement('div');
   modal.id = 'scopeModalCred';
@@ -5074,14 +5141,18 @@ async function loadPlatformDocTypes() {
 }
 
 async function loadRecentUploads() {
+  const sevenDaysAgo = new Date();
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
   const { data } = await sb.from('credtrack_documents')
     .select('created_at, label, credtrack_staff(full_name), document_types(name), companies(name)')
+    .gt('created_at', sevenDaysAgo.toISOString())
     .order('created_at', { ascending: false })
-    .limit(200);
+    .limit(500);
 
   const tbody = document.getElementById('recentUploadsTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No uploads recorded yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No uploads in the last 7 days.</td></tr>';
     return;
   }
 
