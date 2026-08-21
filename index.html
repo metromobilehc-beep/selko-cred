@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Selko Cred — Credential Manager</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -481,6 +482,7 @@
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <label for="auFile" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;">📎 Choose file</label>
               <button class="btn btn-sm btn-gold" id="scanBtn" onclick="scanCredential()" style="display:none;">🔍 Scan document</button>
+              <button class="btn btn-sm btn-ghost" id="freeScanBtn" onclick="freeScanCredential()" style="display:none;color:#fff;border-color:rgba(255,255,255,.2);" title="Free, runs in your browser — less accurate than the AI scan above, but no cost">🆓 Quick scan (free)</button>
               <span id="auFileName" style="font-size:12px;color:rgba(255,255,255,.4);font-style:italic;">No file selected</span>
             </div>
             <input type="file" id="auFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onAuFileSelected(this)" />
@@ -3535,11 +3537,13 @@ function onAuFileSelected(input) {
   if (!file) {
     document.getElementById('auFileName').textContent = 'No file selected';
     document.getElementById('scanBtn').style.display = 'none';
+    document.getElementById('freeScanBtn').style.display = 'none';
     return;
   }
   document.getElementById('auFileName').textContent = file.name;
   // Show scan button for images and PDFs
   document.getElementById('scanBtn').style.display = 'inline-flex';
+  document.getElementById('freeScanBtn').style.display = 'inline-flex';
 }
 
 function onAuFile2Selected(input) {
@@ -3614,6 +3618,119 @@ async function scanCredential() {
 
   btn.textContent = '🔍 Scan document';
   btn.disabled = false;
+}
+
+// Free alternative to scanCredential() — runs Tesseract.js entirely in the
+// browser, no API calls, no cost per scan. Meaningfully less accurate than
+// the AI scan above (no understanding of context, just raw text + regex
+// pattern matching), so this only ever pre-fills fields that are still
+// empty, and always leaves the actual saving decision to a human review.
+async function freeScanCredential() {
+  const file = document.getElementById('auFile').files[0];
+  if (!file) { toast('Please select a file first', true); return; }
+  if (file.type === 'application/pdf') {
+    toast('Free quick scan only works on images (JPG/PNG) — use the AI scan above for PDFs', true);
+    return;
+  }
+
+  const btn = document.getElementById('freeScanBtn');
+  btn.textContent = '⏳ Reading…';
+  btn.disabled = true;
+  showAuStatus('Reading document with free OCR — this can take 10–20 seconds and runs entirely in your browser…', 'ok');
+
+  try {
+    const { data: { text } } = await Tesseract.recognize(file, 'eng');
+
+    // Find every date-like pattern (mm/dd/yyyy, mm-dd-yy, etc.)
+    const dateRegex = /\b(0?[1-9]|1[0-2])[\/\-](0?[1-9]|[12]\d|3[01])[\/\-](\d{4}|\d{2})\b/g;
+    const matches = [...text.matchAll(dateRegex)];
+
+    let guessedDate = null;
+    if (matches.length) {
+      // Prefer a date sitting near an "EXP"/"EXPIRES"/"EXPIRATION" keyword —
+      // otherwise fall back to the furthest-future date found, since an
+      // expiration date is typically later than issue date or DOB.
+      const expKeywordIdx = text.toUpperCase().search(/EXP(IRES|IRATION)?/);
+      let best = null;
+      if (expKeywordIdx !== -1) {
+        best = matches.find(m => Math.abs(m.index - expKeywordIdx) < 40);
+      }
+      if (!best) {
+        // Furthest-future date among everything found
+        best = matches.reduce((latest, m) => {
+          const d = normalizeGuessedDate(m);
+          const l = latest ? normalizeGuessedDate(latest) : null;
+          return (!l || (d && d > l)) ? m : latest;
+        }, null);
+      }
+      if (best) {
+        const normalized = normalizeGuessedDate(best);
+        guessedDate = normalized ? normalized._formatted : null;
+      }
+    }
+
+    // Keyword-match against this company's actual document types
+    const upperText = text.toUpperCase();
+    const guessedType = docTypes.find(t => upperText.includes(t.name.toUpperCase()));
+
+    if (guessedDate || guessedType) {
+      showFreeScanConfirmModal(guessedDate, guessedType);
+      showAuStatus('🆓 Free scan done — review the suggestion below before applying it.', 'ok');
+    } else {
+      showAuStatus('🆓 Free scan done, but nothing confident enough to suggest — please enter details manually or try the AI scan.', 'err');
+    }
+  } catch (e) {
+    showAuStatus('Free scan failed: ' + e.message, 'err');
+  }
+
+  btn.textContent = '🆓 Quick scan (free)';
+  btn.disabled = false;
+}
+
+function normalizeGuessedDate(match) {
+  let [, mm, dd, yyyy] = match;
+  if (yyyy.length === 2) yyyy = (parseInt(yyyy) < 50 ? '20' : '19') + yyyy;
+  mm = mm.padStart(2, '0'); dd = dd.padStart(2, '0');
+  const asDate = new Date(`${yyyy}-${mm}-${dd}`);
+  if (isNaN(asDate.getTime())) return null;
+  asDate._formatted = `${yyyy}-${mm}-${dd}`;
+  return asDate;
+}
+
+function showFreeScanConfirmModal(guessedDate, guessedType) {
+  const existing = document.getElementById('freeScanConfirmModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'freeScanConfirmModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Here's what the free scan found</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Free OCR is less accurate than the paid AI scan — double-check this actually matches the document before applying it.</div>
+      <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:14px;margin-bottom:18px;">
+        <div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:4px;">Expiration date</div>
+        <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:12px;">${guessedDate ? new Date(guessedDate).toLocaleDateString() : '— nothing confident found —'}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:4px;">Document type</div>
+        <div style="font-size:15px;font-weight:600;color:#fff;">${guessedType ? guessedType.name : '— nothing confident found —'}</div>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="applyFreeScanResults(${guessedDate ? `'${guessedDate}'` : 'null'}, ${guessedType ? `'${guessedType.id}'` : 'null'})" style="flex:1;justify-content:center;">✓ Looks right — apply</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('freeScanConfirmModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Discard</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function applyFreeScanResults(guessedDate, guessedTypeId) {
+  if (guessedDate) document.getElementById('auExpiry').value = guessedDate;
+  if (guessedTypeId) {
+    document.getElementById('auType').value = guessedTypeId;
+    onAuTypeChanged();
+  }
+  document.getElementById('freeScanConfirmModal')?.remove();
+  toast('Applied — please still verify against the actual document before saving');
 }
 
 function toggleAdminUpload() {
