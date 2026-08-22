@@ -429,7 +429,8 @@
     </div>
 
 
-    <div id="tabDocs" class="dark-panel" style="display:none;">
+    <div id="tabDocs" style="display:none;">
+      <div class="dark-panel">
       <h2>All staff documents</h2>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button class="tab active" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
@@ -585,9 +586,10 @@
           <tbody id="adminDocsTbody"></tbody>
         </table>
       </div>
+      </div>
 
-      <div class="dark-panel" id="missingDocsPanel" style="background:var(--navy2);margin:20px 0;display:none;position:relative;border:1px solid rgba(255,255,255,.06);" data-default-open="true">
-        <h2>📋 Missing documents by staff member</h2>
+      <div class="dark-panel" id="missingDocsPanel" style="display:none;position:relative;" data-default-open="true">
+        <h2>Missing documents by staff member</h2>
         <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()" style="position:absolute;top:20px;right:20px;">⬇ Export PDF</button>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
         <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
@@ -595,8 +597,8 @@
         </select>
         <div id="missingDocsReport"></div>
       </div>
-      <div class="dark-panel" id="missingDocsProLock" style="background:var(--navy2);margin:20px 0;border:1px solid rgba(255,255,255,.06);">
-        <h2>📋 Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
+      <div class="dark-panel" id="missingDocsProLock">
+        <h2>Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
         <p style="font-size:13px;color:rgba(255,255,255,.5);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
       </div>
     </div>
@@ -1169,7 +1171,7 @@ document.addEventListener('click', function(e) {
 });
 
 function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabDocs .dark-panel').forEach(panel => {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #missingDocsPanel, #missingDocsProLock').forEach(panel => {
     if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
     const h2 = panel.querySelector('h2');
     if (!h2) return;
