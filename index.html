@@ -4080,7 +4080,7 @@ async function loadDocTypesTable() {
     </td>
     <td>
       ${t.is_required
-        ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines)})"
+        ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')})"
              class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${scopeLabel} ✎</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
     </td>
