@@ -590,13 +590,20 @@
 
       <div class="dark-panel" id="missingDocsPanel" style="display:none;" data-default-open="true">
         <h2>Missing documents by staff member</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one tracked document — required or optional — sorted by the most outstanding first. This reflects what applies to their specific discipline. Filter below to focus on just required items, just optional ones, or a specific document type.</p>
         <div style="text-align:right;margin-bottom:14px;">
           <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
         </div>
-        <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
-          <option value="">All required documents</option>
-        </select>
+        <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+          <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()">
+            <option value="">All documents</option>
+          </select>
+          <select class="filter-sel" id="fMissingDocsReq" onchange="renderMissingDocsReport()">
+            <option value="">Required + Optional</option>
+            <option value="required">Required only</option>
+            <option value="optional">Optional only</option>
+          </select>
+        </div>
         <div id="missingDocsReport"></div>
       </div>
       <div class="dark-panel" id="missingDocsProLock">
@@ -5256,28 +5263,30 @@ async function loadOverview() {
   document.getElementById('ovExpiringCount').textContent = expiring.length;
 
   // Required documents vs. what's actually on file, respecting discipline scoping
-  const { data: requiredTypes } = await sb.from('document_types')
-    .select('id, name, company_id, required_for_disciplines')
-    .eq('is_required', true);
-  const applicableTypes = (requiredTypes || []).filter(t => t.company_id === null || t.company_id === currentCompany.id);
+  const { data: allTypes } = await sb.from('document_types')
+    .select('id, name, company_id, required_for_disciplines, is_required');
+  const applicableTypes = (allTypes || []).filter(t => t.company_id === null || t.company_id === currentCompany.id);
 
   const haveDoc = new Set(allDocs.map(d => `${d.staff_id}:${d.document_type_id}`));
   let requiredSlots = 0, filledSlots = 0;
   const missingByStaff = [];
   activeStaff.forEach(s => {
-    const missingNames = [];
+    const missingItems = []; // { name, isRequired }
     applicableTypes.forEach(t => {
       const disciplineList = t.required_for_disciplines || [];
       const applies = disciplineList.length === 0 || disciplineList.includes(s.discipline);
       if (!applies) return;
-      requiredSlots++;
-      if (haveDoc.has(`${s.id}:${t.id}`)) {
-        filledSlots++;
-      } else {
-        missingNames.push(t.name);
+      // Compliance rate stays strictly about required items — optional
+      // ones are tracked for visibility but shouldn't move this number.
+      if (t.is_required) {
+        requiredSlots++;
+        if (haveDoc.has(`${s.id}:${t.id}`)) filledSlots++;
+      }
+      if (!haveDoc.has(`${s.id}:${t.id}`)) {
+        missingItems.push({ name: t.name, isRequired: !!t.is_required });
       }
     });
-    if (missingNames.length) missingByStaff.push({ staffId: s.id, staffName: s.full_name, missing: missingNames });
+    if (missingItems.length) missingByStaff.push({ staffId: s.id, staffName: s.full_name, missing: missingItems });
   });
   missingByStaff.sort((a, b) => b.missing.length - a.missing.length);
   loadMissingDocsReport(missingByStaff);
@@ -5335,8 +5344,8 @@ function loadMissingDocsReport(missingByStaff) {
   // so the dropdown only ever shows relevant options.
   const typeSelect = document.getElementById('fMissingDocsType');
   const previousValue = typeSelect.value;
-  const allMissingTypes = [...new Set(missingByStaff.flatMap(s => s.missing))].sort();
-  typeSelect.innerHTML = '<option value="">All required documents</option>' +
+  const allMissingTypes = [...new Set(missingByStaff.flatMap(s => s.missing.map(m => m.name)))].sort();
+  typeSelect.innerHTML = '<option value="">All documents</option>' +
     allMissingTypes.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
   if (allMissingTypes.includes(previousValue)) typeSelect.value = previousValue;
 
@@ -5348,16 +5357,21 @@ function renderMissingDocsReport() {
   if (!container) return;
 
   const typeFilter = document.getElementById('fMissingDocsType')?.value || '';
-  const filtered = typeFilter
-    ? _lastMissingByStaff
-        .filter(s => s.missing.includes(typeFilter))
-        .map(s => ({ ...s, missing: [typeFilter] })) // show only the filtered item, not their whole list
-    : _lastMissingByStaff;
+  const reqFilter = document.getElementById('fMissingDocsReq')?.value || ''; // '', 'required', 'optional'
+
+  const matchesFilters = (item) => {
+    if (typeFilter && item.name !== typeFilter) return false;
+    if (reqFilter === 'required' && !item.isRequired) return false;
+    if (reqFilter === 'optional' && item.isRequired) return false;
+    return true;
+  };
+
+  const filtered = _lastMissingByStaff
+    .map(s => ({ ...s, missing: s.missing.filter(matchesFilters) }))
+    .filter(s => s.missing.length > 0);
 
   if (!filtered.length) {
-    container.innerHTML = typeFilter
-      ? `<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Nobody is missing "${typeFilter}".</div>`
-      : '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Everyone has every required document on file.</div>';
+    container.innerHTML = '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Nothing matches this filter — nobody is missing anything here.</div>';
     return;
   }
 
@@ -5365,11 +5379,15 @@ function renderMissingDocsReport() {
   const shown = filtered.slice(0, SHOWN_LIMIT);
   const remaining = filtered.length - shown.length;
 
+  const formatMissing = (missing) => missing
+    .map(m => m.isRequired ? m.name : `${m.name} (optional)`)
+    .join(', ');
+
   container.innerHTML = shown.map(s => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:12px;">
       <div>
         <div style="font-weight:600;color:#fff;font-size:13px;">${s.staffName}</div>
-        <div style="color:rgba(255,255,255,.5);font-size:12px;">Missing: ${s.missing.join(', ')}</div>
+        <div style="color:rgba(255,255,255,.5);font-size:12px;">Missing: ${formatMissing(s.missing)}</div>
       </div>
       <button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.staffId}','${s.staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);white-space:nowrap;">📋 Send checklist</button>
     </div>`).join('') +
@@ -5380,14 +5398,21 @@ function renderMissingDocsReport() {
 
 async function exportMissingDocsPDF() {
   const typeFilter = document.getElementById('fMissingDocsType')?.value || '';
-  const filtered = typeFilter
-    ? _lastMissingByStaff
-        .filter(s => s.missing.includes(typeFilter))
-        .map(s => ({ ...s, missing: [typeFilter] }))
-    : _lastMissingByStaff;
+  const reqFilter = document.getElementById('fMissingDocsReq')?.value || '';
+
+  const matchesFilters = (item) => {
+    if (typeFilter && item.name !== typeFilter) return false;
+    if (reqFilter === 'required' && !item.isRequired) return false;
+    if (reqFilter === 'optional' && item.isRequired) return false;
+    return true;
+  };
+
+  const filtered = _lastMissingByStaff
+    .map(s => ({ ...s, missing: s.missing.filter(matchesFilters) }))
+    .filter(s => s.missing.length > 0);
 
   if (!filtered.length) {
-    toast(typeFilter ? `Nothing to export — nobody is missing "${typeFilter}"` : 'Nothing to export — everyone has every required document on file', true);
+    toast('Nothing to export — nothing matches this filter', true);
     return;
   }
 
@@ -5412,7 +5437,11 @@ async function exportMissingDocsPDF() {
     24, 40
   );
 
-  const body = filtered.map(s => [s.staffName, s.missing.join(', '), String(s.missing.length)]);
+  const formatMissing = (missing) => missing
+    .map(m => m.isRequired ? m.name : `${m.name} (optional)`)
+    .join(', ');
+
+  const body = filtered.map(s => [s.staffName, formatMissing(s.missing), String(s.missing.length)]);
 
   doc.autoTable({
     startY: 70,
