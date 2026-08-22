@@ -588,10 +588,12 @@
       </div>
       </div>
 
-      <div class="dark-panel" id="missingDocsPanel" style="display:none;position:relative;" data-default-open="true">
+      <div class="dark-panel" id="missingDocsPanel" style="display:none;" data-default-open="true">
         <h2>Missing documents by staff member</h2>
-        <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()" style="position:absolute;top:20px;right:20px;">⬇ Export PDF</button>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
+        <div style="text-align:right;margin-bottom:14px;">
+          <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
+        </div>
         <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
           <option value="">All required documents</option>
         </select>
