@@ -426,12 +426,22 @@
         ✓ Nothing needs attention right now — all tracked documents are current.
       </div>
 
-      <div class="dark-panel" style="margin-top:16px;">
-        <h2>📋 Missing documents by staff member</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
+      <div class="dark-panel" id="missingDocsPanel" style="margin-top:16px;display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+          <div>
+            <h2>📋 Missing documents by staff member</h2>
+            <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
+          </div>
+          <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
+        </div>
         <div id="missingDocsReport"></div>
       </div>
+      <div class="dark-panel" id="missingDocsProLock" style="margin-top:16px;">
+        <h2>📋 Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
+        <p style="font-size:13px;color:rgba(255,255,255,.5);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
+      </div>
     </div>
+
 
     <div id="tabDocs" class="dark-panel" style="display:none;">
       <h2>All staff documents</h2>
@@ -848,7 +858,7 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Required</th><th>Applies To</th><th id="partnerVisibleTh" style="display:none;">Partner visible</th><th>Actions</th>
+              <th>Name</th><th>Expires</th><th>Required</th><th>Applies To</th><th>Self-upload</th><th id="partnerVisibleTh" style="display:none;">Partner visible</th><th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
@@ -1560,7 +1570,10 @@ async function loadDocTypes() {
   docTypes = data || [];
   const sel = document.getElementById('upType');
   sel.innerHTML = '<option value="">— Select type —</option>';
-  docTypes.forEach(t => {
+  // Some document types (e.g. Background Check) require independent
+  // verification and shouldn't be self-submitted — those are excluded
+  // here, but still fully available in the admin upload form below.
+  docTypes.filter(t => t.staff_can_upload !== false).forEach(t => {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name; sel.appendChild(o);
   });
@@ -4076,7 +4089,7 @@ async function loadDocTypesTable() {
 
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = `<tr><td colspan="${hasPartnerAccess ? 6 : 5}" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${hasPartnerAccess ? 7 : 6}" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
     return;
   }
 
@@ -4095,7 +4108,7 @@ async function loadDocTypesTable() {
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 
-  const colCount = hasPartnerAccess ? 6 : 5;
+  const colCount = hasPartnerAccess ? 7 : 6;
 
   tbody.innerHTML = sortedCategories.map((cat, catIdx) => {
     const catSlug = 'cat' + catIdx;
@@ -4120,6 +4133,12 @@ async function loadDocTypesTable() {
         ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')})"
              class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${scopeLabel} ✎</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
+    </td>
+    <td>
+      <span class="badge ${t.staff_can_upload === false ? 'badge-none' : 'badge-ok'}" style="cursor:pointer;"
+        onclick="toggleDocTypeStaffUpload(${t.id}, ${t.staff_can_upload !== false})" title="Click to toggle whether staff can upload this themselves">
+        ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}
+      </span>
     </td>
     ${hasPartnerAccess ? `<td>
       <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
@@ -4175,6 +4194,16 @@ async function toggleDocTypeRequired(id, currentlyRequired) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(!currentlyRequired ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
   await loadDocTypesTable();
+}
+
+async function toggleDocTypeStaffUpload(id, currentlyAllowed) {
+  const { error } = await sb.from('document_types').update({ staff_can_upload: !currentlyAllowed }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(currentlyAllowed
+    ? 'Now admin-only — staff will no longer see this in their upload form'
+    : 'Staff can now upload this themselves again');
+  await loadDocTypesTable();
+  await loadDocTypes(); // refreshes the self-service dropdown too
 }
 
 async function toggleDocTypePartnerVisible(id, currentlyVisible) {
@@ -5174,10 +5203,15 @@ async function loadOverview() {
   const activeStaff = staff || [];
   document.getElementById('ovStaffCount').textContent = activeStaff.length;
 
-  // All documents with expiry info
+  // All documents with expiry info — excludes archived (superseded/resolved)
+  // documents, same as the Documents tab's default view. Without this,
+  // an old expired document that's since been replaced by a current one
+  // keeps dragging down compliance stats and cluttering Needs Attention
+  // forever, even though it's correctly tucked away everywhere else.
   const { data: docs } = await sb.from('credtrack_documents')
     .select('id, staff_id, document_type_id, expiry_date, credtrack_staff(full_name), document_types(name)')
-    .eq('company_id', currentCompany.id);
+    .eq('company_id', currentCompany.id)
+    .eq('archived', false);
   const allDocs = docs || [];
   document.getElementById('ovDocCount').textContent = allDocs.length;
 
@@ -5250,9 +5284,23 @@ async function loadOverview() {
   }
 }
 
+let _lastMissingByStaff = [];
+
 function loadMissingDocsReport(missingByStaff) {
+  const panel = document.getElementById('missingDocsPanel');
+  const lock = document.getElementById('missingDocsProLock');
+  if (!window._isPro) {
+    panel.style.display = 'none';
+    lock.style.display = 'block';
+    return;
+  }
+  panel.style.display = 'block';
+  lock.style.display = 'none';
+
   const container = document.getElementById('missingDocsReport');
   if (!container) return;
+
+  _lastMissingByStaff = missingByStaff;
 
   if (!missingByStaff.length) {
     container.innerHTML = '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Everyone has every required document on file.</div>';
@@ -5274,6 +5322,40 @@ function loadMissingDocsReport(missingByStaff) {
     (remaining > 0
       ? `<div style="text-align:center;padding:10px 0 0;color:rgba(255,255,255,.4);font-size:12px;">+ ${remaining} more — see the Staff tab for the full list</div>`
       : '');
+}
+
+async function exportMissingDocsPDF() {
+  if (!_lastMissingByStaff.length) { toast('Nothing to export — everyone has every required document on file', true); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const NAVY = [15, 31, 46], AMBER = [146, 64, 14];
+
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageWidth, 50, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(currentCompany.name, 24, 24);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.text(`Missing Documents Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`, 24, 40);
+
+  const body = _lastMissingByStaff.map(s => [s.staffName, s.missing.join(', '), String(s.missing.length)]);
+
+  doc.autoTable({
+    startY: 70,
+    head: [['Staff Member', 'Missing Documents', '# Missing']],
+    body,
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: AMBER, textColor: 255, fontStyle: 'bold' },
+    columnStyles: { 2: { halign: 'center', fontStyle: 'bold' } },
+  });
+
+  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_MissingDocs_${new Date().toISOString().slice(0,10)}.pdf`);
+  toast('PDF report exported');
 }
 
 async function loadBugLog() {
