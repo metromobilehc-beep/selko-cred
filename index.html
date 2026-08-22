@@ -561,6 +561,7 @@
               <option value="Clinical Licensing">Clinical Licensing</option>
               <option value="Compliance & Safety">Compliance & Safety</option>
               <option value="Insurance">Insurance</option>
+              <option value="Business">Business</option>
               <option value="Identification">Identification</option>
               <option value="Other" selected>Other</option>
             </select>
@@ -1032,7 +1033,7 @@
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
             <tbody id="platformDocTypesTbody"></tbody>
           </table>
         </div>
@@ -4082,7 +4083,7 @@ async function loadDocTypesTable() {
     const cat = t.category || 'Other';
     (groups[cat] = groups[cat] || []).push(t);
   });
-  const categoryOrder = ['Clinical Licensing', 'Compliance & Safety', 'Insurance', 'Identification', 'Other'];
+  const categoryOrder = ['Clinical Licensing', 'Compliance & Safety', 'Insurance', 'Business', 'Identification', 'Other'];
   const sortedCategories = Object.keys(groups).sort((a, b) => {
     const ai = categoryOrder.indexOf(a), bi = categoryOrder.indexOf(b);
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -5317,12 +5318,13 @@ async function loadPlatformDocTypes() {
 
   const tbody = document.getElementById('platformDocTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>';
     return;
   }
 
   tbody.innerHTML = data.map(t => `<tr>
     <td>${t.name}</td>
+    <td style="font-size:11px;color:rgba(255,255,255,.5);">${t.category || 'Other'}</td>
     <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${t.company_id ? 'Custom' : 'Global'}</span></td>
     <td style="font-size:12px;color:rgba(255,255,255,.5);">${t.companies?.name || '—'}</td>
