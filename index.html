@@ -4156,12 +4156,14 @@ async function loadDocTypesTable() {
       </span>
     </td>
     ${hasPartnerAccess ? `<td>
-      <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
-        onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
-        ${t.partner_visible ? '✓ Visible' : 'Hidden'}
-      </span>
-      ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
-             class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;margin-left:4px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
+        <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
+          onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
+          ${t.partner_visible ? '✓ Visible' : 'Hidden'}
+        </span>
+        ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
+               class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : ''}
+      </div>
     </td>` : ''}
     <td><div class="td-actions">
       <select class="filter-sel" style="font-size:11px;padding:4px 6px;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="Move to a different category">
