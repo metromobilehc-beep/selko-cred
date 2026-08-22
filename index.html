@@ -1026,6 +1026,10 @@
           <button class="btn btn-sm btn-teal" onclick="previewTheme('slateIndigo')">Slate & Indigo</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('emeraldCharcoal')">Emerald & Charcoal</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('cleanLight')">Clean Light</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('stoneRust')">Stone & Rust</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('monoBlue')">Mono Blue</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('violetRose')">Violet & Rose</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('forestAmber')">Forest & Amber</button>
         </div>
       </div>
 
@@ -1196,6 +1200,34 @@ const THEME_PRESETS = {
     '--navy': '#f8fafc', '--navy2': '#ffffff', '--navy3': '#f1f5f9',
     '--teal': '#0d9488', '--teal-l': '#0f766e', '--teal-ll': '#134e4a',
     '--gold': '#d97706', '--gold-l': '#b45309',
+  },
+  // Warm stone/rust — less "cold SaaS dashboard," more approachable and
+  // human. A genuinely different temperature than every option above.
+  stoneRust: {
+    '--navy': '#1c1917', '--navy2': '#292524', '--navy3': '#3f3835',
+    '--teal': '#e07856', '--teal-l': '#ec9576', '--teal-ll': '#fbd5c4',
+    '--gold': '#d4a24e', '--gold-l': '#e5c07b',
+  },
+  // Restrained, single-hue-family blue — closer to Stripe/enterprise
+  // software than a "dev tool." No competing accent color at all.
+  monoBlue: {
+    '--navy': '#0b1220', '--navy2': '#141d2e', '--navy3': '#1e2a40',
+    '--teal': '#3b82f6', '--teal-l': '#60a5fa', '--teal-ll': '#bfdbfe',
+    '--gold': '#93c5fd', '--gold-l': '#dbeafe',
+  },
+  // Bold violet/rose — a distinctly different energy from anything
+  // teal/blue-based, more "modern startup" than "healthcare dashboard."
+  violetRose: {
+    '--navy': '#1a1425', '--navy2': '#241c33', '--navy3': '#332545',
+    '--teal': '#a855f7', '--teal-l': '#c084fc', '--teal-ll': '#e9d5ff',
+    '--gold': '#f472b6', '--gold-l': '#f9a8d4',
+  },
+  // Forest green with warm amber — grounded and natural rather than
+  // "tech," a genuinely different base color family than navy entirely.
+  forestAmber: {
+    '--navy': '#14231d', '--navy2': '#1c3229', '--navy3': '#28453a',
+    '--teal': '#4ade80', '--teal-l': '#86efac', '--teal-ll': '#dcfce7',
+    '--gold': '#fbbf24', '--gold-l': '#fde68a',
   },
 };
 
