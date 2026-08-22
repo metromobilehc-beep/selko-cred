@@ -461,14 +461,10 @@
           </div>
         </div>
 
-        <div class="dark-panel" id="missingDocsPanel" style="margin:16px 0;display:none;">
-          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-            <div>
-              <h2>📋 Missing documents by staff member</h2>
-              <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
-            </div>
-            <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
-          </div>
+        <div class="dark-panel" id="missingDocsPanel" style="margin:16px 0;display:none;position:relative;" data-default-open="true">
+          <h2>📋 Missing documents by staff member</h2>
+          <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()" style="position:absolute;top:20px;right:20px;">⬇ Export PDF</button>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
           <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
             <option value="">All required documents</option>
           </select>
@@ -1173,7 +1169,7 @@ document.addEventListener('click', function(e) {
 });
 
 function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel').forEach(panel => {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabDocs .dark-panel').forEach(panel => {
     if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
     const h2 = panel.querySelector('h2');
     if (!h2) return;
@@ -5263,24 +5259,24 @@ async function loadOverview() {
 
   const haveDoc = new Set(allDocs.map(d => `${d.staff_id}:${d.document_type_id}`));
   let requiredSlots = 0, filledSlots = 0;
-  const complianceRows = []; // one row per (staff, required type) — both current AND missing
+  const missingByStaff = [];
   activeStaff.forEach(s => {
+    const missingNames = [];
     applicableTypes.forEach(t => {
       const disciplineList = t.required_for_disciplines || [];
       const applies = disciplineList.length === 0 || disciplineList.includes(s.discipline);
       if (!applies) return;
       requiredSlots++;
-      const isCurrent = haveDoc.has(`${s.id}:${t.id}`);
-      if (isCurrent) filledSlots++;
-      complianceRows.push({ staffId: s.id, staffName: s.full_name, docTypeName: t.name, status: isCurrent ? 'current' : 'missing' });
+      if (haveDoc.has(`${s.id}:${t.id}`)) {
+        filledSlots++;
+      } else {
+        missingNames.push(t.name);
+      }
     });
+    if (missingNames.length) missingByStaff.push({ staffId: s.id, staffName: s.full_name, missing: missingNames });
   });
-  // Missing first, then alphabetical by staff name within each status
-  complianceRows.sort((a, b) => {
-    if (a.status !== b.status) return a.status === 'missing' ? -1 : 1;
-    return a.staffName.localeCompare(b.staffName);
-  });
-  loadMissingDocsReport(complianceRows);
+  missingByStaff.sort((a, b) => b.missing.length - a.missing.length);
+  loadMissingDocsReport(missingByStaff);
   const missingCount = requiredSlots - filledSlots;
   const complianceRate = requiredSlots > 0 ? Math.round((filledSlots / requiredSlots) * 100) : 100;
   document.getElementById('ovMissingCount').textContent = missingCount;
@@ -5316,10 +5312,9 @@ async function loadOverview() {
   }
 }
 
-let _lastComplianceRows = [];
-let _complianceTableCollapsed = false;
+let _lastMissingByStaff = [];
 
-function loadMissingDocsReport(complianceRows) {
+function loadMissingDocsReport(missingByStaff) {
   const panel = document.getElementById('missingDocsPanel');
   const lock = document.getElementById('missingDocsProLock');
   if (!window._isPro) {
@@ -5330,22 +5325,17 @@ function loadMissingDocsReport(complianceRows) {
   panel.style.display = 'block';
   lock.style.display = 'none';
 
-  _lastComplianceRows = complianceRows;
+  _lastMissingByStaff = missingByStaff;
 
-  // Populate the type filter from whatever's actually being tracked, so
-  // the dropdown only ever shows real, relevant options.
+  // Populate the type filter from whatever's actually missing right now,
+  // so the dropdown only ever shows relevant options.
   const typeSelect = document.getElementById('fMissingDocsType');
   const previousValue = typeSelect.value;
-  const allTypes = [...new Set(complianceRows.map(r => r.docTypeName))].sort();
+  const allMissingTypes = [...new Set(missingByStaff.flatMap(s => s.missing))].sort();
   typeSelect.innerHTML = '<option value="">All required documents</option>' +
-    allTypes.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
-  if (allTypes.includes(previousValue)) typeSelect.value = previousValue;
+    allMissingTypes.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+  if (allMissingTypes.includes(previousValue)) typeSelect.value = previousValue;
 
-  renderMissingDocsReport();
-}
-
-function toggleComplianceTable() {
-  _complianceTableCollapsed = !_complianceTableCollapsed;
   renderMissingDocsReport();
 }
 
@@ -5354,73 +5344,46 @@ function renderMissingDocsReport() {
   if (!container) return;
 
   const typeFilter = document.getElementById('fMissingDocsType')?.value || '';
-  const rows = typeFilter
-    ? _lastComplianceRows.filter(r => r.docTypeName === typeFilter)
-    : _lastComplianceRows;
+  const filtered = typeFilter
+    ? _lastMissingByStaff
+        .filter(s => s.missing.includes(typeFilter))
+        .map(s => ({ ...s, missing: [typeFilter] })) // show only the filtered item, not their whole list
+    : _lastMissingByStaff;
 
-  const missingCount = rows.filter(r => r.status === 'missing').length;
-  const currentCount = rows.filter(r => r.status === 'current').length;
-
-  const chevron = _complianceTableCollapsed ? '▸' : '▾';
-  let html = `
-    <div onclick="toggleComplianceTable()" style="cursor:pointer;display:flex;align-items:center;gap:8px;padding:8px 0;color:rgba(255,255,255,.6);font-size:13px;">
-      <span>${chevron}</span>
-      <span>${missingCount} missing, ${currentCount} current${typeFilter ? ` — filtered to "${typeFilter}"` : ''}</span>
-    </div>`;
-
-  if (_complianceTableCollapsed) {
-    container.innerHTML = html;
+  if (!filtered.length) {
+    container.innerHTML = typeFilter
+      ? `<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Nobody is missing "${typeFilter}".</div>`
+      : '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Everyone has every required document on file.</div>';
     return;
   }
 
-  if (!rows.length) {
-    html += '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">Nothing tracked yet.</div>';
-    container.innerHTML = html;
-    return;
-  }
+  const SHOWN_LIMIT = 8;
+  const shown = filtered.slice(0, SHOWN_LIMIT);
+  const remaining = filtered.length - shown.length;
 
-  html += `
-    <div style="max-height:400px;overflow-y:auto;">
-      <table style="width:100%;border-collapse:collapse;">
-        <thead>
-          <tr style="position:sticky;top:0;background:var(--navy2);">
-            <th style="text-align:left;padding:8px 10px;font-size:11px;color:rgba(255,255,255,.5);">Staff Member</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;color:rgba(255,255,255,.5);">Document</th>
-            <th style="text-align:left;padding:8px 10px;font-size:11px;color:rgba(255,255,255,.5);">Status</th>
-            <th style="text-align:right;padding:8px 10px;font-size:11px;color:rgba(255,255,255,.5);">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(r => `
-            <tr style="border-bottom:1px solid rgba(255,255,255,.06);">
-              <td style="padding:8px 10px;font-size:13px;color:#fff;">${r.staffName}</td>
-              <td style="padding:8px 10px;font-size:13px;color:rgba(255,255,255,.7);">${r.docTypeName}</td>
-              <td style="padding:8px 10px;">
-                <span class="badge ${r.status === 'current' ? 'badge-verified' : 'badge-warn'}">
-                  ${r.status === 'current' ? '✓ Current' : '⚠ Missing'}
-                </span>
-              </td>
-              <td style="padding:8px 10px;text-align:right;">
-                ${r.status === 'missing'
-                  ? `<button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${r.staffId}','${r.staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:11px;">📋 Send checklist</button>`
-                  : ''}
-              </td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>`;
-
-  container.innerHTML = html;
+  container.innerHTML = shown.map(s => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:12px;">
+      <div>
+        <div style="font-weight:600;color:#fff;font-size:13px;">${s.staffName}</div>
+        <div style="color:rgba(255,255,255,.5);font-size:12px;">Missing: ${s.missing.join(', ')}</div>
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.staffId}','${s.staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);white-space:nowrap;">📋 Send checklist</button>
+    </div>`).join('') +
+    (remaining > 0
+      ? `<div style="text-align:center;padding:10px 0 0;color:rgba(255,255,255,.4);font-size:12px;">+ ${remaining} more — see the Staff tab for the full list</div>`
+      : '');
 }
 
 async function exportMissingDocsPDF() {
   const typeFilter = document.getElementById('fMissingDocsType')?.value || '';
-  const rows = typeFilter
-    ? _lastComplianceRows.filter(r => r.docTypeName === typeFilter)
-    : _lastComplianceRows;
+  const filtered = typeFilter
+    ? _lastMissingByStaff
+        .filter(s => s.missing.includes(typeFilter))
+        .map(s => ({ ...s, missing: [typeFilter] }))
+    : _lastMissingByStaff;
 
-  if (!rows.length) {
-    toast('Nothing to export — nothing is currently being tracked', true);
+  if (!filtered.length) {
+    toast(typeFilter ? `Nothing to export — nobody is missing "${typeFilter}"` : 'Nothing to export — everyone has every required document on file', true);
     return;
   }
 
@@ -5440,29 +5403,24 @@ async function exportMissingDocsPDF() {
   doc.setFontSize(9);
   doc.text(
     typeFilter
-      ? `"${typeFilter}" Compliance Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`
-      : `Compliance Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`,
+      ? `Missing "${typeFilter}" Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`
+      : `Missing Documents Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`,
     24, 40
   );
 
-  const body = rows.map(r => [r.staffName, r.docTypeName, r.status === 'current' ? 'Current' : 'Missing']);
+  const body = filtered.map(s => [s.staffName, s.missing.join(', '), String(s.missing.length)]);
 
   doc.autoTable({
     startY: 70,
-    head: [['Staff Member', 'Document', 'Status']],
+    head: [['Staff Member', 'Missing Documents', '# Missing']],
     body,
     styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
     headStyles: { fillColor: AMBER, textColor: 255, fontStyle: 'bold' },
-    didParseCell: (data) => {
-      if (data.section === 'body' && data.column.index === 2) {
-        data.cell.styles.textColor = data.cell.raw === 'Missing' ? [220, 38, 38] : [22, 163, 74];
-        data.cell.styles.fontStyle = 'bold';
-      }
-    },
+    columnStyles: { 2: { halign: 'center', fontStyle: 'bold' } },
   });
 
   const filterSuffix = typeFilter ? `_${typeFilter.replace(/[^a-z0-9]/gi,'')}` : '';
-  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_Compliance${filterSuffix}_${new Date().toISOString().slice(0,10)}.pdf`);
+  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_MissingDocs${filterSuffix}_${new Date().toISOString().slice(0,10)}.pdf`);
   toast('PDF report exported');
 }
 
