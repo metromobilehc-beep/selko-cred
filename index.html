@@ -426,23 +426,6 @@
         ✓ Nothing needs attention right now — all tracked documents are current.
       </div>
 
-      <div class="dark-panel" id="missingDocsPanel" style="margin-top:16px;display:none;">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
-          <div>
-            <h2>📋 Missing documents by staff member</h2>
-            <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
-          </div>
-          <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
-        </div>
-        <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
-          <option value="">All required documents</option>
-        </select>
-        <div id="missingDocsReport"></div>
-      </div>
-      <div class="dark-panel" id="missingDocsProLock" style="margin-top:16px;">
-        <h2>📋 Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
-        <p style="font-size:13px;color:rgba(255,255,255,.5);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
-      </div>
     </div>
 
 
@@ -467,7 +450,6 @@
           <option value="all">All (active + archived)</option>
         </select>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
-        <button class="btn btn-sm btn-ghost" onclick="goToMissingDocsReport()" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 Missing Documents</button>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
         <div style="position:relative;display:inline-block;">
           <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Downloads</button>
@@ -477,6 +459,24 @@
             <button class="btn-more-item" id="exportProExcelBtn" onclick="closeDocsMoreMenu();exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
             <button class="btn-more-item" id="exportProPdfBtn" onclick="closeDocsMoreMenu();exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
           </div>
+        </div>
+
+        <div class="dark-panel" id="missingDocsPanel" style="margin:16px 0;display:none;">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;">
+            <div>
+              <h2>📋 Missing documents by staff member</h2>
+              <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
+            </div>
+            <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
+          </div>
+          <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
+            <option value="">All required documents</option>
+          </select>
+          <div id="missingDocsReport"></div>
+        </div>
+        <div class="dark-panel" id="missingDocsProLock" style="margin:16px 0;">
+          <h2>📋 Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
+          <p style="font-size:13px;color:rgba(255,255,255,.5);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
         </div>
       </div>
 
@@ -5205,19 +5205,6 @@ function restrictToInsuranceOnly() {
   const myCreds = document.getElementById('hdrMyCreds');
   if (myCreds) myCreds.style.display = 'none';
   switchTab('insurance');
-}
-
-function goToMissingDocsReport() {
-  switchTab('overview');
-  // Give the tab switch and Overview's own load a moment to render before
-  // scrolling — the panel doesn't exist in the DOM's visible layout yet
-  // if we scroll immediately.
-  setTimeout(() => {
-    const panel = document.getElementById('missingDocsPanel');
-    const lock = document.getElementById('missingDocsProLock');
-    const target = (panel && panel.style.display !== 'none') ? panel : lock;
-    target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  }, 150);
 }
 
 function switchTab(tab) {
