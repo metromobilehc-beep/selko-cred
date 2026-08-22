@@ -543,7 +543,7 @@
 
       <!-- Custom doc type form (Pro only) -->
       <div class="inline-form" id="addDocTypeForm">
-        <div class="inline-grid-3">
+        <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr auto;">
           <div>
             <label class="inline-label">Document type name</label>
             <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" />
@@ -553,6 +553,16 @@
             <select class="inline-select" id="dtExpires">
               <option value="true">Yes</option>
               <option value="false">No</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Category</label>
+            <select class="inline-select" id="dtCategory">
+              <option value="Clinical Licensing">Clinical Licensing</option>
+              <option value="Compliance & Safety">Compliance & Safety</option>
+              <option value="Insurance">Insurance</option>
+              <option value="Identification">Identification</option>
+              <option value="Other" selected>Other</option>
             </select>
           </div>
           <div style="display:flex;gap:6px;align-items:flex-end;">
@@ -3539,11 +3549,12 @@ function hideAddDocType() {
 async function saveDocType() {
   const name    = document.getElementById('dtName').value.trim();
   const expires = document.getElementById('dtExpires').value === 'true';
+  const category = document.getElementById('dtCategory').value;
   const err     = document.getElementById('dtErr');
   err.style.display = 'none';
   if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
   const { error } = await sb.from('document_types').insert({
-    name, expires, company_id: currentCompany.id, sort_order: 999,
+    name, expires, category, company_id: currentCompany.id, sort_order: 999,
     description: 'Custom type for ' + currentCompany.name,
   });
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
@@ -4062,10 +4073,29 @@ async function loadDocTypesTable() {
     return;
   }
 
-  tbody.innerHTML = data.map(t => {
-    const disciplines = t.required_for_disciplines || [];
-    const scopeLabel = !t.is_required ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
-    return `<tr>
+  // Group by category so this doesn't turn into one giant flat list as
+  // more types get added over time (e.g. OSHA/compliance items alongside
+  // clinical licenses) — same "collapse the bulk" pattern used elsewhere
+  // tonight (Documents tab, Expiration Tracker).
+  const groups = {};
+  data.forEach(t => {
+    const cat = t.category || 'Other';
+    (groups[cat] = groups[cat] || []).push(t);
+  });
+  const categoryOrder = ['Clinical Licensing', 'Compliance & Safety', 'Insurance', 'Identification', 'Other'];
+  const sortedCategories = Object.keys(groups).sort((a, b) => {
+    const ai = categoryOrder.indexOf(a), bi = categoryOrder.indexOf(b);
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+  });
+
+  const colCount = hasPartnerAccess ? 6 : 5;
+
+  tbody.innerHTML = sortedCategories.map((cat, catIdx) => {
+    const catSlug = 'cat' + catIdx;
+    const rows = groups[cat].map(t => {
+      const disciplines = t.required_for_disciplines || [];
+      const scopeLabel = !t.is_required ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
+      return `<tr data-doctype-group="${catSlug}">
     <td>
       <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;" 
         type="text" value="${t.name}" id="dtname_${t.id}" 
@@ -4089,14 +4119,41 @@ async function loadDocTypesTable() {
         onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
         ${t.partner_visible ? '✓ Visible' : 'Hidden'}
       </span>
-      ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || [])})"
+      ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
              class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;margin-left:4px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : ''}
     </td>` : ''}
     <td><div class="td-actions">
+      <select class="filter-sel" style="font-size:11px;padding:4px 6px;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="Move to a different category">
+        ${categoryOrder.map(c => `<option value="${c}" ${c === (t.category || 'Other') ? 'selected' : ''}>${c}</option>`).join('')}
+      </select>
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
   </tr>`;
+    }).join('');
+
+    return `
+      <tr class="doctype-category-header" data-doctype-header="${catSlug}" onclick="toggleDocTypeCategory('${catSlug}')" style="cursor:pointer;background:rgba(255,255,255,.03);">
+        <td colspan="${colCount}" style="padding:8px 12px;font-weight:700;font-size:12px;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">
+          <span class="panel-chevron open" style="margin-right:6px;">▸</span>${cat} <span style="font-weight:400;color:rgba(255,255,255,.4);">(${groups[cat].length})</span>
+        </td>
+      </tr>${rows}`;
   }).join('');
+}
+
+function toggleDocTypeCategory(catSlug) {
+  const rows = document.querySelectorAll(`tr[data-doctype-group="${catSlug}"]`);
+  const headerRow = document.querySelector(`tr[data-doctype-header="${catSlug}"]`);
+  const chevron = headerRow?.querySelector('.panel-chevron');
+  const isOpen = rows.length && rows[0].style.display !== 'none';
+  rows.forEach(r => { r.style.display = isOpen ? 'none' : 'table-row'; });
+  if (chevron) chevron.classList.toggle('open', !isOpen);
+}
+
+async function updateDocTypeCategory(id, category) {
+  const { error } = await sb.from('document_types').update({ category }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Moved to ' + category);
+  await loadDocTypesTable();
 }
 
 async function updateDocTypeName(id, name) {
