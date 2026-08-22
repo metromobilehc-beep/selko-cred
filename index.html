@@ -1015,19 +1015,6 @@
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
-      <!-- Theme preview — client-side only, nothing saved, doesn't affect any other user's screen -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🎨 Theme preview</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
-          Try different color directions live in this browser tab only — nothing is saved and no one else sees this. Refresh the page to reset to the real theme at any time.
-        </p>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-sm btn-ghost" onclick="previewTheme('current')" style="color:#fff;border-color:rgba(255,255,255,.2);">Current (Navy/Teal/Gold)</button>
-          <button class="btn btn-sm btn-ghost" onclick="previewTheme('currentWarmGold')" style="color:#fff;border-color:rgba(255,255,255,.2);">Current — Warmer Gold</button>
-          <button class="btn btn-sm btn-teal" onclick="previewTheme('stoneClay')">Stone & Rust — Softer Clay</button>
-        </div>
-      </div>
-
       <!-- Records eligible for permanent deletion (6+ years archived — manual review only, never automatic) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🗄 Records eligible for permanent deletion</h2>
@@ -1166,38 +1153,6 @@
     <!-- closes remaining unbalanced wrapper, confirmed via tag-count script -->
 
 <script>
-
-// ══ THEME PREVIEW (client-side only — never saved, never seen by anyone else) ══
-const THEME_PRESETS = {
-  current: {
-    '--navy': '#0f1f2e', '--navy2': '#172333', '--navy3': '#1e2d3d',
-    '--teal': '#0d9488', '--teal-l': '#14b8a6', '--teal-ll': '#99f6e4',
-    '--gold': '#f59e0b', '--gold-l': '#fcd34d',
-  },
-  // Current, warmer gold variant — same navy/teal base, but the gold
-  // accent shifts to a richer, warmer bronze/amber.
-  currentWarmGold: {
-    '--navy': '#0f1f2e', '--navy2': '#172333', '--navy3': '#1e2d3d',
-    '--teal': '#0d9488', '--teal-l': '#14b8a6', '--teal-ll': '#99f6e4',
-    '--gold': '#b45309', '--gold-l': '#c2703d',
-  },
-  // Stone & Rust, softer/gentler variant — lighter stone, muted clay
-  // accent instead of a more saturated rust.
-  stoneClay: {
-    '--navy': '#2a2422', '--navy2': '#38312e', '--navy3': '#463d39',
-    '--teal': '#c08862', '--teal-l': '#d1a081', '--teal-ll': '#ecd5c2',
-    '--gold': '#b89968', '--gold-l': '#d1b98a',
-  },
-};
-
-function previewTheme(name) {
-  const preset = THEME_PRESETS[name];
-  if (!preset) return;
-  Object.entries(preset).forEach(([varName, value]) => {
-    document.documentElement.style.setProperty(varName, value);
-  });
-  toast(name === 'current' ? 'Back to current theme' : `Previewing: ${name} — refresh to reset`);
-}
 
 function toggleDocsMoreMenu() {
   const menu = document.getElementById('docsMoreMenu');
