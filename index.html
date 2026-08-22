@@ -967,6 +967,7 @@
             <option value="view">View only</option>
             <option value="download">Download only</option>
           </select>
+          <button class="btn btn-sm btn-ghost" onclick="exportAccessLogCsv()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export CSV</button>
         </div>
         <div class="tbl-wrap">
           <table>
@@ -1455,6 +1456,15 @@ async function initSession(user) {
     if (!company.has_credtrack) throw new Error('Your organization does not have access to Selko Cred. Contact your administrator.');
     if (company.deleted_at && !profile.is_super_admin) {
       throw new Error('This account is no longer active. Contact Selko support if you believe this is a mistake.');
+    }
+    // This was previously a display-only field — Trial Management could set
+    // a company to "Suspended"/"Expired" and it would just show a badge,
+    // with zero actual effect on whether their staff could still log in.
+    // Now it's actually enforced, matching what that panel has always
+    // implied it does. Super admins stay exempt so a suspended company can
+    // still be reached via "View as Admin" to fix or reactivate it.
+    if (!company.active && !profile.is_super_admin) {
+      throw new Error('This account is not currently active. Contact your administrator or Selko support for assistance.');
     }
 
     // Access gate: having a shared profiles row for this company is not
@@ -3938,6 +3948,46 @@ function showAuStatus(msg, type) {
   el.style.display = 'block';
 }
 // ══ SETTINGS ══
+async function exportAccessLogCsv() {
+  const roleFilter = document.getElementById('fAccessLogRole')?.value || '';
+  const actionFilter = document.getElementById('fAccessLogAction')?.value || '';
+
+  // Respects the same filters currently applied on screen, but with a much
+  // higher cap than the 200-row live view — this is meant for a genuine
+  // compliance/audit export, not just what's currently visible.
+  let q = sb.from('credtrack_access_log')
+    .select('*')
+    .eq('company_id', currentCompany.id)
+    .order('created_at', { ascending: false })
+    .limit(5000);
+
+  if (roleFilter) q = q.eq('accessed_by_role', roleFilter);
+  if (actionFilter) q = q.eq('action', actionFilter);
+
+  const { data, error } = await q;
+  if (error) { toast('Export failed: ' + error.message, true); return; }
+  if (!data?.length) { toast('No access log entries to export', true); return; }
+
+  const escapeCsv = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  let csv = 'Date/Time,Accessed By,Role,Staff Member,Document Type,Action\n';
+  data.forEach(r => {
+    csv += [
+      new Date(r.created_at).toLocaleString(),
+      r.accessed_by_name || '',
+      r.accessed_by_role || '',
+      r.staff_full_name || '',
+      r.document_type_name || '',
+      r.action || '',
+    ].map(escapeCsv).join(',') + '\n';
+  });
+
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_AccessLog_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast(`Exported ${data.length} access log entries`);
+}
+
 async function loadAccessLog() {
   const roleFilter = document.getElementById('fAccessLogRole')?.value || '';
   const actionFilter = document.getElementById('fAccessLogAction')?.value || '';
