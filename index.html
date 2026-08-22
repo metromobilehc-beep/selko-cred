@@ -3500,9 +3500,19 @@ async function confirmStaffTypeCred(id, name) {
 }
 
 async function toggleInsuranceAccess(profileId, name, current) {
-  const { error } = await sb.from('profiles').update({ insurance_access: !current }).eq('id', profileId);
+  // Re-check the real current value from the database rather than trusting
+  // the value baked into the button at render time — if the row/menu ever
+  // doesn't perfectly refresh after a toggle, a stale passed-in value could
+  // cause repeated clicks to keep sending the same state instead of
+  // actually flipping it (exactly "turn it on works, turn it off doesn't").
+  const { data: freshProfile, error: fetchErr } = await sb.from('profiles')
+    .select('insurance_access').eq('id', profileId).maybeSingle();
+  if (fetchErr) { toast('Error: ' + fetchErr.message, true); return; }
+
+  const actualCurrent = !!freshProfile?.insurance_access;
+  const { error } = await sb.from('profiles').update({ insurance_access: !actualCurrent }).eq('id', profileId);
   if (error) { toast('Error: ' + error.message, true); return; }
-  toast(`✓ ${name} — Insurance access ${!current ? 'granted' : 'revoked'}`);
+  toast(`✓ ${name} — Insurance access ${!actualCurrent ? 'granted' : 'revoked'}`);
   await loadStaffTable();
 }
 
