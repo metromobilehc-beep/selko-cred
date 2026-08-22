@@ -3506,7 +3506,7 @@ async function toggleInsuranceAccess(profileId, name, current) {
     // else's profile row is subject to the same RLS restriction that
     // caused this bug in the first place, so we don't trust one here.
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role-ts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ profile_id: profileId, toggle_field: 'insurance_access' }),
