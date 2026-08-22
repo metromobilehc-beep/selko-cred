@@ -3425,7 +3425,7 @@ async function confirmStaffTypeCred(id, name) {
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({
           profile_id: updated.profile_id,
-          role: newType === 'admin' ? 'admin' : 'staff',
+          role: newType === 'admin' ? 'admin' : (newType === 'office' ? 'office' : 'staff'),
         }),
       });
       const result = await res.json();
@@ -3510,7 +3510,7 @@ async function resetPassword(email, fullName, staffId) {
   // silently downgraded to the limited self-service view every time their
   // login is set up or reset (exactly what happened to Kym Crane).
   const staffRecord = staffList.find(s => s.id === staffId);
-  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : 'staff';
+  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : (staffRecord?.staff_type === 'office' ? 'office' : 'staff');
   try {
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
@@ -6264,7 +6264,7 @@ async function setupStaffLogin(staffId, fullName, email) {
   // admin-level access — never hardcode 'staff' here, or an admin gets
   // silently downgraded to the limited self-service view.
   const staffRecord = staffList.find(s => s.id === staffId);
-  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : 'staff';
+  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : (staffRecord?.staff_type === 'office' ? 'office' : 'staff');
 
   try {
     const { data: { session } } = await sb.auth.getSession();
