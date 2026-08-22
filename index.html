@@ -434,6 +434,9 @@
           </div>
           <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
         </div>
+        <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()" style="margin-bottom:14px;">
+          <option value="">All required documents</option>
+        </select>
         <div id="missingDocsReport"></div>
       </div>
       <div class="dark-panel" id="missingDocsProLock" style="margin-top:16px;">
@@ -5325,19 +5328,42 @@ function loadMissingDocsReport(missingByStaff) {
   panel.style.display = 'block';
   lock.style.display = 'none';
 
+  _lastMissingByStaff = missingByStaff;
+
+  // Populate the type filter from whatever's actually missing right now,
+  // so the dropdown only ever shows relevant options, not every document
+  // type that exists in the system.
+  const typeSelect = document.getElementById('fMissingDocsType');
+  const previousValue = typeSelect.value;
+  const allMissingTypes = [...new Set(missingByStaff.flatMap(s => s.missing))].sort();
+  typeSelect.innerHTML = '<option value="">All required documents</option>' +
+    allMissingTypes.map(t => `<option value="${t.replace(/"/g,'&quot;')}">${t}</option>`).join('');
+  if (allMissingTypes.includes(previousValue)) typeSelect.value = previousValue;
+
+  renderMissingDocsReport();
+}
+
+function renderMissingDocsReport() {
   const container = document.getElementById('missingDocsReport');
   if (!container) return;
 
-  _lastMissingByStaff = missingByStaff;
+  const typeFilter = document.getElementById('fMissingDocsType')?.value || '';
+  const filtered = typeFilter
+    ? _lastMissingByStaff
+        .filter(s => s.missing.includes(typeFilter))
+        .map(s => ({ ...s, missing: [typeFilter] })) // show only the filtered item, not their whole list
+    : _lastMissingByStaff;
 
-  if (!missingByStaff.length) {
-    container.innerHTML = '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Everyone has every required document on file.</div>';
+  if (!filtered.length) {
+    container.innerHTML = typeFilter
+      ? `<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Nobody is missing "${typeFilter}".</div>`
+      : '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Everyone has every required document on file.</div>';
     return;
   }
 
   const SHOWN_LIMIT = 8;
-  const shown = missingByStaff.slice(0, SHOWN_LIMIT);
-  const remaining = missingByStaff.length - shown.length;
+  const shown = filtered.slice(0, SHOWN_LIMIT);
+  const remaining = filtered.length - shown.length;
 
   container.innerHTML = shown.map(s => `
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:12px;">
@@ -5353,7 +5379,17 @@ function loadMissingDocsReport(missingByStaff) {
 }
 
 async function exportMissingDocsPDF() {
-  if (!_lastMissingByStaff.length) { toast('Nothing to export — everyone has every required document on file', true); return; }
+  const typeFilter = document.getElementById('fMissingDocsType')?.value || '';
+  const filtered = typeFilter
+    ? _lastMissingByStaff
+        .filter(s => s.missing.includes(typeFilter))
+        .map(s => ({ ...s, missing: [typeFilter] }))
+    : _lastMissingByStaff;
+
+  if (!filtered.length) {
+    toast(typeFilter ? `Nothing to export — nobody is missing "${typeFilter}"` : 'Nothing to export — everyone has every required document on file', true);
+    return;
+  }
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
@@ -5369,9 +5405,14 @@ async function exportMissingDocsPDF() {
   doc.text(currentCompany.name, 24, 24);
   doc.setFont('helvetica', 'italic');
   doc.setFontSize(9);
-  doc.text(`Missing Documents Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`, 24, 40);
+  doc.text(
+    typeFilter
+      ? `Missing "${typeFilter}" Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`
+      : `Missing Documents Report · Generated ${new Date().toLocaleDateString()} · Selko Cred`,
+    24, 40
+  );
 
-  const body = _lastMissingByStaff.map(s => [s.staffName, s.missing.join(', '), String(s.missing.length)]);
+  const body = filtered.map(s => [s.staffName, s.missing.join(', '), String(s.missing.length)]);
 
   doc.autoTable({
     startY: 70,
@@ -5382,7 +5423,8 @@ async function exportMissingDocsPDF() {
     columnStyles: { 2: { halign: 'center', fontStyle: 'bold' } },
   });
 
-  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_MissingDocs_${new Date().toISOString().slice(0,10)}.pdf`);
+  const filterSuffix = typeFilter ? `_${typeFilter.replace(/[^a-z0-9]/gi,'')}` : '';
+  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_MissingDocs${filterSuffix}_${new Date().toISOString().slice(0,10)}.pdf`);
   toast('PDF report exported');
 }
 
