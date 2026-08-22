@@ -650,7 +650,9 @@
       <div class="dark-panel">
         <h2>Staff management</h2>
         <div class="filter-bar">
-          <input class="inline-input" type="text" id="fStaffSearch" oninput="loadStaffTable()" placeholder="Search by name..." style="max-width:200px;" />
+          <select class="filter-sel" id="fStaffPerson" onchange="loadStaffTable()">
+            <option value="">All staff</option>
+          </select>
           <select class="filter-sel" id="fStaffLicType" onchange="loadStaffTable()">
             <option value="">All disciplines</option>
             <option value="OTHER">Other / not set</option>
@@ -2285,8 +2287,9 @@ async function loadStaffList() {
 async function loadAdminFilters() {
   const fEmp    = document.getElementById('fEmp');
   const fExpEmp = document.getElementById('fExpEmp');
+  const fStaffPerson = document.getElementById('fStaffPerson');
   const fType   = document.getElementById('fType');
-  [fEmp, fExpEmp].forEach(sel => {
+  [fEmp, fExpEmp, fStaffPerson].forEach(sel => {
     sel.innerHTML = '<option value="">All staff</option>';
     staffList.forEach(s => {
       const o = document.createElement('option');
@@ -2977,13 +2980,13 @@ async function loadStaffTable() {
     (profRows || []).forEach(p => { insuranceAccessMap[p.id] = !!p.insurance_access; });
   }
 
-  const searchFilter = document.getElementById('fStaffSearch')?.value.trim().toLowerCase() || '';
+  const personFilter = document.getElementById('fStaffPerson')?.value || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
   const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
 
   let filteredStaff = staffList;
-  if (searchFilter) {
-    filteredStaff = filteredStaff.filter(s => s.full_name.toLowerCase().includes(searchFilter));
+  if (personFilter) {
+    filteredStaff = filteredStaff.filter(s => s.id === personFilter);
   }
   if (licTypeFilter) {
     filteredStaff = filteredStaff.filter(s =>
