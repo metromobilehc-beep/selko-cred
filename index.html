@@ -425,6 +425,12 @@
       <div id="ovAllClearSection" style="display:none;text-align:center;padding:30px 0;color:rgba(255,255,255,.4);">
         ✓ Nothing needs attention right now — all tracked documents are current.
       </div>
+
+      <div class="dark-panel" style="margin-top:16px;">
+        <h2>📋 Missing documents by staff member</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one required document, sorted by the most outstanding first. This reflects what's required for their specific discipline.</p>
+        <div id="missingDocsReport"></div>
+      </div>
     </div>
 
     <div id="tabDocs" class="dark-panel" style="display:none;">
@@ -5162,7 +5168,7 @@ async function loadOverview() {
 
   // Active staff count
   const { data: staff } = await sb.from('credtrack_staff')
-    .select('id, discipline')
+    .select('id, full_name, discipline')
     .eq('company_id', currentCompany.id)
     .eq('active', true);
   const activeStaff = staff || [];
@@ -5191,15 +5197,24 @@ async function loadOverview() {
 
   const haveDoc = new Set(allDocs.map(d => `${d.staff_id}:${d.document_type_id}`));
   let requiredSlots = 0, filledSlots = 0;
+  const missingByStaff = [];
   activeStaff.forEach(s => {
+    const missingNames = [];
     applicableTypes.forEach(t => {
       const disciplineList = t.required_for_disciplines || [];
       const applies = disciplineList.length === 0 || disciplineList.includes(s.discipline);
       if (!applies) return;
       requiredSlots++;
-      if (haveDoc.has(`${s.id}:${t.id}`)) filledSlots++;
+      if (haveDoc.has(`${s.id}:${t.id}`)) {
+        filledSlots++;
+      } else {
+        missingNames.push(t.name);
+      }
     });
+    if (missingNames.length) missingByStaff.push({ staffId: s.id, staffName: s.full_name, missing: missingNames });
   });
+  missingByStaff.sort((a, b) => b.missing.length - a.missing.length);
+  loadMissingDocsReport(missingByStaff);
   const missingCount = requiredSlots - filledSlots;
   const complianceRate = requiredSlots > 0 ? Math.round((filledSlots / requiredSlots) * 100) : 100;
   document.getElementById('ovMissingCount').textContent = missingCount;
@@ -5226,13 +5241,39 @@ async function loadOverview() {
       </div>`;
     }).join('') + (missingCount > 0
       ? `<div class="ov-attention-row"><span>${missingCount} required document${missingCount !== 1 ? 's' : ''} not yet uploaded</span>
-          <span class="ov-days-badge" style="background:rgba(245,158,11,.15);color:#f59e0b;">See Staff tab</span></div>`
+          <span class="ov-days-badge" style="background:rgba(245,158,11,.15);color:#f59e0b;">See below</span></div>`
       : ''
     );
   } else {
     attentionSection.style.display = 'none';
     allClearSection.style.display = 'block';
   }
+}
+
+function loadMissingDocsReport(missingByStaff) {
+  const container = document.getElementById('missingDocsReport');
+  if (!container) return;
+
+  if (!missingByStaff.length) {
+    container.innerHTML = '<div style="color:rgba(255,255,255,.4);font-size:13px;padding:8px 0;">✓ Everyone has every required document on file.</div>';
+    return;
+  }
+
+  const SHOWN_LIMIT = 8;
+  const shown = missingByStaff.slice(0, SHOWN_LIMIT);
+  const remaining = missingByStaff.length - shown.length;
+
+  container.innerHTML = shown.map(s => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);gap:12px;">
+      <div>
+        <div style="font-weight:600;color:#fff;font-size:13px;">${s.staffName}</div>
+        <div style="color:rgba(255,255,255,.5);font-size:12px;">Missing: ${s.missing.join(', ')}</div>
+      </div>
+      <button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.staffId}','${s.staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);white-space:nowrap;">📋 Send checklist</button>
+    </div>`).join('') +
+    (remaining > 0
+      ? `<div style="text-align:center;padding:10px 0 0;color:rgba(255,255,255,.4);font-size:12px;">+ ${remaining} more — see the Staff tab for the full list</div>`
+      : '');
 }
 
 async function loadBugLog() {
