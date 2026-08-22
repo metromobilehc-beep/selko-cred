@@ -1543,7 +1543,16 @@ async function loadDocTypes() {
 
   const { data, error } = await q;
   if (error) { console.error('doc types error:', error); return; }
-  docTypes = data || [];
+
+  // Exclude anything this specific company has chosen to hide (e.g. W4 —
+  // tracked in their payroll system, not needed here). This is a
+  // per-company override, so a hidden global type still shows normally
+  // for every other company.
+  const { data: hiddenRows } = await sb.from('company_hidden_document_types')
+    .select('document_type_id').eq('company_id', currentCompany.id);
+  const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
+
+  docTypes = (data || []).filter(t => !hiddenIds.has(t.id));
   const sel = document.getElementById('upType');
   sel.innerHTML = '<option value="">— Select type —</option>';
   // Some document types (e.g. Background Check) require independent
@@ -1912,7 +1921,12 @@ async function checkStaffCompliance(staffId) {
       .select('id, name, company_id, required_for_disciplines')
       .eq('is_required', true);
 
+    const { data: hiddenRows } = await sb.from('company_hidden_document_types')
+      .select('document_type_id').eq('company_id', staff.company_id);
+    const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
+
     const applicable = (requiredTypes || []).filter(t => {
+      if (hiddenIds.has(t.id)) return false;
       const companyMatch = t.company_id === null || t.company_id === staff.company_id;
       const disciplineList = t.required_for_disciplines || [];
       const disciplineMatch = disciplineList.length === 0 || disciplineList.includes(staff.discipline);
@@ -4120,6 +4134,10 @@ async function loadDocTypesTable() {
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('sort_order');
 
+  const { data: hiddenRows } = await sb.from('company_hidden_document_types')
+    .select('document_type_id').eq('company_id', currentCompany.id);
+  const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
+
   const partnerCol = document.getElementById('partnerVisibleTh');
   const hasPartnerAccess = !!currentCompany.has_partner_access;
   if (partnerCol) partnerCol.style.display = hasPartnerAccess ? '' : 'none';
@@ -4191,6 +4209,9 @@ async function loadDocTypesTable() {
       <select class="filter-sel" style="font-size:11px;padding:4px 6px;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="Move to a different category">
         ${categoryOrder.map(c => `<option value="${c}" ${c === (t.category || 'Other') ? 'selected' : ''}>${c}</option>`).join('')}
       </select>
+      <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
+        ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
+      </button>
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
   </tr>`;
@@ -4243,6 +4264,22 @@ async function toggleDocTypeStaffUpload(id, currentlyAllowed) {
     : 'Staff can now upload this themselves again');
   await loadDocTypesTable();
   await loadDocTypes(); // refreshes the self-service dropdown too
+}
+
+async function toggleDocTypeHidden(id, currentlyHidden) {
+  if (currentlyHidden) {
+    const { error } = await sb.from('company_hidden_document_types')
+      .delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
+    if (error) { toast('Error: ' + error.message, true); return; }
+    toast('Unhidden — back in your uploads and reports');
+  } else {
+    const { error } = await sb.from('company_hidden_document_types')
+      .insert({ document_type_id: id, company_id: currentCompany.id });
+    if (error) { toast('Error: ' + error.message, true); return; }
+    toast('Hidden from your uploads and reports — other companies are unaffected');
+  }
+  await loadDocTypesTable();
+  await loadDocTypes(); // refreshes the self-service and admin upload dropdowns too
 }
 
 async function toggleDocTypePartnerVisible(id, currentlyVisible) {
@@ -5265,7 +5302,12 @@ async function loadOverview() {
   // Required documents vs. what's actually on file, respecting discipline scoping
   const { data: allTypes } = await sb.from('document_types')
     .select('id, name, company_id, required_for_disciplines, is_required');
-  const applicableTypes = (allTypes || []).filter(t => t.company_id === null || t.company_id === currentCompany.id);
+  const { data: hiddenTypeRows } = await sb.from('company_hidden_document_types')
+    .select('document_type_id').eq('company_id', currentCompany.id);
+  const hiddenTypeIds = new Set((hiddenTypeRows || []).map(h => h.document_type_id));
+  const applicableTypes = (allTypes || []).filter(t =>
+    (t.company_id === null || t.company_id === currentCompany.id) && !hiddenTypeIds.has(t.id)
+  );
 
   const haveDoc = new Set(allDocs.map(d => `${d.staff_id}:${d.document_type_id}`));
   let requiredSlots = 0, filledSlots = 0;
