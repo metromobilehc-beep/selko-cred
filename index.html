@@ -1023,10 +1023,16 @@
         </p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button class="btn btn-sm btn-ghost" onclick="previewTheme('current')" style="color:#fff;border-color:rgba(255,255,255,.2);">Current (Navy/Teal/Gold)</button>
+          <button class="btn btn-sm btn-ghost" onclick="previewTheme('currentDeep')" style="color:#fff;border-color:rgba(255,255,255,.2);">Current — Deeper</button>
+          <button class="btn btn-sm btn-ghost" onclick="previewTheme('currentWarmGold')" style="color:#fff;border-color:rgba(255,255,255,.2);">Current — Warmer Gold</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('slateIndigo')">Slate & Indigo</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('emeraldCharcoal')">Emerald & Charcoal</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('cleanLight')">Clean Light</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('cleanLightWarm')">Clean Light — Warm Ivory</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('cleanLightBlue')">Clean Light — Cool Blue</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('stoneRust')">Stone & Rust</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('stoneRustDeep')">Stone & Rust — Deeper</button>
+          <button class="btn btn-sm btn-teal" onclick="previewTheme('stoneClay')">Stone & Rust — Softer Clay</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('monoBlue')">Mono Blue</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('violetRose')">Violet & Rose</button>
           <button class="btn btn-sm btn-teal" onclick="previewTheme('forestAmber')">Forest & Amber</button>
@@ -1228,6 +1234,48 @@ const THEME_PRESETS = {
     '--navy': '#14231d', '--navy2': '#1c3229', '--navy3': '#28453a',
     '--teal': '#4ade80', '--teal-l': '#86efac', '--teal-ll': '#dcfce7',
     '--gold': '#fbbf24', '--gold-l': '#fde68a',
+  },
+  // Clean Light, warmer variant — cream/ivory background instead of cool
+  // gray, paired with a warm terracotta accent instead of teal.
+  cleanLightWarm: {
+    '--navy': '#faf6f0', '--navy2': '#ffffff', '--navy3': '#f3ece1',
+    '--teal': '#c2603f', '--teal-l': '#a34e33', '--teal-ll': '#7a3a26',
+    '--gold': '#b8860b', '--gold-l': '#8b6508',
+  },
+  // Clean Light, cooler/more corporate variant — subtle blue-tinted
+  // background, deeper navy accent instead of teal.
+  cleanLightBlue: {
+    '--navy': '#f4f7fb', '--navy2': '#ffffff', '--navy3': '#e8eef6',
+    '--teal': '#1e40af', '--teal-l': '#1e3a8a', '--teal-ll': '#172554',
+    '--gold': '#0369a1', '--gold-l': '#075985',
+  },
+  // Stone & Rust, deeper/more dramatic variant — darker stone, more
+  // saturated rust for stronger contrast.
+  stoneRustDeep: {
+    '--navy': '#120f0e', '--navy2': '#1e1917', '--navy3': '#2e2521',
+    '--teal': '#dd5e3a', '--teal-l': '#f0754f', '--teal-ll': '#ffc9ab',
+    '--gold': '#c4923d', '--gold-l': '#dcb26a',
+  },
+  // Stone & Rust, softer/gentler variant — lighter stone, muted clay
+  // accent instead of the more saturated rust.
+  stoneClay: {
+    '--navy': '#2a2422', '--navy2': '#38312e', '--navy3': '#463d39',
+    '--teal': '#c08862', '--teal-l': '#d1a081', '--teal-ll': '#ecd5c2',
+    '--gold': '#b89968', '--gold-l': '#d1b98a',
+  },
+  // Current, richer/deeper variant — same navy/teal/gold family, but a
+  // deeper navy and more saturated teal for a more premium feel.
+  currentDeep: {
+    '--navy': '#081420', '--navy2': '#0f1e2e', '--navy3': '#152a3d',
+    '--teal': '#0891b2', '--teal-l': '#06b6d4', '--teal-ll': '#a5f3fc',
+    '--gold': '#ea580c', '--gold-l': '#fb923c',
+  },
+  // Current, warmer gold variant — same navy/teal base, but the gold
+  // accent shifts to a richer, warmer bronze/amber.
+  currentWarmGold: {
+    '--navy': '#0f1f2e', '--navy2': '#172333', '--navy3': '#1e2d3d',
+    '--teal': '#0d9488', '--teal-l': '#14b8a6', '--teal-ll': '#99f6e4',
+    '--gold': '#b45309', '--gold-l': '#c2703d',
   },
 };
 
