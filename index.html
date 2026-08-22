@@ -1636,6 +1636,7 @@ async function initPartnerView(partnerRecord) {
       .select('*, document_types!inner(name, partner_visible)')
       .eq('staff_id', cs.id)
       .eq('verified', true)
+      .eq('archived', false)
       .eq('document_types.partner_visible', true)
       .order('created_at', { ascending: false });
 
@@ -1710,7 +1711,7 @@ function filterPartnerStaffList() {
 
 async function renderStatCards(staffId) {
   if (!staffId) { document.getElementById('statCards').innerHTML = ''; return; }
-  const { data } = await sb.from('credtrack_documents').select('expiry_date').eq('staff_id', staffId);
+  const { data } = await sb.from('credtrack_documents').select('expiry_date').eq('staff_id', staffId).eq('archived', false);
   let ok = 0, warn = 0, expired = 0, noExp = 0;
   (data || []).forEach(d => {
     const s = docStatus(d.expiry_date);
@@ -1735,6 +1736,7 @@ async function loadMyDocs(staffId) {
   const { data } = await sb.from('credtrack_documents')
     .select('*, document_types(name)')
     .eq('staff_id', staffId)
+    .eq('archived', false)
     .order('created_at', { ascending: false });
 
   if (!data?.length) {
@@ -1943,7 +1945,7 @@ async function checkStaffCompliance(staffId) {
     if (!applicable.length) return; // nothing required configured — nothing to celebrate
 
     const { data: existingDocs } = await sb.from('credtrack_documents')
-      .select('document_type_id').eq('staff_id', staffId);
+      .select('document_type_id').eq('staff_id', staffId).eq('archived', false);
     const haveTypeIds = new Set((existingDocs || []).map(d => d.document_type_id));
     const stillMissing = applicable.filter(t => !haveTypeIds.has(t.id));
 
@@ -2343,10 +2345,12 @@ async function updateDocViewCounts() {
   const { count: needsCount } = await sb.from('credtrack_documents')
     .select('id', { count: 'exact', head: true })
     .eq('company_id', currentCompany.id)
+    .eq('archived', false)
     .eq('verified', false);
   const { count: verifiedCountNum } = await sb.from('credtrack_documents')
     .select('id', { count: 'exact', head: true })
     .eq('company_id', currentCompany.id)
+    .eq('archived', false)
     .eq('verified', true);
   const needsEl = document.getElementById('needsVerifCount');
   const verifEl = document.getElementById('verifiedCount');
@@ -2613,6 +2617,7 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
       .select('*, document_types!inner(name, partner_visible)')
       .eq('staff_id', credtrackStaffId)
       .eq('verified', true)
+      .eq('archived', false)
       .eq('document_types.partner_visible', true)
       .not('file_url', 'is', null);
     if (error) throw error;
@@ -2823,6 +2828,7 @@ async function loadExpTracker() {
   let q = sb.from('credtrack_documents')
     .select('*, credtrack_staff(full_name), document_types(name)')
     .eq('company_id', currentCompany.id)
+    .eq('archived', false)
     .not('expiry_date', 'is', null)
     .order('expiry_date');
 
