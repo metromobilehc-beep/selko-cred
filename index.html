@@ -650,15 +650,9 @@
       <div class="dark-panel">
         <h2>Staff management</h2>
         <div class="filter-bar">
+          <input class="inline-input" type="text" id="fStaffSearch" oninput="loadStaffTable()" placeholder="Search by name..." style="max-width:200px;" />
           <select class="filter-sel" id="fStaffLicType" onchange="loadStaffTable()">
-            <option value="">All license types</option>
-            <option value="PT">PT</option>
-            <option value="PTA">PTA</option>
-            <option value="OT">OT</option>
-            <option value="COTA">COTA</option>
-            <option value="SLP">SLP</option>
-            <option value="RN">RN</option>
-            <option value="LPN">LPN</option>
+            <option value="">All disciplines</option>
             <option value="OTHER">Other / not set</option>
           </select>
           <select class="filter-sel" id="fStaffVerified" onchange="loadStaffTable()">
@@ -2308,6 +2302,11 @@ async function loadAdminFilters() {
   const fExpDiscipline = document.getElementById('fExpDiscipline');
   fExpDiscipline.innerHTML = '<option value="">All disciplines</option>' +
     getCompanyDisciplines().map(d => `<option value="${d}">${d}</option>`).join('');
+
+  const fStaffLicType = document.getElementById('fStaffLicType');
+  fStaffLicType.innerHTML = '<option value="">All disciplines</option>' +
+    getCompanyDisciplines().map(d => `<option value="${d}">${d}</option>`).join('') +
+    '<option value="OTHER">Other / not set</option>';
 }
 
 let _docViewMode = 'needs'; // 'needs' | 'verified' | 'all' — defaults to what actually needs action
@@ -2978,10 +2977,14 @@ async function loadStaffTable() {
     (profRows || []).forEach(p => { insuranceAccessMap[p.id] = !!p.insurance_access; });
   }
 
+  const searchFilter = document.getElementById('fStaffSearch')?.value.trim().toLowerCase() || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
   const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
 
   let filteredStaff = staffList;
+  if (searchFilter) {
+    filteredStaff = filteredStaff.filter(s => s.full_name.toLowerCase().includes(searchFilter));
+  }
   if (licTypeFilter) {
     filteredStaff = filteredStaff.filter(s =>
       licTypeFilter === 'OTHER' ? !s.license_type : s.license_type === licTypeFilter
