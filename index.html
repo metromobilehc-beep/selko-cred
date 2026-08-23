@@ -1909,9 +1909,9 @@ function clearPhoto() {
 async function checkStaffCompliance(staffId) {
   try {
     const { data: staff } = await sb.from('credtrack_staff')
-      .select('id, full_name, company_id, discipline, fully_compliant_alerted_at')
+      .select('id, full_name, company_id, discipline, fully_compliant_alerted_at, exclude_from_compliance')
       .eq('id', staffId).maybeSingle();
-    if (!staff) return;
+    if (!staff || staff.exclude_from_compliance) return;
 
     const { data: requiredTypes } = await sb.from('document_types')
       .select('id, name, company_id, required_for_disciplines')
@@ -3069,6 +3069,7 @@ function showStaffActionsMenu(staffId) {
   } else {
     rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">🛡 Insurance access needs login first</span>`);
   }
+  rows.push(`<button class="btn ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="width:100%;justify-content:flex-start;${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded from compliance' : 'Not a real credentialed person? Exclude'}</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();editStaff('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>`);
   rows.push(`<button class="btn btn-gold" onclick="closeStaffActionsMenu();toggleActive('${s.id}',${s.active})" style="width:100%;justify-content:flex-start;">${s.active ? 'Deactivate' : 'Reactivate'}</button>`);
   rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Delete</button>`);
@@ -3496,6 +3497,16 @@ async function toggleInsuranceAccess(profileId, name, current) {
   } catch (e) {
     toast('Error: ' + e.message, true);
   }
+}
+
+async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
+  const { error } = await sb.from('credtrack_staff')
+    .update({ exclude_from_compliance: !currentlyExcluded }).eq('id', staffId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(currentlyExcluded
+    ? 'Back to normal compliance tracking'
+    : 'Excluded from compliance tracking — won\'t show up on Missing Documents or count toward Active Staff');
+  await loadStaffTable();
 }
 
 async function sendMissingDocsChecklist(staffId, fullName) {
@@ -5281,7 +5292,8 @@ async function loadOverview() {
   const { data: staff } = await sb.from('credtrack_staff')
     .select('id, full_name, discipline')
     .eq('company_id', currentCompany.id)
-    .eq('active', true);
+    .eq('active', true)
+    .eq('exclude_from_compliance', false);
   const activeStaff = staff || [];
   document.getElementById('ovStaffCount').textContent = activeStaff.length;
 
