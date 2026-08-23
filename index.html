@@ -872,6 +872,23 @@
         </div>
       </div>
 
+      <!-- Company-wide insurance entities — for tracking network status at
+           the office/location level (e.g. Rise Rehab) rather than tied to
+           an individual staff member. A real master list, not just derived
+           from existing data, so entries can be added ahead of any actual
+           insurance record and renamed without breaking history. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Company-wide insurance entities</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
+          The offices/locations selectable as "Company-wide" on the Insurance tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
+        </p>
+        <div id="entitiesListCred" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newEntityInput" placeholder="e.g. Rise Rehab - Downtown" style="max-width:220px;" />
+          <button class="btn btn-sm btn-teal" onclick="addCompanyEntity()">+ Add entity</button>
+        </div>
+      </div>
+
       <!-- Document type management -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Document types</h2>
@@ -4079,10 +4096,75 @@ async function removeCompanyDiscipline(discipline) {
   toast(`Removed "${discipline}"`);
 }
 
+async function loadEntitiesPanel() {
+  const container = document.getElementById('entitiesListCred');
+  const { data } = await sb.from('company_entities')
+    .select('*').eq('company_id', currentCompany.id).eq('active', true).order('name');
+
+  if (!data?.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No entities yet — add one below.</div>';
+    return;
+  }
+
+  container.innerHTML = data.map(e => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="flex:1;color:#fff;font-size:13px;">${e.name}</span>
+      <button class="btn btn-sm btn-ghost" onclick="renameCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:11px;">Rename</button>
+      <button class="btn btn-sm btn-danger" onclick="removeCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="font-size:11px;">Remove</button>
+    </div>`).join('');
+}
+
+async function addCompanyEntity() {
+  const input = document.getElementById('newEntityInput');
+  const name = input.value.trim();
+  if (!name) return;
+
+  const { error } = await sb.from('company_entities').insert({ company_id: currentCompany.id, name });
+  if (error) {
+    toast(error.code === '23505' ? 'That entity already exists' : 'Error: ' + error.message, true);
+    return;
+  }
+  input.value = '';
+  loadEntitiesPanel();
+  toast(`✓ Added "${name}"`);
+}
+
+async function renameCompanyEntity(id, currentName) {
+  const newName = prompt(`Rename "${currentName}" to:`, currentName);
+  if (!newName || !newName.trim() || newName.trim() === currentName) return;
+  const trimmed = newName.trim();
+
+  const { error } = await sb.from('company_entities').update({ name: trimmed }).eq('id', id);
+  if (error) {
+    toast(error.code === '23505' ? 'An entity with that name already exists' : 'Error: ' + error.message, true);
+    return;
+  }
+
+  // Keep historical insurance records in sync with the rename, rather than
+  // leaving old entries stuck showing the outdated name.
+  await sb.from('staff_payer_networks')
+    .update({ entity_name: trimmed })
+    .eq('company_id', currentCompany.id)
+    .eq('entity_name', currentName);
+
+  loadEntitiesPanel();
+  toast(`Renamed to "${trimmed}" — existing insurance records updated too`);
+}
+
+async function removeCompanyEntity(id, name) {
+  if (!confirm(`Remove "${name}" from the list? This only stops it from being offered for new entries — any existing insurance records under this name are untouched.`)) return;
+
+  const { error } = await sb.from('company_entities').update({ active: false }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  loadEntitiesPanel();
+  toast(`Removed "${name}" from the list`);
+}
+
 async function loadSettings() {
   const c = currentCompany;
 
   loadDisciplinesPanel();
+  loadEntitiesPanel();
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
@@ -4976,20 +5058,12 @@ async function loadPayerBoard() {
     staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
   onPnStaffChanged();
 
-  // Known entity names already used for this company — picking from this
-  // list (rather than free-typing every time) prevents the exact kind of
-  // drift where "Rise Rehab" and "Rise Rehabilitation" end up as two
-  // different-looking entries for what's really the same thing.
-  const { data: entityRows } = await sb.from('staff_payer_networks')
-    .select('entity_name').eq('company_id', currentCompany.id).not('entity_name', 'is', null);
-  // These two names are specific to Metro — seeding them as defaults only
-  // matters for Metro's own dropdown, not every company on the platform.
-  const metroDefaults = currentCompany.id === 'b00ca9bc-d669-492d-8ad5-2d2783321ade'
-    ? ['Metro Mobile Health Care', 'Rise Rehabilitation'] : [];
-  const knownEntities = [...new Set([
-    ...metroDefaults,
-    ...(entityRows || []).map(r => r.entity_name),
-  ])].sort();
+  // Known entity names — a real, admin-managed list now (Settings →
+  // Company-wide insurance entities), not just derived from existing data
+  // or hardcoded for one specific company.
+  const { data: entityData } = await sb.from('company_entities')
+    .select('name').eq('company_id', currentCompany.id).eq('active', true).order('name');
+  const knownEntities = (entityData || []).map(e => e.name);
   const isAdmin = currentProfile.role === 'admin' || currentProfile.is_super_admin;
   const entitySel = document.getElementById('pnEntitySelect');
   entitySel.innerHTML =
@@ -5075,6 +5149,19 @@ async function savePayerNetwork() {
     err.textContent = 'Please enter which company/agency this is for.';
     err.style.display = 'block';
     return;
+  }
+
+  // If this is a brand-new entity typed in on the fly, register it in the
+  // real master list too — otherwise it'd only ever exist as free text on
+  // this one record, invisible to the Settings management panel and not
+  // offered as an option for future entries.
+  if (entitySelectVal === '__new_entity__' && entityName) {
+    await sb.from('company_entities').insert({ company_id: currentCompany.id, name: entityName })
+      .then(({ error: insertErr }) => {
+        // Ignore a duplicate-name conflict — it just means this name
+        // already exists in the master list, which is fine.
+        if (insertErr && insertErr.code !== '23505') console.warn('Entity registration failed:', insertErr);
+      });
   }
 
   const { error } = await sb.from('staff_payer_networks').upsert({
