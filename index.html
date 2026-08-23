@@ -655,7 +655,7 @@
           </select>
           <select class="filter-sel" id="fStaffLicType" onchange="loadStaffTable()">
             <option value="">All disciplines</option>
-            <option value="OTHER">Other / not set</option>
+            <option value="OTHER">No discipline assigned</option>
           </select>
           <select class="filter-sel" id="fStaffVerified" onchange="loadStaffTable()">
             <option value="">All verification statuses</option>
@@ -2331,7 +2331,7 @@ async function loadAdminFilters() {
   const fStaffLicType = document.getElementById('fStaffLicType');
   fStaffLicType.innerHTML = '<option value="">All disciplines</option>' +
     getCompanyDisciplines().map(d => `<option value="${d}">${d}</option>`).join('') +
-    '<option value="OTHER">Other / not set</option>';
+    '<option value="OTHER">No discipline assigned</option>';
 }
 
 let _docViewMode = 'needs'; // 'needs' | 'verified' | 'all' — defaults to what actually needs action
