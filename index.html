@@ -5658,8 +5658,17 @@ async function exportMissingDocsPDF() {
   });
 
   const filterSuffix = typeFilter ? `_${typeFilter.replace(/[^a-z0-9]/gi,'')}` : '';
-  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_MissingDocs${filterSuffix}_${new Date().toISOString().slice(0,10)}.pdf`);
-  toast('PDF report exported');
+  doc.setProperties({ title: `${currentCompany.name}_MissingDocs${filterSuffix}` });
+  const blobUrl = doc.output('bloburl');
+  const previewWindow = window.open(blobUrl, '_blank');
+  if (!previewWindow) {
+    // Pop-up blocked — fall back to a direct download so the export still
+    // works, just without the preview step.
+    doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_MissingDocs${filterSuffix}_${new Date().toISOString().slice(0,10)}.pdf`);
+    toast('Pop-up blocked, so this downloaded directly instead of previewing');
+  } else {
+    toast('Opened in a new tab — use your browser\'s own save/print/download controls from there');
+  }
 }
 
 async function loadBugLog() {
