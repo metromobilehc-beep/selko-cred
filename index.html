@@ -3012,7 +3012,7 @@ async function loadStaffTable() {
   }
   if (licTypeFilter) {
     filteredStaff = filteredStaff.filter(s =>
-      licTypeFilter === 'OTHER' ? !s.license_type : s.license_type === licTypeFilter
+      licTypeFilter === 'OTHER' ? !s.discipline : s.discipline === licTypeFilter
     );
   }
   if (verifiedFilter) {
