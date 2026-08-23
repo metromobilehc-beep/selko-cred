@@ -3354,7 +3354,13 @@ async function confirmDisciplineCred(id) {
   const selected = document.querySelector('input[name="disciplineOption"]:checked');
   if (!selected) return;
   const newDiscipline = selected.value || null;
-  const { error } = await sb.from('credtrack_staff').update({ discipline: newDiscipline }).eq('id', id);
+  // Auto-sync license_type to match — these two fields are meant to mirror
+  // each other, but were being updated through separate code paths with
+  // nothing keeping them in sync, which is exactly what caused staff to
+  // silently disappear from the discipline filter despite their badge
+  // showing the correct value.
+  const { error } = await sb.from('credtrack_staff')
+    .update({ discipline: newDiscipline, license_type: newDiscipline }).eq('id', id);
   document.getElementById('disciplineModalCred').remove();
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Discipline updated');
