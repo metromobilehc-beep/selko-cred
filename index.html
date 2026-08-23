@@ -3320,7 +3320,7 @@ function showDisciplineModal(id, name, currentDiscipline) {
   if (existing) existing.remove();
 
   const options = [
-    { value: '', label: 'N/A', desc: 'No clinical discipline (office/admin staff)' },
+    { value: '', label: 'N/A', desc: 'No clinical discipline' },
     ...getCompanyDisciplines().map(d => ({ value: d, label: d, desc: 'Clinical discipline' })),
   ];
 
