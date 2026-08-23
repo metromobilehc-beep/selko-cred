@@ -732,7 +732,12 @@
       <div class="inline-form" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;">
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
-          <select class="inline-select" id="pnStaff"></select>
+          <select class="inline-select" id="pnStaff" onchange="onPnStaffChanged()"></select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;" id="pnEntityNameGroup">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Which company/agency?</label>
+          <select class="inline-select" id="pnEntitySelect" onchange="onPnEntitySelectChanged()" style="width:220px;"></select>
+          <input class="inline-input" type="text" id="pnEntityName" placeholder="Type the new entity name" style="width:220px;display:none;" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Payer</label>
@@ -4903,7 +4908,7 @@ async function emailInNetworkSummary() {
   const byPayer = {};
   inNetwork.forEach(r => {
     const payerName = r.payers?.name || 'Unknown payer';
-    (byPayer[payerName] ||= new Set()).add(r.credtrack_staff?.full_name || 'Unknown staff');
+    (byPayer[payerName] ||= new Set()).add(r.credtrack_staff?.full_name || r.entity_name || '🏢 Company-wide');
   });
 
   const lines = Object.keys(byPayer).sort().map(payerName =>
@@ -4939,7 +4944,7 @@ function renderQuickRef(records) {
   const byPayer = {};
   inNetwork.forEach(r => {
     const payerName = r.payers?.name || 'Unknown payer';
-    (byPayer[payerName] ||= []).push(r.credtrack_staff?.full_name || 'Unknown staff');
+    (byPayer[payerName] ||= []).push(r.credtrack_staff?.full_name || r.entity_name || '🏢 Company-wide');
   });
   el.innerHTML = Object.keys(byPayer).sort().map(payerName => `
     <div>
@@ -4953,10 +4958,44 @@ function renderQuickRef(records) {
   `).join('');
 }
 
+function onPnStaffChanged() {
+  const isCompanyWide = document.getElementById('pnStaff').value === '__company_wide__';
+  document.getElementById('pnEntityNameGroup').style.display = isCompanyWide ? 'flex' : 'none';
+}
+
+function onPnEntitySelectChanged() {
+  const isNew = document.getElementById('pnEntitySelect').value === '__new_entity__';
+  document.getElementById('pnEntityName').style.display = isNew ? 'block' : 'none';
+  if (!isNew) document.getElementById('pnEntityName').value = '';
+}
+
 async function loadPayerBoard() {
   // populate staff dropdown from staffList
   const staffSel = document.getElementById('pnStaff');
-  staffSel.innerHTML = staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+  staffSel.innerHTML = '<option value="__company_wide__">🏢 Company-wide (not tied to one person)</option>' +
+    staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+  onPnStaffChanged();
+
+  // Known entity names already used for this company — picking from this
+  // list (rather than free-typing every time) prevents the exact kind of
+  // drift where "Rise Rehab" and "Rise Rehabilitation" end up as two
+  // different-looking entries for what's really the same thing.
+  const { data: entityRows } = await sb.from('staff_payer_networks')
+    .select('entity_name').eq('company_id', currentCompany.id).not('entity_name', 'is', null);
+  // These two names are specific to Metro — seeding them as defaults only
+  // matters for Metro's own dropdown, not every company on the platform.
+  const metroDefaults = currentCompany.id === 'b00ca9bc-d669-492d-8ad5-2d2783321ade'
+    ? ['Metro Mobile Health Care', 'Rise Rehabilitation'] : [];
+  const knownEntities = [...new Set([
+    ...metroDefaults,
+    ...(entityRows || []).map(r => r.entity_name),
+  ])].sort();
+  const isAdmin = currentProfile.role === 'admin' || currentProfile.is_super_admin;
+  const entitySel = document.getElementById('pnEntitySelect');
+  entitySel.innerHTML =
+    knownEntities.map(e => `<option value="${e.replace(/"/g,'&quot;')}">${e}</option>`).join('') +
+    (isAdmin ? '<option value="__new_entity__">+ Add a new entity...</option>' : '');
+  onPnEntitySelectChanged();
 
   // populate payer dropdown directly (don't depend on the Settings tab having loaded)
   const { data: payerData } = await sb.from('payers')
@@ -4997,7 +5036,7 @@ async function loadPayerBoard() {
   };
 
   tbody.innerHTML = data.map(r => `<tr>
-    <td>${r.credtrack_staff?.full_name || '—'}</td>
+    <td>${r.credtrack_staff?.full_name || r.entity_name || '🏢 Company-wide'}</td>
     <td>${r.payers?.name || '—'}</td>
     <td><span class="badge ${badgeClass[r.status] || 'badge-none'}">${badgeLabel[r.status] || r.status}</span></td>
     <td>${r.date_submitted  || '—'}</td>
@@ -5013,7 +5052,14 @@ async function loadPayerBoard() {
 }
 
 async function savePayerNetwork() {
-  const staffId       = document.getElementById('pnStaff').value;
+  const staffSelRaw   = document.getElementById('pnStaff').value;
+  const staffId       = staffSelRaw === '__company_wide__' ? null : staffSelRaw;
+  const entitySelectVal = document.getElementById('pnEntitySelect').value;
+  const entityName    = staffId === null
+    ? (entitySelectVal === '__new_entity__'
+        ? document.getElementById('pnEntityName').value.trim() || null
+        : entitySelectVal || null)
+    : null;
   const payerId       = document.getElementById('pnPayer').value;
   const status        = document.getElementById('pnStatus').value;
   const submitted     = document.getElementById('pnSubmitted').value  || null;
@@ -5024,11 +5070,17 @@ async function savePayerNetwork() {
   const notes         = document.getElementById('pnNotes').value.trim()    || null;
   const err           = document.getElementById('pnErr');
   err.style.display = 'none';
-  if (!staffId || !payerId) { err.textContent = 'Staff and payer are required.'; err.style.display = 'block'; return; }
+  if (!payerId) { err.textContent = 'Payer is required.'; err.style.display = 'block'; return; }
+  if (staffId === null && !entityName) {
+    err.textContent = 'Please enter which company/agency this is for.';
+    err.style.display = 'block';
+    return;
+  }
 
   const { error } = await sb.from('staff_payer_networks').upsert({
     company_id: currentCompany.id,
     staff_id: staffId,
+    entity_name: entityName,
     payer_id: payerId,
     status,
     date_submitted: submitted,
