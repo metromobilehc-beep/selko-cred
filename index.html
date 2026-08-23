@@ -4990,7 +4990,7 @@ async function emailInNetworkSummary() {
   const byPayer = {};
   inNetwork.forEach(r => {
     const payerName = r.payers?.name || 'Unknown payer';
-    (byPayer[payerName] ||= new Set()).add(r.credtrack_staff?.full_name || r.entity_name || '🏢 Company-wide');
+    (byPayer[payerName] ||= new Set()).add(r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide')));
   });
 
   const lines = Object.keys(byPayer).sort().map(payerName =>
@@ -5026,7 +5026,7 @@ function renderQuickRef(records) {
   const byPayer = {};
   inNetwork.forEach(r => {
     const payerName = r.payers?.name || 'Unknown payer';
-    (byPayer[payerName] ||= []).push(r.credtrack_staff?.full_name || r.entity_name || '🏢 Company-wide');
+    (byPayer[payerName] ||= []).push(r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide')));
   });
   el.innerHTML = Object.keys(byPayer).sort().map(payerName => `
     <div>
@@ -5110,7 +5110,7 @@ async function loadPayerBoard() {
   };
 
   tbody.innerHTML = data.map(r => `<tr>
-    <td>${r.credtrack_staff?.full_name || r.entity_name || '🏢 Company-wide'}</td>
+    <td>${r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide'))}</td>
     <td>${r.payers?.name || '—'}</td>
     <td><span class="badge ${badgeClass[r.status] || 'badge-none'}">${badgeLabel[r.status] || r.status}</span></td>
     <td>${r.date_submitted  || '—'}</td>
