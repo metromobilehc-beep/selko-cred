@@ -150,6 +150,32 @@
   .tab.active { background: var(--navy); border-color: var(--navy); color: #fff; }
   .tab:hover:not(.active) { border-color: var(--teal); color: var(--teal); }
 
+  /* ADMIN SIDEBAR NAV — scoped specifically to .admin-sidebar so the base
+     .tabs/.tab styles above (still used for view toggles like Documents'
+     Needs verification/Verified/All) are completely unaffected */
+  .admin-layout { display: flex; align-items: flex-start; gap: 20px; }
+  .admin-sidebar {
+    display: flex; flex-direction: column; gap: 2px;
+    width: 220px; flex-shrink: 0; background: var(--navy);
+    border-radius: 10px; padding: 12px 8px;
+    position: sticky; top: 76px;
+    margin-bottom: 0 !important;
+  }
+  .admin-sidebar .tab {
+    display: flex; align-items: center; gap: 10px;
+    width: 100%; text-align: left; padding: 11px 14px;
+    border-radius: 8px; border: none; background: transparent;
+    color: rgba(255,255,255,.75); font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .admin-sidebar .tab.active { background: rgba(255,255,255,.12); color: #fff; }
+  .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.06); border-color: transparent; color: #fff; }
+  .admin-main { flex: 1; min-width: 0; }
+  @media (max-width: 900px) {
+    .admin-layout { flex-direction: column; }
+    .admin-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; position: static; }
+  }
+
   /* DARK PANEL */
   .dark-panel { background: var(--navy); border-radius: 10px; padding: 20px; color: #fff; margin-bottom: 16px; }
   .ov-stat-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 10px; padding: 18px 16px; text-align: center; }
@@ -376,15 +402,17 @@
       <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
     </div>
 
-    <div class="tabs">
-      <button class="tab active" id="tab-overview" onclick="switchTab('overview')">Overview</button>
-      <button class="tab"        id="tab-docs"     onclick="switchTab('docs')">Documents</button>
-      <button class="tab"        id="tab-exp"      onclick="switchTab('exp')">Expiration tracker</button>
-      <button class="tab"        id="tab-staff"    onclick="switchTab('staff')">Staff</button>
-      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')">Insurance</button>
-      <button class="tab"        id="tab-settings" onclick="switchTab('settings')">Settings</button>
+    <div class="admin-layout">
+    <div class="tabs admin-sidebar">
+      <button class="tab active" id="tab-overview" onclick="switchTab('overview')">📊 Overview</button>
+      <button class="tab"        id="tab-docs"     onclick="switchTab('docs')">📄 Documents</button>
+      <button class="tab"        id="tab-exp"      onclick="switchTab('exp')">⏰ Expiration tracker</button>
+      <button class="tab"        id="tab-staff"    onclick="switchTab('staff')">👥 Staff</button>
+      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')">🛡️ Insurance</button>
+      <button class="tab"        id="tab-settings" onclick="switchTab('settings')">⚙️ Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;">⚡ Selko Admin</button>
     </div>
+    <div class="admin-main">
 
     <!-- DOCUMENTS TAB -->
     <div id="tabOverview" class="dark-panel">
@@ -1177,6 +1205,10 @@
         <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
 
+    </div>
+    <!-- closes admin-main -->
+    </div>
+    <!-- closes admin-layout -->
     </div>
     <!-- closes the outer "page" wrapper -->
     </div>
