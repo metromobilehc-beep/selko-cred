@@ -755,18 +755,22 @@
     </div>
 
     <!-- SETTINGS TAB -->
-    <div id="tabInsurance" class="dark-panel" style="display:none;">
-      <h2>Insurance network verification board</h2>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
+    <div id="tabInsurance" style="display:none;">
+      <div class="dark-panel">
+        <h2>Insurance network verification board</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
+      </div>
 
-      <!-- Quick reference: who's in-network, grouped by payer -->
-      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:16px;margin-bottom:20px;">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
-          <h3 style="font-size:13px;color:rgba(255,255,255,.7);margin:0;">Quick reference — who's in-network</h3>
+      <div class="dark-panel" id="pnQuickRefPanel" data-default-open="true">
+        <h2>Quick reference — who's in-network</h2>
+        <div style="margin-bottom:12px;">
           <button class="btn btn-sm btn-teal" onclick="emailInNetworkSummary()">📧 Email This Summary</button>
         </div>
         <div id="pnQuickRef" style="display:flex;flex-direction:column;gap:10px;"></div>
       </div>
+
+      <div class="dark-panel" id="pnAddFormPanel" data-default-open="true">
+        <h2>Add / update network record</h2>
       <div class="inline-form" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;">
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
@@ -816,22 +820,27 @@
         </div>
         <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
       </div>
-      <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+      <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;"></div>
+      </div>
 
-      <h3 style="font-size:13px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin:20px 0 10px;">Individual staff</h3>
+      <div class="dark-panel" id="pnStaffTablePanel" data-default-open="true">
+        <h2>Individual staff</h2>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
           <tbody id="payerBoardStaffTbody"></tbody>
         </table>
       </div>
+      </div>
 
-      <h3 style="font-size:13px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin:24px 0 10px;">🏢 Company / agency entities</h3>
+      <div class="dark-panel" id="pnEntityTablePanel" data-default-open="true">
+        <h2>🏢 Company / agency entities</h2>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Entity</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
           <tbody id="payerBoardEntityTbody"></tbody>
         </table>
+      </div>
       </div>
     </div>
 
@@ -1253,7 +1262,7 @@ document.addEventListener('click', function(e) {
 });
 
 function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #missingDocsPanel, #missingDocsProLock').forEach(panel => {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
     if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
     const h2 = panel.querySelector('h2');
     if (!h2) return;
