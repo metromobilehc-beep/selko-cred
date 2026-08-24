@@ -817,10 +817,20 @@
         <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
       </div>
       <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+
+      <h3 style="font-size:13px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin:20px 0 10px;">Individual staff</h3>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
-          <tbody id="payerBoardTbody"></tbody>
+          <tbody id="payerBoardStaffTbody"></tbody>
+        </table>
+      </div>
+
+      <h3 style="font-size:13px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.5px;margin:24px 0 10px;">🏢 Company / agency entities</h3>
+      <div class="tbl-wrap">
+        <table>
+          <thead><tr><th>Entity</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
+          <tbody id="payerBoardEntityTbody"></tbody>
         </table>
       </div>
     </div>
@@ -5152,13 +5162,11 @@ async function loadPayerBoard() {
 
   renderQuickRef(data || []);
 
-  const tbody = document.getElementById('payerBoardTbody');
+  const staffTbody = document.getElementById('payerBoardStaffTbody');
+  const entityTbody = document.getElementById('payerBoardEntityTbody');
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
-    return;
-  }
-  if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No network records yet.</td></tr>';
+    staffTbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
+    entityTbody.innerHTML = '';
     return;
   }
 
@@ -5175,8 +5183,8 @@ async function loadPayerBoard() {
     expired:        'Expired',
   };
 
-  tbody.innerHTML = data.map(r => `<tr>
-    <td>${r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide'))}</td>
+  const rowHtml = (r, nameCell) => `<tr>
+    <td>${nameCell}</td>
     <td>${r.payers?.name || '—'}</td>
     <td><span class="badge ${badgeClass[r.status] || 'badge-none'}">${badgeLabel[r.status] || r.status}</span></td>
     <td>${r.date_submitted  || '—'}</td>
@@ -5188,7 +5196,18 @@ async function loadPayerBoard() {
     <td><div class="td-actions">
       <button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>
     </div></td>
-  </tr>`).join('');
+  </tr>`;
+
+  const staffRows = (data || []).filter(r => r.credtrack_staff);
+  const entityRows = (data || []).filter(r => !r.credtrack_staff);
+
+  staffTbody.innerHTML = staffRows.length
+    ? staffRows.map(r => rowHtml(r, r.credtrack_staff.full_name)).join('')
+    : '<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No individual staff network records yet.</td></tr>';
+
+  entityTbody.innerHTML = entityRows.length
+    ? entityRows.map(r => rowHtml(r, r.entity_name || 'Company-wide')).join('')
+    : '<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No company/agency network records yet.</td></tr>';
 }
 
 async function savePayerNetwork() {
