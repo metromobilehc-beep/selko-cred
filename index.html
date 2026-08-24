@@ -4,6 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Selko Cred — Credential Manager</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
@@ -155,21 +156,24 @@
      Needs verification/Verified/All) are completely unaffected */
   .admin-layout { display: flex; align-items: flex-start; gap: 20px; }
   .admin-sidebar {
-    display: flex; flex-direction: column; gap: 2px;
-    width: 220px; flex-shrink: 0; background: var(--navy);
-    border-radius: 10px; padding: 12px 8px;
+    display: flex; flex-direction: column; gap: 3px;
+    width: 230px; flex-shrink: 0; background: var(--navy);
+    border-radius: 12px; padding: 14px 10px;
     position: sticky; top: 76px;
     margin-bottom: 0 !important;
+    box-shadow: 0 4px 24px rgba(0,0,0,.18);
   }
   .admin-sidebar .tab {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 12px;
     width: 100%; text-align: left; padding: 11px 14px;
-    border-radius: 8px; border: none; background: transparent;
-    color: rgba(255,255,255,.75); font-size: 14px; font-weight: 600;
-    cursor: pointer;
+    border-radius: 8px; border: 3px solid transparent; background: transparent;
+    color: rgba(255,255,255,.65); font-size: 13.5px; font-weight: 600;
+    letter-spacing: .1px; cursor: pointer;
+    transition: background .15s ease, color .15s ease, border-color .15s ease;
   }
-  .admin-sidebar .tab.active { background: rgba(255,255,255,.12); color: #fff; }
-  .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.06); border-color: transparent; color: #fff; }
+  .admin-sidebar .tab i { font-size: 17px; width: 20px; text-align: center; flex-shrink: 0; }
+  .admin-sidebar .tab.active { background: rgba(255,255,255,.08); color: #fff; border-left-color: var(--teal-l); }
+  .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.04); color: rgba(255,255,255,.92); }
   .admin-main { flex: 1; min-width: 0; }
   @media (max-width: 900px) {
     .admin-layout { flex-direction: column; }
@@ -404,13 +408,13 @@
 
     <div class="admin-layout">
     <div class="tabs admin-sidebar">
-      <button class="tab active" id="tab-overview" onclick="switchTab('overview')">📊 Overview</button>
-      <button class="tab"        id="tab-docs"     onclick="switchTab('docs')">📄 Documents</button>
-      <button class="tab"        id="tab-exp"      onclick="switchTab('exp')">⏰ Expiration tracker</button>
-      <button class="tab"        id="tab-staff"    onclick="switchTab('staff')">👥 Staff</button>
-      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')">🛡️ Insurance</button>
-      <button class="tab"        id="tab-settings" onclick="switchTab('settings')">⚙️ Settings</button>
-      <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;">⚡ Selko Admin</button>
+      <button class="tab active" id="tab-overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
+      <button class="tab"        id="tab-docs"     onclick="switchTab('docs')"><i class="ti ti-file-text"></i> Documents</button>
+      <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
+      <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
+      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Insurance</button>
+      <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
+      <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
     </div>
     <div class="admin-main">
 
