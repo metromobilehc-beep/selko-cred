@@ -337,7 +337,7 @@
           <label class="field-label">Attach document (front & back, if applicable)</label>
           <div class="file-btns">
             <label for="upFilesMulti" class="file-label file-label-primary">📎 Choose file(s)</label>
-            <label for="upCameraSingle" class="file-label file-label-secondary">📷 Take photo</label>
+            <label for="upCameraSingle" id="upCameraLabel" class="file-label file-label-secondary">📷 Take photo (front)</label>
           </div>
           <div style="margin-top:8px;font-size:13px;">
             <div id="upFrontStatus" style="color:var(--gray-400);">○ Front — not attached</div>
@@ -1904,6 +1904,15 @@ function refreshUpFileDisplay() {
   }
 
   hintEl.style.display = (front && !back) ? 'block' : 'none';
+
+  // Make the button itself say what tapping it next will actually do,
+  // instead of relying on a toast message alone to communicate that.
+  const cameraLabel = document.getElementById('upCameraLabel');
+  if (cameraLabel) {
+    if (!front) cameraLabel.textContent = '📷 Take photo (front)';
+    else if (!back) cameraLabel.textContent = '📷 Take photo (back)';
+    else cameraLabel.textContent = '📷 Retake (starts over)';
+  }
 
   // Legacy hidden field some other code paths may still reference
   const nameEl = document.getElementById('upFileName');
