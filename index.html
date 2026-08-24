@@ -95,6 +95,12 @@
 
   /* LAYOUT */
   .page { padding: 28px 24px; max-width: 1100px; margin: 0 auto; }
+  /* Admin dashboard needs the sidebar + working area to actually fit —
+     the 1100px constraint above was sized for a single-column layout
+     before the sidebar existed. Staff/partner self-service screens still
+     use the narrower version below, since a simple upload form reads
+     better constrained than stretched full-width. */
+  #adminScreen .page { max-width: none; padding-left: 20px; padding-right: 20px; }
   .page-header { margin-bottom: 24px; display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 12px; }
   .page-header h1 { font-size: 22px; font-weight: 700; color: var(--navy); margin-bottom: 2px; }
   .page-header p  { color: var(--gray-600); font-size: 14px; }
