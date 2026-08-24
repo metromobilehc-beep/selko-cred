@@ -825,6 +825,9 @@
 
       <div class="dark-panel" id="pnStaffTablePanel" data-default-open="true">
         <h2>Individual staff</h2>
+        <select class="filter-sel" id="fInsuranceStaff" onchange="renderPayerBoard()" style="max-width:240px;margin-bottom:14px;">
+          <option value="">All staff</option>
+        </select>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
@@ -2374,8 +2377,9 @@ async function loadAdminFilters() {
   const fEmp    = document.getElementById('fEmp');
   const fExpEmp = document.getElementById('fExpEmp');
   const fStaffPerson = document.getElementById('fStaffPerson');
+  const fInsuranceStaff = document.getElementById('fInsuranceStaff');
   const fType   = document.getElementById('fType');
-  [fEmp, fExpEmp, fStaffPerson].forEach(sel => {
+  [fEmp, fExpEmp, fStaffPerson, fInsuranceStaff].forEach(sel => {
     sel.innerHTML = '<option value="">All staff</option>';
     staffList.forEach(s => {
       const o = document.createElement('option');
@@ -5171,10 +5175,16 @@ async function loadPayerBoard() {
 
   renderQuickRef(data || []);
 
+  _lastPayerBoardData = data || [];
+  _lastPayerBoardError = error;
+  renderPayerBoard();
+}
+
+function renderPayerBoard() {
   const staffTbody = document.getElementById('payerBoardStaffTbody');
   const entityTbody = document.getElementById('payerBoardEntityTbody');
-  if (error) {
-    staffTbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
+  if (_lastPayerBoardError) {
+    staffTbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#ff6b6b;padding:20px;">${_lastPayerBoardError.message}</td></tr>`;
     entityTbody.innerHTML = '';
     return;
   }
@@ -5207,12 +5217,14 @@ async function loadPayerBoard() {
     </div></td>
   </tr>`;
 
-  const staffRows = (data || []).filter(r => r.credtrack_staff);
-  const entityRows = (data || []).filter(r => !r.credtrack_staff);
+  const staffFilter = document.getElementById('fInsuranceStaff')?.value || '';
+  let staffRows = _lastPayerBoardData.filter(r => r.credtrack_staff);
+  if (staffFilter) staffRows = staffRows.filter(r => r.staff_id === staffFilter);
+  const entityRows = _lastPayerBoardData.filter(r => !r.credtrack_staff);
 
   staffTbody.innerHTML = staffRows.length
     ? staffRows.map(r => rowHtml(r, r.credtrack_staff.full_name)).join('')
-    : '<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No individual staff network records yet.</td></tr>';
+    : `<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">${staffFilter ? 'No network records for this person yet.' : 'No individual staff network records yet.'}</td></tr>`;
 
   entityTbody.innerHTML = entityRows.length
     ? entityRows.map(r => rowHtml(r, r.entity_name || 'Company-wide')).join('')
@@ -5619,6 +5631,8 @@ async function loadOverview() {
 }
 
 let _lastMissingByStaff = [];
+let _lastPayerBoardData = [];
+let _lastPayerBoardError = null;
 
 function loadMissingDocsReport(missingByStaff) {
   const panel = document.getElementById('missingDocsPanel');
