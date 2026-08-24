@@ -865,6 +865,9 @@
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
           Define the clinical disciplines used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, or MD/DO/PA/NP/RN for an urgent care clinic. These appear anywhere discipline is selected: adding staff, editing a staff member's discipline, and scoping which document types apply to which disciplines.
         </p>
+        <p style="font-size:12px;color:var(--gold);margin-bottom:14px;">
+          ⚠ Clinical roles only (e.g. PT, RN, DO) — not job titles or access levels. Someone with no clinical discipline should be set to "N/A" on their own profile, not added here as a discipline.
+        </p>
         <div id="disciplinesListCred" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
         <div style="display:flex;gap:8px;">
           <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN" style="max-width:160px;" />
@@ -4078,6 +4081,21 @@ async function addCompanyDiscipline() {
   if (current.some(d => d.toLowerCase() === value.toLowerCase())) {
     toast('That discipline is already in the list', true);
     return;
+  }
+
+  // Only interrupt when the value actually looks risky (matches a job
+  // title or access-level word) — a confirmation on every single addition
+  // would just get clicked through on autopilot, same problem in a
+  // different form.
+  const suspiciousWords = ['office', 'admin', 'administrator', 'clinician', 'staff', 'coordinator', 'manager', 'supervisor', 'clerk', 'receptionist'];
+  if (suspiciousWords.includes(value.toLowerCase())) {
+    const confirmed = confirm(
+      `"${value}" looks like a job title or access level, not a clinical discipline (e.g. PT, RN, DO).\n\n` +
+      `Clinical disciplines control which document requirements apply to someone (like "PT License" only for PTs). ` +
+      `Job titles and access levels are set elsewhere — under Staff Type, when editing a staff member.\n\n` +
+      `Add "${value}" as a clinical discipline anyway?`
+    );
+    if (!confirmed) return;
   }
 
   const updated = [...current, value];
