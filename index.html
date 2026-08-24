@@ -630,7 +630,7 @@
         <h2>Missing documents by staff member</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one tracked document — required or optional — sorted by the most outstanding first. This reflects what applies to their specific discipline. Filter below to focus on just required items, just optional ones, or a specific document type.</p>
         <div style="text-align:right;margin-bottom:14px;">
-          <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">⬇ Export PDF</button>
+          <button class="btn btn-sm btn-gold" onclick="exportMissingDocsPDF()">👁 Preview & Export PDF</button>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
           <select class="filter-sel" id="fMissingDocsType" onchange="renderMissingDocsReport()">
@@ -825,9 +825,14 @@
 
       <div class="dark-panel" id="pnStaffTablePanel" data-default-open="true">
         <h2>Individual staff</h2>
-        <select class="filter-sel" id="fInsuranceStaff" onchange="renderPayerBoard()" style="max-width:240px;margin-bottom:14px;">
-          <option value="">All staff</option>
-        </select>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+          <select class="filter-sel" id="fInsuranceStaff" onchange="renderPayerBoard()" style="max-width:240px;">
+            <option value="">All staff</option>
+          </select>
+          <select class="filter-sel" id="fInsurancePayer" onchange="renderPayerBoard()" style="max-width:240px;">
+            <option value="">All insurance</option>
+          </select>
+        </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
@@ -838,6 +843,14 @@
 
       <div class="dark-panel" id="pnEntityTablePanel" data-default-open="true">
         <h2>🏢 Company / agency entities</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+          <select class="filter-sel" id="fInsuranceEntity" onchange="renderPayerBoard()" style="max-width:240px;">
+            <option value="">All entities</option>
+          </select>
+          <select class="filter-sel" id="fInsuranceEntityPayer" onchange="renderPayerBoard()" style="max-width:240px;">
+            <option value="">All insurance</option>
+          </select>
+        </div>
       <div class="tbl-wrap">
         <table>
           <thead><tr><th>Entity</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
@@ -5159,6 +5172,9 @@ async function loadPayerBoard() {
     knownEntities.map(e => `<option value="${e.replace(/"/g,'&quot;')}">${e}</option>`).join('') +
     (isAdmin ? '<option value="__new_entity__">+ Add a new entity...</option>' : '');
   onPnEntitySelectChanged();
+  const entityFilterSel = document.getElementById('fInsuranceEntity');
+  entityFilterSel.innerHTML = '<option value="">All entities</option>' +
+    knownEntities.map(e => `<option value="${e.replace(/"/g,'&quot;')}">${e}</option>`).join('');
 
   // populate payer dropdown directly (don't depend on the Settings tab having loaded)
   const { data: payerData } = await sb.from('payers')
@@ -5167,6 +5183,12 @@ async function loadPayerBoard() {
     .order('name');
   const payerSel = document.getElementById('pnPayer');
   payerSel.innerHTML = (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const payerFilterSel = document.getElementById('fInsurancePayer');
+  payerFilterSel.innerHTML = '<option value="">All insurance</option>' +
+    (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const entityPayerFilterSel = document.getElementById('fInsuranceEntityPayer');
+  entityPayerFilterSel.innerHTML = '<option value="">All insurance</option>' +
+    (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
 
   const { data, error } = await sb.from('staff_payer_networks')
     .select('*, credtrack_staff(full_name), payers(name)')
@@ -5218,17 +5240,24 @@ function renderPayerBoard() {
   </tr>`;
 
   const staffFilter = document.getElementById('fInsuranceStaff')?.value || '';
+  const payerFilter = document.getElementById('fInsurancePayer')?.value || '';
   let staffRows = _lastPayerBoardData.filter(r => r.credtrack_staff);
   if (staffFilter) staffRows = staffRows.filter(r => r.staff_id === staffFilter);
-  const entityRows = _lastPayerBoardData.filter(r => !r.credtrack_staff);
+  if (payerFilter) staffRows = staffRows.filter(r => r.payer_id === payerFilter);
+
+  const entityFilter = document.getElementById('fInsuranceEntity')?.value || '';
+  const entityPayerFilter = document.getElementById('fInsuranceEntityPayer')?.value || '';
+  let entityRows = _lastPayerBoardData.filter(r => !r.credtrack_staff);
+  if (entityFilter) entityRows = entityRows.filter(r => r.entity_name === entityFilter);
+  if (entityPayerFilter) entityRows = entityRows.filter(r => r.payer_id === entityPayerFilter);
 
   staffTbody.innerHTML = staffRows.length
     ? staffRows.map(r => rowHtml(r, r.credtrack_staff.full_name)).join('')
-    : `<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">${staffFilter ? 'No network records for this person yet.' : 'No individual staff network records yet.'}</td></tr>`;
+    : `<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">${(staffFilter || payerFilter) ? 'No matching network records.' : 'No individual staff network records yet.'}</td></tr>`;
 
   entityTbody.innerHTML = entityRows.length
     ? entityRows.map(r => rowHtml(r, r.entity_name || 'Company-wide')).join('')
-    : '<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No company/agency network records yet.</td></tr>';
+    : `<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">${(entityFilter || entityPayerFilter) ? 'No matching network records.' : 'No company/agency network records yet.'}</td></tr>`;
 }
 
 async function savePayerNetwork() {
