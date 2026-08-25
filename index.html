@@ -3151,11 +3151,7 @@ async function loadStaffTable() {
     <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
-      <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
-      <button class="btn btn-sm btn-ghost" onclick="showEditLicenseModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">License info</button>
-      <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
-      <button class="btn btn-sm btn-ghost" onclick="lookupNpi('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>
-      <button class="btn btn-sm ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded' : 'Exclude'}</button>
+      <button class="btn btn-sm btn-ghost" onclick="showLicenseInfoMenu('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 License info${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-gold" onclick="showAccountActionsMenu('${s.id}')">⚙ Account</button>
       <button class="btn btn-sm btn-gold" onclick="showCredentialActionsMenu('${s.id}')">🩺 Credentialing</button>
     </div></td>
@@ -3166,6 +3162,35 @@ async function loadStaffTable() {
 function closeStaffActionsMenu() {
   const existing = document.getElementById('staffActionsModal');
   if (existing) existing.remove();
+}
+
+function showLicenseInfoMenu(staffId) {
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+  closeStaffActionsMenu();
+
+  const esc = (str) => (str || '').replace(/'/g, "\\'");
+
+  const rows = [];
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();verifyLicense('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();attachVerificationProof('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();lookupNpi('${s.id}','${esc(s.full_name)}','${s.license_state||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>`);
+
+  const modal = document.createElement('div');
+  modal.id = 'staffActionsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:320px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${s.full_name}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">License info</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${rows.join('')}
+      </div>
+      <button class="btn btn-ghost" onclick="closeStaffActionsMenu()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) closeStaffActionsMenu(); });
 }
 
 function showAccountActionsMenu(staffId) {
@@ -3183,6 +3208,7 @@ function showAccountActionsMenu(staffId) {
     rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">No email on file — add one via Edit to enable login</span>`);
   }
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();editStaff('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>`);
+  rows.push(`<button class="btn ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="width:100%;justify-content:flex-start;${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded from compliance' : 'Not a real credentialed person? Exclude'}</button>`);
   rows.push(`<button class="btn btn-gold" onclick="closeStaffActionsMenu();toggleActive('${s.id}',${s.active})" style="width:100%;justify-content:flex-start;">${s.active ? 'Deactivate' : 'Reactivate'}</button>`);
   rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Delete</button>`);
 
