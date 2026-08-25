@@ -1345,7 +1345,6 @@ let currentProfile = null;
 let currentCompany = null;
 let docTypes       = [];
 let staffList      = [];
-let insuranceAccessMap = {};
 let _staffSortKey  = 'full_name';
 let _staffSortDir  = 'asc';
 
@@ -1598,11 +1597,7 @@ async function initSession(user) {
       // path ever hides it if this specific profile isn't a super admin.
       document.getElementById('tab-super').style.display = profile.is_super_admin ? 'inline-flex' : 'none';
       document.getElementById('tab-settings').style.display = (profile.role === 'admin' || profile.is_super_admin) ? 'inline-flex' : 'none';
-    } else if (profile.insurance_access) {
-      document.getElementById('hdrRole').textContent = 'Insurance Access';
-      showScreen('adminScreen');
-      await initAdmin();
-      restrictToInsuranceOnly();
+      document.getElementById('tab-insurance').style.display = (profile.role === 'admin' || profile.is_super_admin) ? 'inline-flex' : 'none';
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -1625,6 +1620,7 @@ async function logout() {
   // hidden otherwise, so a prior session's visible super-admin tab could
   // persist into a subsequent, lower-privilege login in the same tab.
   document.getElementById('tab-super').style.display = 'none';
+  document.getElementById('tab-insurance').style.display = 'none';
   const viewAsBanner = document.getElementById('viewAsBanner');
   if (viewAsBanner) viewAsBanner.style.display = 'none';
   document.getElementById('loginEmail').value    = '';
@@ -3088,15 +3084,6 @@ async function loadStaffTable() {
     .eq('document_types.name', 'License Verification Record');
   const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
 
-  // Pull insurance_access for any staff who already have a linked login profile
-  const linkedProfileIds = staffList.filter(s => s.profile_id).map(s => s.profile_id);
-  insuranceAccessMap = {};
-  if (linkedProfileIds.length) {
-    const { data: profRows } = await sb.from('profiles')
-      .select('id, insurance_access').in('id', linkedProfileIds);
-    (profRows || []).forEach(p => { insuranceAccessMap[p.id] = !!p.insurance_access; });
-  }
-
   const personFilter = document.getElementById('fStaffPerson')?.value || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
   const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
@@ -3234,16 +3221,10 @@ function showCredentialActionsMenu(staffId) {
   closeStaffActionsMenu();
 
   const esc = (str) => (str || '').replace(/'/g, "\\'");
-  const insuranceOn = !!insuranceAccessMap[s.profile_id];
 
   const rows = [];
   if (s.email) {
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
-  }
-  if (s.profile_id) {
-    rows.push(`<button class="btn ${insuranceOn ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleInsuranceAccess('${s.profile_id}','${esc(s.full_name)}',${insuranceOn ? 'true' : 'false'})" style="width:100%;justify-content:flex-start;${insuranceOn ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">🛡 Insurance ${insuranceOn ? 'ON' : 'OFF'}</button>`);
-  } else {
-    rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">🛡 Insurance access needs login first</span>`);
   }
 
   const modal = document.createElement('div');
@@ -3835,28 +3816,6 @@ async function confirmStaffTypeCred(id, name) {
 
   toast(`✓ ${name} set to ${newType}`);
   await loadStaffTable();
-}
-
-async function toggleInsuranceAccess(profileId, name, current) {
-  try {
-    // The Edge Function reads the current value AND flips it, entirely
-    // server-side with the service role — a client-side read of someone
-    // else's profile row is subject to the same RLS restriction that
-    // caused this bug in the first place, so we don't trust one here.
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role-ts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ profile_id: profileId, toggle_field: 'insurance_access' }),
-    });
-    const result = await res.json();
-    if (result.error) throw new Error(result.error);
-
-    toast(`✓ ${name} — Insurance access ${result.new_value ? 'granted' : 'revoked'}`);
-    await loadStaffTable();
-  } catch (e) {
-    toast('Error: ' + e.message, true);
-  }
 }
 
 async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
@@ -5842,19 +5801,7 @@ function applyBranding(branding, logoUrl) {
 }
 
 // ══ TABS ══
-function restrictToInsuranceOnly() {
-  window._insuranceOnlyAccess = true;
-  ['tab-docs', 'tab-exp', 'tab-staff', 'tab-settings', 'tab-super'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.style.display = 'none';
-  });
-  const myCreds = document.getElementById('hdrMyCreds');
-  if (myCreds) myCreds.style.display = 'none';
-  switchTab('insurance');
-}
-
 function switchTab(tab) {
-  if (window._insuranceOnlyAccess && tab !== 'insurance') tab = 'insurance';
   ['overview','docs','exp','staff','insurance','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
