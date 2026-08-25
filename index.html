@@ -1614,7 +1614,7 @@ async function initSession(user) {
       // path ever hides it if this specific profile isn't a super admin.
       document.getElementById('tab-super').style.display = profile.is_super_admin ? 'inline-flex' : 'none';
       document.getElementById('tab-settings').style.display = (profile.role === 'admin' || profile.is_super_admin) ? 'inline-flex' : 'none';
-      document.getElementById('tab-insurance').style.display = (profile.role === 'admin' || profile.is_super_admin) ? 'inline-flex' : 'none';
+      document.getElementById('tab-insurance').style.display = (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin) ? 'inline-flex' : 'none';
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -5340,6 +5340,15 @@ async function deletePartnerUser(id, name) {
 async function loadInsuranceTab() {
   await loadStaffList();   // ensure staffList is fresh in case Staff tab hasn't loaded yet
   await loadPayerBoard();
+
+  // Office gets read-only access to the quick verification board only —
+  // the editable add/update form and the two management tables (with
+  // per-row edit/delete) stay admin-only.
+  const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
+  ['pnAddFormPanel', 'pnStaffTablePanel', 'pnEntityTablePanel'].forEach(id => {
+    const panel = document.getElementById(id);
+    if (panel) panel.style.display = isOffice ? 'none' : '';
+  });
 }
 
 async function emailInNetworkSummary() {
