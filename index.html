@@ -3152,8 +3152,10 @@ async function loadStaffTable() {
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="verifyLicense('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>
-      <button class="btn btn-sm btn-ghost" onclick="showEditLicenseModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit license #</button>
+      <button class="btn btn-sm btn-ghost" onclick="showEditLicenseModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">License info</button>
       <button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>
+      <button class="btn btn-sm btn-ghost" onclick="lookupNpi('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>
+      <button class="btn btn-sm ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded' : 'Exclude'}</button>
       <button class="btn btn-sm btn-gold" onclick="showAccountActionsMenu('${s.id}')">⚙ Account</button>
       <button class="btn btn-sm btn-gold" onclick="showCredentialActionsMenu('${s.id}')">🩺 Credentialing</button>
     </div></td>
@@ -3217,8 +3219,6 @@ function showCredentialActionsMenu(staffId) {
   } else {
     rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">🛡 Insurance access needs login first</span>`);
   }
-  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();lookupNpi('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>`);
-  rows.push(`<button class="btn ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="width:100%;justify-content:flex-start;${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded from compliance' : 'Not a real credentialed person? Exclude'}</button>`);
 
   const modal = document.createElement('div');
   modal.id = 'staffActionsModal';
