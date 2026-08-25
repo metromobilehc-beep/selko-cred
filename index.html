@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <style>
   :root {
     --navy:      #0f1f2e;
@@ -515,6 +516,7 @@
             <button class="btn-more-item" onclick="closeDocsMoreMenu();exportCsv()">⬇ Export CSV</button>
             <button class="btn-more-item" id="exportProExcelBtn" onclick="closeDocsMoreMenu();exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
             <button class="btn-more-item" id="exportProPdfBtn" onclick="closeDocsMoreMenu();exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
+            <button class="btn-more-item" onclick="closeDocsMoreMenu();showAuditPacketPicker()">🗂 Audit packet (per staff)</button>
           </div>
         </div>
       </div>
@@ -2408,6 +2410,196 @@ async function exportProReportPDF() {
 
   doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_CredReport_${new Date().toISOString().slice(0,10)}.pdf`);
   toast('PDF report exported');
+}
+
+// ══ AUDIT-READY COMPLIANCE PACKET ══
+// One PDF per staff member: a cover/summary page (built with jsPDF, same
+// styling as the report above) followed by the actual verified document
+// files merged in as full pages — images embedded directly, existing PDFs
+// merged page-for-page. jsPDF alone can only place images; merging real
+// PDF pages from staff-uploaded files requires pdf-lib, so the summary
+// page is built with jsPDF and then loaded into a pdf-lib document that
+// the real files get appended to.
+function showAuditPacketPicker() {
+  const existing = document.getElementById('auditPacketModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'auditPacketModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Audit-ready compliance packet</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Builds one PDF for a single staff member: a summary page of every document on file, followed by the actual uploaded file for each verified document — ready to hand to a surveyor or auditor as-is.</div>
+      <div style="margin-bottom:18px;">
+        <label class="inline-label">Staff member</label>
+        <select class="inline-select" id="auditPacketStaff" style="width:100%;">
+          <option value="">— Select staff —</option>
+          ${staffList.map(s => `<option value="${s.id}">${s.full_name.replace(/"/g,'&quot;')}</option>`).join('')}
+        </select>
+      </div>
+      <div id="auditPacketStatus" style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:14px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="auditPacketGoBtn" onclick="generateAuditPacket()" style="flex:1;justify-content:center;">Generate packet</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('auditPacketModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function generateAuditPacket() {
+  const staffId = document.getElementById('auditPacketStaff').value;
+  if (!staffId) { toast('Select a staff member first', true); return; }
+  const staff = staffList.find(s => s.id === staffId);
+  if (!staff) { toast('Staff member not found', true); return; }
+
+  const statusEl = document.getElementById('auditPacketStatus');
+  const goBtn = document.getElementById('auditPacketGoBtn');
+  statusEl.style.display = 'block';
+  goBtn.disabled = true;
+  const setStatus = (msg) => { statusEl.textContent = msg; };
+
+  try {
+    setStatus('Loading document records...');
+    const { data: docs, error } = await sb.from('credtrack_documents')
+      .select('*, document_types(name)')
+      .eq('staff_id', staffId)
+      .eq('archived', false)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+
+    // ── 1. Cover / summary page, built with jsPDF, same visual language
+    //      as the existing Pro PDF export ──
+    const { jsPDF } = window.jspdf;
+    const cover = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+    const pageWidth = cover.internal.pageSize.getWidth();
+    const NAVY = [15, 31, 46], TEAL = [13, 148, 136];
+    const RED = [153, 27, 27], GREEN = [6, 95, 70], AMBER = [146, 64, 14];
+
+    cover.setFillColor(...NAVY);
+    cover.rect(0, 0, pageWidth, 60, 'F');
+    cover.setTextColor(255, 255, 255);
+    cover.setFont('helvetica', 'bold');
+    cover.setFontSize(18);
+    cover.text(staff.full_name, 24, 26);
+    cover.setFont('helvetica', 'italic');
+    cover.setFontSize(10);
+    cover.text(`Audit-Ready Compliance Packet · ${currentCompany.name} · Generated ${new Date().toLocaleDateString()}`, 24, 44);
+
+    cover.setFont('helvetica', 'normal');
+    cover.setFontSize(10);
+    cover.setTextColor(30, 41, 59);
+    const infoLine = [
+      staff.discipline ? `Discipline: ${staff.discipline}` : null,
+      staff.license_type ? `License: ${staff.license_type} ${staff.license_number || '(no number on file)'}` : null,
+      staff.license_state ? `State: ${staff.license_state}` : null,
+      staff.npi_number ? `NPI: ${staff.npi_number}` : null,
+    ].filter(Boolean).join('    |    ');
+    if (infoLine) cover.text(infoLine, 24, 78);
+
+    const verifiedFiles = []; // { doc, staff } — only these get their actual file embedded below
+    const body = (docs || []).map(d => {
+      const status = d.verified ? 'Verified' : 'Pending';
+      const expiryLabel = d.expiry_date
+        ? (new Date(d.expiry_date) < new Date() ? 'EXPIRED' : fmtDate(d.expiry_date))
+        : 'No expiration';
+      if (d.verified && (d.file_url || d.file_url_2)) verifiedFiles.push(d);
+      return [d.document_types?.name || d.label || '—', fmtDate(d.issued_date), expiryLabel, status];
+    });
+
+    cover.autoTable({
+      startY: 96,
+      head: [['Document Type', 'Issued', 'Expires', 'Status']],
+      body,
+      styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
+      headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+      didParseCell: function(data) {
+        if (data.section === 'body') {
+          const status = data.row.raw[3];
+          const expires = data.row.raw[2];
+          if (expires === 'EXPIRED') { data.cell.styles.fillColor = [254,226,226]; }
+          else if (status === 'Verified') { data.cell.styles.fillColor = [209,250,229]; }
+          else { data.cell.styles.fillColor = [254,243,199]; }
+        }
+      },
+    });
+
+    cover.setFontSize(8);
+    cover.setTextColor(120, 120, 120);
+    cover.text(`${verifiedFiles.length} verified document file${verifiedFiles.length !== 1 ? 's' : ''} follow this summary.`, 24, cover.internal.pageSize.getHeight() - 20);
+
+    // ── 2. Load the jsPDF cover into pdf-lib, then append the real files ──
+    const { PDFDocument } = PDFLib;
+    const coverBytes = cover.output('arraybuffer');
+    const packet = await PDFDocument.load(coverBytes);
+
+    const skipped = [];
+    let fileCount = 0;
+    for (const d of verifiedFiles) {
+      const typeName = d.document_types?.name || d.label || 'Document';
+      const filesToEmbed = [
+        d.file_url   ? { path: d.file_url,   name: d.file_name   || 'file' } : null,
+        d.file_url_2 ? { path: d.file_url_2, name: d.file_name_2 || 'file (back)' } : null,
+      ].filter(Boolean);
+
+      for (const f of filesToEmbed) {
+        fileCount++;
+        setStatus(`Embedding file ${fileCount}: ${typeName}...`);
+        try {
+          const { data: blob, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(f.path);
+          if (dlErr) throw dlErr;
+          const bytes = await blob.arrayBuffer();
+          const ext = (f.name.split('.').pop() || '').toLowerCase();
+
+          // A labeled divider page before each file, so the packet reads
+          // clearly even once it's printed or forwarded outside the app.
+          const labelPage = packet.addPage([612, 100]); // Letter width, short strip
+          labelPage.drawText(`${typeName} — ${f.name}`, { x: 24, y: 60, size: 12 });
+          labelPage.drawText(`Verified${d.expiry_date ? ' · Expires ' + fmtDate(d.expiry_date) : ''}`, { x: 24, y: 40, size: 9, color: PDFLib.rgb(0.4, 0.4, 0.4) });
+
+          if (ext === 'pdf') {
+            const srcDoc = await PDFDocument.load(bytes);
+            const copiedPages = await packet.copyPages(srcDoc, srcDoc.getPageIndices());
+            copiedPages.forEach(p => packet.addPage(p));
+          } else {
+            // Image (jpg/jpeg/png) — embed as a single full page, scaled to fit Letter
+            const isPng = ext === 'png';
+            const img = isPng ? await packet.embedPng(bytes) : await packet.embedJpg(bytes);
+            const maxW = 612, maxH = 792;
+            const scale = Math.min(maxW / img.width, maxH / img.height, 1);
+            const w = img.width * scale, h = img.height * scale;
+            const imgPage = packet.addPage([612, 792]);
+            imgPage.drawImage(img, { x: (612 - w) / 2, y: (792 - h) / 2, width: w, height: h });
+          }
+        } catch (fileErr) {
+          console.warn('Skipping file in audit packet:', f.path, fileErr);
+          skipped.push(`${typeName} (${f.name})`);
+        }
+      }
+    }
+
+    setStatus('Finalizing PDF...');
+    const finalBytes = await packet.save();
+    const finalBlob = new Blob([finalBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(finalBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${staff.full_name.replace(/[^a-z0-9]/gi,'_')}_AuditPacket_${new Date().toISOString().slice(0,10)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    document.getElementById('auditPacketModal')?.remove();
+    toast(skipped.length
+      ? `Packet generated — ${skipped.length} file(s) couldn't be embedded and were skipped (see console)`
+      : `✓ Audit packet generated for ${staff.full_name}`);
+  } catch (e) {
+    setStatus('');
+    goBtn.disabled = false;
+    toast('Could not generate packet: ' + e.message, true);
+  }
 }
 
 async function loadStaffList() {
