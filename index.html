@@ -3140,7 +3140,6 @@ async function loadStaffTable() {
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="showLicenseInfoMenu('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 License info${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-gold" onclick="showAccountActionsMenu('${s.id}')">⚙ Account</button>
-      <button class="btn btn-sm btn-gold" onclick="showCredentialActionsMenu('${s.id}')">🩺 Credentialing</button>
     </div></td>
   </tr>`;
   }).join('');
@@ -3191,6 +3190,7 @@ function showAccountActionsMenu(staffId) {
   if (s.email) {
     rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}','${esc(s.full_name)}','${s.email}')" style="width:100%;justify-content:flex-start;">Set up login</button>`);
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPassword('${s.email}','${esc(s.full_name)}','${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
   } else {
     rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">No email on file — add one via Edit to enable login</span>`);
   }
@@ -3206,34 +3206,6 @@ function showAccountActionsMenu(staffId) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:320px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${s.full_name}</div>
       <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Account & Access</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        ${rows.join('')}
-      </div>
-      <button class="btn btn-ghost" onclick="closeStaffActionsMenu()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) closeStaffActionsMenu(); });
-}
-
-function showCredentialActionsMenu(staffId) {
-  const s = staffList.find(x => x.id === staffId);
-  if (!s) return;
-  closeStaffActionsMenu();
-
-  const esc = (str) => (str || '').replace(/'/g, "\\'");
-
-  const rows = [];
-  if (s.email) {
-    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
-  }
-
-  const modal = document.createElement('div');
-  modal.id = 'staffActionsModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:320px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${s.full_name}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Credentialing & Compliance</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
         ${rows.join('')}
       </div>
