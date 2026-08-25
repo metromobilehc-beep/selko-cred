@@ -5341,14 +5341,13 @@ async function loadInsuranceTab() {
   await loadStaffList();   // ensure staffList is fresh in case Staff tab hasn't loaded yet
   await loadPayerBoard();
 
-  // Office gets read-only access to the quick verification board only —
-  // the editable add/update form and the two management tables (with
-  // per-row edit/delete) stay admin-only.
+  // Office gets read-only access to everything except the add/update form —
+  // the two management tables (Individual staff, Company/agency entities)
+  // are shown but with their Delete actions stripped by renderPayerBoard(),
+  // and their filter dropdowns still work since filtering is read-only too.
   const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
-  ['pnAddFormPanel', 'pnStaffTablePanel', 'pnEntityTablePanel'].forEach(id => {
-    const panel = document.getElementById(id);
-    if (panel) panel.style.display = isOffice ? 'none' : '';
-  });
+  const addFormPanel = document.getElementById('pnAddFormPanel');
+  if (addFormPanel) addFormPanel.style.display = isOffice ? 'none' : '';
 }
 
 async function emailInNetworkSummary() {
@@ -5489,6 +5488,8 @@ function renderPayerBoard() {
     return;
   }
 
+  const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
+
   const badgeClass = {
     in_network:     'badge-verified',
     pending:        'badge-warn',
@@ -5513,7 +5514,7 @@ function renderPayerBoard() {
     <td>${r.confirmation_code || '—'}</td>
     <td style="max-width:220px;white-space:normal;font-size:12px;color:rgba(255,255,255,.7);">${r.notes || '—'}</td>
     <td><div class="td-actions">
-      <button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>
+      ${isOffice ? '<span style="font-size:12px;color:rgba(255,255,255,.3);">View only</span>' : `<button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>`}
     </div></td>
   </tr>`;
 
