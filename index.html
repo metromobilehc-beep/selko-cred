@@ -2496,12 +2496,14 @@ async function loadAdminDocs() {
     return;
   }
 
+  const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
+
   tbody.innerHTML = data.map(r => {
     const name     = r.credtrack_staff?.full_name || '—';
     const typeName = r.document_types?.name || r.label;
     const verHtml  = r.verified
       ? '<span class="badge badge-verified">✓ Verified</span>'
-      : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`;
+      : (isOffice ? '<span class="badge badge-none">Pending</span>' : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`);
     const fileHtml = [
       r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
       r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">View back</button>` : '',
@@ -2516,10 +2518,10 @@ async function loadAdminDocs() {
       <td style="font-size:11px;color:rgba(255,255,255,.4);">${fmtDate(r.created_at)}</td>
       <td><div class="td-actions">
         ${fileHtml}
-        <button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>
-        <button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>
+        ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>`}
+        ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>`}
         ${r.archived ? `<button class="btn btn-sm btn-gold" onclick="unarchiveDoc('${r.id}')">Unarchive</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>
+        ${isOffice ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>`}
       </div></td>
     </tr>`;
   }).join('');
@@ -3119,12 +3121,17 @@ async function loadStaffTable() {
     return;
   }
 
+  const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
+
   tbody.innerHTML = filteredStaff.map(s => {
     const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
     const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
     const nameCell = fullyVerified
       ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and a board verification record uploaded — does not cover CPR, driver's license, insurance, or other credential types" style="margin-left:6px;">✓ ${licenseLabel} Verified</span>`
       : s.full_name;
+    const staffTypeCell = isOffice
+      ? `<span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span>`
+      : `<button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
     return `<tr>
     <td>${nameCell}</td>
     <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
@@ -3135,7 +3142,7 @@ async function loadStaffTable() {
         ${s.discipline || 'set discipline'} ✎
       </button>
     </td>
-    <td><button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button></td>
+    <td>${staffTypeCell}</td>
     <td><span style="color:${s.active ? '#4ade80' : '#f87171'};font-weight:600;">${s.active ? '● Active' : '○ Inactive'}</span></td>
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="showLicenseInfoMenu('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 License info${s.license_number ? '' : ' ⚠'}</button>
