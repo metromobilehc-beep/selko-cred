@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -701,6 +702,9 @@
             <option value="0">Still needs verification</option>
           </select>
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvImportInput').click()" style="color:#fff;border-color:rgba(255,255,255,.2);">📁 Import from CSV</button>
+          <a href="#" onclick="downloadCsvTemplate();return false;" style="font-size:12px;color:rgba(255,255,255,.5);align-self:center;">Download template</a>
+          <input type="file" id="csvImportInput" accept=".csv" style="display:none;" onchange="handleCsvFileSelected(this)" />
         </div>
         <div class="inline-form" id="addStaffForm">
           <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;">
@@ -3182,6 +3186,7 @@ function showStaffActionsMenu(staffId) {
     rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">🛡 Insurance access needs login first</span>`);
   }
   rows.push(`<button class="btn ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="width:100%;justify-content:flex-start;${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded from compliance' : 'Not a real credentialed person? Exclude'}</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();lookupNpi('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();editStaff('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>`);
   rows.push(`<button class="btn btn-gold" onclick="closeStaffActionsMenu();toggleActive('${s.id}',${s.active})" style="width:100%;justify-content:flex-start;">${s.active ? 'Deactivate' : 'Reactivate'}</button>`);
   rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Delete</button>`);
@@ -3302,6 +3307,146 @@ function attachVerificationProof(staffId) {
     document.getElementById('auFile').scrollIntoView({ behavior: 'smooth', block: 'center' });
     toast(`Ready — attach the screenshot/PDF for ${s.full_name}`);
   }, 50);
+}
+
+function downloadCsvTemplate() {
+  const csv = 'Full Name,Email,Discipline,Staff Type,NPI Number,License Number,License State\n' +
+    'Jane Smith,jane.smith@example.com,PT,clinician,1234567890,PT-12345,OK\n' +
+    'John Doe,john.doe@example.com,,office,,,\n';
+  const a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.download = 'staff_import_template.csv';
+  a.click();
+}
+
+let _csvImportRows = [];
+
+function handleCsvFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      input.value = ''; // reset so selecting the same file again still fires onchange
+      processCsvRows(results.data);
+    },
+    error: (err) => {
+      toast('Could not read that CSV file: ' + err.message, true);
+    },
+  });
+}
+
+function processCsvRows(rawRows) {
+  const validDisciplines = getCompanyDisciplines();
+  const existingEmails = new Set(staffList.map(s => (s.email || '').toLowerCase()));
+
+  _csvImportRows = rawRows.map((row, i) => {
+    const name = (row['Full Name'] || '').trim();
+    const email = (row['Email'] || '').trim();
+    const disciplineRaw = (row['Discipline'] || '').trim();
+    const staffTypeRaw = (row['Staff Type'] || 'clinician').trim().toLowerCase();
+    const npi = (row['NPI Number'] || '').trim();
+    const licenseNumber = (row['License Number'] || '').trim();
+    const licenseState = (row['License State'] || '').trim();
+
+    const warnings = [];
+    if (!name) warnings.push('Missing name');
+    if (!email) warnings.push('Missing email');
+    if (email && existingEmails.has(email.toLowerCase())) warnings.push('Email already exists in your staff list');
+    if (disciplineRaw && !validDisciplines.includes(disciplineRaw)) {
+      warnings.push(`"${disciplineRaw}" isn't a configured discipline — will be left blank`);
+    }
+    const staffType = ['clinician', 'office', 'admin'].includes(staffTypeRaw) ? staffTypeRaw : 'clinician';
+    if (staffTypeRaw && staffType !== staffTypeRaw) warnings.push(`Unrecognized staff type "${staffTypeRaw}" — defaulted to clinician`);
+
+    return {
+      rowNum: i + 2, // +2 accounts for header row + 1-indexing, matching what a spreadsheet would show
+      name, email,
+      discipline: validDisciplines.includes(disciplineRaw) ? disciplineRaw : null,
+      staffType, npi, licenseNumber, licenseState,
+      warnings,
+      willImport: !!(name && email) && !(email && existingEmails.has(email.toLowerCase())),
+    };
+  });
+
+  showCsvPreviewModal();
+}
+
+function showCsvPreviewModal() {
+  const existing = document.getElementById('csvPreviewModal');
+  if (existing) existing.remove();
+
+  const importCount = _csvImportRows.filter(r => r.willImport).length;
+  const skipCount = _csvImportRows.length - importCount;
+
+  const modal = document.createElement('div');
+  modal.id = 'csvPreviewModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:720px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Review before importing</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">
+        ${importCount} will be imported${skipCount > 0 ? `, ${skipCount} will be skipped (see why below)` : ''}. Nothing is saved until you confirm.
+      </div>
+      <div style="max-height:400px;overflow-y:auto;margin-bottom:18px;">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;">
+          <thead>
+            <tr style="position:sticky;top:0;background:var(--navy2);">
+              <th style="text-align:left;padding:6px 8px;color:rgba(255,255,255,.5);">Row</th>
+              <th style="text-align:left;padding:6px 8px;color:rgba(255,255,255,.5);">Name</th>
+              <th style="text-align:left;padding:6px 8px;color:rgba(255,255,255,.5);">Email</th>
+              <th style="text-align:left;padding:6px 8px;color:rgba(255,255,255,.5);">Discipline</th>
+              <th style="text-align:left;padding:6px 8px;color:rgba(255,255,255,.5);">Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${_csvImportRows.map(r => `
+              <tr style="border-bottom:1px solid rgba(255,255,255,.06);opacity:${r.willImport ? '1' : '.45'};">
+                <td style="padding:6px 8px;color:rgba(255,255,255,.5);">${r.rowNum}</td>
+                <td style="padding:6px 8px;color:#fff;">${r.name || '—'}</td>
+                <td style="padding:6px 8px;color:rgba(255,255,255,.8);">${r.email || '—'}</td>
+                <td style="padding:6px 8px;color:rgba(255,255,255,.8);">${r.discipline || '—'}</td>
+                <td style="padding:6px 8px;color:${r.warnings.length ? '#f59e0b' : 'rgba(255,255,255,.4)'};">${r.warnings.join('; ') || '✓ OK'}</td>
+              </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="confirmCsvImport()" style="flex:1;justify-content:center;" ${importCount === 0 ? 'disabled' : ''}>
+          ✓ Import ${importCount} staff member${importCount !== 1 ? 's' : ''}
+        </button>
+        <button class="btn btn-ghost" onclick="document.getElementById('csvPreviewModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function confirmCsvImport() {
+  const toImport = _csvImportRows.filter(r => r.willImport);
+  if (!toImport.length) return;
+
+  const rows = toImport.map(r => ({
+    company_id: currentCompany.id,
+    full_name: r.name,
+    email: r.email,
+    discipline: r.discipline,
+    license_type: r.discipline, // keep in sync, same as the manual discipline-edit flow
+    staff_type: r.staffType,
+    npi_number: r.npi || null,
+    license_number: r.licenseNumber || null,
+    license_state: r.licenseState || null,
+    active: true,
+  }));
+
+  const { error } = await sb.from('credtrack_staff').insert(rows);
+  document.getElementById('csvPreviewModal')?.remove();
+  if (error) { toast('Import failed: ' + error.message, true); return; }
+
+  toast(`✓ Imported ${rows.length} staff member${rows.length !== 1 ? 's' : ''} — set up their logins individually when ready`);
+  await loadStaffTable();
+  await loadAdminFilters();
 }
 
 function showAddStaff() {
@@ -3624,6 +3769,66 @@ async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
   toast(currentlyExcluded
     ? 'Back to normal compliance tracking'
     : 'Excluded from compliance tracking — won\'t show up on Missing Documents or count toward Active Staff');
+  await loadStaffTable();
+}
+
+async function lookupNpi(staffId, fullName, licenseState) {
+  const namePart = fullName.split(',')[0].trim(); // drop the credential after the comma, e.g. "Kym Crane, SLP" -> "Kym Crane"
+  const nameWords = namePart.split(' ').filter(Boolean);
+  const firstName = nameWords[0] || '';
+  const lastName = nameWords.slice(1).join(' ') || namePart; // handles multi-word last names reasonably
+
+  toast('Searching the public NPI registry...');
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/lookup-npi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ firstName, lastName, state: licenseState || undefined }),
+    });
+    const result = await res.json();
+    if (result.error) { toast('NPI lookup failed: ' + result.error, true); return; }
+    showNpiResultsModal(staffId, fullName, result.results || []);
+  } catch (e) {
+    toast('NPI lookup failed: ' + e.message, true);
+  }
+}
+
+function showNpiResultsModal(staffId, fullName, results) {
+  const existing = document.getElementById('npiResultsModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'npiResultsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const body = !results.length
+    ? `<div style="color:rgba(255,255,255,.5);font-size:13px;padding:12px 0;">No matches found in the public NPI registry for "${fullName}". They may not have registered yet, or the name/state might not match exactly — you can still enter their NPI manually if you have it.</div>`
+    : `<div style="max-height:360px;overflow-y:auto;">
+        ${results.map(r => `
+          <div onclick="applyNpiResult('${staffId}','${r.npi}')" style="cursor:pointer;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:8px;">
+            <div style="color:#fff;font-weight:600;font-size:14px;">${r.firstName} ${r.lastName}${r.credential ? ', ' + r.credential : ''}</div>
+            <div style="color:rgba(255,255,255,.5);font-size:12px;">NPI: ${r.npi} · ${r.taxonomy || 'No specialty listed'}</div>
+            <div style="color:rgba(255,255,255,.4);font-size:12px;">${r.city}${r.city && r.state ? ', ' : ''}${r.state}</div>
+          </div>`).join('')}
+      </div>`;
+
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:480px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">NPI matches for "${fullName}"</div>
+      <div style="color:rgba(255,255,255,.5);font-size:12px;margin-bottom:16px;">This is public information from the CMS NPI Registry. Click the correct match to use it — double-check name and location before selecting, since common names can return multiple results.</div>
+      ${body}
+      <button class="btn btn-ghost" onclick="document.getElementById('npiResultsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);margin-top:14px;">Cancel</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function applyNpiResult(staffId, npi) {
+  const { error } = await sb.from('credtrack_staff').update({ npi_number: npi }).eq('id', staffId);
+  document.getElementById('npiResultsModal')?.remove();
+  if (error) { toast('Error saving NPI: ' + error.message, true); return; }
+  toast(`✓ NPI ${npi} saved`);
   await loadStaffTable();
 }
 
