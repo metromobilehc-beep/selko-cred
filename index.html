@@ -913,9 +913,47 @@
             <label class="inline-label">Expiry warning — second reminder (days)</label>
             <input class="inline-input" type="number" id="setWarn2" value="7" min="1" max="90" />
           </div>
+          <div>
+            <label class="inline-label">Organizational Tax ID (EIN)</label>
+            <input class="inline-input" type="text" id="setTaxId" placeholder="e.g. 12-3456789" />
+          </div>
+          <div>
+            <label class="inline-label">Organizational NPI (Type 2)</label>
+            <input class="inline-input" type="text" id="setOrgNpi" placeholder="e.g. 1234567890" />
+          </div>
         </div>
         <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save settings</button>
         <div id="setCoStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <!-- Accreditations — the org-level credential (ACHC, CHAP, Joint
+           Commission, or a custom body) that payers and referral sources
+           check, distinct from any individual clinician's license. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Accreditations</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Organization-level accreditation(s) — not tied to any one staff member.</p>
+        <div id="accreditationsListCred" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Body</label>
+            <select class="inline-select" id="accBodySelect" onchange="onAccBodySelectChanged()" style="width:200px;">
+              <option value="ACHC">ACHC</option>
+              <option value="CHAP">CHAP</option>
+              <option value="Joint Commission">Joint Commission</option>
+              <option value="__custom__">+ Other (type name)...</option>
+            </select>
+            <input class="inline-input" type="text" id="accBodyCustom" placeholder="Accrediting body name" style="width:200px;display:none;" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Accreditation number</label>
+            <input class="inline-input" type="text" id="accNumber" style="width:170px;" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
+            <input class="inline-input" type="date" id="accExpiry" style="width:150px;" />
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="addCompanyAccreditation()">+ Add</button>
+        </div>
       </div>
 
       <!-- Branding (Pro only) -->
@@ -2503,6 +2541,8 @@ async function generateAuditPacket() {
       staff.license_type ? `License: ${staff.license_type} ${staff.license_number || '(no number on file)'}` : null,
       staff.license_state ? `State: ${staff.license_state}` : null,
       staff.npi_number ? `NPI: ${staff.npi_number}` : null,
+      staff.caqh_id ? `CAQH: ${staff.caqh_id}` : null,
+      staff.dea_number ? `DEA: ${staff.dea_number}` : null,
     ].filter(Boolean).join('    |    ');
     if (infoLine) cover.text(infoLine, 24, 78);
 
@@ -2657,6 +2697,7 @@ function showStaffAuditLog(staffId, staffName) {
     const fieldLabels = {
       license_number: 'License number', license_type: 'License type', license_state: 'License state',
       npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
+      caqh_id: 'CAQH ID', dea_number: 'DEA number',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -3442,7 +3483,7 @@ function showLicenseInfoMenu(staffId) {
 
   const rows = [];
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();verifyLicense('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>`);
-  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}','${s.caqh_id||''}','${s.dea_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();attachVerificationProof('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();lookupNpi('${s.id}','${esc(s.full_name)}','${s.license_state||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showStaffAuditLog('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🕒 Edit history</button>`);
@@ -3935,7 +3976,7 @@ async function confirmDisciplineCred(id) {
   await loadStaffTable();
 }
 
-function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi) {
+function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi, currentCaqh, currentDea) {
   const existing = document.getElementById('editLicenseModal');
   if (existing) existing.remove();
 
@@ -3960,9 +4001,19 @@ function showEditLicenseModal(id, name, currentNumber, currentType, currentState
           <input class="inline-input" type="text" id="editLicenseState" value="${currentState || ''}" placeholder="OK" maxlength="2" />
         </div>
       </div>
-      <div style="margin-bottom:18px;">
+      <div style="margin-bottom:12px;">
         <label class="inline-label">NPI number</label>
         <input class="inline-input" type="text" id="editLicenseNpi" value="${currentNpi || ''}" placeholder="e.g. 1234567890" />
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        <div>
+          <label class="inline-label">CAQH ID</label>
+          <input class="inline-input" type="text" id="editLicenseCaqh" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
+        </div>
+        <div>
+          <label class="inline-label">DEA number</label>
+          <input class="inline-input" type="text" id="editLicenseDea" value="${currentDea || ''}" placeholder="if applicable" />
+        </div>
       </div>
       <div id="editLicenseErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
@@ -3979,6 +4030,8 @@ async function saveEditLicense(id) {
   const type   = document.getElementById('editLicenseType').value.trim();
   const state  = document.getElementById('editLicenseState').value.trim();
   const npi    = document.getElementById('editLicenseNpi').value.trim();
+  const caqh   = document.getElementById('editLicenseCaqh').value.trim();
+  const dea    = document.getElementById('editLicenseDea').value.trim();
   const errEl  = document.getElementById('editLicenseErr');
   const before = staffList.find(s => s.id === id) || {};
 
@@ -3987,6 +4040,8 @@ async function saveEditLicense(id) {
     license_type:   type || null,
     license_state:  state || null,
     npi_number:     npi || null,
+    caqh_id:        caqh || null,
+    dea_number:     dea || null,
   }).eq('id', id);
 
   if (error) {
@@ -4000,6 +4055,8 @@ async function saveEditLicense(id) {
     { field: 'license_type',   old: before.license_type,   new: type || null },
     { field: 'license_state',  old: before.license_state,  new: state || null },
     { field: 'npi_number',     old: before.npi_number,      new: npi || null },
+    { field: 'caqh_id',        old: before.caqh_id,         new: caqh || null },
+    { field: 'dea_number',     old: before.dea_number,      new: dea || null },
   ]);
 
   document.getElementById('editLicenseModal')?.remove();
@@ -4806,6 +4863,65 @@ async function removeCompanyEntity(id, name) {
   toast(`Removed "${name}" from the list`);
 }
 
+function onAccBodySelectChanged() {
+  const isCustom = document.getElementById('accBodySelect').value === '__custom__';
+  document.getElementById('accBodyCustom').style.display = isCustom ? 'block' : 'none';
+}
+
+async function loadAccreditationsPanel() {
+  const container = document.getElementById('accreditationsListCred');
+  const { data } = await sb.from('company_accreditations')
+    .select('*').eq('company_id', currentCompany.id).order('expiration_date', { ascending: true, nullsFirst: false });
+
+  if (!data?.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No accreditations on file yet.</div>';
+    return;
+  }
+
+  container.innerHTML = data.map(a => {
+    const expired = a.expiration_date && new Date(a.expiration_date) < new Date();
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="flex:1;color:#fff;font-size:13px;">${a.body_name}${a.accreditation_number ? ' — ' + a.accreditation_number : ''}</span>
+      <span style="font-size:12px;color:${expired ? '#f87171' : 'rgba(255,255,255,.4)'};">${a.expiration_date ? (expired ? 'Expired ' : 'Expires ') + fmtDate(a.expiration_date) : 'No expiration on file'}</span>
+      <button class="btn btn-sm btn-danger" onclick="removeCompanyAccreditation('${a.id}','${a.body_name.replace(/'/g,"\\'")}')" style="font-size:11px;">Remove</button>
+    </div>`;
+  }).join('');
+}
+
+async function addCompanyAccreditation() {
+  const bodySelect = document.getElementById('accBodySelect').value;
+  const bodyName = bodySelect === '__custom__'
+    ? document.getElementById('accBodyCustom').value.trim()
+    : bodySelect;
+  const number = document.getElementById('accNumber').value.trim() || null;
+  const expiry = document.getElementById('accExpiry').value || null;
+
+  if (!bodyName) { toast('Enter the accrediting body name', true); return; }
+
+  const { error } = await sb.from('company_accreditations').insert({
+    company_id: currentCompany.id,
+    body_name: bodyName,
+    accreditation_number: number,
+    expiration_date: expiry,
+  });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  document.getElementById('accBodyCustom').value = '';
+  document.getElementById('accNumber').value = '';
+  document.getElementById('accExpiry').value = '';
+  loadAccreditationsPanel();
+  toast(`✓ Added ${bodyName}`);
+}
+
+async function removeCompanyAccreditation(id, name) {
+  if (!confirm(`Remove ${name} from your accreditations?`)) return;
+  const { error } = await sb.from('company_accreditations').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  loadAccreditationsPanel();
+  toast(`Removed ${name}`);
+}
+
 async function loadSettings() {
   const c = currentCompany;
 
@@ -4817,6 +4933,9 @@ async function loadSettings() {
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
+  document.getElementById('setTaxId').value     = c.tax_id || '';
+  document.getElementById('setOrgNpi').value    = c.org_npi || '';
+  loadAccreditationsPanel();
 
   // Lock company name editing for non-super-admins
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
@@ -5906,6 +6025,8 @@ async function saveCompanySettings() {
   const updates = {
     admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
     custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2 },
+    tax_id:  document.getElementById('setTaxId').value.trim() || null,
+    org_npi: document.getElementById('setOrgNpi').value.trim() || null,
   };
   if (isSuperAdmin) {
     updates.name = document.getElementById('setCoName').value.trim();
