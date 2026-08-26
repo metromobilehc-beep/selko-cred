@@ -438,6 +438,7 @@
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Insurance</button>
+      <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> Credentialing</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
     </div>
@@ -891,6 +892,74 @@
       </div>
     </div>
 
+    <!-- CREDENTIALING TAB (add-on) -->
+    <div id="tabCredentialing" style="display:none;">
+      <div id="credentialingContent">
+        <!-- Org-level credentialing info -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>Organization credentialing info</h2>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div>
+              <label class="inline-label">Organizational Tax ID (EIN)</label>
+              <input class="inline-input" type="text" id="setTaxId" placeholder="e.g. 12-3456789" />
+            </div>
+            <div>
+              <label class="inline-label">Organizational NPI (Type 2)</label>
+              <input class="inline-input" type="text" id="setOrgNpi" placeholder="e.g. 1234567890" />
+            </div>
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save</button>
+          <div id="setCoStatus2" class="up-status" style="margin-top:10px;"></div>
+        </div>
+
+        <!-- Accreditations -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>Accreditations</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Organization-level accreditation(s) — not tied to any one staff member.</p>
+          <div id="accreditationsListCred" style="margin-bottom:14px;"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Body</label>
+              <select class="inline-select" id="accBodySelect" onchange="onAccBodySelectChanged()" style="width:200px;">
+                <option value="ACHC">ACHC</option>
+                <option value="CHAP">CHAP</option>
+                <option value="Joint Commission">Joint Commission</option>
+                <option value="__custom__">+ Other (type name)...</option>
+              </select>
+              <input class="inline-input" type="text" id="accBodyCustom" placeholder="Accrediting body name" style="width:200px;display:none;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Accreditation number</label>
+              <input class="inline-input" type="text" id="accNumber" style="width:170px;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
+              <input class="inline-input" type="date" id="accExpiry" style="width:150px;" />
+            </div>
+            <button class="btn btn-sm btn-teal" onclick="addCompanyAccreditation()">+ Add</button>
+          </div>
+        </div>
+
+        <!-- Per-clinician credentialing fields (CAQH, DEA) -->
+        <div class="dark-panel" data-default-open="true">
+          <h2>Provider credentialing (CAQH / DEA)</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">CAQH ID and DEA number, per staff member — used for payer credentialing applications, separate from basic license tracking.</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Staff</th><th>CAQH ID</th><th>DEA number</th><th>Actions</th></tr></thead>
+              <tbody id="credentialingStaffTbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="dark-panel" id="credentialingLock" style="display:none;">
+        <h2>Credentialing <span style="font-size:10px;color:var(--gold);margin-left:6px;">ADD-ON</span></h2>
+        <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:14px;">Payer-credentialing-level detail on top of basic document compliance — track organizational Tax ID/NPI, accreditations (ACHC, CHAP, Joint Commission), and per-clinician CAQH ID/DEA number, all in one place.</p>
+        <p style="color:rgba(255,255,255,.4);font-size:12px;">Contact Selko to add this to your plan.</p>
+      </div>
+    </div>
+
     <div id="tabSettings" style="display:none;">
 
       <!-- Company settings -->
@@ -913,47 +982,9 @@
             <label class="inline-label">Expiry warning — second reminder (days)</label>
             <input class="inline-input" type="number" id="setWarn2" value="7" min="1" max="90" />
           </div>
-          <div>
-            <label class="inline-label">Organizational Tax ID (EIN)</label>
-            <input class="inline-input" type="text" id="setTaxId" placeholder="e.g. 12-3456789" />
-          </div>
-          <div>
-            <label class="inline-label">Organizational NPI (Type 2)</label>
-            <input class="inline-input" type="text" id="setOrgNpi" placeholder="e.g. 1234567890" />
-          </div>
         </div>
         <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save settings</button>
         <div id="setCoStatus" class="up-status" style="margin-top:10px;"></div>
-      </div>
-
-      <!-- Accreditations — the org-level credential (ACHC, CHAP, Joint
-           Commission, or a custom body) that payers and referral sources
-           check, distinct from any individual clinician's license. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Accreditations</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Organization-level accreditation(s) — not tied to any one staff member.</p>
-        <div id="accreditationsListCred" style="margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;color:rgba(255,255,255,.5);">Body</label>
-            <select class="inline-select" id="accBodySelect" onchange="onAccBodySelectChanged()" style="width:200px;">
-              <option value="ACHC">ACHC</option>
-              <option value="CHAP">CHAP</option>
-              <option value="Joint Commission">Joint Commission</option>
-              <option value="__custom__">+ Other (type name)...</option>
-            </select>
-            <input class="inline-input" type="text" id="accBodyCustom" placeholder="Accrediting body name" style="width:200px;display:none;" />
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;color:rgba(255,255,255,.5);">Accreditation number</label>
-            <input class="inline-input" type="text" id="accNumber" style="width:170px;" />
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
-            <input class="inline-input" type="date" id="accExpiry" style="width:150px;" />
-          </div>
-          <button class="btn btn-sm btn-teal" onclick="addCompanyAccreditation()">+ Add</button>
-        </div>
       </div>
 
       <!-- Branding (Pro only) -->
@@ -1176,6 +1207,13 @@
               <option value="enterprise">Enterprise</option>
             </select>
           </div>
+          <div>
+            <label class="inline-label">Credentialing add-on</label>
+            <select class="inline-select" id="setCredAddon">
+              <option value="false">Not included</option>
+              <option value="true">Included</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-sm btn-teal" onclick="saveTrialSettings()">Save trial settings</button>
         <div id="setTrialStatus2" class="up-status" style="margin-top:10px;"></div>
@@ -1347,7 +1385,7 @@ document.addEventListener('click', function(e) {
 });
 
 function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabCredentialing .dark-panel, #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
     if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
     const h2 = panel.querySelector('h2');
     if (!h2) return;
@@ -1614,6 +1652,7 @@ async function initSession(user) {
     currentProfile = profile;
     currentCompany = company;
     window._isPro  = ['pro','enterprise'].includes(company.plan);
+    window._hasCredAddon = !!company.has_credentialing_addon;
 
     // Anyone set up via setupStaffLogin()/resetPassword() (temp password,
     // admin-generated) gets must_change_password=true. Force them to pick
@@ -3483,7 +3522,7 @@ function showLicenseInfoMenu(staffId) {
 
   const rows = [];
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();verifyLicense('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>`);
-  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}','${s.caqh_id||''}','${s.dea_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();attachVerificationProof('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();lookupNpi('${s.id}','${esc(s.full_name)}','${s.license_state||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showStaffAuditLog('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🕒 Edit history</button>`);
@@ -3976,7 +4015,7 @@ async function confirmDisciplineCred(id) {
   await loadStaffTable();
 }
 
-function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi, currentCaqh, currentDea) {
+function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi) {
   const existing = document.getElementById('editLicenseModal');
   if (existing) existing.remove();
 
@@ -4001,19 +4040,9 @@ function showEditLicenseModal(id, name, currentNumber, currentType, currentState
           <input class="inline-input" type="text" id="editLicenseState" value="${currentState || ''}" placeholder="OK" maxlength="2" />
         </div>
       </div>
-      <div style="margin-bottom:12px;">
+      <div style="margin-bottom:18px;">
         <label class="inline-label">NPI number</label>
         <input class="inline-input" type="text" id="editLicenseNpi" value="${currentNpi || ''}" placeholder="e.g. 1234567890" />
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
-        <div>
-          <label class="inline-label">CAQH ID</label>
-          <input class="inline-input" type="text" id="editLicenseCaqh" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
-        </div>
-        <div>
-          <label class="inline-label">DEA number</label>
-          <input class="inline-input" type="text" id="editLicenseDea" value="${currentDea || ''}" placeholder="if applicable" />
-        </div>
       </div>
       <div id="editLicenseErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
@@ -4030,8 +4059,6 @@ async function saveEditLicense(id) {
   const type   = document.getElementById('editLicenseType').value.trim();
   const state  = document.getElementById('editLicenseState').value.trim();
   const npi    = document.getElementById('editLicenseNpi').value.trim();
-  const caqh   = document.getElementById('editLicenseCaqh').value.trim();
-  const dea    = document.getElementById('editLicenseDea').value.trim();
   const errEl  = document.getElementById('editLicenseErr');
   const before = staffList.find(s => s.id === id) || {};
 
@@ -4040,8 +4067,6 @@ async function saveEditLicense(id) {
     license_type:   type || null,
     license_state:  state || null,
     npi_number:     npi || null,
-    caqh_id:        caqh || null,
-    dea_number:     dea || null,
   }).eq('id', id);
 
   if (error) {
@@ -4055,8 +4080,6 @@ async function saveEditLicense(id) {
     { field: 'license_type',   old: before.license_type,   new: type || null },
     { field: 'license_state',  old: before.license_state,  new: state || null },
     { field: 'npi_number',     old: before.npi_number,      new: npi || null },
-    { field: 'caqh_id',        old: before.caqh_id,         new: caqh || null },
-    { field: 'dea_number',     old: before.dea_number,      new: dea || null },
   ]);
 
   document.getElementById('editLicenseModal')?.remove();
@@ -4933,9 +4956,6 @@ async function loadSettings() {
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
-  document.getElementById('setTaxId').value     = c.tax_id || '';
-  document.getElementById('setOrgNpi').value    = c.org_npi || '';
-  loadAccreditationsPanel();
 
   // Lock company name editing for non-super-admins
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
@@ -4972,6 +4992,7 @@ async function loadSettings() {
     document.getElementById('trialPanel').style.display = 'block';
     document.getElementById('setTrialStatus').value  = c.active ? 'active' : 'suspended';
     document.getElementById('setTrialPlan').value    = c.plan || 'standard';
+    document.getElementById('setCredAddon').value    = c.has_credentialing_addon ? 'true' : 'false';
     document.getElementById('setTrialExpiry').value  = c.custom_vars?.trial_expiry || '';
   } else {
     document.getElementById('trialPanel').style.display = 'none';
@@ -5744,6 +5765,101 @@ async function loadInsuranceTab() {
   if (addFormPanel) addFormPanel.style.display = isOffice ? 'none' : '';
 }
 
+// ══ CREDENTIALING TAB (add-on) ══
+// Everything here is payer-credentialing-level detail on top of Cred's
+// original document-compliance-and-retrieval purpose — org Tax ID/NPI,
+// accreditations, and per-clinician CAQH/DEA. Gated separately from the
+// existing Pro plan (window._isPro) since an agency might want one
+// without the other — same lock/unlock pattern as the Missing Docs report.
+async function loadCredentialingTab() {
+  const content = document.getElementById('credentialingContent');
+  const lock = document.getElementById('credentialingLock');
+  if (!window._hasCredAddon) {
+    content.style.display = 'none';
+    lock.style.display = 'block';
+    return;
+  }
+  content.style.display = 'block';
+  lock.style.display = 'none';
+
+  document.getElementById('setTaxId').value  = currentCompany.tax_id || '';
+  document.getElementById('setOrgNpi').value = currentCompany.org_npi || '';
+  await loadAccreditationsPanel();
+  await renderCredentialingStaffTable();
+}
+
+async function renderCredentialingStaffTable() {
+  await loadStaffList();
+  const tbody = document.getElementById('credentialingStaffTbody');
+  if (!tbody) return;
+  if (!staffList.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No staff yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = staffList.map(s => `
+    <tr>
+      <td>${s.full_name}</td>
+      <td>${s.caqh_id || '—'}</td>
+      <td>${s.dea_number || '—'}</td>
+      <td><button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.dea_number||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button></td>
+    </tr>`).join('');
+}
+
+function showEditCredentialingModal(id, name, currentCaqh, currentDea) {
+  const existing = document.getElementById('editCredentialingModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'editCredentialingModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:340px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:18px;">${name}</div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">CAQH ID</label>
+        <input class="inline-input" type="text" id="editCaqhId" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
+      </div>
+      <div style="margin-bottom:18px;">
+        <label class="inline-label">DEA number</label>
+        <input class="inline-input" type="text" id="editDeaNumber" value="${currentDea || ''}" placeholder="if applicable" />
+      </div>
+      <div id="editCredentialingErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveEditCredentialing('${id}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editCredentialingModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveEditCredentialing(id) {
+  const caqh  = document.getElementById('editCaqhId').value.trim();
+  const dea   = document.getElementById('editDeaNumber').value.trim();
+  const errEl = document.getElementById('editCredentialingErr');
+  const before = staffList.find(s => s.id === id) || {};
+
+  const { error } = await sb.from('credtrack_staff').update({
+    caqh_id: caqh || null,
+    dea_number: dea || null,
+  }).eq('id', id);
+
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  await logStaffFieldChanges(id, [
+    { field: 'caqh_id',    old: before.caqh_id,    new: caqh || null },
+    { field: 'dea_number', old: before.dea_number, new: dea || null },
+  ]);
+
+  document.getElementById('editCredentialingModal')?.remove();
+  toast('Credentialing info updated');
+  await renderCredentialingStaffTable();
+}
+
 async function emailInNetworkSummary() {
   const defaultTo = currentProfile?.email || '';
   const to = prompt('Send the current in-network summary to which email address?', defaultTo);
@@ -6018,7 +6134,10 @@ async function saveCompanySettings() {
   const adminEmail = document.getElementById('setAdminEmail').value.trim();
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
-  const statusEl   = document.getElementById('setCoStatus');
+  // Two save buttons write here now (Settings tab, and the Credentialing
+  // tab's org Tax ID/NPI fields) — update whichever status element is
+  // actually present on the currently visible tab.
+  const statusEl   = document.getElementById('setCoStatus') || document.getElementById('setCoStatus2');
 
   // Only super admins can change company name
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
@@ -6034,18 +6153,18 @@ async function saveCompanySettings() {
 
   const { error } = await sb.from('companies').update(updates).eq('id', currentCompany.id);
   if (error) {
-    statusEl.textContent = 'Error: ' + error.message;
-    statusEl.className = 'up-status up-err';
-    statusEl.style.display = 'block';
+    if (statusEl) { statusEl.textContent = 'Error: ' + error.message; statusEl.className = 'up-status up-err'; statusEl.style.display = 'block'; }
     return;
   }
 
   currentCompany = { ...currentCompany, ...updates };
-  statusEl.textContent = '✓ Settings saved';
-  statusEl.className = 'up-status up-ok';
-  statusEl.style.display = 'block';
+  if (statusEl) {
+    statusEl.textContent = '✓ Settings saved';
+    statusEl.className = 'up-status up-ok';
+    statusEl.style.display = 'block';
+    setTimeout(() => statusEl.style.display = 'none', 3000);
+  }
   toast('Settings saved');
-  setTimeout(() => statusEl.style.display = 'none', 3000);
 }
 
 function onBrandLogoSelected(input) {
@@ -6108,11 +6227,13 @@ async function saveTrialSettings() {
   const status   = document.getElementById('setTrialStatus').value;
   const plan     = document.getElementById('setTrialPlan').value;
   const expiry   = document.getElementById('setTrialExpiry').value;
+  const credAddon = document.getElementById('setCredAddon').value === 'true';
   const statusEl = document.getElementById('setTrialStatus2');
 
   const updates = {
     active: status === 'active' || status === 'trial',
     plan,
+    has_credentialing_addon: credAddon,
     custom_vars: { ...(currentCompany.custom_vars || {}), trial_status: status, trial_expiry: expiry },
   };
 
@@ -6126,6 +6247,7 @@ async function saveTrialSettings() {
 
   currentCompany = { ...currentCompany, ...updates };
   window._isPro  = ['pro','enterprise'].includes(plan);
+  window._hasCredAddon = credAddon;
   statusEl.textContent = '✓ Trial settings saved';
   statusEl.className = 'up-status up-ok';
   statusEl.style.display = 'block';
@@ -6166,6 +6288,7 @@ async function viewAsAdmin(companyId, companyName) {
 
   currentCompany = company;
   window._isPro  = ['pro','enterprise'].includes(company.plan);
+  window._hasCredAddon = !!company.has_credentialing_addon;
 
   await loadStaffList();
   await loadAdminFilters();
@@ -6184,6 +6307,7 @@ async function exitViewAsAdmin() {
   currentProfile = { ..._superProfile };
   currentCompany = { ..._superCompany };
   window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
+  window._hasCredAddon = !!currentCompany.has_credentialing_addon;
   _superProfile  = null;
   _superCompany  = null;
 
@@ -6252,7 +6376,7 @@ function applyBranding(branding, logoUrl) {
 
 // ══ TABS ══
 function switchTab(tab) {
-  ['overview','docs','exp','staff','insurance','settings','super'].forEach(t => {
+  ['overview','docs','exp','staff','insurance','credentialing','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
@@ -6263,6 +6387,7 @@ function switchTab(tab) {
   if (tab === 'exp')       loadExpTracker();
   if (tab === 'staff')     loadStaffTable();
   if (tab === 'insurance') loadInsuranceTab();
+  if (tab === 'credentialing') loadCredentialingTab();
   if (tab === 'settings')  loadSettings();
   if (tab === 'super')     loadSuperAdmin();
 }
