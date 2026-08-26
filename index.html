@@ -2610,6 +2610,62 @@ async function generateAuditPacket() {
   }
 }
 
+// ══ CREDENTIAL AUDIT LOG ══
+// Field-level "who changed what, when" on staff credential records — the
+// natural companion to the audit-ready compliance packet: an auditor's
+// next question after "is this current" is usually "who verified it and
+// when." Logs only actual changes (old !== new), never a no-op save.
+async function logStaffFieldChanges(staffId, changes) {
+  const realChanges = changes.filter(c => (c.old || null) !== (c.new || null));
+  if (!realChanges.length) return;
+  const rows = realChanges.map(c => ({
+    company_id: currentCompany.id,
+    staff_id: staffId,
+    field_name: c.field,
+    old_value: c.old != null ? String(c.old) : null,
+    new_value: c.new != null ? String(c.new) : null,
+    changed_by: currentProfile.full_name || currentProfile.email,
+  }));
+  const { error } = await sb.from('credtrack_audit_log').insert(rows);
+  if (error) console.warn('Audit log write failed (change itself still saved):', error);
+}
+
+function showStaffAuditLog(staffId, staffName) {
+  const existing = document.getElementById('staffAuditLogModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'staffAuditLogModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:460px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${staffName}</div>
+      <div style="font-size:11px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Edit history</div>
+      <div id="staffAuditLogBody" style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:rgba(255,255,255,.3);">Loading...</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('staffAuditLogModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  (async () => {
+    const { data, error } = await sb.from('credtrack_audit_log')
+      .select('*').eq('staff_id', staffId).order('created_at', { ascending: false }).limit(100);
+    const body = document.getElementById('staffAuditLogBody');
+    if (!body) return; // modal may have been closed already
+    if (error) { body.innerHTML = `<span style="color:#f87171;">${error.message}</span>`; return; }
+    if (!data || !data.length) { body.innerHTML = '<span>No edits logged yet.</span>'; return; }
+    const fieldLabels = {
+      license_number: 'License number', license_type: 'License type', license_state: 'License state',
+      npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
+    };
+    body.innerHTML = data.map(r => `
+      <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
+        <div style="color:#fff;">${fieldLabels[r.field_name] || r.field_name}: <span style="color:rgba(255,255,255,.4);">${r.old_value || '(empty)'}</span> → <span style="color:var(--teal-l);">${r.new_value || '(empty)'}</span></div>
+        <div style="color:rgba(255,255,255,.35);font-size:11px;">${r.changed_by || 'Unknown'} · ${new Date(r.created_at).toLocaleString()}</div>
+      </div>`).join('');
+  })();
+}
+
 async function loadStaffList() {
   const { data } = await sb.from('credtrack_staff')
     .select('*').eq('company_id', currentCompany.id).order('full_name');
@@ -3389,6 +3445,7 @@ function showLicenseInfoMenu(staffId) {
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();attachVerificationProof('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>`);
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();lookupNpi('${s.id}','${esc(s.full_name)}','${s.license_state||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showStaffAuditLog('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">🕒 Edit history</button>`);
 
   const modal = document.createElement('div');
   modal.id = 'staffActionsModal';
@@ -3860,6 +3917,7 @@ async function confirmDisciplineCred(id) {
   const selected = document.querySelector('input[name="disciplineOption"]:checked');
   if (!selected) return;
   const newDiscipline = selected.value || null;
+  const before = staffList.find(s => s.id === id) || {};
   // Auto-sync license_type to match — these two fields are meant to mirror
   // each other, but were being updated through separate code paths with
   // nothing keeping them in sync, which is exactly what caused staff to
@@ -3869,6 +3927,10 @@ async function confirmDisciplineCred(id) {
     .update({ discipline: newDiscipline, license_type: newDiscipline }).eq('id', id);
   document.getElementById('disciplineModalCred').remove();
   if (error) { toast('Error: ' + error.message, true); return; }
+  await logStaffFieldChanges(id, [
+    { field: 'discipline',   old: before.discipline,   new: newDiscipline },
+    { field: 'license_type', old: before.license_type, new: newDiscipline },
+  ]);
   toast('Discipline updated');
   await loadStaffTable();
 }
@@ -3918,6 +3980,7 @@ async function saveEditLicense(id) {
   const state  = document.getElementById('editLicenseState').value.trim();
   const npi    = document.getElementById('editLicenseNpi').value.trim();
   const errEl  = document.getElementById('editLicenseErr');
+  const before = staffList.find(s => s.id === id) || {};
 
   const { error } = await sb.from('credtrack_staff').update({
     license_number: number || null,
@@ -3931,6 +3994,13 @@ async function saveEditLicense(id) {
     errEl.style.display = 'block';
     return;
   }
+
+  await logStaffFieldChanges(id, [
+    { field: 'license_number', old: before.license_number, new: number || null },
+    { field: 'license_type',   old: before.license_type,   new: type || null },
+    { field: 'license_state',  old: before.license_state,  new: state || null },
+    { field: 'npi_number',     old: before.npi_number,      new: npi || null },
+  ]);
 
   document.getElementById('editLicenseModal')?.remove();
   toast('License info updated');
@@ -3977,11 +4047,16 @@ async function confirmStaffTypeCred(id, name) {
   const selected = document.querySelector('input[name="stTypeOption"]:checked');
   if (!selected) return;
   const newType = selected.value;
+  const before = staffList.find(s => s.id === id) || {};
 
   const { data: updated, error } = await sb.from('credtrack_staff')
     .update({ staff_type: newType }).eq('id', id).select('profile_id').maybeSingle();
   document.getElementById('staffTypeModalCred')?.remove();
   if (error) { toast('Error: ' + error.message, true); return; }
+
+  await logStaffFieldChanges(id, [
+    { field: 'staff_type', old: before.staff_type, new: newType },
+  ]);
 
   // If this person already has a login, their actual access level needs to
   // follow the new staff_type — otherwise an admin promotion silently does
