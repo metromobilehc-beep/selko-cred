@@ -6866,6 +6866,7 @@ async function loadSuperAdmin() {
       <div class="company-card-flags">
         <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '✓' : '✕'}</span>
         <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '✓' : '✕'}</span>
+        <span class="flag-pill ${c.has_credentialing_addon ? 'flag-on' : 'flag-off'}">Credentialing ${c.has_credentialing_addon ? '✓' : '✕'}</span>
         <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
         ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">🗑 Deleted — purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
       </div>
@@ -6880,6 +6881,10 @@ async function loadSuperAdmin() {
           <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
             onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
             ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
+          </button>
+          <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
+            onclick="toggleCompanyFlag('${c.id}','has_credentialing_addon',${!!c.has_credentialing_addon})">
+            ${c.has_credentialing_addon ? 'Disable Credentialing add-on' : 'Enable Credentialing add-on'}
           </button>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
