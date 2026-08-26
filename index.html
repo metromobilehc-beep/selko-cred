@@ -837,6 +837,14 @@
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmation code</label>
           <input type="text" id="pnConfCode" placeholder="e.g. AUTH-12345" style="width:170px;" />
         </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Network provider ID</label>
+          <input type="text" id="pnNetworkProviderId" placeholder="Payer-issued ID" style="width:170px;" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">Group ID</label>
+          <input type="text" id="pnGroupId" placeholder="e.g. GRP-4021" style="width:150px;" />
+        </div>
         <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Notes</label>
           <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;"></textarea>
@@ -858,7 +866,7 @@
         </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Provider ID</th><th>Group ID</th><th>Notes</th><th>Actions</th></tr></thead>
           <tbody id="payerBoardStaffTbody"></tbody>
         </table>
       </div>
@@ -5704,6 +5712,8 @@ function renderPayerBoard() {
     <td>${r.date_in_network || '—'}</td>
     <td>${r.expiration_date || '—'}</td>
     <td>${r.confirmation_code || '—'}</td>
+    <td>${r.network_provider_id || '—'}</td>
+    <td>${r.group_id || '—'}</td>
     <td style="max-width:220px;white-space:normal;font-size:12px;color:rgba(255,255,255,.7);">${r.notes || '—'}</td>
     <td><div class="td-actions">
       ${isOffice ? '<span style="font-size:12px;color:rgba(255,255,255,.3);">View only</span>' : `<button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>`}
@@ -5747,6 +5757,8 @@ async function savePayerNetwork() {
   const inNetworkDate = document.getElementById('pnInNetwork').value  || null;
   const expiration    = document.getElementById('pnExpiration').value || null;
   const confCode      = document.getElementById('pnConfCode').value.trim() || null;
+  const networkProviderId = document.getElementById('pnNetworkProviderId').value.trim() || null;
+  const groupId       = document.getElementById('pnGroupId').value.trim() || null;
   const notes         = document.getElementById('pnNotes').value.trim()    || null;
   const err           = document.getElementById('pnErr');
   err.style.display = 'none';
@@ -5781,6 +5793,8 @@ async function savePayerNetwork() {
     date_in_network: inNetworkDate,
     expiration_date: expiration,
     confirmation_code: confCode,
+    network_provider_id: networkProviderId,
+    group_id: groupId,
     notes,
     verified_at: status === 'in_network' ? new Date().toISOString() : null,
   }, { onConflict: 'staff_id,payer_id' });
@@ -5792,6 +5806,8 @@ async function savePayerNetwork() {
   document.getElementById('pnInNetwork').value  = '';
   document.getElementById('pnExpiration').value = '';
   document.getElementById('pnConfCode').value   = '';
+  document.getElementById('pnNetworkProviderId').value = '';
+  document.getElementById('pnGroupId').value    = '';
   document.getElementById('pnNotes').value      = '';
   await loadPayerBoard();
 }
