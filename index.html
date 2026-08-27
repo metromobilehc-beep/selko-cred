@@ -5113,6 +5113,8 @@ async function loadDocTypesTable() {
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('sort_order');
 
+  _docTypesCache = data || []; // so edit functions can check company_id before writing, without a re-fetch
+
   const { data: hiddenRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
@@ -5149,29 +5151,31 @@ async function loadDocTypesTable() {
     const rows = groups[cat].map(t => {
       const disciplines = t.required_for_disciplines || [];
       const scopeLabel = !t.is_required ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
+      const isGlobal = !t.company_id;
+      const lockTitle = 'Selko-provided default, shared by every company — "Hide for us" it and add your own version to customize';
       return `<tr data-doctype-group="${catSlug}">
     <td>
-      <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;" 
-        type="text" value="${t.name}" id="dtname_${t.id}" 
+      <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;${isGlobal ? 'opacity:.5;' : ''}" 
+        type="text" value="${t.name}${isGlobal ? ' 🔒' : ''}" id="dtname_${t.id}" ${isGlobal ? `readonly title="${lockTitle}"` : ''}
         onblur="updateDocTypeName(${t.id}, this.value)" />
     </td>
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
     <td>
-      <span class="badge ${t.is_required ? 'badge-warn' : 'badge-none'}" style="cursor:pointer;" 
-        onclick="toggleDocTypeRequired(${t.id}, ${!!t.is_required})" title="Click to toggle">
-        ${t.is_required ? 'Required' : 'Optional'}
+      <span class="badge ${t.is_required ? 'badge-warn' : 'badge-none'}" style="${isGlobal ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}" 
+        onclick="toggleDocTypeRequired(${t.id}, ${!!t.is_required})" title="${isGlobal ? lockTitle : 'Click to toggle'}">
+        ${t.is_required ? 'Required' : 'Optional'}${isGlobal ? ' 🔒' : ''}
       </span>
     </td>
     <td>
       ${t.is_required
         ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')})"
-             class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${scopeLabel} ✎</button>`
+             class="badge badge-none" style="${isGlobal ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}border:none;font:inherit;font-size:11px;" title="${isGlobal ? lockTitle : ''}">${scopeLabel} ${isGlobal ? '🔒' : '✎'}</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
     </td>
     <td>
-      <span class="badge ${t.staff_can_upload === false ? 'badge-none' : 'badge-ok'}" style="cursor:pointer;"
-        onclick="toggleDocTypeStaffUpload(${t.id}, ${t.staff_can_upload !== false})" title="Click to toggle whether staff can upload this themselves">
-        ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}
+      <span class="badge ${t.staff_can_upload === false ? 'badge-none' : 'badge-ok'}" style="${isGlobal ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}"
+        onclick="toggleDocTypeStaffUpload(${t.id}, ${t.staff_can_upload !== false})" title="${isGlobal ? lockTitle : 'Click to toggle whether staff can upload this themselves'}">
+        ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}${isGlobal ? ' 🔒' : ''}
       </span>
     </td>
     ${hasPartnerAccess ? `<td>
@@ -5185,7 +5189,7 @@ async function loadDocTypesTable() {
       </div>
     </td>` : ''}
     <td><div class="td-actions">
-      <select class="filter-sel" style="font-size:11px;padding:4px 6px;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="Move to a different category">
+      <select class="filter-sel" style="font-size:11px;padding:4px 6px;${isGlobal ? 'opacity:.5;' : ''}" onchange="updateDocTypeCategory(${t.id}, this.value)" title="${isGlobal ? lockTitle : 'Move to a different category'}" ${isGlobal ? 'disabled' : ''}>
         ${categoryOrder.map(c => `<option value="${c}" ${c === (t.category || 'Other') ? 'selected' : ''}>${c}</option>`).join('')}
       </select>
       <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
@@ -5214,7 +5218,25 @@ function toggleDocTypeCategory(catSlug) {
   if (chevron) chevron.classList.toggle('open', !isOpen);
 }
 
+let _docTypesCache = [];
+
+// A global (Selko-provided) document type — company_id is null — has no
+// per-company override mechanism for these fields, unlike "hidden" which
+// writes to its own junction table. Editing the shared row directly would
+// silently change it for every company on the platform, so this blocks it
+// client-side and explains the actual path: hide it, then add your own
+// custom version scoped to just your company.
+function blockedFromEditingGlobalDocType(id) {
+  const t = _docTypesCache.find(x => x.id === id);
+  if (t && !t.company_id) {
+    toast('This is a Selko-provided default, shared across every company — it can\'t be customized directly. "Hide for us" it, then add your own version with the settings you want.', true);
+    return true;
+  }
+  return false;
+}
+
 async function updateDocTypeCategory(id, category) {
+  if (blockedFromEditingGlobalDocType(id)) return;
   const { error } = await sb.from('document_types').update({ category }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Moved to ' + category);
@@ -5222,6 +5244,7 @@ async function updateDocTypeCategory(id, category) {
 }
 
 async function updateDocTypeName(id, name) {
+  if (blockedFromEditingGlobalDocType(id)) { await loadDocTypesTable(); return; } // revert the input's stale edited text back to the real value
   if (!name.trim()) return;
   const { error } = await sb.from('document_types').update({ name: name.trim() }).eq('id', id);
   if (error) toast('Error: ' + error.message, true);
@@ -5229,6 +5252,7 @@ async function updateDocTypeName(id, name) {
 }
 
 async function toggleDocTypeRequired(id, currentlyRequired) {
+  if (blockedFromEditingGlobalDocType(id)) return;
   const { error } = await sb.from('document_types').update({ is_required: !currentlyRequired }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(!currentlyRequired ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
@@ -5236,6 +5260,7 @@ async function toggleDocTypeRequired(id, currentlyRequired) {
 }
 
 async function toggleDocTypeStaffUpload(id, currentlyAllowed) {
+  if (blockedFromEditingGlobalDocType(id)) return;
   const { error } = await sb.from('document_types').update({ staff_can_upload: !currentlyAllowed }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(currentlyAllowed
@@ -5310,6 +5335,7 @@ async function confirmDocTypePartnerScope(id) {
 }
 
 function showDocTypeScopeModal(id, name, currentDisciplines) {
+  if (blockedFromEditingGlobalDocType(id)) return;
   const existing = document.getElementById('scopeModalCred');
   if (existing) existing.remove();
 
@@ -5339,6 +5365,7 @@ function showDocTypeScopeModal(id, name, currentDisciplines) {
 }
 
 async function confirmDocTypeScope(id) {
+  if (blockedFromEditingGlobalDocType(id)) { document.getElementById('scopeModalCred')?.remove(); return; }
   const checked = Array.from(document.querySelectorAll('input[name="scopeOption"]:checked')).map(el => el.value);
   const { error } = await sb.from('document_types').update({ required_for_disciplines: checked.length ? checked : null }).eq('id', id);
   document.getElementById('scopeModalCred').remove();
