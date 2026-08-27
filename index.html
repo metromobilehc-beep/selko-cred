@@ -2235,7 +2235,7 @@ async function checkStaffCompliance(staffId) {
       .select('document_type_id').eq('company_id', staff.company_id);
     const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
 
-    const overridesMap = await getRequiredOverrides(staff.company_id);
+    const overridesMap = await getDocTypeOverrides(staff.company_id);
     const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
 
     const applicable = (allTypes || []).filter(t => {
@@ -2244,7 +2244,7 @@ async function checkStaffCompliance(staffId) {
       // (set from the Selko Admin master list) — the real, deliberately
       // managed source of truth, not an inference from discipline-scoping.
       if (t.company_id === null && t.tier === 'pro' && !canUseAdvancedTypes) return false;
-      const disciplineList = t.required_for_disciplines || [];
+      const disciplineList = effectiveDisciplines(t, overridesMap);
       const companyMatch = t.company_id === null || t.company_id === staff.company_id;
       const disciplineMatch = disciplineList.length === 0 || disciplineList.includes(staff.discipline);
       return companyMatch && disciplineMatch && effectiveRequired(t, overridesMap);
@@ -5139,13 +5139,13 @@ async function loadDocTypesTable() {
 
   _docTypesCache = data || []; // so edit functions can check company_id before writing, without a re-fetch
 
-  const requiredOverrides = await getRequiredOverrides(currentCompany.id);
-  _docTypeRequiredOverrides = requiredOverrides; // so toggleDocTypeRequired knows the current override state without a re-fetch
+  const docTypeOverrides = await getDocTypeOverrides(currentCompany.id);
+  _docTypeRequiredOverrides = docTypeOverrides; // so toggleDocTypeRequired/confirmDocTypeScope know the current override state without a re-fetch
 
   const canCustomize = window._isPro || currentProfile?.is_super_admin;
   const banner = document.getElementById('docTypesExplainerBanner');
   if (banner) {
-    banner.innerHTML = `🔒 Locked items are built-in starting points every company gets. <strong>Required/Optional always works, at any plan</strong> — it's core to your compliance tracking. Everything else about a locked item (name, category, self-upload, which disciplines it applies to) stays shared, since changing it would affect every other company too.` + (canCustomize
+    banner.innerHTML = `🔒 Locked items are built-in starting points every company gets. <strong>Required/Optional and Applies To always work, at any plan</strong> — they're core to your compliance tracking. Everything else about a locked item (name, category, self-upload) stays shared, since changing it would affect every other company too.` + (canCustomize
       ? ` Want full control over one? Hit <strong>"Hide for us"</strong>, then <strong>"Duplicate"</strong> to get your own private, fully-editable copy.`
       : ` Full customization of a locked item is a Pro feature — contact Selko to upgrade if you'd like that.`);
   }
@@ -5184,8 +5184,8 @@ async function loadDocTypesTable() {
   tbody.innerHTML = sortedCategories.map((cat, catIdx) => {
     const catSlug = 'cat' + catIdx;
     const rows = groups[cat].map(t => {
-      const isReq = effectiveRequired(t, requiredOverrides);
-      const disciplines = t.required_for_disciplines || [];
+      const isReq = effectiveRequired(t, docTypeOverrides);
+      const disciplines = effectiveDisciplines(t, docTypeOverrides);
       const scopeLabel = !isReq ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
       const isGlobal = !t.company_id;
       // True super admins have a dedicated RLS policy granting real edit
@@ -5196,17 +5196,11 @@ async function loadDocTypesTable() {
       const lockTitle = window._isPro
         ? 'Built-in default — hide it, then duplicate it to make your own editable copy'
         : 'Built-in default — making your own editable copy is a Pro feature';
-      // Discipline-scoped built-in types (PT/PTA/OT/COTA/SLP License) are
-      // the "advanced" tier of global defaults — a type scoped to one
-      // discipline rather than "Everyone" is inherently the more granular,
-      // Pro-level kind. This is inferred from data that already exists
-      // (Applies To) rather than a second manual flag to maintain
-      // alongside the company's own plan tier.
-      // The real, deliberately-managed source of truth is the tier column
-      // itself (set per-type from the Selko Admin master list) — not an
-      // inference from discipline-scoping, which was a second, uncoordinated
-      // concept that didn't respect types you'd actually configured
-      // individually (e.g. PT/PTA marked pro while OT/COTA/SLP stay standard).
+      // The real, deliberately-managed source of truth for per-type Pro
+      // gating is the tier column itself, set from the Selko Admin master
+      // list — this drives Required/Optional AND Applies To, both of which
+      // work at every tier otherwise, since they're core to compliance
+      // tracking rather than cosmetic customization like name/category.
       const proOnlyBlocked = isGlobal && t.tier === 'pro' && !window._isPro && !currentProfile?.is_super_admin;
       return `<tr data-doctype-group="${catSlug}">
     <td>
@@ -5226,8 +5220,8 @@ async function loadDocTypesTable() {
     </td>
     <td>
       ${isReq
-        ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')})"
-             class="badge badge-none" style="${lockedForMe ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}border:none;font:inherit;font-size:11px;" title="${lockedForMe ? lockTitle : ''}">${scopeLabel} ${lockedForMe ? '🔒' : '✎'}</button>`
+        ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')},${isGlobal},${isGlobal && t.tier === 'pro'})"
+             class="badge badge-none" style="${proOnlyBlocked ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}border:none;font:inherit;font-size:11px;" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to edit — works at any plan tier, even for built-in defaults'}">${scopeLabel} ${proOnlyBlocked ? '🔒' : '✎'}</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
     </td>
     <td>
@@ -5282,21 +5276,28 @@ function toggleDocTypeCategory(catSlug) {
 let _docTypesCache = [];
 let _docTypeRequiredOverrides = {};
 
-// Required/Optional is core to whether compliance tracking works at all —
-// unlike name/category/discipline-scoping, it's not gated behind Pro, and
-// it's not something a company can fully "duplicate to customize" their
-// way around either (that IS Pro-gated). Instead it's a small, standalone
-// per-company override on top of the shared global default: every tier can
-// flip Required/Optional for themselves without forking the whole type.
-async function getRequiredOverrides(companyId) {
+// Required/Optional AND Applies-To scoping are both core to whether
+// compliance tracking actually works — unlike name/category/self-upload,
+// neither is gated behind Pro, and neither needs the whole type "duplicated"
+// to customize. Instead both live as a small, standalone per-company
+// override on top of the shared global default: every tier can flip
+// Required/Optional and adjust who it applies to, without forking the type.
+async function getDocTypeOverrides(companyId) {
   const { data } = await sb.from('company_document_type_overrides')
-    .select('document_type_id, is_required').eq('company_id', companyId);
+    .select('document_type_id, is_required, required_for_disciplines').eq('company_id', companyId);
   const map = {};
-  (data || []).forEach(o => { map[o.document_type_id] = o.is_required; });
+  (data || []).forEach(o => { map[o.document_type_id] = o; });
   return map;
 }
 function effectiveRequired(t, overridesMap) {
-  return overridesMap.hasOwnProperty(t.id) ? overridesMap[t.id] : !!t.is_required;
+  const o = overridesMap[t.id];
+  return (o && o.is_required !== null && o.is_required !== undefined) ? o.is_required : !!t.is_required;
+}
+function effectiveDisciplines(t, overridesMap) {
+  const o = overridesMap[t.id];
+  return (o && o.required_for_disciplines !== null && o.required_for_disciplines !== undefined)
+    ? o.required_for_disciplines
+    : (t.required_for_disciplines || []);
 }
 
 
@@ -5412,18 +5413,19 @@ async function duplicateDocTypeToCustomize(id) {
       if (hideErr) throw hideErr;
     }
 
-    // Preserve whatever Required/Optional this company already had via the
-    // lightweight override, rather than silently reverting them to the
-    // global default the moment they duplicate into a full custom copy.
-    const overridesMap = await getRequiredOverrides(currentCompany.id);
+    // Preserve whatever Required/Optional and Applies-To scoping this
+    // company already had via the lightweight override, rather than
+    // silently reverting them the moment they duplicate into a full copy.
+    const overridesMap = await getDocTypeOverrides(currentCompany.id);
     const effReq = effectiveRequired(t, overridesMap);
+    const effDisciplines = effectiveDisciplines(t, overridesMap);
 
     const { error: insertErr } = await sb.from('document_types').insert({
       name: t.name,
       expires: t.expires,
       category: t.category,
       is_required: effReq,
-      required_for_disciplines: t.required_for_disciplines,
+      required_for_disciplines: effDisciplines.length ? effDisciplines : null,
       staff_can_upload: t.staff_can_upload,
       company_id: currentCompany.id,
       sort_order: 999,
@@ -5495,8 +5497,11 @@ async function confirmDocTypePartnerScope(id) {
   await loadDocTypesTable();
 }
 
-function showDocTypeScopeModal(id, name, currentDisciplines) {
-  if (blockedFromEditingGlobalDocType(id)) return;
+function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly) {
+  if (isProOnly && !window._isPro && !currentProfile?.is_super_admin) {
+    toast('This document type is a Pro feature — contact Selko to upgrade.', true);
+    return;
+  }
   const existing = document.getElementById('scopeModalCred');
   if (existing) existing.remove();
 
@@ -5517,7 +5522,7 @@ function showDocTypeScopeModal(id, name, currentDisciplines) {
           </label>`).join('')}
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="confirmDocTypeScope(${id})" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-teal" onclick="confirmDocTypeScope(${id}, ${!!isGlobal})" style="flex:1;justify-content:center;">Save</button>
         <button class="btn btn-ghost" onclick="document.getElementById('scopeModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -5525,12 +5530,27 @@ function showDocTypeScopeModal(id, name, currentDisciplines) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-async function confirmDocTypeScope(id) {
-  if (blockedFromEditingGlobalDocType(id)) { document.getElementById('scopeModalCred')?.remove(); return; }
+// Same pattern as toggleDocTypeRequired: a global row writes to the
+// per-company override table (unless the caller is a true super admin,
+// who edits the shared row directly); a company-owned row updates
+// document_types directly, since the company already owns it outright.
+async function confirmDocTypeScope(id, isGlobal) {
   const checked = Array.from(document.querySelectorAll('input[name="scopeOption"]:checked')).map(el => el.value);
-  const { error } = await sb.from('document_types').update({ required_for_disciplines: checked.length ? checked : null }).eq('id', id);
+  const newDisciplines = checked.length ? checked : null;
+
+  if (isGlobal && !currentProfile?.is_super_admin) {
+    const { data: existing } = await sb.from('company_document_type_overrides')
+      .select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
+    const { error } = existing
+      ? await sb.from('company_document_type_overrides').update({ required_for_disciplines: newDisciplines }).eq('id', existing.id)
+      : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, required_for_disciplines: newDisciplines, is_required: true });
+    if (error) { toast('Error: ' + error.message, true); return; }
+  } else {
+    const { error } = await sb.from('document_types').update({ required_for_disciplines: newDisciplines }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, true); return; }
+  }
+
   document.getElementById('scopeModalCred').remove();
-  if (error) { toast('Error: ' + error.message, true); return; }
   toast(checked.length ? `Now required only for: ${checked.join(', ')}` : 'Now required for everyone');
   await loadDocTypesTable();
 }
@@ -7027,7 +7047,7 @@ async function loadOverview() {
   const { data: hiddenTypeRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenTypeIds = new Set((hiddenTypeRows || []).map(h => h.document_type_id));
-  const overviewRequiredOverrides = await getRequiredOverrides(currentCompany.id);
+  const overviewOverrides = await getDocTypeOverrides(currentCompany.id);
   const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
   const applicableTypes = (allTypes || []).filter(t => {
     // Pro-gating for an individual type is driven by its own tier column
@@ -7043,10 +7063,10 @@ async function loadOverview() {
   activeStaff.forEach(s => {
     const missingItems = []; // { name, isRequired }
     applicableTypes.forEach(t => {
-      const disciplineList = t.required_for_disciplines || [];
+      const disciplineList = effectiveDisciplines(t, overviewOverrides);
       const applies = disciplineList.length === 0 || disciplineList.includes(s.discipline);
       if (!applies) return;
-      const isReq = effectiveRequired(t, overviewRequiredOverrides);
+      const isReq = effectiveRequired(t, overviewOverrides);
       // Compliance rate stays strictly about required items — optional
       // ones are tracked for visibility but shouldn't move this number.
       if (isReq) {
