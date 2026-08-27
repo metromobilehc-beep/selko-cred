@@ -5195,6 +5195,7 @@ async function loadDocTypesTable() {
       <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
         ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
       </button>
+      ${isGlobal ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click">📋 Duplicate to customize</button>` : ''}
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
   </tr>`;
@@ -5284,6 +5285,47 @@ async function toggleDocTypeHidden(id, currentlyHidden) {
   }
   await loadDocTypesTable();
   await loadDocTypes(); // refreshes the self-service and admin upload dropdowns too
+}
+
+// A one-click version of the manual "hide the global type, then add your
+// own custom copy" workflow — same two underlying steps, just done
+// together so nobody has to know that workaround exists. The new row is a
+// completely independent, fully-editable copy from this point forward;
+// it has no ongoing link back to the global original.
+async function duplicateDocTypeToCustomize(id) {
+  const t = _docTypesCache.find(x => x.id === id);
+  if (!t) { toast('Could not find this document type — try refreshing.', true); return; }
+  if (t.company_id) { toast('This is already your own document type.', true); return; }
+
+  try {
+    const { data: existingHide } = await sb.from('company_hidden_document_types')
+      .select('document_type_id').eq('document_type_id', id).eq('company_id', currentCompany.id).maybeSingle();
+    if (!existingHide) {
+      const { error: hideErr } = await sb.from('company_hidden_document_types')
+        .insert({ document_type_id: id, company_id: currentCompany.id });
+      if (hideErr) throw hideErr;
+    }
+
+    const { error: insertErr } = await sb.from('document_types').insert({
+      name: t.name,
+      expires: t.expires,
+      category: t.category,
+      is_required: t.is_required,
+      required_for_disciplines: t.required_for_disciplines,
+      staff_can_upload: t.staff_can_upload,
+      company_id: currentCompany.id,
+      sort_order: 999,
+      description: 'Customized from the Selko-provided "' + t.name + '" default',
+    });
+    if (insertErr) throw insertErr;
+
+    toast(`✓ "${t.name}" duplicated — the original is now hidden, and your own copy is fully editable below`);
+    await loadDocTypesTable();
+    await loadDocTypes();
+    await loadAdminFilters();
+  } catch (e) {
+    toast('Error: ' + e.message, true);
+  }
 }
 
 async function toggleDocTypePartnerVisible(id, currentlyVisible) {
