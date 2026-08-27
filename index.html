@@ -1162,10 +1162,7 @@
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Document types</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
-        <div style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;">
-          <strong style="color:#7dd3fc;">🔒 = Selko-provided default</strong> — shared by every company on the platform, so it can't be edited directly here (that would change it for every other company too). This isn't tied to your plan — it's the same for every company, on any plan.<br/><br/>
-          Want it to work differently for your company? Click <strong>"Hide for us"</strong> to remove the shared version from your view, then <strong>"Duplicate to customize"</strong> to get your own fully-editable copy in one click.
-        </div>
+        <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;"></div>
         <div class="tbl-wrap">
           <table>
             <thead><tr>
@@ -2229,20 +2226,21 @@ async function checkStaffCompliance(staffId) {
       .eq('id', staffId).maybeSingle();
     if (!staff || staff.exclude_from_compliance) return;
 
-    const { data: requiredTypes } = await sb.from('document_types')
-      .select('id, name, company_id, required_for_disciplines')
-      .eq('is_required', true);
+    const { data: allTypes } = await sb.from('document_types')
+      .select('id, name, company_id, required_for_disciplines, is_required');
 
     const { data: hiddenRows } = await sb.from('company_hidden_document_types')
       .select('document_type_id').eq('company_id', staff.company_id);
     const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
 
-    const applicable = (requiredTypes || []).filter(t => {
+    const overridesMap = await getRequiredOverrides(staff.company_id);
+
+    const applicable = (allTypes || []).filter(t => {
       if (hiddenIds.has(t.id)) return false;
       const companyMatch = t.company_id === null || t.company_id === staff.company_id;
       const disciplineList = t.required_for_disciplines || [];
       const disciplineMatch = disciplineList.length === 0 || disciplineList.includes(staff.discipline);
-      return companyMatch && disciplineMatch;
+      return companyMatch && disciplineMatch && effectiveRequired(t, overridesMap);
     });
     if (!applicable.length) return; // nothing required configured — nothing to celebrate
 
@@ -5134,6 +5132,17 @@ async function loadDocTypesTable() {
 
   _docTypesCache = data || []; // so edit functions can check company_id before writing, without a re-fetch
 
+  const requiredOverrides = await getRequiredOverrides(currentCompany.id);
+  _docTypeRequiredOverrides = requiredOverrides; // so toggleDocTypeRequired knows the current override state without a re-fetch
+
+  const canCustomize = window._isPro || currentProfile?.is_super_admin;
+  const banner = document.getElementById('docTypesExplainerBanner');
+  if (banner) {
+    banner.innerHTML = `🔒 Locked items are built-in starting points every company gets. <strong>Required/Optional always works, at any plan</strong> — it's core to your compliance tracking. Everything else about a locked item (name, category, self-upload, which disciplines it applies to) stays shared, since changing it would affect every other company too.` + (canCustomize
+      ? ` Want full control over one? Hit <strong>"Hide for us"</strong>, then <strong>"Duplicate"</strong> to get your own private, fully-editable copy.`
+      : ` Full customization of a locked item is a Pro feature — contact Selko to upgrade if you'd like that.`);
+  }
+
   const { data: hiddenRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
@@ -5168,15 +5177,18 @@ async function loadDocTypesTable() {
   tbody.innerHTML = sortedCategories.map((cat, catIdx) => {
     const catSlug = 'cat' + catIdx;
     const rows = groups[cat].map(t => {
+      const isReq = effectiveRequired(t, requiredOverrides);
       const disciplines = t.required_for_disciplines || [];
-      const scopeLabel = !t.is_required ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
+      const scopeLabel = !isReq ? '—' : (disciplines.length ? disciplines.join(', ') : 'Everyone');
       const isGlobal = !t.company_id;
       // True super admins have a dedicated RLS policy granting real edit
       // access to global rows — someone has to be able to maintain the
       // shared defaults — so the lock (visual and functional) only ever
       // applies to a regular company admin, never to them.
       const lockedForMe = isGlobal && !currentProfile?.is_super_admin;
-      const lockTitle = 'Selko-provided default, shared by every company — "Hide for us" it and add your own version to customize';
+      const lockTitle = window._isPro
+        ? 'Built-in default — hide it, then duplicate it to make your own editable copy'
+        : 'Built-in default — making your own editable copy is a Pro feature';
       return `<tr data-doctype-group="${catSlug}">
     <td>
       <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;${lockedForMe ? 'opacity:.5;' : ''}" 
@@ -5185,13 +5197,13 @@ async function loadDocTypesTable() {
     </td>
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
     <td>
-      <span class="badge ${t.is_required ? 'badge-warn' : 'badge-none'}" style="${lockedForMe ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}" 
-        onclick="toggleDocTypeRequired(${t.id}, ${!!t.is_required})" title="${lockedForMe ? lockTitle : 'Click to toggle'}">
-        ${t.is_required ? 'Required' : 'Optional'}${lockedForMe ? ' 🔒' : ''}
+      <span class="badge ${isReq ? 'badge-warn' : 'badge-none'}" style="cursor:pointer;" 
+        onclick="toggleDocTypeRequired(${t.id}, ${isReq}, ${isGlobal})" title="Click to toggle — works at any plan tier, even for built-in defaults">
+        ${isReq ? 'Required' : 'Optional'}
       </span>
     </td>
     <td>
-      ${t.is_required
+      ${isReq
         ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')})"
              class="badge badge-none" style="${lockedForMe ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}border:none;font:inherit;font-size:11px;" title="${lockedForMe ? lockTitle : ''}">${scopeLabel} ${lockedForMe ? '🔒' : '✎'}</button>`
         : `<span style="font-size:11px;color:rgba(255,255,255,.3);">—</span>`}
@@ -5212,15 +5224,17 @@ async function loadDocTypesTable() {
                class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : ''}
       </div>
     </td>` : ''}
-    <td><div class="td-actions">
-      <select class="filter-sel" style="font-size:11px;padding:4px 6px;${lockedForMe ? 'opacity:.5;' : ''}" onchange="updateDocTypeCategory(${t.id}, this.value)" title="${lockedForMe ? lockTitle : 'Move to a different category'}" ${lockedForMe ? 'disabled' : ''}>
+    <td><div class="td-actions" style="gap:4px;">
+      ${lockedForMe
+        ? `<span style="font-size:11px;color:rgba(255,255,255,.3);" title="${lockTitle}">${t.category || 'Other'} 🔒</span>`
+        : `<select class="filter-sel" style="font-size:11px;padding:3px 5px;width:auto;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="Move to a different category">
         ${categoryOrder.map(c => `<option value="${c}" ${c === (t.category || 'Other') ? 'selected' : ''}>${c}</option>`).join('')}
-      </select>
-      <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
+      </select>`}
+      <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;padding:3px 8px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
         ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
       </button>
-      ${isGlobal ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click">📋 Duplicate to customize</button>` : ''}
-      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+      ${isGlobal && (window._isPro || currentProfile?.is_super_admin) ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click" style="font-size:11px;padding:3px 8px;">Duplicate</button>` : ''}
+      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>` : ''}
     </div></td>
   </tr>`;
     }).join('');
@@ -5244,6 +5258,25 @@ function toggleDocTypeCategory(catSlug) {
 }
 
 let _docTypesCache = [];
+let _docTypeRequiredOverrides = {};
+
+// Required/Optional is core to whether compliance tracking works at all —
+// unlike name/category/discipline-scoping, it's not gated behind Pro, and
+// it's not something a company can fully "duplicate to customize" their
+// way around either (that IS Pro-gated). Instead it's a small, standalone
+// per-company override on top of the shared global default: every tier can
+// flip Required/Optional for themselves without forking the whole type.
+async function getRequiredOverrides(companyId) {
+  const { data } = await sb.from('company_document_type_overrides')
+    .select('document_type_id, is_required').eq('company_id', companyId);
+  const map = {};
+  (data || []).forEach(o => { map[o.document_type_id] = o.is_required; });
+  return map;
+}
+function effectiveRequired(t, overridesMap) {
+  return overridesMap.hasOwnProperty(t.id) ? overridesMap[t.id] : !!t.is_required;
+}
+
 
 // A global (Selko-provided) document type — company_id is null — has no
 // per-company override mechanism for these fields, unlike "hidden" which
@@ -5259,7 +5292,9 @@ function blockedFromEditingGlobalDocType(id) {
   if (currentProfile?.is_super_admin) return false;
   const t = _docTypesCache.find(x => x.id === id);
   if (t && !t.company_id) {
-    toast('This is a Selko-provided default, shared across every company — it can\'t be customized directly. "Hide for us" it, then add your own version with the settings you want.', true);
+    toast(window._isPro
+      ? 'This one\'s a built-in default shared by every company, so it can\'t be edited directly. Hit "Hide for us," then "Duplicate to customize" to get your own version.'
+      : 'This one\'s a built-in default shared by every company, so it can\'t be edited directly. Making your own editable version is a Pro feature — contact Selko to upgrade if you\'d like that.', true);
     return true;
   }
   return false;
@@ -5281,11 +5316,26 @@ async function updateDocTypeName(id, name) {
   else toast('Document type updated');
 }
 
-async function toggleDocTypeRequired(id, currentlyRequired) {
-  if (blockedFromEditingGlobalDocType(id)) return;
-  const { error } = await sb.from('document_types').update({ is_required: !currentlyRequired }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast(!currentlyRequired ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
+// Required/Optional is intentionally NOT gated the way name/category/self-
+// upload are — it's core to whether Missing Docs / compliance tracking
+// works at all, so every company (any plan tier) can flip it for
+// themselves. For a global row this writes to a small per-company override
+// table instead of the shared row; for a company-owned row it updates the
+// row directly, same as before.
+async function toggleDocTypeRequired(id, currentlyRequired, isGlobal) {
+  const newValue = !currentlyRequired;
+  if (isGlobal && !currentProfile?.is_super_admin) {
+    const { data: existing } = await sb.from('company_document_type_overrides')
+      .select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
+    const { error } = existing
+      ? await sb.from('company_document_type_overrides').update({ is_required: newValue }).eq('id', existing.id)
+      : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, is_required: newValue });
+    if (error) { toast('Error: ' + error.message, true); return; }
+  } else {
+    const { error } = await sb.from('document_types').update({ is_required: newValue }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, true); return; }
+  }
+  toast(newValue ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
   await loadDocTypesTable();
 }
 
@@ -5322,6 +5372,7 @@ async function toggleDocTypeHidden(id, currentlyHidden) {
 // completely independent, fully-editable copy from this point forward;
 // it has no ongoing link back to the global original.
 async function duplicateDocTypeToCustomize(id) {
+  if (!window._isPro && !currentProfile?.is_super_admin) { toast('This feature requires a Pro plan. Contact Selko to upgrade.', true); return; }
   const t = _docTypesCache.find(x => x.id === id);
   if (!t) { toast('Could not find this document type — try refreshing.', true); return; }
   if (t.company_id) { toast('This is already your own document type.', true); return; }
@@ -5335,11 +5386,17 @@ async function duplicateDocTypeToCustomize(id) {
       if (hideErr) throw hideErr;
     }
 
+    // Preserve whatever Required/Optional this company already had via the
+    // lightweight override, rather than silently reverting them to the
+    // global default the moment they duplicate into a full custom copy.
+    const overridesMap = await getRequiredOverrides(currentCompany.id);
+    const effReq = effectiveRequired(t, overridesMap);
+
     const { error: insertErr } = await sb.from('document_types').insert({
       name: t.name,
       expires: t.expires,
       category: t.category,
-      is_required: t.is_required,
+      is_required: effReq,
       required_for_disciplines: t.required_for_disciplines,
       staff_can_upload: t.staff_can_upload,
       company_id: currentCompany.id,
@@ -5347,6 +5404,13 @@ async function duplicateDocTypeToCustomize(id) {
       description: 'Customized from the Selko-provided "' + t.name + '" default',
     });
     if (insertErr) throw insertErr;
+
+    // The override was only ever a stand-in for not having a real custom
+    // copy — now that they have one, it's redundant (the hidden global row
+    // is never evaluated for compliance again for this company anyway).
+    if (overridesMap.hasOwnProperty(id)) {
+      await sb.from('company_document_type_overrides').delete().eq('company_id', currentCompany.id).eq('document_type_id', id);
+    }
 
     toast(`✓ "${t.name}" duplicated — the original is now hidden, and your own copy is fully editable below`);
     await loadDocTypesTable();
@@ -6937,6 +7001,7 @@ async function loadOverview() {
   const { data: hiddenTypeRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenTypeIds = new Set((hiddenTypeRows || []).map(h => h.document_type_id));
+  const overviewRequiredOverrides = await getRequiredOverrides(currentCompany.id);
   const applicableTypes = (allTypes || []).filter(t =>
     (t.company_id === null || t.company_id === currentCompany.id) && !hiddenTypeIds.has(t.id)
   );
@@ -6950,14 +7015,15 @@ async function loadOverview() {
       const disciplineList = t.required_for_disciplines || [];
       const applies = disciplineList.length === 0 || disciplineList.includes(s.discipline);
       if (!applies) return;
+      const isReq = effectiveRequired(t, overviewRequiredOverrides);
       // Compliance rate stays strictly about required items — optional
       // ones are tracked for visibility but shouldn't move this number.
-      if (t.is_required) {
+      if (isReq) {
         requiredSlots++;
         if (haveDoc.has(`${s.id}:${t.id}`)) filledSlots++;
       }
       if (!haveDoc.has(`${s.id}:${t.id}`)) {
-        missingItems.push({ name: t.name, isRequired: !!t.is_required });
+        missingItems.push({ name: t.name, isRequired: isReq });
       }
     });
     if (missingItems.length) missingByStaff.push({ staffId: s.id, staffName: s.full_name, missing: missingItems });
