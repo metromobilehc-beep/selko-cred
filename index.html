@@ -799,15 +799,15 @@
 
       <div class="dark-panel" id="pnAddFormPanel" data-default-open="true">
         <h2>Add / update network record</h2>
-      <div class="inline-form" style="display:flex;gap:14px;margin-bottom:14px;flex-wrap:wrap;align-items:flex-end;">
+      <div class="inline-form" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:14px 16px;margin-bottom:14px;align-items:end;">
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
           <select class="inline-select" id="pnStaff" onchange="onPnStaffChanged()"></select>
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;" id="pnEntityNameGroup">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Which company/agency?</label>
-          <select class="inline-select" id="pnEntitySelect" onchange="onPnEntitySelectChanged()" style="width:220px;"></select>
-          <input class="inline-input" type="text" id="pnEntityName" placeholder="Type the new entity name" style="width:220px;display:none;" />
+          <select class="inline-select" id="pnEntitySelect" onchange="onPnEntitySelectChanged()"></select>
+          <input class="inline-input" type="text" id="pnEntityName" placeholder="Type the new entity name" style="display:none;" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Payer</label>
@@ -824,37 +824,39 @@
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Submitted</label>
-          <input type="date" id="pnSubmitted" style="width:150px;" />
+          <input class="inline-input" type="date" id="pnSubmitted" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmed</label>
-          <input type="date" id="pnConfirmed" style="width:150px;" />
+          <input class="inline-input" type="date" id="pnConfirmed" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">In-network</label>
-          <input type="date" id="pnInNetwork" style="width:150px;" />
+          <input class="inline-input" type="date" id="pnInNetwork" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
-          <input type="date" id="pnExpiration" style="width:150px;" />
+          <input class="inline-input" type="date" id="pnExpiration" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmation code</label>
-          <input type="text" id="pnConfCode" placeholder="e.g. AUTH-12345" style="width:170px;" />
+          <input class="inline-input" type="text" id="pnConfCode" placeholder="e.g. AUTH-12345" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Network provider ID</label>
-          <input type="text" id="pnNetworkProviderId" placeholder="Payer-issued ID" style="width:170px;" />
+          <input class="inline-input" type="text" id="pnNetworkProviderId" placeholder="Payer-issued ID" />
         </div>
         <div style="display:flex;flex-direction:column;gap:4px;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Group ID</label>
-          <input type="text" id="pnGroupId" placeholder="e.g. GRP-4021" style="width:150px;" />
+          <input class="inline-input" type="text" id="pnGroupId" placeholder="e.g. GRP-4021" />
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px;">
+        <div style="display:flex;flex-direction:column;gap:4px;grid-column:1 / -1;">
           <label style="font-size:11px;color:rgba(255,255,255,.5);">Notes</label>
-          <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;"></textarea>
+          <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;box-sizing:border-box;"></textarea>
         </div>
-        <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()">+ Add / update</button>
+        <div>
+          <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()" style="width:100%;justify-content:center;">+ Add / update</button>
+        </div>
       </div>
       <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;"></div>
       </div>
