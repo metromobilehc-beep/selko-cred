@@ -2229,7 +2229,7 @@ async function checkStaffCompliance(staffId) {
     if (!staff || staff.exclude_from_compliance) return;
 
     const { data: allTypes } = await sb.from('document_types')
-      .select('id, name, company_id, required_for_disciplines, is_required');
+      .select('id, name, company_id, required_for_disciplines, is_required, tier');
 
     const { data: hiddenRows } = await sb.from('company_hidden_document_types')
       .select('document_type_id').eq('company_id', staff.company_id);
@@ -2240,11 +2240,11 @@ async function checkStaffCompliance(staffId) {
 
     const applicable = (allTypes || []).filter(t => {
       if (hiddenIds.has(t.id)) return false;
+      // Pro-gating for an individual type is driven by its own tier column
+      // (set from the Selko Admin master list) — the real, deliberately
+      // managed source of truth, not an inference from discipline-scoping.
+      if (t.company_id === null && t.tier === 'pro' && !canUseAdvancedTypes) return false;
       const disciplineList = t.required_for_disciplines || [];
-      // A global type scoped to a specific discipline (not "Everyone") is
-      // the advanced/Pro tier of built-in defaults — Standard tier only
-      // ever tracks against the generic, unscoped ones.
-      if (t.company_id === null && disciplineList.length > 0 && !canUseAdvancedTypes) return false;
       const companyMatch = t.company_id === null || t.company_id === staff.company_id;
       const disciplineMatch = disciplineList.length === 0 || disciplineList.includes(staff.discipline);
       return companyMatch && disciplineMatch && effectiveRequired(t, overridesMap);
@@ -5202,7 +5202,12 @@ async function loadDocTypesTable() {
       // Pro-level kind. This is inferred from data that already exists
       // (Applies To) rather than a second manual flag to maintain
       // alongside the company's own plan tier.
-      const proOnlyBlocked = isGlobal && disciplines.length > 0 && !window._isPro && !currentProfile?.is_super_admin;
+      // The real, deliberately-managed source of truth is the tier column
+      // itself (set per-type from the Selko Admin master list) — not an
+      // inference from discipline-scoping, which was a second, uncoordinated
+      // concept that didn't respect types you'd actually configured
+      // individually (e.g. PT/PTA marked pro while OT/COTA/SLP stay standard).
+      const proOnlyBlocked = isGlobal && t.tier === 'pro' && !window._isPro && !currentProfile?.is_super_admin;
       return `<tr data-doctype-group="${catSlug}">
     <td>
       <div style="display:flex;align-items:center;gap:6px;">
@@ -5215,7 +5220,7 @@ async function loadDocTypesTable() {
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
     <td>
       <span class="badge ${isReq ? 'badge-warn' : 'badge-none'}" style="${proOnlyBlocked ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}" 
-        onclick="toggleDocTypeRequired(${t.id}, ${isReq}, ${isGlobal}, ${isGlobal && disciplines.length > 0})" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to toggle — works at any plan tier, even for built-in defaults'}">
+        onclick="toggleDocTypeRequired(${t.id}, ${isReq}, ${isGlobal}, ${isGlobal && t.tier === 'pro'})" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to toggle — works at any plan tier, even for built-in defaults'}">
         ${isReq ? 'Required' : 'Optional'}${proOnlyBlocked ? ' 🔒' : ''}
       </span>
     </td>
@@ -7018,17 +7023,17 @@ async function loadOverview() {
 
   // Required documents vs. what's actually on file, respecting discipline scoping
   const { data: allTypes } = await sb.from('document_types')
-    .select('id, name, company_id, required_for_disciplines, is_required');
+    .select('id, name, company_id, required_for_disciplines, is_required, tier');
   const { data: hiddenTypeRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenTypeIds = new Set((hiddenTypeRows || []).map(h => h.document_type_id));
   const overviewRequiredOverrides = await getRequiredOverrides(currentCompany.id);
   const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
   const applicableTypes = (allTypes || []).filter(t => {
-    const disciplineList = t.required_for_disciplines || [];
-    // Same rule as everywhere else: a global type scoped to one discipline
-    // is the advanced/Pro tier of built-in defaults.
-    if (t.company_id === null && disciplineList.length > 0 && !canUseAdvancedTypes) return false;
+    // Pro-gating for an individual type is driven by its own tier column
+    // (set from the Selko Admin master list) — the real, deliberately
+    // managed source of truth, not an inference from discipline-scoping.
+    if (t.company_id === null && t.tier === 'pro' && !canUseAdvancedTypes) return false;
     return (t.company_id === null || t.company_id === currentCompany.id) && !hiddenTypeIds.has(t.id);
   });
 
