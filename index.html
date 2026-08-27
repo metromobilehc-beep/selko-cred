@@ -2227,19 +2227,23 @@ async function checkStaffCompliance(staffId) {
     if (!staff || staff.exclude_from_compliance) return;
 
     const { data: allTypes } = await sb.from('document_types')
-      .select('id, name, company_id, required_for_disciplines, is_required, pro_only');
+      .select('id, name, company_id, required_for_disciplines, is_required');
 
     const { data: hiddenRows } = await sb.from('company_hidden_document_types')
       .select('document_type_id').eq('company_id', staff.company_id);
     const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
 
     const overridesMap = await getRequiredOverrides(staff.company_id);
+    const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
 
     const applicable = (allTypes || []).filter(t => {
       if (hiddenIds.has(t.id)) return false;
-      if (t.pro_only && !window._isPro && !currentProfile?.is_super_admin) return false;
-      const companyMatch = t.company_id === null || t.company_id === staff.company_id;
       const disciplineList = t.required_for_disciplines || [];
+      // A global type scoped to a specific discipline (not "Everyone") is
+      // the advanced/Pro tier of built-in defaults — Standard tier only
+      // ever tracks against the generic, unscoped ones.
+      if (t.company_id === null && disciplineList.length > 0 && !canUseAdvancedTypes) return false;
+      const companyMatch = t.company_id === null || t.company_id === staff.company_id;
       const disciplineMatch = disciplineList.length === 0 || disciplineList.includes(staff.discipline);
       return companyMatch && disciplineMatch && effectiveRequired(t, overridesMap);
     });
@@ -5190,12 +5194,13 @@ async function loadDocTypesTable() {
       const lockTitle = window._isPro
         ? 'Built-in default — hide it, then duplicate it to make your own editable copy'
         : 'Built-in default — making your own editable copy is a Pro feature';
-      // A separate, narrower gate than lockedForMe: some global types are
-      // themselves marked Pro-only by a super admin (e.g. the granular
-      // PT/PTA/OT/COTA/SLP breakdown) — Required/Optional is normally
-      // free at every tier, but not for a type this company has no access
-      // to at all in the first place.
-      const proOnlyBlocked = t.pro_only && !window._isPro && !currentProfile?.is_super_admin;
+      // Discipline-scoped built-in types (PT/PTA/OT/COTA/SLP License) are
+      // the "advanced" tier of global defaults — a type scoped to one
+      // discipline rather than "Everyone" is inherently the more granular,
+      // Pro-level kind. This is inferred from data that already exists
+      // (Applies To) rather than a second manual flag to maintain
+      // alongside the company's own plan tier.
+      const proOnlyBlocked = isGlobal && disciplines.length > 0 && !window._isPro && !currentProfile?.is_super_admin;
       return `<tr data-doctype-group="${catSlug}">
     <td>
       <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;${lockedForMe ? 'opacity:.5;' : ''}" 
@@ -5205,7 +5210,7 @@ async function loadDocTypesTable() {
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
     <td>
       <span class="badge ${isReq ? 'badge-warn' : 'badge-none'}" style="${proOnlyBlocked ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}" 
-        onclick="toggleDocTypeRequired(${t.id}, ${isReq}, ${isGlobal}, ${!!t.pro_only})" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to toggle — works at any plan tier, even for built-in defaults'}">
+        onclick="toggleDocTypeRequired(${t.id}, ${isReq}, ${isGlobal}, ${isGlobal && disciplines.length > 0})" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to toggle — works at any plan tier, even for built-in defaults'}">
         ${isReq ? 'Required' : 'Optional'}${proOnlyBlocked ? ' 🔒' : ''}
       </span>
     </td>
@@ -5241,7 +5246,6 @@ async function loadDocTypesTable() {
         ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
       </button>
       ${isGlobal && (window._isPro || currentProfile?.is_super_admin) ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click" style="font-size:11px;padding:3px 8px;">Duplicate</button>` : ''}
-      ${isGlobal && currentProfile?.is_super_admin ? `<button class="btn btn-sm ${t.pro_only ? 'btn-gold' : 'btn-ghost'}" onclick="toggleDocTypeProOnly(${t.id}, ${!!t.pro_only})" style="${t.pro_only ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;padding:3px 8px;" title="Restrict this whole type to Pro/Enterprise companies — Standard tier won't be able to toggle Required/Optional on it, and it won't count toward their compliance tracking">${t.pro_only ? '★ Pro-only' : 'Mark Pro-only'}</button>` : ''}
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>` : ''}
     </div></td>
   </tr>`;
@@ -5348,15 +5352,6 @@ async function toggleDocTypeRequired(id, currentlyRequired, isGlobal, isProOnly)
     if (error) { toast('Error: ' + error.message, true); return; }
   }
   toast(newValue ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
-  await loadDocTypesTable();
-}
-
-async function toggleDocTypeProOnly(id, currentlyProOnly) {
-  const { error } = await sb.from('document_types').update({ pro_only: !currentlyProOnly }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast(currentlyProOnly
-    ? 'No longer Pro-only — every plan tier can now toggle Required/Optional on this'
-    : 'Marked Pro-only — Standard tier can\'t toggle Required/Optional on this, and it won\'t count toward their compliance tracking');
   await loadDocTypesTable();
 }
 
@@ -7018,17 +7013,19 @@ async function loadOverview() {
 
   // Required documents vs. what's actually on file, respecting discipline scoping
   const { data: allTypes } = await sb.from('document_types')
-    .select('id, name, company_id, required_for_disciplines, is_required, pro_only');
+    .select('id, name, company_id, required_for_disciplines, is_required');
   const { data: hiddenTypeRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenTypeIds = new Set((hiddenTypeRows || []).map(h => h.document_type_id));
   const overviewRequiredOverrides = await getRequiredOverrides(currentCompany.id);
-  const canUseProOnlyTypes = window._isPro || currentProfile?.is_super_admin;
-  const applicableTypes = (allTypes || []).filter(t =>
-    (t.company_id === null || t.company_id === currentCompany.id)
-    && !hiddenTypeIds.has(t.id)
-    && (!t.pro_only || canUseProOnlyTypes)
-  );
+  const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
+  const applicableTypes = (allTypes || []).filter(t => {
+    const disciplineList = t.required_for_disciplines || [];
+    // Same rule as everywhere else: a global type scoped to one discipline
+    // is the advanced/Pro tier of built-in defaults.
+    if (t.company_id === null && disciplineList.length > 0 && !canUseAdvancedTypes) return false;
+    return (t.company_id === null || t.company_id === currentCompany.id) && !hiddenTypeIds.has(t.id);
+  });
 
   const haveDoc = new Set(allDocs.map(d => `${d.staff_id}:${d.document_type_id}`));
   let requiredSlots = 0, filledSlots = 0;
