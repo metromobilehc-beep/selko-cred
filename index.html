@@ -897,8 +897,17 @@
       <div id="credentialingContent">
         <!-- Org-level credentialing info -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>Organization credentialing info</h2>
+          <h2>Organization credentialing profile</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">This is what gets pulled into payer credentialing applications automatically — fill it out once, reuse it on every form.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+            <div>
+              <label class="inline-label">Legal business name (as on W-9)</label>
+              <input class="inline-input" type="text" id="setLegalName" placeholder="If different from display name above" />
+            </div>
+            <div>
+              <label class="inline-label">Provider directory name</label>
+              <input class="inline-input" type="text" id="setDirectoryName" placeholder="Name shown to patients/network" />
+            </div>
             <div>
               <label class="inline-label">Organizational Tax ID (EIN)</label>
               <input class="inline-input" type="text" id="setTaxId" placeholder="e.g. 12-3456789" />
@@ -906,6 +915,65 @@
             <div>
               <label class="inline-label">Organizational NPI (Type 2)</label>
               <input class="inline-input" type="text" id="setOrgNpi" placeholder="e.g. 1234567890" />
+            </div>
+            <div>
+              <label class="inline-label">Group specialty</label>
+              <input class="inline-input" type="text" id="setGroupSpecialty" placeholder="e.g. Home Health / Physical Therapy" />
+            </div>
+            <div>
+              <label class="inline-label">Virtual services only?</label>
+              <select class="inline-select" id="setVirtualOnly">
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+              </select>
+            </div>
+            <div>
+              <label class="inline-label">Payment remittance address</label>
+              <input class="inline-input" type="text" id="setRemitAddress" placeholder="Address, Suite, City, State, Zip" />
+            </div>
+            <div>
+              <label class="inline-label">Payment remittance / billing phone</label>
+              <input class="inline-input" type="text" id="setBillingPhone" />
+            </div>
+            <div>
+              <label class="inline-label">Notice address (if different)</label>
+              <input class="inline-input" type="text" id="setNoticeAddress" />
+            </div>
+            <div>
+              <label class="inline-label">Notice address phone</label>
+              <input class="inline-input" type="text" id="setNoticePhone" />
+            </div>
+            <div>
+              <label class="inline-label">Service location address</label>
+              <input class="inline-input" type="text" id="setServiceAddress" />
+            </div>
+            <div>
+              <label class="inline-label">Service location phone</label>
+              <input class="inline-input" type="text" id="setServicePhone" />
+            </div>
+            <div>
+              <label class="inline-label">Credentialing contact — name</label>
+              <input class="inline-input" type="text" id="setCredContactName" />
+            </div>
+            <div>
+              <label class="inline-label">Credentialing contact — email</label>
+              <input class="inline-input" type="email" id="setCredContactEmail" />
+            </div>
+            <div>
+              <label class="inline-label">Credentialing contact — phone</label>
+              <input class="inline-input" type="text" id="setCredContactPhone" />
+            </div>
+            <div>
+              <label class="inline-label">Authorized signatory — name</label>
+              <input class="inline-input" type="text" id="setSignatoryName" />
+            </div>
+            <div>
+              <label class="inline-label">Authorized signatory — title</label>
+              <input class="inline-input" type="text" id="setSignatoryTitle" />
+            </div>
+            <div>
+              <label class="inline-label">Authorized signatory — email</label>
+              <input class="inline-input" type="email" id="setSignatoryEmail" />
             </div>
           </div>
           <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save</button>
@@ -941,7 +1009,7 @@
         </div>
 
         <!-- Per-clinician credentialing fields (CAQH, DEA) -->
-        <div class="dark-panel" data-default-open="true">
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Provider credentialing (CAQH / DEA)</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">CAQH ID and DEA number, per staff member — used for payer credentialing applications, separate from basic license tracking.</p>
           <div class="tbl-wrap">
@@ -950,6 +1018,27 @@
               <tbody id="credentialingStaffTbody"></tbody>
             </table>
           </div>
+        </div>
+
+        <!-- Credentialing form templates — upload a payer's fillable PDF
+             once, map its fields to Cred data, then generate a filled copy
+             for any staff member in one click from then on. -->
+        <div class="dark-panel" data-default-open="true">
+          <h2>Credentialing form templates</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application once, map its fields to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
+          <div id="credTemplatesList" style="margin-bottom:14px;"></div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Template name</label>
+              <input class="inline-input" type="text" id="newTemplateName" placeholder="e.g. Curative Credentialing Form" style="width:240px;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Fillable PDF</label>
+              <input type="file" id="newTemplateFile" accept="application/pdf" style="color:#fff;font-size:12px;" />
+            </div>
+            <button class="btn btn-sm btn-teal" onclick="startTemplateUpload()">+ Upload &amp; map fields</button>
+          </div>
+          <div id="templateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
         </div>
       </div>
 
@@ -5782,10 +5871,312 @@ async function loadCredentialingTab() {
   content.style.display = 'block';
   lock.style.display = 'none';
 
-  document.getElementById('setTaxId').value  = currentCompany.tax_id || '';
-  document.getElementById('setOrgNpi').value = currentCompany.org_npi || '';
+  const c = currentCompany;
+  document.getElementById('setTaxId').value  = c.tax_id || '';
+  document.getElementById('setOrgNpi').value = c.org_npi || '';
+  document.getElementById('setLegalName').value        = c.legal_business_name || '';
+  document.getElementById('setDirectoryName').value    = c.provider_directory_name || '';
+  document.getElementById('setGroupSpecialty').value   = c.group_specialty || '';
+  document.getElementById('setVirtualOnly').value      = c.virtual_only ? 'true' : 'false';
+  document.getElementById('setRemitAddress').value     = c.payment_remittance_address || '';
+  document.getElementById('setBillingPhone').value     = c.billing_phone || '';
+  document.getElementById('setNoticeAddress').value    = c.notice_address || '';
+  document.getElementById('setNoticePhone').value      = c.notice_address_phone || '';
+  document.getElementById('setServiceAddress').value   = c.service_location_address || '';
+  document.getElementById('setServicePhone').value     = c.service_location_phone || '';
+  document.getElementById('setCredContactName').value  = c.credentialing_contact_name || '';
+  document.getElementById('setCredContactEmail').value = c.credentialing_contact_email || '';
+  document.getElementById('setCredContactPhone').value = c.credentialing_contact_phone || '';
+  document.getElementById('setSignatoryName').value    = c.authorized_signatory_name || '';
+  document.getElementById('setSignatoryTitle').value   = c.authorized_signatory_title || '';
+  document.getElementById('setSignatoryEmail').value   = c.authorized_signatory_email || '';
+
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
+  await loadCredentialingTemplates();
+}
+
+// ══ CREDENTIALING FORM TEMPLATES — auto-fill payer applications ══
+// A template is a fillable PDF (real AcroForm fields) plus a saved mapping
+// of each PDF field name to a Cred data source (an org field or a staff
+// field). Generating a filled copy is then just: fetch the blank PDF,
+// look up each mapped value, write it into the matching form field, done —
+// no fragile pixel-coordinate placement, since we're writing by field name.
+const CRED_DATA_SOURCES = [
+  { group: 'Organization', options: [
+    ['company.name', 'Company name (display)'],
+    ['company.legal_business_name', 'Legal business name'],
+    ['company.provider_directory_name', 'Provider directory name'],
+    ['company.tax_id', 'Tax ID (EIN)'],
+    ['company.org_npi', 'Organizational NPI'],
+    ['company.group_specialty', 'Group specialty'],
+    ['company.virtual_only', 'Virtual only? (Yes/No)'],
+    ['company.payment_remittance_address', 'Payment remittance address'],
+    ['company.billing_phone', 'Billing phone'],
+    ['company.notice_address', 'Notice address'],
+    ['company.notice_address_phone', 'Notice address phone'],
+    ['company.service_location_address', 'Service location address'],
+    ['company.service_location_phone', 'Service location phone'],
+    ['company.credentialing_contact_name', 'Credentialing contact — name'],
+    ['company.credentialing_contact_email', 'Credentialing contact — email'],
+    ['company.credentialing_contact_phone', 'Credentialing contact — phone'],
+    ['company.authorized_signatory_name', 'Authorized signatory — name'],
+    ['company.authorized_signatory_title', 'Authorized signatory — title'],
+    ['company.authorized_signatory_email', 'Authorized signatory — email'],
+  ]},
+  { group: 'Selected staff member', options: [
+    ['staff.full_name', 'Provider name'],
+    ['staff.discipline', 'Specialty/discipline'],
+    ['staff.npi_number', 'Individual NPI'],
+    ['staff.caqh_id', 'CAQH ID'],
+    ['staff.license_number', 'License number'],
+    ['staff.license_type', 'License type'],
+    ['staff.license_state', 'License state'],
+    ['staff.dea_number', 'DEA number'],
+    ['staff.email', 'Email'],
+    ['staff.job_title', 'Job title'],
+  ]},
+];
+
+function resolveCredDataSource(path, company, staff) {
+  const [scope, key] = path.split('.');
+  const record = scope === 'staff' ? staff : company;
+  if (!record) return '';
+  const val = record[key];
+  if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  return val || '';
+}
+
+async function loadCredentialingTemplates() {
+  const container = document.getElementById('credTemplatesList');
+  const { data, error } = await sb.from('credentialing_templates')
+    .select('*')
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
+    .order('name');
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No templates yet — upload one below.</div>';
+    return;
+  }
+
+  container.innerHTML = data.map(t => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}</span>
+      <select class="filter-sel" id="genStaffFor_${t.id}" style="max-width:200px;">
+        <option value="">Select staff...</option>
+        ${staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('')}
+      </select>
+      <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${t.id}')">📄 Generate filled copy</button>
+      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+    </div>`).join('');
+}
+
+let _pendingTemplateFile = null;
+let _pendingTemplateFieldNames = [];
+
+async function startTemplateUpload() {
+  const name = document.getElementById('newTemplateName').value.trim();
+  const fileInput = document.getElementById('newTemplateFile');
+  const err = document.getElementById('templateUploadErr');
+  err.style.display = 'none';
+
+  if (!name) { err.textContent = 'Enter a template name first.'; err.style.display = 'block'; return; }
+  const file = fileInput.files[0];
+  if (!file) { err.textContent = 'Choose a PDF file first.'; err.style.display = 'block'; return; }
+
+  try {
+    const bytes = await file.arrayBuffer();
+    const { PDFDocument } = PDFLib;
+    const pdfDoc = await PDFDocument.load(bytes);
+    const form = pdfDoc.getForm();
+    const fieldNames = form.getFields().map(f => f.getName());
+
+    if (!fieldNames.length) {
+      err.textContent = 'This PDF has no fillable form fields — it looks like a static/scanned document, not a fillable form. Only fillable PDFs (with real form fields) can be auto-filled this way.';
+      err.style.display = 'block';
+      return;
+    }
+
+    _pendingTemplateFile = file;
+    _pendingTemplateFieldNames = fieldNames;
+    showTemplateFieldMappingModal(name, fieldNames);
+  } catch (e) {
+    err.textContent = 'Could not read this PDF: ' + e.message;
+    err.style.display = 'block';
+  }
+}
+
+function guessDefaultMapping(fieldName) {
+  // Best-effort auto-suggestion so mapping a 20-field form isn't 20 manual
+  // dropdown picks — admin can still override any of these before saving.
+  const n = fieldName.toLowerCase();
+  const guesses = [
+    [/legal.*business.*name/, 'company.legal_business_name'],
+    [/group.*practice.*name|practice.*name|directory/, 'company.provider_directory_name'],
+    [/^tin$|tax.*id/, 'company.tax_id'],
+    [/group.*npi|practice.*npi/, 'company.org_npi'],
+    [/specialty/, 'staff.discipline'],
+    [/virtual/, 'company.virtual_only'],
+    [/remittance/, 'company.payment_remittance_address'],
+    [/billing.*phone/, 'company.billing_phone'],
+    [/notice.*address/, 'company.notice_address'],
+    [/notice.*phone/, 'company.notice_address_phone'],
+    [/service.*location.*address/, 'company.service_location_address'],
+    [/service.*location.*phone/, 'company.service_location_phone'],
+    [/credentialing.*contact$|contact.*name/, 'company.credentialing_contact_name'],
+    [/credentialing.*email/, 'company.credentialing_contact_email'],
+    [/credentialing.*phone/, 'company.credentialing_contact_phone'],
+    [/signatory.*name/, 'company.authorized_signatory_name'],
+    [/signatory.*title/, 'company.authorized_signatory_title'],
+    [/signatory.*email/, 'company.authorized_signatory_email'],
+    [/provider.*name/, 'staff.full_name'],
+    [/individual.*npi/, 'staff.npi_number'],
+    [/caqh/, 'staff.caqh_id'],
+    [/dea/, 'staff.dea_number'],
+  ];
+  for (const [re, val] of guesses) if (re.test(n)) return val;
+  return '';
+}
+
+function showTemplateFieldMappingModal(name, fieldNames) {
+  const existing = document.getElementById('templateMappingModal');
+  if (existing) existing.remove();
+
+  const optionsHtml = CRED_DATA_SOURCES.map(g =>
+    `<optgroup label="${g.group}">${g.options.map(([val, label]) => `<option value="${val}">${label}</option>`).join('')}</optgroup>`
+  ).join('');
+
+  const rows = fieldNames.map(fn => {
+    const guess = guessDefaultMapping(fn);
+    return `
+    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="flex:1;color:#fff;font-size:13px;">${fn}</span>
+      <select class="inline-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
+        <option value="">— Leave blank / fill manually —</option>
+        ${optionsHtml}
+      </select>
+    </div>`;
+  }).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'templateMappingModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:82vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldNames.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.</div>
+      <div id="templateMappingRows">${rows}</div>
+      <div id="templateSaveErr" style="color:#f87171;font-size:12px;margin:10px 0;display:none;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-teal" onclick="saveTemplateMapping('${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save template</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('templateMappingModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+
+  // Apply the guessed defaults now that the selects exist in the DOM
+  modal.querySelectorAll('select[data-field-name]').forEach(sel => {
+    const guess = guessDefaultMapping(sel.dataset.fieldName);
+    if (guess) sel.value = guess;
+  });
+}
+
+async function saveTemplateMapping(name) {
+  const errEl = document.getElementById('templateSaveErr');
+  errEl.style.display = 'none';
+  if (!_pendingTemplateFile) { errEl.textContent = 'File missing — please re-select it and try again.'; errEl.style.display = 'block'; return; }
+
+  const mapping = {};
+  document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
+    if (sel.value) mapping[sel.dataset.fieldName] = sel.value;
+  });
+
+  try {
+    const path = `${currentCompany.id}/${Date.now()}_${_pendingTemplateFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
+    const { error: uploadErr } = await sb.storage.from('credentialing-templates').upload(path, _pendingTemplateFile, { contentType: 'application/pdf' });
+    if (uploadErr) throw uploadErr;
+
+    // Only a super admin (uploading outside a company's own session) makes
+    // this a Selko-provided template usable by every company — a regular
+    // company admin's upload stays scoped to their own company only.
+    const isGlobal = currentProfile.is_super_admin && !_superProfile;
+    const { error: insertErr } = await sb.from('credentialing_templates').insert({
+      company_id: isGlobal ? null : currentCompany.id,
+      name,
+      storage_path: path,
+      field_mapping: mapping,
+    });
+    if (insertErr) throw insertErr;
+
+    document.getElementById('templateMappingModal')?.remove();
+    document.getElementById('newTemplateName').value = '';
+    document.getElementById('newTemplateFile').value = '';
+    _pendingTemplateFile = null;
+    _pendingTemplateFieldNames = [];
+    toast(`✓ Template "${name}" saved`);
+    await loadCredentialingTemplates();
+  } catch (e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function deleteCredentialingTemplate(id, name) {
+  if (!confirm(`Delete the "${name}" template? Any forms already generated from it are unaffected.`)) return;
+  const { data: tmpl } = await sb.from('credentialing_templates').select('storage_path').eq('id', id).maybeSingle();
+  const { error } = await sb.from('credentialing_templates').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  if (tmpl?.storage_path) await sb.storage.from('credentialing-templates').remove([tmpl.storage_path]);
+  toast(`Deleted "${name}"`);
+  await loadCredentialingTemplates();
+}
+
+async function generateFilledForm(templateId) {
+  const staffId = document.getElementById(`genStaffFor_${templateId}`)?.value;
+  if (!staffId) { toast('Select a staff member first', true); return; }
+  const staff = staffList.find(s => s.id === staffId);
+  if (!staff) { toast('Staff member not found', true); return; }
+
+  try {
+    const { data: tmpl, error: tmplErr } = await sb.from('credentialing_templates').select('*').eq('id', templateId).maybeSingle();
+    if (tmplErr) throw tmplErr;
+    if (!tmpl) throw new Error('Template not found');
+
+    const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
+    if (dlErr) throw dlErr;
+    const bytes = await fileBlob.arrayBuffer();
+
+    const { PDFDocument } = PDFLib;
+    const pdfDoc = await PDFDocument.load(bytes);
+    const form = pdfDoc.getForm();
+
+    const skipped = [];
+    for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
+      const value = resolveCredDataSource(sourcePath, currentCompany, staff);
+      try {
+        form.getTextField(pdfFieldName).setText(String(value || ''));
+      } catch (fieldErr) {
+        skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF — skip, don't fail the whole generation
+      }
+    }
+
+    const filledBytes = await pdfDoc.save();
+    const blob = new Blob([filledBytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tmpl.name.replace(/[^a-z0-9]/gi,'_')}_${staff.full_name.replace(/[^a-z0-9]/gi,'_')}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    toast(skipped.length
+      ? `Generated — ${skipped.length} mapped field(s) no longer matched the PDF and were skipped`
+      : `✓ Filled form generated for ${staff.full_name}`);
+  } catch (e) {
+    toast('Could not generate form: ' + e.message, true);
+  }
 }
 
 async function renderCredentialingStaffTable() {
@@ -6135,9 +6526,11 @@ async function saveCompanySettings() {
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
   // Two save buttons write here now (Settings tab, and the Credentialing
-  // tab's org Tax ID/NPI fields) — update whichever status element is
-  // actually present on the currently visible tab.
-  const statusEl   = document.getElementById('setCoStatus') || document.getElementById('setCoStatus2');
+  // tab's org profile fields) — both status elements always exist in the
+  // DOM regardless of which tab is hidden, so update whichever one is
+  // actually visible right now rather than always defaulting to the first.
+  const statusEl = [document.getElementById('setCoStatus'), document.getElementById('setCoStatus2')]
+    .find(el => el && el.offsetParent !== null) || document.getElementById('setCoStatus');
 
   // Only super admins can change company name
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
@@ -6146,6 +6539,22 @@ async function saveCompanySettings() {
     custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2 },
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
+    legal_business_name:        document.getElementById('setLegalName').value.trim() || null,
+    provider_directory_name:    document.getElementById('setDirectoryName').value.trim() || null,
+    group_specialty:            document.getElementById('setGroupSpecialty').value.trim() || null,
+    virtual_only:                document.getElementById('setVirtualOnly').value === 'true',
+    payment_remittance_address: document.getElementById('setRemitAddress').value.trim() || null,
+    billing_phone:               document.getElementById('setBillingPhone').value.trim() || null,
+    notice_address:              document.getElementById('setNoticeAddress').value.trim() || null,
+    notice_address_phone:        document.getElementById('setNoticePhone').value.trim() || null,
+    service_location_address:   document.getElementById('setServiceAddress').value.trim() || null,
+    service_location_phone:     document.getElementById('setServicePhone').value.trim() || null,
+    credentialing_contact_name:  document.getElementById('setCredContactName').value.trim() || null,
+    credentialing_contact_email: document.getElementById('setCredContactEmail').value.trim() || null,
+    credentialing_contact_phone: document.getElementById('setCredContactPhone').value.trim() || null,
+    authorized_signatory_name:   document.getElementById('setSignatoryName').value.trim() || null,
+    authorized_signatory_title:  document.getElementById('setSignatoryTitle').value.trim() || null,
+    authorized_signatory_email:  document.getElementById('setSignatoryEmail').value.trim() || null,
   };
   if (isSuperAdmin) {
     updates.name = document.getElementById('setCoName').value.trim();
