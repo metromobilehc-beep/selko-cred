@@ -1158,10 +1158,7 @@
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Document types</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
-        <div style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;">
-          <strong style="color:#7dd3fc;">🔒 = Selko-provided default</strong> — shared by every company on the platform, so it can't be edited directly here (that would change it for every other company too). This isn't tied to your plan — it's the same for every company, on any plan.<br/><br/>
-          Want it to work differently for your company? Click <strong>"Hide for us"</strong> to remove the shared version from your view, then <strong>"Duplicate to customize"</strong> to get your own fully-editable copy in one click.
-        </div>
+        <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;"></div>
         <div class="tbl-wrap">
           <table>
             <thead><tr>
@@ -5119,6 +5116,14 @@ async function loadDocTypesTable() {
 
   _docTypesCache = data || []; // so edit functions can check company_id before writing, without a re-fetch
 
+  const canCustomize = window._isPro || currentProfile?.is_super_admin;
+  const banner = document.getElementById('docTypesExplainerBanner');
+  if (banner) {
+    banner.innerHTML = canCustomize
+      ? `🔒 Locked items are built-in starting points every company gets — editing one here would change it for everyone, not just you. Want it your way? Hit <strong>"Hide for us"</strong>, then <strong>"Duplicate to customize"</strong> to get your own private copy you can fully edit.`
+      : `🔒 Locked items are built-in starting points every company gets — editing one here would change it for everyone, not just you. Making your own editable version is a Pro feature — contact Selko to upgrade if you'd like that.`;
+  }
+
   const { data: hiddenRows } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
@@ -5161,7 +5166,9 @@ async function loadDocTypesTable() {
       // shared defaults — so the lock (visual and functional) only ever
       // applies to a regular company admin, never to them.
       const lockedForMe = isGlobal && !currentProfile?.is_super_admin;
-      const lockTitle = 'Selko-provided default, shared by every company — "Hide for us" it and add your own version to customize';
+      const lockTitle = window._isPro
+        ? 'Built-in default — hide it, then duplicate it to make your own editable copy'
+        : 'Built-in default — making your own editable copy is a Pro feature';
       return `<tr data-doctype-group="${catSlug}">
     <td>
       <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;width:100%;padding:4px 0;${lockedForMe ? 'opacity:.5;' : ''}" 
@@ -5204,7 +5211,7 @@ async function loadDocTypesTable() {
       <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
         ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
       </button>
-      ${isGlobal ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click">📋 Duplicate to customize</button>` : ''}
+      ${isGlobal && (window._isPro || currentProfile?.is_super_admin) ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click">📋 Duplicate to customize</button>` : ''}
       ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
   </tr>`;
@@ -5244,7 +5251,9 @@ function blockedFromEditingGlobalDocType(id) {
   if (currentProfile?.is_super_admin) return false;
   const t = _docTypesCache.find(x => x.id === id);
   if (t && !t.company_id) {
-    toast('This is a Selko-provided default, shared across every company — it can\'t be customized directly. "Hide for us" it, then add your own version with the settings you want.', true);
+    toast(window._isPro
+      ? 'This one\'s a built-in default shared by every company, so it can\'t be edited directly. Hit "Hide for us," then "Duplicate to customize" to get your own version.'
+      : 'This one\'s a built-in default shared by every company, so it can\'t be edited directly. Making your own editable version is a Pro feature — contact Selko to upgrade if you\'d like that.', true);
     return true;
   }
   return false;
@@ -5307,6 +5316,7 @@ async function toggleDocTypeHidden(id, currentlyHidden) {
 // completely independent, fully-editable copy from this point forward;
 // it has no ongoing link back to the global original.
 async function duplicateDocTypeToCustomize(id) {
+  if (!window._isPro) { toast('This feature requires a Pro plan. Contact Selko to upgrade.', true); return; }
   const t = _docTypesCache.find(x => x.id === id);
   if (!t) { toast('Could not find this document type — try refreshing.', true); return; }
   if (t.company_id) { toast('This is already your own document type.', true); return; }
