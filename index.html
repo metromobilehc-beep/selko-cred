@@ -1855,12 +1855,28 @@ async function loadDocTypes() {
   const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
 
   docTypes = (data || []).filter(t => !hiddenIds.has(t.id));
+
+  // Narrow the self-service upload picker to what actually applies to
+  // *this* person, if they're a clinician with a discipline on file — a PT
+  // shouldn't have to scroll past PTA/OT/COTA/SLP-specific licenses that
+  // will never apply to them. This only affects the `upType` dropdown
+  // below; the shared `docTypes` array stays the full set for admin forms
+  // and filters elsewhere, which need to see everything regardless.
+  const { data: myStaffRec } = await sb.from('credtrack_staff')
+    .select('discipline').eq('company_id', currentCompany.id).eq('email', currentProfile.email).maybeSingle();
+  const myDiscipline = myStaffRec?.discipline || null;
+  const myOverrides = myDiscipline ? await getDocTypeOverrides(currentCompany.id) : {};
+
   const sel = document.getElementById('upType');
   sel.innerHTML = '<option value="">— Select type —</option>';
   // Some document types (e.g. Background Check) require independent
   // verification and shouldn't be self-submitted — those are excluded
   // here, but still fully available in the admin upload form below.
-  docTypes.filter(t => t.staff_can_upload !== false).forEach(t => {
+  docTypes.filter(t => t.staff_can_upload !== false).filter(t => {
+    if (!myDiscipline) return true; // no discipline on file — show everything rather than guess
+    const disciplineList = effectiveDisciplines(t, myOverrides);
+    return disciplineList.length === 0 || disciplineList.includes(myDiscipline);
+  }).forEach(t => {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name; sel.appendChild(o);
   });
