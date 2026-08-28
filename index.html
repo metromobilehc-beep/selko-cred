@@ -619,14 +619,7 @@
           </div>
           <div>
             <label class="inline-label">Category</label>
-            <select class="inline-select" id="dtCategory">
-              <option value="Clinical Licensing">Clinical Licensing</option>
-              <option value="Compliance & Safety">Compliance & Safety</option>
-              <option value="Insurance">Insurance</option>
-              <option value="Business">Business</option>
-              <option value="Identification">Identification</option>
-              <option value="Other" selected>Other</option>
-            </select>
+            <select class="inline-select" id="dtCategory"></select>
           </div>
           <div style="display:flex;gap:6px;align-items:flex-end;">
             <button class="btn btn-sm btn-teal" onclick="saveDocType()">Save</button>
@@ -1344,6 +1337,19 @@
             <thead><tr><th>When</th><th>Company</th><th>Staff member</th><th>Document</th></tr></thead>
             <tbody id="recentUploadsTbody"></tbody>
           </table>
+        </div>
+      </div>
+
+      <!-- Document type categories — the shared grouping labels used in
+           every company's Document Types table, since global and custom
+           types sit together in one list, sorted by category. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Document type categories</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Shared across every company — the section headers in each company's Document Types table. Adding one here makes it available for anyone to file a type under, immediately.</p>
+        <div id="categoriesListSuper" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newCategoryName" placeholder="e.g. HR Documents" style="max-width:240px;" />
+          <button class="btn btn-sm btn-teal" onclick="addDocTypeCategory()">+ Add category</button>
         </div>
       </div>
 
@@ -4439,11 +4445,17 @@ function proGate(action) {
   if (window._isPro) { action(); return; }
   toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
 }
-function showAddDocType() {
+async function showAddDocType() {
   document.getElementById('addDocTypeForm').style.display = 'block';
   // Only true super admins can create a Selko-wide default — same
   // privilege that already lets them edit existing global rows directly.
   document.getElementById('dtGlobalWrap').style.display = currentProfile?.is_super_admin ? 'flex' : 'none';
+
+  const { data: categoryRows } = await sb.from('document_type_categories').select('name').order('sort_order');
+  const categories = (categoryRows || []).map(c => c.name);
+  if (!categories.includes('Other')) categories.push('Other');
+  const sel = document.getElementById('dtCategory');
+  sel.innerHTML = categories.map(c => `<option value="${c}" ${c === 'Other' ? 'selected' : ''}>${c}</option>`).join('');
 }
 function hideAddDocType() {
   document.getElementById('addDocTypeForm').style.display = 'none';
@@ -5189,7 +5201,12 @@ async function loadDocTypesTable() {
     const cat = t.category || 'Other';
     (groups[cat] = groups[cat] || []).push(t);
   });
-  const categoryOrder = ['Clinical Licensing', 'Compliance & Safety', 'Insurance', 'Business', 'Identification', 'Other'];
+  // Categories are shared platform-wide and managed from Selko Admin, not
+  // hardcoded here — so a newly-added category is immediately usable by
+  // every company without a code change.
+  const { data: categoryRows } = await sb.from('document_type_categories').select('name').order('sort_order');
+  const categoryOrder = (categoryRows || []).map(c => c.name);
+  if (!categoryOrder.includes('Other')) categoryOrder.push('Other'); // always a valid fallback bucket
   const sortedCategories = Object.keys(groups).sort((a, b) => {
     const ai = categoryOrder.indexOf(a), bi = categoryOrder.indexOf(b);
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -7351,6 +7368,55 @@ async function clearBugLog() {
 }
 
 // ══ SUPER ADMIN ══
+let _docTypeCategoriesCache = [];
+
+async function loadDocTypeCategories() {
+  const { data, error } = await sb.from('document_type_categories').select('*').order('sort_order');
+  const container = document.getElementById('categoriesListSuper');
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  _docTypeCategoriesCache = data || [];
+
+  if (!_docTypeCategoriesCache.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No categories yet — add one below.</div>';
+    return;
+  }
+  container.innerHTML = _docTypeCategoriesCache.map(c => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="flex:1;color:#fff;font-size:13px;">${c.name}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteDocTypeCategory(${c.id},'${c.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
+    </div>`).join('');
+}
+
+async function addDocTypeCategory() {
+  const input = document.getElementById('newCategoryName');
+  const name = input.value.trim();
+  if (!name) { toast('Enter a category name first.', true); return; }
+
+  const nextSort = _docTypeCategoriesCache.length
+    ? Math.max(..._docTypeCategoriesCache.map(c => c.sort_order || 0)) + 1
+    : 0;
+
+  const { error } = await sb.from('document_type_categories').insert({ name, sort_order: nextSort });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  input.value = '';
+  toast(`✓ "${name}" added — every company can now file a type under it`);
+  await loadDocTypeCategories();
+}
+
+async function deleteDocTypeCategory(id, name) {
+  const { count } = await sb.from('document_types').select('id', { count: 'exact', head: true }).eq('category', name);
+  if (count && count > 0) {
+    toast(`Can't delete "${name}" — ${count} document type${count !== 1 ? 's are' : ' is'} still filed under it. Move them to a different category first.`, true);
+    return;
+  }
+  if (!confirm(`Delete the "${name}" category?`)) return;
+  const { error } = await sb.from('document_type_categories').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`Deleted "${name}"`);
+  await loadDocTypeCategories();
+}
+
 async function loadPlatformDocTypes() {
   const { data } = await sb.from('document_types')
     .select('*, companies(name)')
@@ -7445,6 +7511,7 @@ async function permanentlyDeleteDoc(id, filePath) {
 
 async function loadSuperAdmin() {
   await loadBugLog();
+  await loadDocTypeCategories();
   await loadPlatformDocTypes();
   await loadDeletionReview();
   await loadRecentUploads();
