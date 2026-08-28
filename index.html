@@ -1316,6 +1316,21 @@
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
+      <!-- Storage usage — per company, so it's actually useful for
+           tracking growth and spotting an outlier, not just one opaque
+           platform-wide total. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>📦 Storage usage</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Uploaded credential document files, per company. Doesn't include branding logos or other non-credential uploads to this bucket.</p>
+        <div id="storageUsageTotal" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Company</th><th>Files</th><th>Storage used</th></tr></thead>
+            <tbody id="storageUsageTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Records eligible for permanent deletion (6+ years archived — manual review only, never automatic) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🗄 Records eligible for permanent deletion</h2>
@@ -7417,6 +7432,40 @@ async function deleteDocTypeCategory(id, name) {
   await loadDocTypeCategories();
 }
 
+function formatBytes(bytes) {
+  if (!bytes) return '0 MB';
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1024) return mb.toFixed(1) + ' MB';
+  return (mb / 1024).toFixed(2) + ' GB';
+}
+
+async function loadStorageUsage() {
+  const totalEl = document.getElementById('storageUsageTotal');
+  const tbody = document.getElementById('storageUsageTbody');
+  const { data, error } = await sb.rpc('get_storage_usage_by_company');
+  if (error) {
+    totalEl.textContent = '';
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:#f87171;padding:16px;">${error.message}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
+    totalEl.textContent = '';
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:16px;">No files found.</td></tr>';
+    return;
+  }
+
+  const totalBytes = data.reduce((sum, r) => sum + Number(r.total_bytes || 0), 0);
+  const totalFiles = data.reduce((sum, r) => sum + Number(r.file_count || 0), 0);
+  totalEl.innerHTML = `<strong style="color:#fff;">${formatBytes(totalBytes)}</strong> total across ${totalFiles} files`;
+
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${r.company_name || '—'}</td>
+      <td>${r.file_count || 0}</td>
+      <td>${formatBytes(Number(r.total_bytes || 0))}</td>
+    </tr>`).join('');
+}
+
 async function loadPlatformDocTypes() {
   const { data } = await sb.from('document_types')
     .select('*, companies(name)')
@@ -7512,6 +7561,7 @@ async function permanentlyDeleteDoc(id, filePath) {
 async function loadSuperAdmin() {
   await loadBugLog();
   await loadDocTypeCategories();
+  await loadStorageUsage();
   await loadPlatformDocTypes();
   await loadDeletionReview();
   await loadRecentUploads();
