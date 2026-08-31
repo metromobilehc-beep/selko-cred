@@ -997,7 +997,7 @@
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">CAQH ID and DEA number, per staff member — used for payer credentialing applications, separate from basic license tracking.</p>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>Staff</th><th>CAQH ID</th><th>DEA number</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Staff</th><th>CAQH ID</th><th>CAQH re-attestation due</th><th>DEA number</th><th>DEA expiration</th><th>Actions</th></tr></thead>
               <tbody id="credentialingStaffTbody"></tbody>
             </table>
           </div>
@@ -1005,8 +1005,11 @@
 
         <!-- Credentialing form templates — upload a payer's fillable PDF
              once, map its fields to Cred data, then generate a filled copy
-             for any staff member in one click from then on. -->
-        <div class="dark-panel" data-default-open="true">
+             for any staff member in one click from then on. This is the
+             "Full" credentialing tier — a company on "Basic" gets the org
+             profile, accreditations, and per-staff CAQH/DEA above, but not
+             this, since template generation is the more advanced feature. -->
+        <div class="dark-panel" id="credTemplatesPanel" data-default-open="true">
           <h2>Credentialing form templates</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application once, map its fields to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
           <div id="credTemplatesList" style="margin-bottom:14px;"></div>
@@ -1022,6 +1025,11 @@
             <button class="btn btn-sm btn-teal" onclick="startTemplateUpload()">+ Upload &amp; map fields</button>
           </div>
           <div id="templateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+        </div>
+
+        <div class="dark-panel" id="credTemplatesLock" style="display:none;">
+          <h2>Credentialing form templates <span style="font-size:10px;color:var(--gold);margin-left:6px;">FULL CREDENTIALING</span></h2>
+          <p style="color:rgba(255,255,255,.6);font-size:13px;">One-click filled payer applications — generated straight from the profile and staff data above. Included on Full Credentialing; contact Selko to upgrade from Basic.</p>
         </div>
       </div>
 
@@ -2862,7 +2870,7 @@ function showStaffAuditLog(staffId, staffName) {
     const fieldLabels = {
       license_number: 'License number', license_type: 'License type', license_state: 'License state',
       npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
-      caqh_id: 'CAQH ID', dea_number: 'DEA number',
+      caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -6106,6 +6114,13 @@ async function loadCredentialingTab() {
   content.style.display = 'block';
   lock.style.display = 'none';
 
+  // Full Credentialing includes everything Basic does, plus the template
+  // upload/mapping/generate-filled-form feature — Basic is org profile,
+  // accreditations, and per-staff CAQH/DEA only (data entry, no generation).
+  const isFullCredentialing = currentCompany.credentialing_tier !== 'basic';
+  document.getElementById('credTemplatesPanel').style.display = isFullCredentialing ? 'block' : 'none';
+  document.getElementById('credTemplatesLock').style.display  = isFullCredentialing ? 'none' : 'block';
+
   const c = currentCompany;
   document.getElementById('setTaxId').value  = c.tax_id || '';
   document.getElementById('setOrgNpi').value = c.org_npi || '';
@@ -6128,7 +6143,7 @@ async function loadCredentialingTab() {
 
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
-  await loadCredentialingTemplates();
+  if (isFullCredentialing) await loadCredentialingTemplates();
 }
 
 // ══ CREDENTIALING FORM TEMPLATES — auto-fill payer applications ══
@@ -6164,14 +6179,21 @@ const CRED_DATA_SOURCES = [
     ['staff.discipline', 'Specialty/discipline'],
     ['staff.npi_number', 'Individual NPI'],
     ['staff.caqh_id', 'CAQH ID'],
+    ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
     ['staff.license_number', 'License number'],
     ['staff.license_type', 'License type'],
     ['staff.license_state', 'License state'],
     ['staff.dea_number', 'DEA number'],
+    ['staff.dea_expiration_date', 'DEA expiration'],
     ['staff.email', 'Email'],
     ['staff.job_title', 'Job title'],
   ]},
 ];
+
+const CRED_DATE_FIELDS = new Set([
+  'company.malpractice_effective_date', 'company.malpractice_expiration_date',
+  'staff.caqh_expiration_date', 'staff.dea_expiration_date',
+]);
 
 function resolveCredDataSource(path, company, staff) {
   const [scope, key] = path.split('.');
@@ -6179,6 +6201,7 @@ function resolveCredDataSource(path, company, staff) {
   if (!record) return '';
   const val = record[key];
   if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  if (val && CRED_DATE_FIELDS.has(path)) return fmtDate(val);
   return val || '';
 }
 
@@ -6266,7 +6289,9 @@ function guessDefaultMapping(fieldName) {
     [/signatory.*email/, 'company.authorized_signatory_email'],
     [/provider.*name/, 'staff.full_name'],
     [/individual.*npi/, 'staff.npi_number'],
+    [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
+    [/dea.*(expir|renewal)|(expir|renewal).*dea/, 'staff.dea_expiration_date'],
     [/dea/, 'staff.dea_number'],
   ];
   for (const [re, val] of guesses) if (re.test(n)) return val;
@@ -6414,24 +6439,46 @@ async function generateFilledForm(templateId) {
   }
 }
 
+// Disciplines that actually require a DEA number — everyone else's DEA
+// fields are just noise on the table (PT/PTA/OT/COTA/SLP etc. can't
+// prescribe controlled substances at all). Edit directly here if a
+// company's discipline naming differs from these.
+const PRESCRIBING_DISCIPLINES = new Set(['MD', 'DO', 'NP', 'PA', 'DPM', 'DDS']);
+
+function credExpiryLabel(dateStr) {
+  if (!dateStr) return '—';
+  const days = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
+  const formatted = fmtDate(dateStr);
+  if (days < 0) return `<span style="color:#f87171;">${formatted} (expired)</span>`;
+  if (days <= 60) return `<span style="color:#fbbf24;">${formatted} (${days}d)</span>`;
+  return `<span style="color:rgba(255,255,255,.6);">${formatted}</span>`;
+}
+
 async function renderCredentialingStaffTable() {
   await loadStaffList();
   const tbody = document.getElementById('credentialingStaffTbody');
   if (!tbody) return;
   if (!staffList.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No staff yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No staff yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = staffList.map(s => `
+  tbody.innerHTML = staffList.map(s => {
+    const prescribes = PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
+    const deaCells = prescribes
+      ? `<td>${s.dea_number || '—'}</td><td>${credExpiryLabel(s.dea_expiration_date)}</td>`
+      : `<td colspan="2" style="color:rgba(255,255,255,.25);font-size:12px;">N/A — non-prescribing</td>`;
+    return `
     <tr>
       <td>${s.full_name}</td>
       <td>${s.caqh_id || '—'}</td>
-      <td>${s.dea_number || '—'}</td>
-      <td><button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.dea_number||''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button></td>
-    </tr>`).join('');
+      <td>${credExpiryLabel(s.caqh_expiration_date)}</td>
+      ${deaCells}
+      <td><button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button></td>
+    </tr>`;
+  }).join('');
 }
 
-function showEditCredentialingModal(id, name, currentCaqh, currentDea) {
+function showEditCredentialingModal(id, name, currentCaqh, currentCaqhExp, currentDea, currentDeaExp, prescribes) {
   const existing = document.getElementById('editCredentialingModal');
   if (existing) existing.remove();
 
@@ -6439,16 +6486,30 @@ function showEditCredentialingModal(id, name, currentCaqh, currentDea) {
   modal.id = 'editCredentialingModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:340px;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:18px;">${name}</div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">CAQH ID</label>
-        <input class="inline-input" type="text" id="editCaqhId" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        <div>
+          <label class="inline-label">CAQH ID</label>
+          <input class="inline-input" type="text" id="editCaqhId" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
+        </div>
+        <div>
+          <label class="inline-label">CAQH re-attestation due</label>
+          <input class="inline-input" type="date" id="editCaqhExpiration" value="${currentCaqhExp || ''}" />
+        </div>
       </div>
-      <div style="margin-bottom:18px;">
-        <label class="inline-label">DEA number</label>
-        <input class="inline-input" type="text" id="editDeaNumber" value="${currentDea || ''}" placeholder="if applicable" />
+      <div style="display:${prescribes ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
+        <div>
+          <label class="inline-label">DEA number</label>
+          <input class="inline-input" type="text" id="editDeaNumber" value="${currentDea || ''}" placeholder="if applicable" />
+        </div>
+        <div>
+          <label class="inline-label">DEA expiration</label>
+          <input class="inline-input" type="date" id="editDeaExpiration" value="${currentDeaExp || ''}" />
+        </div>
       </div>
+      ${prescribes ? '' : `
+      <p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:14px;">DEA fields hidden — not applicable to this discipline. Change the discipline first if that's wrong.</p>`}
       <div id="editCredentialingErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-teal" onclick="saveEditCredentialing('${id}')" style="flex:1;justify-content:center;">Save</button>
@@ -6460,14 +6521,18 @@ function showEditCredentialingModal(id, name, currentCaqh, currentDea) {
 }
 
 async function saveEditCredentialing(id) {
-  const caqh  = document.getElementById('editCaqhId').value.trim();
-  const dea   = document.getElementById('editDeaNumber').value.trim();
+  const caqh     = document.getElementById('editCaqhId').value.trim();
+  const caqhExp  = document.getElementById('editCaqhExpiration').value || null;
+  const dea      = document.getElementById('editDeaNumber').value.trim();
+  const deaExp   = document.getElementById('editDeaExpiration').value || null;
   const errEl = document.getElementById('editCredentialingErr');
   const before = staffList.find(s => s.id === id) || {};
 
   const { error } = await sb.from('credtrack_staff').update({
     caqh_id: caqh || null,
+    caqh_expiration_date: caqhExp,
     dea_number: dea || null,
+    dea_expiration_date: deaExp,
   }).eq('id', id);
 
   if (error) {
@@ -6477,8 +6542,10 @@ async function saveEditCredentialing(id) {
   }
 
   await logStaffFieldChanges(id, [
-    { field: 'caqh_id',    old: before.caqh_id,    new: caqh || null },
-    { field: 'dea_number', old: before.dea_number, new: dea || null },
+    { field: 'caqh_id',              old: before.caqh_id,              new: caqh || null },
+    { field: 'caqh_expiration_date', old: before.caqh_expiration_date, new: caqhExp },
+    { field: 'dea_number',           old: before.dea_number,           new: dea || null },
+    { field: 'dea_expiration_date',  old: before.dea_expiration_date,  new: deaExp },
   ]);
 
   document.getElementById('editCredentialingModal')?.remove();
@@ -7582,6 +7649,11 @@ async function loadSuperAdmin() {
             <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
             <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>
           </select>
+          ${c.has_credentialing_addon ? `
+          <select class="filter-sel" id="credTierSelect_${c.id}" style="max-width:170px;transition:box-shadow .3s, border-color .3s;" onchange="setCredentialingTier('${c.id}', this.value)" title="Basic: org profile, accreditations, per-staff CAQH/DEA only. Full: Basic plus the template upload/generate-filled-form feature.">
+            <option value="basic" ${c.credentialing_tier === 'basic' ? 'selected' : ''}>Credentialing: Basic</option>
+            <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Credentialing: Full</option>
+          </select>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
@@ -8032,6 +8104,23 @@ async function setCompanyModules(id, mode) {
   // mid-page — a brief highlight right where you're already looking is a
   // more reliable confirmation than a fixed-position element elsewhere.
   const sel = document.getElementById(`moduleSelect_${id}`);
+  if (sel) {
+    sel.style.borderColor = 'var(--teal)';
+    sel.style.boxShadow = '0 0 0 3px rgba(20,184,166,.35)';
+    setTimeout(() => {
+      sel.style.borderColor = '';
+      sel.style.boxShadow = '';
+    }, 1500);
+  }
+}
+
+async function setCredentialingTier(id, tier) {
+  const { error } = await sb.from('companies').update({ credentialing_tier: tier }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ Credentialing set to: ${tier === 'basic' ? 'Basic' : 'Full'}`);
+  await loadSuperAdmin();
+
+  const sel = document.getElementById(`credTierSelect_${id}`);
   if (sel) {
     sel.style.borderColor = 'var(--teal)';
     sel.style.boxShadow = '0 0 0 3px rgba(20,184,166,.35)';
