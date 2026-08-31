@@ -5806,7 +5806,7 @@ async function showAgencyAssignmentModal(agencyId, agencyName) {
           <label class="agencyStaffRow" data-name="${s.full_name.toLowerCase()}" data-discipline="${s.discipline || ''}" style="display:flex;align-items:center;gap:10px;padding:7px 4px;font-size:13px;color:#fff;cursor:pointer;">
             <input type="checkbox" class="agencyStaffCheck" value="${s.id}" style="flex-shrink:0;" ${currentIds.has(s.id) ? 'checked' : ''} />
             <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.full_name}</span>
-            <span style="flex-shrink:0;min-width:70px;text-align:right;font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;">${s.discipline || '—'}</span>
+            <span style="flex-shrink:0;max-width:110px;overflow:hidden;text-overflow:ellipsis;text-align:right;font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;" title="${(s.discipline || '').replace(/"/g,'&quot;')}">${s.discipline || '—'}</span>
           </label>
         `).join('') : '<span style="font-size:12px;color:rgba(255,255,255,.3);">No active staff yet.</span>'}
       </div>
