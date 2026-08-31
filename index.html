@@ -974,6 +974,26 @@
               <label class="inline-label">Authorized signatory — email</label>
               <input class="inline-input" type="email" id="setSignatoryEmail" />
             </div>
+            <div>
+              <label class="inline-label">Malpractice insurance carrier</label>
+              <input class="inline-input" type="text" id="setMalpracticeCarrier" placeholder="e.g. CNA, The Doctors Company" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice policy number</label>
+              <input class="inline-input" type="text" id="setMalpracticePolicy" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice coverage limits</label>
+              <input class="inline-input" type="text" id="setMalpracticeLimits" placeholder="e.g. $1M/$3M" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice policy effective date</label>
+              <input class="inline-input" type="date" id="setMalpracticeEffective" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice policy expiration date</label>
+              <input class="inline-input" type="date" id="setMalpracticeExpiration" />
+            </div>
           </div>
           <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save</button>
           <div id="setCoStatus2" class="up-status" style="margin-top:10px;"></div>
@@ -6146,6 +6166,11 @@ async function loadCredentialingTab() {
   document.getElementById('setSignatoryName').value    = c.authorized_signatory_name || '';
   document.getElementById('setSignatoryTitle').value   = c.authorized_signatory_title || '';
   document.getElementById('setSignatoryEmail').value   = c.authorized_signatory_email || '';
+  document.getElementById('setMalpracticeCarrier').value    = c.malpractice_carrier || '';
+  document.getElementById('setMalpracticePolicy').value     = c.malpractice_policy_number || '';
+  document.getElementById('setMalpracticeLimits').value     = c.malpractice_coverage_limits || '';
+  document.getElementById('setMalpracticeEffective').value  = c.malpractice_effective_date || '';
+  document.getElementById('setMalpracticeExpiration').value = c.malpractice_expiration_date || '';
 
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
@@ -6179,6 +6204,11 @@ const CRED_DATA_SOURCES = [
     ['company.authorized_signatory_name', 'Authorized signatory — name'],
     ['company.authorized_signatory_title', 'Authorized signatory — title'],
     ['company.authorized_signatory_email', 'Authorized signatory — email'],
+    ['company.malpractice_carrier', 'Malpractice insurance carrier'],
+    ['company.malpractice_policy_number', 'Malpractice policy number'],
+    ['company.malpractice_coverage_limits', 'Malpractice coverage limits'],
+    ['company.malpractice_effective_date', 'Malpractice policy effective date'],
+    ['company.malpractice_expiration_date', 'Malpractice policy expiration date'],
   ]},
   { group: 'Selected staff member', options: [
     ['staff.full_name', 'Provider name'],
@@ -6285,6 +6315,11 @@ function guessDefaultMapping(fieldName) {
     [/signatory.*name/, 'company.authorized_signatory_name'],
     [/signatory.*title/, 'company.authorized_signatory_title'],
     [/signatory.*email/, 'company.authorized_signatory_email'],
+    [/malpractice.*carrier|liability.*carrier|insurance.*carrier/, 'company.malpractice_carrier'],
+    [/malpractice.*policy.*number|policy.*number/, 'company.malpractice_policy_number'],
+    [/malpractice.*limit|coverage.*limit/, 'company.malpractice_coverage_limits'],
+    [/malpractice.*effective|policy.*effective/, 'company.malpractice_effective_date'],
+    [/malpractice.*expir|policy.*expir|policy.*termination/, 'company.malpractice_expiration_date'],
     [/provider.*name/, 'staff.full_name'],
     [/individual.*npi/, 'staff.npi_number'],
     [/caqh/, 'staff.caqh_id'],
@@ -6811,6 +6846,11 @@ async function saveCompanySettings() {
     authorized_signatory_name:   document.getElementById('setSignatoryName').value.trim() || null,
     authorized_signatory_title:  document.getElementById('setSignatoryTitle').value.trim() || null,
     authorized_signatory_email:  document.getElementById('setSignatoryEmail').value.trim() || null,
+    malpractice_carrier:          document.getElementById('setMalpracticeCarrier').value.trim() || null,
+    malpractice_policy_number:    document.getElementById('setMalpracticePolicy').value.trim() || null,
+    malpractice_coverage_limits:  document.getElementById('setMalpracticeLimits').value.trim() || null,
+    malpractice_effective_date:   document.getElementById('setMalpracticeEffective').value || null,
+    malpractice_expiration_date:  document.getElementById('setMalpracticeExpiration').value || null,
   };
   if (isSuperAdmin) {
     updates.name = document.getElementById('setCoName').value.trim();
