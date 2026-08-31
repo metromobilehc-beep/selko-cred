@@ -5787,7 +5787,7 @@ async function showAgencyAssignmentModal(agencyId, agencyName) {
   modal.id = 'agencyAssignmentModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:85vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${agencyName}</div>
       <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:14px;">Which staff can this agency see verified documents for?</div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
@@ -5803,10 +5803,10 @@ async function showAgencyAssignmentModal(agencyId, agencyName) {
       </div>
       <div id="agencyStaffChecklist" style="overflow-y:auto;flex:1;margin-bottom:16px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;">
         ${activeStaff.length ? activeStaff.map(s => `
-          <label class="agencyStaffRow" data-name="${s.full_name.toLowerCase()}" data-discipline="${s.discipline || ''}" style="display:flex;align-items:center;gap:8px;padding:6px 0;font-size:13px;color:#fff;cursor:pointer;">
-            <input type="checkbox" class="agencyStaffCheck" value="${s.id}" ${currentIds.has(s.id) ? 'checked' : ''} />
-            <span style="flex:1;">${s.full_name}</span>
-            <span style="font-size:11px;color:rgba(255,255,255,.4);">${s.discipline || ''}</span>
+          <label class="agencyStaffRow" data-name="${s.full_name.toLowerCase()}" data-discipline="${s.discipline || ''}" style="display:flex;align-items:center;gap:10px;padding:7px 4px;font-size:13px;color:#fff;cursor:pointer;">
+            <input type="checkbox" class="agencyStaffCheck" value="${s.id}" style="flex-shrink:0;" ${currentIds.has(s.id) ? 'checked' : ''} />
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${s.full_name}</span>
+            <span style="flex-shrink:0;min-width:70px;text-align:right;font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;">${s.discipline || '—'}</span>
           </label>
         `).join('') : '<span style="font-size:12px;color:rgba(255,255,255,.3);">No active staff yet.</span>'}
       </div>
