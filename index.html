@@ -705,6 +705,7 @@
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
           <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvImportInput').click()" style="color:#fff;border-color:rgba(255,255,255,.2);">📁 Import staff</button>
           <a href="#" onclick="downloadCsvTemplate();return false;" style="font-size:12px;color:rgba(255,255,255,.5);align-self:center;">Download Excel template</a>
+          <button class="btn btn-sm btn-ghost" onclick="exportStaffRosterPDF()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export PDF</button>
           <input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleCsvFileSelected(this)" />
         </div>
         <div class="inline-form" id="addStaffForm">
@@ -3560,6 +3561,60 @@ async function loadReminderHistoryBody(documentId) {
 }
 
 // ══ STAFF MANAGEMENT ══
+// One-page staff roster PDF — name, discipline, staff type, active status,
+// plus a clear total count. Deliberately kept simple (not a Pro-gated
+// export like the compliance report) since it's just a headcount snapshot,
+// not credential detail.
+async function exportStaffRosterPDF() {
+  await loadStaffList();
+  if (!staffList.length) { toast('No staff to export', true); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const NAVY = [15, 31, 46], TEAL = [13, 148, 136];
+
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageWidth, 50, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(currentCompany.name, 24, 24);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.text(`Staff Roster · Generated ${new Date().toLocaleDateString()} · Selko Cred`, 24, 40);
+
+  const activeCount = staffList.filter(s => s.active).length;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12);
+  doc.setTextColor(30, 41, 59);
+  doc.text(`Total staff: ${staffList.length}  (${activeCount} active, ${staffList.length - activeCount} inactive)`, 24, 72);
+
+  const sorted = [...staffList].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  const body = sorted.map(s => [
+    s.full_name,
+    s.discipline || '—',
+    s.staff_type || 'clinician',
+    s.active ? 'Active' : 'Inactive',
+  ]);
+
+  doc.autoTable({
+    startY: 88,
+    head: [['Name', 'Discipline', 'Staff Type', 'Status']],
+    body,
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+    didParseCell: function(data) {
+      if (data.section === 'body' && data.column.index === 3) {
+        data.cell.styles.textColor = data.row.raw[3] === 'Active' ? [6,95,70] : [153,27,27];
+      }
+    },
+  });
+
+  doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_StaffRoster_${new Date().toISOString().slice(0,10)}.pdf`);
+  toast('Staff roster exported');
+}
+
 async function loadStaffTable() {
   await loadStaffList();
   const tbody = document.getElementById('staffTbody');
