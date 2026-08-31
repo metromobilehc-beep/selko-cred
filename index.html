@@ -7663,14 +7663,11 @@ async function loadSuperAdmin() {
         ` : `
           <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
           <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
-          <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
-            onclick="toggleCompanyFlag('${c.id}','has_credtrack',${c.has_credtrack})">
-            ${c.has_credtrack ? 'Disable CredTrack' : 'Enable CredTrack'}
-          </button>
-          <button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.2);"
-            onclick="toggleCompanyFlag('${c.id}','has_credentialing_addon',${!!c.has_credentialing_addon})">
-            ${c.has_credentialing_addon ? 'Disable Credentialing add-on' : 'Enable Credentialing add-on'}
-          </button>
+          <select class="filter-sel" style="max-width:220px;" onchange="setCompanyModules('${c.id}', this.value)" title="Which modules this company has access to. Both is the common case — choosing either single option below means the other is completely off, including its own tab.">
+            <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
+            <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
+            <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>
+          </select>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
@@ -8096,6 +8093,25 @@ async function toggleCompanyFlag(id, flag, current) {
   const { error } = await sb.from('companies').update({ [flag]: !current }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Updated');
+  await loadSuperAdmin();
+}
+
+// A single atomic update for both module flags together, rather than two
+// independent toggles — those could reach an invalid "both off" state that
+// would lock the company out of logging in entirely, since the login gate
+// requires at least one of has_credtrack/has_credentialing_addon to be true.
+async function setCompanyModules(id, mode) {
+  const updates = {
+    docs:          { has_credtrack: true,  has_credentialing_addon: false },
+    credentialing: { has_credtrack: false, has_credentialing_addon: true },
+    both:          { has_credtrack: true,  has_credentialing_addon: true },
+  }[mode];
+  if (!updates) return;
+
+  const { error } = await sb.from('companies').update(updates).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  const labels = { docs: 'Document tracking only', credentialing: 'Credentialing only', both: 'Both' };
+  toast(`✓ Set to: ${labels[mode]}`);
   await loadSuperAdmin();
 }
 
