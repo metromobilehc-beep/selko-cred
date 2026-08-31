@@ -415,22 +415,6 @@
       <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
     </div>
 
-    <!-- Role preview banner — lets a super admin see exactly what a lower-privilege
-         role's buttons/tabs look like without a second real login -->
-    <div id="rolePreviewBanner" style="display:none;background:#1e3a5f;border:1px solid #38bdf8;border-radius:8px;padding:10px 16px;margin-bottom:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <span style="color:#7dd3fc;font-size:13px;font-weight:700;">👁 Previewing as: <span id="rolePreviewLabel"></span> — buttons hidden/shown are visual only, your real permissions are unchanged</span>
-      <button class="btn btn-sm" onclick="exitRolePreview()" style="background:#38bdf8;color:#0c1e2e;font-weight:700;">Exit preview</button>
-    </div>
-
-    <div id="rolePreviewControl" style="display:none;margin-bottom:16px;">
-      <label class="inline-label">Preview as role</label>
-      <select class="filter-sel" style="max-width:200px;" onchange="if(this.value) previewAsRole(this.value); this.value='';">
-        <option value="">Select a role to preview...</option>
-        <option value="office">Office</option>
-      </select>
-      <span style="font-size:11px;color:rgba(255,255,255,.4);margin-left:10px;">For the clinician self-service view, use "My Credentials" in the header instead — it shows your own actual staff record.</span>
-    </div>
-
     <div class="admin-layout">
     <div class="tabs admin-sidebar">
       <button class="tab active" id="tab-overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
@@ -1796,7 +1780,6 @@ async function initSession(user) {
 
     if (profile.role === 'admin' || profile.is_super_admin) {
       document.getElementById('hdrMyCreds').style.display = 'inline-block';
-      document.getElementById('rolePreviewControl').style.display = 'block';
     }
 
     if (profile.role === 'partner') {
@@ -1859,8 +1842,6 @@ async function logout() {
   // persist into a subsequent, lower-privilege login in the same tab.
   document.getElementById('tab-super').style.display = 'none';
   document.getElementById('tab-insurance').style.display = 'none';
-  document.getElementById('rolePreviewControl').style.display = 'none';
-  document.getElementById('rolePreviewBanner').style.display = 'none';
   const viewAsBanner = document.getElementById('viewAsBanner');
   if (viewAsBanner) viewAsBanner.style.display = 'none';
   document.getElementById('loginEmail').value    = '';
@@ -7014,43 +6995,6 @@ async function exitViewAsAdmin() {
   toast('Returned to Selko Admin');
 }
 
-// ══ ROLE PREVIEW ══
-// Client-side-only visual check for a super admin/admin to see exactly what
-// the office role's buttons look like, without a second real login. This
-// never touches actual permissions — RLS still governs every real action —
-// it only flips the local currentProfile.role flag the UI reads to decide
-// what to render, then re-renders whatever tab is currently open.
-let _realRoleBeforePreview = null;
-
-async function previewAsRole(role) {
-  if (!_realRoleBeforePreview) _realRoleBeforePreview = currentProfile.role;
-  currentProfile = { ...currentProfile, role };
-
-  const banner = document.getElementById('rolePreviewBanner');
-  banner.style.display = 'flex';
-  document.getElementById('rolePreviewLabel').textContent = role === 'office' ? 'Office' : role;
-  document.getElementById('tab-super').style.display = 'none';
-  document.getElementById('tab-settings').style.display = 'none';
-
-  const activeTab = document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'staff';
-  switchTab(activeTab === 'super' || activeTab === 'settings' ? 'staff' : activeTab);
-  toast('Previewing as ' + (role === 'office' ? 'Office' : role) + ' — your real permissions are unchanged');
-}
-
-function exitRolePreview() {
-  if (!_realRoleBeforePreview) return;
-  currentProfile = { ...currentProfile, role: _realRoleBeforePreview };
-  _realRoleBeforePreview = null;
-
-  document.getElementById('rolePreviewBanner').style.display = 'none';
-  document.getElementById('tab-super').style.display = currentProfile.is_super_admin ? 'inline-flex' : 'none';
-  document.getElementById('tab-settings').style.display = (currentProfile.role === 'admin' || currentProfile.is_super_admin) ? 'inline-flex' : 'none';
-
-  const activeTab = document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'overview';
-  switchTab(activeTab);
-  toast('Exited role preview');
-}
-
 function applyBranding(branding, logoUrl) {
   if (!branding) return;
   const r = document.documentElement.style;
@@ -7663,7 +7607,7 @@ async function loadSuperAdmin() {
         ` : `
           <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
           <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
-          <select class="filter-sel" style="max-width:220px;" onchange="setCompanyModules('${c.id}', this.value)" title="Which modules this company has access to. Both is the common case — choosing either single option below means the other is completely off, including its own tab.">
+          <select class="filter-sel" id="moduleSelect_${c.id}" style="max-width:220px;transition:box-shadow .3s, border-color .3s;" onchange="setCompanyModules('${c.id}', this.value)" title="Which modules this company has access to. Both is the common case — choosing either single option below means the other is completely off, including its own tab.">
             <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
             <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
             <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>
@@ -8113,6 +8057,19 @@ async function setCompanyModules(id, mode) {
   const labels = { docs: 'Document tracking only', credentialing: 'Credentialing only', both: 'Both' };
   toast(`✓ Set to: ${labels[mode]}`);
   await loadSuperAdmin();
+
+  // The toast alone is easy to miss if attention is still on the dropdown
+  // mid-page — a brief highlight right where you're already looking is a
+  // more reliable confirmation than a fixed-position element elsewhere.
+  const sel = document.getElementById(`moduleSelect_${id}`);
+  if (sel) {
+    sel.style.borderColor = 'var(--teal)';
+    sel.style.boxShadow = '0 0 0 3px rgba(20,184,166,.35)';
+    setTimeout(() => {
+      sel.style.borderColor = '';
+      sel.style.boxShadow = '';
+    }, 1500);
+  }
 }
 
 async function softDeleteCompany(id, name) {
