@@ -1025,6 +1025,13 @@
             </div>
             <button class="btn btn-sm btn-teal" onclick="startTemplateUpload()">+ Upload &amp; map fields</button>
           </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;">
+            <div style="display:flex;flex-direction:column;gap:4px;flex:1;min-width:220px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">— or — paste a link to a fillable PDF on a payer's website</label>
+              <input class="inline-input" type="url" id="newTemplateUrl" placeholder="https://payer.com/credentialing-form.pdf" />
+            </div>
+            <button class="btn btn-sm btn-gold" id="fetchTemplateUrlBtn" onclick="startTemplateUploadFromUrl()">🔗 Fetch &amp; map fields</button>
+          </div>
           <div id="templateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
         </div>
 
@@ -6297,6 +6304,55 @@ async function startTemplateUpload() {
   const file = fileInput.files[0];
   if (!file) { err.textContent = 'Choose a PDF file first.'; err.style.display = 'block'; return; }
 
+  await processTemplateFile(name, file, err);
+}
+
+// Fetches a PDF server-side (via an Edge Function) rather than in the
+// browser — most sites don't allow cross-origin fetches of their files, so
+// a direct client-side fetch would get silently blocked by CORS on most
+// payer websites. The Edge Function has no such restriction.
+async function startTemplateUploadFromUrl() {
+  const name = document.getElementById('newTemplateName').value.trim();
+  const url = document.getElementById('newTemplateUrl').value.trim();
+  const err = document.getElementById('templateUploadErr');
+  const btn = document.getElementById('fetchTemplateUrlBtn');
+  err.style.display = 'none';
+
+  if (!name) { err.textContent = 'Enter a template name first.'; err.style.display = 'block'; return; }
+  if (!url) { err.textContent = 'Paste a URL first.'; err.style.display = 'block'; return; }
+
+  btn.disabled = true;
+  btn.textContent = 'Fetching...';
+  try {
+    const { data: session } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/fetch-credentialing-form', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.session.access_token}` },
+      body: JSON.stringify({ url }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not fetch that URL.');
+
+    // Decode the base64 PDF bytes into a real File object, so everything
+    // downstream (field detection, mapping, storage upload) works exactly
+    // like a user-selected file — no separate code path needed from here.
+    const binary = atob(result.base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    const filename = (url.split('/').pop() || 'form.pdf').split('?')[0] || 'form.pdf';
+    const file = new File([bytes], filename, { type: 'application/pdf' });
+
+    await processTemplateFile(name, file, err);
+  } catch (e) {
+    err.textContent = 'Error: ' + e.message;
+    err.style.display = 'block';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔗 Fetch & map fields';
+  }
+}
+
+async function processTemplateFile(name, file, err) {
   try {
     const bytes = await file.arrayBuffer();
     const { PDFDocument } = PDFLib;
