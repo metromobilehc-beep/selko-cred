@@ -5864,7 +5864,7 @@ async function showAgencyAssignmentModal(agencyId, agencyName) {
         <button class="btn btn-sm btn-gold" onclick="setAllAgencyStaffChecks(true)" style="flex:1;justify-content:center;">Assign all</button>
         <button class="btn btn-sm btn-ghost" onclick="setAllAgencyStaffChecks(false)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Clear all</button>
       </div>
-      <div id="agencyStaffChecklist" style="overflow-y:auto;flex:1;margin-bottom:16px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;">
+      <div id="agencyStaffChecklist" style="overflow-y:auto;flex:1;margin-bottom:16px;border-top:1px solid rgba(255,255,255,.08);padding-top:8px;padding-right:14px;">
         ${activeStaff.length ? activeStaff.map(s => `
           <label class="agencyStaffRow" data-name="${s.full_name.toLowerCase()}" data-discipline="${s.discipline || ''}" style="display:flex;align-items:center;gap:10px;padding:7px 4px;font-size:13px;color:#fff;cursor:pointer;">
             <input type="checkbox" class="agencyStaffCheck" value="${s.id}" style="flex-shrink:0;" ${currentIds.has(s.id) ? 'checked' : ''} />
