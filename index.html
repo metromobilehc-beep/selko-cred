@@ -415,6 +415,17 @@
       <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
     </div>
 
+    <!-- CAQH/DEA expiration alert — a dismissible pop-up (not a fixed table
+         you have to remember to check), shown once per session on login if
+         anything's due within 30 days. -->
+    <div id="credExpiryBanner" style="display:none;background:#78350f;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:16px;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <span style="color:#fde68a;font-size:13px;font-weight:700;" id="credExpiryBannerText"></span>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm" onclick="closeCredExpiryBanner();switchTab('credentialing');" style="background:#f59e0b;color:#1c1917;font-weight:700;">View in Credentialing</button>
+        <button class="btn btn-sm btn-ghost" onclick="closeCredExpiryBanner()" style="color:#fde68a;border-color:rgba(253,230,138,.4);">Dismiss</button>
+      </div>
+    </div>
+
     <div class="admin-layout">
     <div class="tabs admin-sidebar">
       <button class="tab active" id="tab-overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
@@ -1840,7 +1851,6 @@ async function logout() {
   await sb.auth.signOut();
   currentProfile = null; currentCompany = null;
   _superProfile = null; _superCompany = null;
-  _realRoleBeforePreview = null;
   ['hdrUser','hdrRole','hdrLogout'].forEach(id => document.getElementById(id).style.display = 'none');
   // Explicitly hide every privilege-gated element on logout — previously
   // this only ever got SHOWN when conditions were met, never explicitly
@@ -1850,6 +1860,9 @@ async function logout() {
   document.getElementById('tab-insurance').style.display = 'none';
   const viewAsBanner = document.getElementById('viewAsBanner');
   if (viewAsBanner) viewAsBanner.style.display = 'none';
+  const credExpiryBanner = document.getElementById('credExpiryBanner');
+  if (credExpiryBanner) credExpiryBanner.style.display = 'none';
+  _credExpiryBannerShown = false;
   document.getElementById('loginEmail').value    = '';
   document.getElementById('loginPassword').value = '';
   document.getElementById('loginBtn').disabled   = false;
@@ -2412,6 +2425,41 @@ async function initAdmin() {
     document.getElementById('exportProExcelBtn').style.display = 'inline-flex';
     document.getElementById('exportProPdfBtn').style.display   = 'inline-flex';
   }
+  if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
+}
+
+// Surfaces CAQH/DEA items due within 30 days as a dismissible banner on
+// login, rather than relying on someone remembering to open Credentialing
+// and check the table. Shown once per browser session — dismissing (or
+// clicking through) won't nag again until the next fresh login.
+let _credExpiryBannerShown = false;
+async function checkCredentialingExpirations() {
+  if (_credExpiryBannerShown) return;
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() + 30);
+  const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+  const dueSoon = staffList.filter(s => s.active && (
+    (s.caqh_expiration_date && s.caqh_expiration_date <= cutoffStr) ||
+    (s.dea_expiration_date && s.dea_expiration_date <= cutoffStr && PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase()))
+  ));
+  if (!dueSoon.length) return;
+
+  const overdue = dueSoon.filter(s =>
+    (s.caqh_expiration_date && s.caqh_expiration_date < new Date().toISOString().slice(0,10)) ||
+    (s.dea_expiration_date && s.dea_expiration_date < new Date().toISOString().slice(0,10))
+  ).length;
+
+  const banner = document.getElementById('credExpiryBanner');
+  const text = document.getElementById('credExpiryBannerText');
+  text.textContent = `⚠ ${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.';
+  banner.style.display = 'flex';
+  _credExpiryBannerShown = true;
+}
+
+function closeCredExpiryBanner() {
+  document.getElementById('credExpiryBanner').style.display = 'none';
 }
 
 // Auto-archive: any document expired 3+ months ago gets hidden from the
@@ -2878,7 +2926,7 @@ function showStaffAuditLog(staffId, staffName) {
     const fieldLabels = {
       license_number: 'License number', license_type: 'License type', license_state: 'License state',
       npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
-      caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
+      caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_issued_date: 'CAQH issued', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -6241,6 +6289,7 @@ const CRED_DATA_SOURCES = [
     ['staff.discipline', 'Specialty/discipline'],
     ['staff.npi_number', 'Individual NPI'],
     ['staff.caqh_id', 'CAQH ID'],
+    ['staff.caqh_issued_date', 'CAQH issued date'],
     ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
     ['staff.license_number', 'License number'],
     ['staff.license_type', 'License type'],
@@ -6254,7 +6303,7 @@ const CRED_DATA_SOURCES = [
 
 const CRED_DATE_FIELDS = new Set([
   'company.malpractice_effective_date', 'company.malpractice_expiration_date',
-  'staff.caqh_expiration_date', 'staff.dea_expiration_date',
+  'staff.caqh_issued_date', 'staff.caqh_expiration_date', 'staff.dea_expiration_date',
 ]);
 
 function resolveCredDataSource(path, company, staff) {
@@ -6406,6 +6455,7 @@ function guessDefaultMapping(fieldName) {
     [/signatory.*email/, 'company.authorized_signatory_email'],
     [/provider.*name/, 'staff.full_name'],
     [/individual.*npi/, 'staff.npi_number'],
+    [/caqh.*(issued|effective)|(issued|effective).*caqh/, 'staff.caqh_issued_date'],
     [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
     [/dea.*(expir|renewal)|(expir|renewal).*dea/, 'staff.dea_expiration_date'],
@@ -6584,18 +6634,21 @@ async function renderCredentialingStaffTable() {
     const deaCells = prescribes
       ? `<td>${s.dea_number || '—'}</td><td>${credExpiryLabel(s.dea_expiration_date)}</td>`
       : `<td colspan="2" style="color:rgba(255,255,255,.25);font-size:12px;">N/A — non-prescribing</td>`;
+    const caqhCell = s.caqh_id
+      ? `${s.caqh_id}${s.caqh_issued_date ? `<div style="font-size:10px;color:rgba(255,255,255,.35);">Issued ${fmtDate(s.caqh_issued_date)}</div>` : ''}`
+      : '—';
     return `
     <tr>
       <td>${s.full_name}</td>
-      <td>${s.caqh_id || '—'}</td>
+      <td>${caqhCell}</td>
       <td>${credExpiryLabel(s.caqh_expiration_date)}</td>
       ${deaCells}
-      <td><button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button></td>
+      <td><button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_issued_date||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button></td>
     </tr>`;
   }).join('');
 }
 
-function showEditCredentialingModal(id, name, currentCaqh, currentCaqhExp, currentDea, currentDeaExp, prescribes) {
+function showEditCredentialingModal(id, name, currentCaqh, currentCaqhIssued, currentCaqhExp, currentDea, currentDeaExp, prescribes) {
   const existing = document.getElementById('editCredentialingModal');
   if (existing) existing.remove();
 
@@ -6605,10 +6658,14 @@ function showEditCredentialingModal(id, name, currentCaqh, currentCaqhExp, curre
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:18px;">${name}</div>
+      <div style="margin-bottom:12px;">
+        <label class="inline-label">CAQH ID</label>
+        <input class="inline-input" type="text" id="editCaqhId" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
         <div>
-          <label class="inline-label">CAQH ID</label>
-          <input class="inline-input" type="text" id="editCaqhId" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
+          <label class="inline-label">CAQH issued</label>
+          <input class="inline-input" type="date" id="editCaqhIssued" value="${currentCaqhIssued || ''}" />
         </div>
         <div>
           <label class="inline-label">CAQH re-attestation due</label>
@@ -6638,15 +6695,17 @@ function showEditCredentialingModal(id, name, currentCaqh, currentCaqhExp, curre
 }
 
 async function saveEditCredentialing(id) {
-  const caqh     = document.getElementById('editCaqhId').value.trim();
-  const caqhExp  = document.getElementById('editCaqhExpiration').value || null;
-  const dea      = document.getElementById('editDeaNumber').value.trim();
-  const deaExp   = document.getElementById('editDeaExpiration').value || null;
+  const caqh       = document.getElementById('editCaqhId').value.trim();
+  const caqhIssued = document.getElementById('editCaqhIssued').value || null;
+  const caqhExp    = document.getElementById('editCaqhExpiration').value || null;
+  const dea        = document.getElementById('editDeaNumber').value.trim();
+  const deaExp     = document.getElementById('editDeaExpiration').value || null;
   const errEl = document.getElementById('editCredentialingErr');
   const before = staffList.find(s => s.id === id) || {};
 
   const { error } = await sb.from('credtrack_staff').update({
     caqh_id: caqh || null,
+    caqh_issued_date: caqhIssued,
     caqh_expiration_date: caqhExp,
     dea_number: dea || null,
     dea_expiration_date: deaExp,
@@ -6660,6 +6719,7 @@ async function saveEditCredentialing(id) {
 
   await logStaffFieldChanges(id, [
     { field: 'caqh_id',              old: before.caqh_id,              new: caqh || null },
+    { field: 'caqh_issued_date',     old: before.caqh_issued_date,     new: caqhIssued },
     { field: 'caqh_expiration_date', old: before.caqh_expiration_date, new: caqhExp },
     { field: 'dea_number',           old: before.dea_number,           new: dea || null },
     { field: 'dea_expiration_date',  old: before.dea_expiration_date,  new: deaExp },
