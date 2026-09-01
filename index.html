@@ -6634,9 +6634,7 @@ async function renderCredentialingStaffTable() {
     const deaCells = prescribes
       ? `<td>${s.dea_number || '—'}</td><td>${credExpiryLabel(s.dea_expiration_date)}</td>`
       : `<td colspan="2" style="color:rgba(255,255,255,.25);font-size:12px;">N/A — non-prescribing</td>`;
-    const caqhCell = s.caqh_id
-      ? `${s.caqh_id}${s.caqh_issued_date ? `<div style="font-size:10px;color:rgba(255,255,255,.35);">Issued ${fmtDate(s.caqh_issued_date)}</div>` : ''}`
-      : '—';
+    const caqhCell = `${s.caqh_id || '—'}${s.caqh_issued_date ? `<div style="font-size:10px;color:rgba(255,255,255,.35);">Issued ${fmtDate(s.caqh_issued_date)}</div>` : ''}`;
     return `
     <tr>
       <td>${s.full_name}</td>
