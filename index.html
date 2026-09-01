@@ -970,7 +970,28 @@
               <label class="inline-label">Authorized signatory — email</label>
               <input class="inline-input" type="email" id="setSignatoryEmail" />
             </div>
+            <div>
+              <label class="inline-label">Malpractice insurance carrier</label>
+              <input class="inline-input" type="text" id="setMalpracticeCarrier" placeholder="e.g. CNA, The Doctors Company" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice policy number</label>
+              <input class="inline-input" type="text" id="setMalpracticePolicy" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice coverage limits</label>
+              <input class="inline-input" type="text" id="setMalpracticeLimits" placeholder="e.g. $1M/$3M" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice policy effective date</label>
+              <input class="inline-input" type="date" id="setMalpracticeEffective" />
+            </div>
+            <div>
+              <label class="inline-label">Malpractice policy expiration date</label>
+              <input class="inline-input" type="date" id="setMalpracticeExpiration" />
+            </div>
           </div>
+          <div id="malpracticePartnerLink" style="margin-bottom:10px;"></div>
           <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save</button>
           <div id="setCoStatus2" class="up-status" style="margin-top:10px;"></div>
         </div>
@@ -1082,6 +1103,10 @@
             <input class="inline-input" type="number" id="setWarn2" value="7" min="1" max="90" />
           </div>
         </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;">
+          <input type="checkbox" id="setShowPartnerRecs" checked />
+          Show occasional partner recommendations (e.g. malpractice insurance, background check providers) where relevant — never ads, never tracking beyond the link itself
+        </label>
         <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save settings</button>
         <div id="setCoStatus" class="up-status" style="margin-top:10px;"></div>
       </div>
@@ -1332,7 +1357,39 @@
         </div>
       </div>
 
-      <!-- Records eligible for permanent deletion (6+ years archived — manual review only, never automatic) -->
+      <!-- Partner recommendations — contextual referral links (malpractice
+           insurance, CE credits, background checks) shown at the natural
+           point of need, not display ads. Platform-wide by default; a
+           company can opt out entirely in their own Settings. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🤝 Partner recommendations</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">One quiet, contextual link per category — shown right where a company would actually need it (e.g. an empty malpractice field), never as a banner or graphic. Applies to every company unless they turn it off in their own Settings.</p>
+        <div id="partnerRecsList" style="margin-bottom:14px;"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:10px;align-items:end;">
+          <div>
+            <label class="inline-label">Category</label>
+            <select class="inline-select" id="newPartnerCategory">
+              <option value="malpractice_insurance">Malpractice insurance</option>
+              <option value="ce_credits">CE credits / renewal</option>
+              <option value="background_check">Background check</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Partner name</label>
+            <input class="inline-input" type="text" id="newPartnerName" placeholder="e.g. CM&F Group" />
+          </div>
+          <div>
+            <label class="inline-label">Link URL</label>
+            <input class="inline-input" type="url" id="newPartnerUrl" placeholder="https://..." />
+          </div>
+          <div>
+            <label class="inline-label">Link text</label>
+            <input class="inline-input" type="text" id="newPartnerText" placeholder="e.g. Compare rates" />
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="addPartnerRecommendation()">+ Add</button>
+        </div>
+      </div>
+
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🗄 Records eligible for permanent deletion</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
@@ -2453,7 +2510,9 @@ async function checkCredentialingExpirations() {
 
   const banner = document.getElementById('credExpiryBanner');
   const text = document.getElementById('credExpiryBannerText');
-  text.textContent = `⚠ ${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.';
+  const recs = await getActivePartnerRecommendations();
+  const mainMsg = `⚠ ${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.';
+  text.innerHTML = mainMsg + (recs.ce_credits ? `<br/><span style="font-weight:400;">${partnerLinkHtml(recs.ce_credits)}</span>` : '');
   banner.style.display = 'flex';
   _credExpiryBannerShown = true;
 }
@@ -5229,6 +5288,7 @@ async function loadSettings() {
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
+  document.getElementById('setShowPartnerRecs').checked = c.show_partner_recommendations !== false;
 
   // Lock company name editing for non-super-admins
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
@@ -5314,6 +5374,8 @@ async function loadDocTypesTable() {
     .select('document_type_id').eq('company_id', currentCompany.id);
   const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
 
+  const partnerRecs = await getActivePartnerRecommendations();
+
   const partnerCol = document.getElementById('partnerVisibleTh');
   const hasPartnerAccess = !!currentCompany.has_partner_access;
   if (partnerCol) partnerCol.style.display = hasPartnerAccess ? '' : 'none';
@@ -5367,6 +5429,7 @@ async function loadDocTypesTable() {
       // work at every tier otherwise, since they're core to compliance
       // tracking rather than cosmetic customization like name/category.
       const proOnlyBlocked = isGlobal && t.tier === 'pro' && !window._isPro && !currentProfile?.is_super_admin;
+      const isBackgroundCheckType = /background check/i.test(t.name);
       return `<tr data-doctype-group="${catSlug}">
     <td>
       <div style="display:flex;align-items:center;gap:6px;">
@@ -5375,6 +5438,7 @@ async function loadDocTypesTable() {
           onblur="updateDocTypeName(${t.id}, this.value)" />
         ${proOnlyBlocked ? `<span style="font-size:9px;font-weight:700;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:1px 5px;white-space:nowrap;" title="This document type requires a Pro plan to fully customize">PRO</span>` : ''}
       </div>
+      ${isBackgroundCheckType && partnerRecs.background_check ? `<div style="margin-top:3px;">${partnerLinkHtml(partnerRecs.background_check)}</div>` : ''}
     </td>
     <td><span class="badge ${t.expires ? 'badge-warn' : 'badge-none'}">${t.expires ? 'Yes' : 'No'}</span></td>
     <td>
@@ -6250,6 +6314,22 @@ async function loadCredentialingTab() {
   document.getElementById('setSignatoryName').value    = c.authorized_signatory_name || '';
   document.getElementById('setSignatoryTitle').value   = c.authorized_signatory_title || '';
   document.getElementById('setSignatoryEmail').value   = c.authorized_signatory_email || '';
+  document.getElementById('setMalpracticeCarrier').value    = c.malpractice_carrier || '';
+  document.getElementById('setMalpracticePolicy').value     = c.malpractice_policy_number || '';
+  document.getElementById('setMalpracticeLimits').value     = c.malpractice_coverage_limits || '';
+  document.getElementById('setMalpracticeEffective').value  = c.malpractice_effective_date || '';
+  document.getElementById('setMalpracticeExpiration').value = c.malpractice_expiration_date || '';
+
+  // Contextual partner link — only shown when the field is genuinely empty
+  // (a company already covered has no reason to see it), never a banner.
+  const malpracticeLinkEl = document.getElementById('malpracticePartnerLink');
+  if (malpracticeLinkEl) {
+    malpracticeLinkEl.innerHTML = '';
+    if (!c.malpractice_carrier) {
+      const recs = await getActivePartnerRecommendations();
+      if (recs.malpractice_insurance) malpracticeLinkEl.innerHTML = partnerLinkHtml(recs.malpractice_insurance);
+    }
+  }
 
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
@@ -7014,6 +7094,7 @@ async function saveCompanySettings() {
   const updates = {
     admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
     custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2 },
+    show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
     legal_business_name:        document.getElementById('setLegalName').value.trim() || null,
@@ -7032,6 +7113,11 @@ async function saveCompanySettings() {
     authorized_signatory_name:   document.getElementById('setSignatoryName').value.trim() || null,
     authorized_signatory_title:  document.getElementById('setSignatoryTitle').value.trim() || null,
     authorized_signatory_email:  document.getElementById('setSignatoryEmail').value.trim() || null,
+    malpractice_carrier:          document.getElementById('setMalpracticeCarrier').value.trim() || null,
+    malpractice_policy_number:    document.getElementById('setMalpracticePolicy').value.trim() || null,
+    malpractice_coverage_limits:  document.getElementById('setMalpracticeLimits').value.trim() || null,
+    malpractice_effective_date:   document.getElementById('setMalpracticeEffective').value || null,
+    malpractice_expiration_date:  document.getElementById('setMalpracticeExpiration').value || null,
   };
   if (isSuperAdmin) {
     updates.name = document.getElementById('setCoName').value.trim();
@@ -7044,6 +7130,7 @@ async function saveCompanySettings() {
   }
 
   currentCompany = { ...currentCompany, ...updates };
+  _partnerRecsCache = null; // this save may have changed the opt-out setting or malpractice fields — refetch next time it's needed
   if (statusEl) {
     statusEl.textContent = '✓ Settings saved';
     statusEl.className = 'up-status up-ok';
@@ -7650,6 +7737,80 @@ async function loadStorageUsage() {
     </tr>`).join('');
 }
 
+const PARTNER_CATEGORY_LABELS = {
+  malpractice_insurance: 'Malpractice insurance',
+  ce_credits: 'CE credits / renewal',
+  background_check: 'Background check',
+};
+
+async function loadPartnerRecommendationsAdmin() {
+  const { data, error } = await sb.from('partner_recommendations').select('*').order('category');
+  const container = document.getElementById('partnerRecsList');
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No partner recommendations yet — add one below.</div>';
+    return;
+  }
+  container.innerHTML = data.map(r => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="font-size:11px;color:rgba(255,255,255,.4);min-width:150px;">${PARTNER_CATEGORY_LABELS[r.category] || r.category}</span>
+      <span style="color:#fff;font-size:13px;flex:1;min-width:120px;">${r.partner_name}</span>
+      <a href="${r.url}" target="_blank" style="font-size:12px;color:var(--teal-l);">${r.link_text || 'Link'}</a>
+      <button class="btn btn-sm ${r.active ? 'btn-teal' : 'btn-ghost'}" onclick="togglePartnerRecommendation('${r.id}',${!!r.active})" style="${r.active ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:11px;padding:3px 8px;">${r.active ? 'Active' : 'Inactive'}</button>
+      <button class="btn btn-sm btn-danger" onclick="deletePartnerRecommendation('${r.id}','${r.partner_name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
+    </div>`).join('');
+}
+
+async function addPartnerRecommendation() {
+  const category = document.getElementById('newPartnerCategory').value;
+  const name = document.getElementById('newPartnerName').value.trim();
+  const url = document.getElementById('newPartnerUrl').value.trim();
+  const text = document.getElementById('newPartnerText').value.trim();
+
+  if (!name || !url) { toast('Enter a partner name and URL first.', true); return; }
+
+  const { error } = await sb.from('partner_recommendations').insert({
+    category, partner_name: name, url, link_text: text || 'Learn more', active: true,
+  });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  document.getElementById('newPartnerName').value = '';
+  document.getElementById('newPartnerUrl').value = '';
+  document.getElementById('newPartnerText').value = '';
+  toast(`✓ ${name} added`);
+  await loadPartnerRecommendationsAdmin();
+}
+
+async function togglePartnerRecommendation(id, currentlyActive) {
+  const { error } = await sb.from('partner_recommendations').update({ active: !currentlyActive }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  await loadPartnerRecommendationsAdmin();
+}
+
+async function deletePartnerRecommendation(id, name) {
+  if (!confirm(`Remove the ${name} recommendation?`)) return;
+  const { error } = await sb.from('partner_recommendations').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`Removed ${name}`);
+  await loadPartnerRecommendationsAdmin();
+}
+
+// ══ COMPANY-FACING: fetches active recommendations, respects opt-out ══
+let _partnerRecsCache = null;
+async function getActivePartnerRecommendations() {
+  if (_partnerRecsCache) return _partnerRecsCache;
+  if (currentCompany?.show_partner_recommendations === false) { _partnerRecsCache = {}; return _partnerRecsCache; }
+  const { data } = await sb.from('partner_recommendations').select('*').eq('active', true);
+  const byCategory = {};
+  (data || []).forEach(r => { byCategory[r.category] = r; });
+  _partnerRecsCache = byCategory;
+  return byCategory;
+}
+function partnerLinkHtml(rec) {
+  if (!rec) return '';
+  return `<a href="${rec.url}" target="_blank" style="font-size:12px;color:var(--teal-l);display:inline-flex;align-items:center;gap:5px;text-decoration:none;">🔗 ${rec.link_text || 'Learn more'} — ${rec.partner_name}</a>`;
+}
+
 async function loadPlatformDocTypes() {
   const { data } = await sb.from('document_types')
     .select('*, companies(name)')
@@ -7746,6 +7907,7 @@ async function loadSuperAdmin() {
   await loadBugLog();
   await loadDocTypeCategories();
   await loadStorageUsage();
+  await loadPartnerRecommendationsAdmin();
   await loadPlatformDocTypes();
   await loadDeletionReview();
   await loadRecentUploads();
