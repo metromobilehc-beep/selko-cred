@@ -1091,6 +1091,21 @@
 
     <div id="tabSettings" style="display:none;">
 
+      <!-- Sensitive-field access log — SSN views/entries specifically.
+           No delete action exists anywhere in this app for this table —
+           that's deliberate, so it's a genuine, tamper-resistant audit
+           trail rather than something anyone could quietly clean up. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🔍 Sensitive data access log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th></tr></thead>
+            <tbody id="sensitiveAccessLogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Company settings -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>Company settings</h2>
@@ -3919,6 +3934,23 @@ function showFullProfileSheet(staffId) {
       </div>
       ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
 
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
+        <div id="ssnFieldArea">
+          ${s.has_ssn_on_file
+            ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                 <span style="font-size:13px;color:#fff;">🔒 SSN on file</span>
+                 <button class="btn btn-sm btn-ghost" onclick="showRevealSsnPrompt('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">View</button>
+                 <button class="btn btn-sm btn-ghost" onclick="showEnterSsnForm('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Update</button>
+               </div>`
+            : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                 <span style="font-size:13px;color:rgba(255,255,255,.4);">Not on file</span>
+                 <button class="btn btn-sm btn-teal" onclick="showEnterSsnForm('${staffId}')">+ Enter SSN</button>
+               </div>`}
+        </div>
+      </div>
+
       <div id="fullProfileErr" style="color:#f87171;font-size:12px;margin:14px 0 6px;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
@@ -3991,6 +4023,118 @@ async function saveFullProfileSheet(staffId) {
   toast('✓ Full profile updated');
   await loadStaffTable();
   await renderCredentialingStaffTable();
+}
+
+// ══ SSN — encrypted, break-glass access only ══
+// The plaintext SSN and the encryption key never exist anywhere the
+// browser can reach except momentarily, after a justification is given,
+// inside the reveal modal below — never in staffList, never in any table
+// or export. All encryption/decryption happens in two Edge Functions.
+function showEnterSsnForm(staffId) {
+  const existing = document.getElementById('ssnEnterModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'ssnEnterModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:320px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Enter Social Security Number</div>
+      <input class="inline-input" type="text" id="ssnEnterInput" placeholder="XXX-XX-XXXX" maxlength="11" style="margin-bottom:10px;" />
+      <div id="ssnEnterErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitEnterSsn('${staffId}')" style="flex:1;justify-content:center;">Save (encrypted)</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('ssnEnterModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitEnterSsn(staffId) {
+  const ssn = document.getElementById('ssnEnterInput').value.trim();
+  const errEl = document.getElementById('ssnEnterErr');
+  errEl.style.display = 'none';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/encrypt-staff-ssn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ staff_id: staffId, ssn }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not save SSN.');
+
+    document.getElementById('ssnEnterModal')?.remove();
+    toast('✓ SSN saved, encrypted');
+    await loadStaffList();
+    document.getElementById('fullProfileSheet')?.remove();
+    showFullProfileSheet(staffId); // reopen so the "on file" state reflects immediately
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function showRevealSsnPrompt(staffId) {
+  const existing = document.getElementById('ssnRevealModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'ssnRevealModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:6px;">Why do you need to view this SSN?</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:12px;">This access — including your reason — is permanently logged and cannot be deleted.</p>
+      <textarea id="ssnJustification" placeholder="e.g. Completing a payer credentialing application that requires it" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box;"></textarea>
+      <div id="ssnRevealErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div id="ssnRevealValue" style="display:none;background:rgba(255,255,255,.05);border-radius:6px;padding:14px;text-align:center;font-size:20px;letter-spacing:2px;color:#fff;font-weight:700;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="ssnRevealBtn" onclick="submitRevealSsn('${staffId}')" style="flex:1;justify-content:center;">View SSN</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('ssnRevealModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitRevealSsn(staffId) {
+  const justification = document.getElementById('ssnJustification').value.trim();
+  const errEl = document.getElementById('ssnRevealErr');
+  const btn = document.getElementById('ssnRevealBtn');
+  errEl.style.display = 'none';
+
+  if (justification.length < 10) {
+    errEl.textContent = 'Enter a real reason (at least a full sentence) — this is logged either way.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reveal-staff-ssn', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ staff_id: staffId, justification }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not retrieve SSN.');
+
+    document.getElementById('ssnRevealValue').textContent = result.ssn;
+    document.getElementById('ssnRevealValue').style.display = 'block';
+    document.getElementById('ssnJustification').disabled = true;
+    btn.style.display = 'none';
+    toast('This access has been logged.');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'View SSN';
+  }
 }
 
 function showLicenseInfoMenu(staffId) {
@@ -5454,11 +5598,40 @@ async function removeCompanyAccreditation(id, name) {
   toast(`Removed ${name}`);
 }
 
+async function loadSensitiveAccessLog() {
+  const tbody = document.getElementById('sensitiveAccessLogTbody');
+  if (!tbody) return;
+
+  const { data, error } = await sb.from('sensitive_field_access_log')
+    .select('*, credtrack_staff(full_name)')
+    .order('accessed_at', { ascending: false })
+    .limit(100);
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#f87171;padding:16px;">${error.message}</td></tr>`;
+    return;
+  }
+  if (!data?.length) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:16px;">No access logged yet.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td style="font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;">${new Date(r.accessed_at).toLocaleString()}</td>
+      <td>${r.credtrack_staff?.full_name || '—'}</td>
+      <td><span class="badge ${r.action === 'read' ? 'badge-warn' : 'badge-ok'}">${r.action === 'read' ? 'Viewed' : 'Entered/updated'}</span></td>
+      <td style="font-size:12px;">${r.accessed_by || '—'}</td>
+      <td style="max-width:260px;white-space:normal;font-size:12px;color:rgba(255,255,255,.6);">${r.justification || '—'}</td>
+    </tr>`).join('');
+}
+
 async function loadSettings() {
   const c = currentCompany;
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
+  loadSensitiveAccessLog();
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
