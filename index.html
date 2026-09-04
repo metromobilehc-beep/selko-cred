@@ -319,11 +319,11 @@
     <div class="page-header">
       <div>
         <h1 id="staffGreeting">My Credentials</h1>
-        <p id="staffScreenSubtitle">Upload and track your required documents.</p>
+        <p>Upload and track your required documents.</p>
       </div>
     </div>
     <div class="stat-grid" id="statCards"></div>
-    <div class="panel" id="staffUploadDocPanel">
+    <div class="panel">
       <div class="panel-head"><span class="panel-title">Upload a document</span></div>
       <div class="panel-body">
         <div class="form-grid-2" style="margin-bottom:14px;">
@@ -377,8 +377,8 @@
     <div class="panel" id="staffCredFilesPanel" style="display:none;">
       <div class="panel-head"><span class="panel-title">📎 Credentialing files</span></div>
       <div class="panel-body">
-        <p style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:14px;">If your office needs a specific document for a payer credentialing application — like a copy of your driver's license — upload it here.</p>
-        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+        <p id="staffCredFilesDesc" style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:14px;"></p>
+        <div id="staffCredFileUploadRow" style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
           <input type="file" id="staffCredFileInput" style="color:#fff;font-size:12px;flex:1;min-width:160px;" />
           <button class="btn btn-sm btn-teal" onclick="uploadStaffCredFile()">+ Upload</button>
         </div>
@@ -386,7 +386,7 @@
         <div id="staffCredFilesList">Loading...</div>
       </div>
     </div>
-    <div class="panel" id="staffMyDocsPanel">
+    <div class="panel">
       <div class="panel-head"><span class="panel-title">My documents</span></div>
       <div class="panel-body" id="myDocsList">
         <div class="empty-state"><div class="empty-icon">📂</div>No documents uploaded yet.</div>
@@ -2112,38 +2112,31 @@ async function toggleMyCredsView() {
 async function initStaff() {
   document.getElementById('staffGreeting').textContent =
     'My Credentials — ' + currentProfile.full_name.split(',')[0];
-
-  // Document compliance tracking (stat cards, standard upload, My
-  // documents) only applies when this company actually has that module —
-  // a credentialing-only company has none of it, same as the admin-side
-  // tabs gated earlier tonight. This was missed then; fixing it now.
-  const showDocCompliance = !!currentCompany.has_credtrack;
-  document.getElementById('statCards').style.display = showDocCompliance ? 'grid' : 'none';
-  document.getElementById('staffUploadDocPanel').style.display = showDocCompliance ? 'block' : 'none';
-  document.getElementById('staffMyDocsPanel').style.display = showDocCompliance ? 'block' : 'none';
-  document.getElementById('staffScreenSubtitle').textContent = showDocCompliance
-    ? 'Upload and track your required documents.'
-    : 'Manage your credentialing files below.';
-
   const { data: staffRec } = await sb.from('credtrack_staff')
     .select('*').eq('company_id', currentCompany.id).eq('email', currentProfile.email).maybeSingle();
   window._staffId = staffRec?.id || null;
-  if (showDocCompliance) {
-    await renderStatCards(window._staffId);
-    await loadMyDocs(window._staffId);
-    await restorePendingFrontPhoto();
-  }
+  await renderStatCards(window._staffId);
+  await loadMyDocs(window._staffId);
+  await restorePendingFrontPhoto();
 
-  // Upload-only, own-record-only credentialing files — only shown if this
-  // company has Credentialing AND is on Full tier (Basic keeps document
-  // upload entirely backside/admin-managed, same distinction as the
-  // Templates panel), and only ever touches this one clinician's own row
-  // (enforced by RLS, not just hidden in the UI).
+  // The panel itself shows whenever Credentialing is on at all — a Basic-
+  // tier company still has files an admin uploaded on this person's
+  // record, and hiding them entirely would mean a clinician can't see
+  // something that genuinely exists about them. Only the upload capability
+  // (not viewing) is Full-tier-only, matching the Templates distinction —
+  // Basic keeps new files entering the system entirely backside/admin-
+  // managed. Delete is never available here either way (enforced by RLS,
+  // not just hidden in the UI).
   const credFilesPanel = document.getElementById('staffCredFilesPanel');
   if (credFilesPanel) {
-    const showCredFiles = currentCompany.has_credentialing_addon && currentCompany.credentialing_tier !== 'basic' && window._staffId;
-    credFilesPanel.style.display = showCredFiles ? 'block' : 'none';
-    if (showCredFiles) {
+    const canSeeFiles = currentCompany.has_credentialing_addon && window._staffId;
+    const canUploadFiles = canSeeFiles && currentCompany.credentialing_tier !== 'basic';
+    credFilesPanel.style.display = canSeeFiles ? 'block' : 'none';
+    document.getElementById('staffCredFileUploadRow').style.display = canUploadFiles ? 'flex' : 'none';
+    document.getElementById('staffCredFilesDesc').textContent = canUploadFiles
+      ? 'If your office needs a specific document for a payer credentialing application — like a copy of your driver\'s license — upload it here.'
+      : 'Files your office has attached to your credentialing record. Ask your admin if you need to add something new.';
+    if (canSeeFiles) {
       await renderCredentialingFilesList(document.getElementById('staffCredFilesList'), window._staffId, true);
     }
   }
