@@ -3807,6 +3807,7 @@ async function loadStaffTable() {
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="showLicenseInfoMenu('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📋 License info${s.license_number ? '' : ' ⚠'}</button>
       <button class="btn btn-sm btn-gold" onclick="showAccountActionsMenu('${s.id}')">⚙ Account</button>
+      <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
     </div></td>
   </tr>`;
   }).join('');
@@ -3815,6 +3816,172 @@ async function loadStaffTable() {
 function closeStaffActionsMenu() {
   const existing = document.getElementById('staffActionsModal');
   if (existing) existing.remove();
+}
+
+// ══ FULL PROFILE SHEET ══
+// One large, directly-editable sheet covering everything about a staff
+// member's credentialing record at once — built specifically because a
+// credentialing-only company (no Documents tab at all) needs this to be
+// the whole product, not split across small popups on two different tabs.
+// Complements the existing quick-edit modals rather than replacing them.
+function showFullProfileSheet(staffId) {
+  const existing = document.getElementById('fullProfileSheet');
+  if (existing) existing.remove();
+
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) { toast('Could not find this staff member — try refreshing.', true); return; }
+
+  const prescribes = PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
+  const disciplines = getCompanyDisciplines();
+
+  const modal = document.createElement('div');
+  modal.id = 'fullProfileSheet';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:680px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:2px;">${s.full_name}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:20px;">Full credentialing profile — everything about this person in one place.</div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
+        <div>
+          <label class="inline-label">Discipline</label>
+          <select class="inline-select" id="fpDiscipline">
+            <option value="">— None —</option>
+            ${disciplines.map(d => `<option value="${d}" ${s.discipline === d ? 'selected' : ''}>${d}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label class="inline-label">Staff type</label>
+          <select class="inline-select" id="fpStaffType">
+            <option value="clinician" ${(!s.staff_type || s.staff_type === 'clinician') ? 'selected' : ''}>Clinician</option>
+            <option value="office" ${s.staff_type === 'office' ? 'selected' : ''}>Office</option>
+            <option value="admin" ${s.staff_type === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">License & NPI</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;">
+        <div>
+          <label class="inline-label">License number</label>
+          <input class="inline-input" type="text" id="fpLicenseNumber" value="${s.license_number || ''}" />
+        </div>
+        <div>
+          <label class="inline-label">License type</label>
+          <input class="inline-input" type="text" id="fpLicenseType" value="${s.license_type || ''}" placeholder="PT, PTA, OT..." />
+        </div>
+        <div>
+          <label class="inline-label">License state</label>
+          <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" />
+        </div>
+        <div>
+          <label class="inline-label">Individual NPI</label>
+          <input class="inline-input" type="text" id="fpNpi" value="${s.npi_number || ''}" placeholder="e.g. 1234567890" />
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px;">
+        <div>
+          <label class="inline-label">CAQH ID</label>
+          <input class="inline-input" type="text" id="fpCaqhId" value="${s.caqh_id || ''}" placeholder="e.g. 12345678" />
+        </div>
+        <div>
+          <label class="inline-label">CAQH issued</label>
+          <input class="inline-input" type="date" id="fpCaqhIssued" value="${s.caqh_issued_date || ''}" />
+        </div>
+        <div>
+          <label class="inline-label">CAQH re-attestation due</label>
+          <input class="inline-input" type="date" id="fpCaqhExpiration" value="${s.caqh_expiration_date || ''}" />
+        </div>
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">DEA</div>
+      <div id="fpDeaSection" style="display:${prescribes ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;">
+        <div>
+          <label class="inline-label">DEA number</label>
+          <input class="inline-input" type="text" id="fpDeaNumber" value="${s.dea_number || ''}" />
+        </div>
+        <div>
+          <label class="inline-label">DEA expiration</label>
+          <input class="inline-input" type="date" id="fpDeaExpiration" value="${s.dea_expiration_date || ''}" />
+        </div>
+      </div>
+      ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
+
+      <div id="fullProfileErr" style="color:#f87171;font-size:12px;margin:14px 0 6px;display:none;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('fullProfileSheet').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  // Re-check the DEA section's visibility live if discipline changes while
+  // the sheet is open, rather than requiring a full reopen.
+  document.getElementById('fpDiscipline').addEventListener('change', function() {
+    const nowPrescribes = PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
+    document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'grid' : 'none';
+  });
+}
+
+async function saveFullProfileSheet(staffId) {
+  const before = staffList.find(s => s.id === staffId) || {};
+  const errEl = document.getElementById('fullProfileErr');
+
+  const newStaffType = document.getElementById('fpStaffType').value;
+  const updates = {
+    discipline: document.getElementById('fpDiscipline').value || null,
+    staff_type: newStaffType,
+    license_number: document.getElementById('fpLicenseNumber').value.trim() || null,
+    license_type: document.getElementById('fpLicenseType').value.trim() || null,
+    license_state: document.getElementById('fpLicenseState').value.trim() || null,
+    npi_number: document.getElementById('fpNpi').value.trim() || null,
+    caqh_id: document.getElementById('fpCaqhId').value.trim() || null,
+    caqh_issued_date: document.getElementById('fpCaqhIssued').value || null,
+    caqh_expiration_date: document.getElementById('fpCaqhExpiration').value || null,
+    dea_number: document.getElementById('fpDeaNumber')?.value.trim() || null,
+    dea_expiration_date: document.getElementById('fpDeaExpiration')?.value || null,
+  };
+
+  const { data: updated, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('profile_id').maybeSingle();
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  await logStaffFieldChanges(staffId, Object.keys(updates).map(field => ({
+    field, old: before[field], new: updates[field],
+  })));
+
+  // Same access-level sync used by the dedicated staff-type toggle — a
+  // person's actual login permissions need to follow staff_type changes
+  // made here too, not just through that one other path.
+  if (updated?.profile_id && newStaffType !== before.staff_type) {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/sync-staff-role-ts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          profile_id: updated.profile_id,
+          role: newStaffType === 'admin' ? 'admin' : (newStaffType === 'office' ? 'office' : 'staff'),
+        }),
+      });
+      const result = await res.json();
+      if (result.error) toast(`Profile saved, but access level couldn't sync: ${result.error}`, true);
+    } catch (e) {
+      toast(`Profile saved, but access level couldn't sync: ${e.message}`, true);
+    }
+  }
+
+  document.getElementById('fullProfileSheet')?.remove();
+  toast('✓ Full profile updated');
+  await loadStaffTable();
+  await renderCredentialingStaffTable();
 }
 
 function showLicenseInfoMenu(staffId) {
@@ -6722,7 +6889,10 @@ async function renderCredentialingStaffTable() {
       <td>${caqhCell}</td>
       <td>${credExpiryLabel(s.caqh_expiration_date)}</td>
       ${deaCells}
-      <td><button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_issued_date||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button></td>
+      <td><div class="td-actions">
+        <button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_issued_date||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
+        <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
+      </div></td>
     </tr>`;
   }).join('');
 }
