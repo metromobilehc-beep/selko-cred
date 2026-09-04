@@ -890,6 +890,15 @@
     <!-- CREDENTIALING TAB (add-on) -->
     <div id="tabCredentialing" style="display:none;">
       <div id="credentialingContent">
+        <!-- Your data is always yours — a self-service export any company
+             can run themselves, any time, no need to ask Selko for it.
+             Deliberately staff credentialing data only, not documents. -->
+        <div class="dark-panel" style="margin-bottom:16px;">
+          <h2>📤 Export your credentialing data</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Your staff credentialing data belongs to you — export a complete copy any time, for your own records or to take with you if you ever leave. Covers every staff member's license, NPI, CAQH, and DEA info. Uploaded documents are part of the separate document-tracking service and aren't included here.</p>
+          <button class="btn btn-sm btn-teal" onclick="exportCredentialingDataExcel()">⬇ Export all staff credentialing data (Excel)</button>
+        </div>
+
         <!-- Org-level credentialing info -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Organization credentialing profile</h2>
@@ -6445,6 +6454,64 @@ async function loadInsuranceTab() {
 // accreditations, and per-clinician CAQH/DEA. Gated separately from the
 // existing Pro plan (window._isPro) since an agency might want one
 // without the other — same lock/unlock pattern as the Missing Docs report.
+// A company's staff credentialing data is theirs — this exists so they
+// never depend on Selko (or a specific credentialing partner like Juan) to
+// hand it over. Deliberately structured, reimportable data (Excel), not a
+// styled report — the point is portability, not presentation.
+async function exportCredentialingDataExcel() {
+  await loadStaffList();
+  if (!staffList.length) { toast('No staff to export', true); return; }
+
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('Staff Credentialing Data');
+
+  const headers = [
+    'Full Name', 'Discipline', 'Staff Type', 'Active',
+    'License Number', 'License Type', 'License State',
+    'NPI', 'CAQH ID', 'CAQH Issued', 'CAQH Re-attestation Due',
+    'DEA Number', 'DEA Expiration',
+  ];
+  ws.addRow(headers);
+  const headerRow = ws.getRow(1);
+  headerRow.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  headerRow.eachCell(cell => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0D9488' } };
+  });
+
+  const sorted = [...staffList].sort((a, b) => a.full_name.localeCompare(b.full_name));
+  sorted.forEach(s => {
+    ws.addRow([
+      s.full_name,
+      s.discipline || '',
+      s.staff_type || 'clinician',
+      s.active ? 'Active' : 'Inactive',
+      s.license_number || '',
+      s.license_type || '',
+      s.license_state || '',
+      s.npi_number || '',
+      s.caqh_id || '',
+      s.caqh_issued_date || '',
+      s.caqh_expiration_date || '',
+      s.dea_number || '',
+      s.dea_expiration_date || '',
+    ]);
+  });
+
+  ws.columns.forEach((col, i) => { col.width = Math.max(headers[i].length + 2, 14); });
+
+  const buf = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_StaffCredentialingData_${new Date().toISOString().slice(0,10)}.xlsx`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+  toast(`✓ Exported ${sorted.length} staff member(s)`);
+}
+
 async function loadCredentialingTab() {
   const content = document.getElementById('credentialingContent');
   const lock = document.getElementById('credentialingLock');
