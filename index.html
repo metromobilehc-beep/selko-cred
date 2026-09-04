@@ -3018,7 +3018,11 @@ async function generateAuditPacket() {
 // next question after "is this current" is usually "who verified it and
 // when." Logs only actual changes (old !== new), never a no-op save.
 async function logStaffFieldChanges(staffId, changes) {
-  const realChanges = changes.filter(c => (c.old || null) !== (c.new || null));
+  // Stringify before comparing — a value like dea_schedules is stored as
+  // an array, and arrays never compare equal by reference even when their
+  // contents match, which would otherwise log a spurious "change" on
+  // every single save regardless of whether anything was actually edited.
+  const realChanges = changes.filter(c => String(c.old ?? '') !== String(c.new ?? ''));
   if (!realChanges.length) return;
   const rows = realChanges.map(c => ({
     company_id: currentCompany.id,
@@ -3065,6 +3069,8 @@ function showStaffAuditLog(staffId, staffName) {
       supervising_physician_name: 'Supervising physician — name', supervising_physician_npi: 'Supervising physician — NPI',
       hospital_affiliation_1: 'Hospital affiliation 1', hospital_affiliation_2: 'Hospital affiliation 2', hospital_affiliation_3: 'Hospital affiliation 3',
       phone: 'Phone', address: 'Address', city: 'City', state: 'State', zip: 'Zip',
+      dea_issued_date: 'DEA issued', dea_registered_address: 'DEA registered address', dea_schedules: 'DEA schedules',
+      state_cds_number: 'State CDS/CSR number', state_cds_expiration_date: 'State CDS/CSR expiration',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -3902,6 +3908,87 @@ function closeStaffActionsMenu() {
 // credentialing-only company (no Documents tab at all) needs this to be
 // the whole product, not split across small popups on two different tabs.
 // Complements the existing quick-edit modals rather than replacing them.
+// ══ INPUT HELPERS: phone formatting, address search ══
+function formatPhoneInput(input) {
+  const digits = input.value.replace(/\D/g, '').slice(0, 10);
+  let formatted = digits;
+  if (digits.length > 6) formatted = `${digits.slice(0,3)}-${digits.slice(3,6)}-${digits.slice(6)}`;
+  else if (digits.length > 3) formatted = `${digits.slice(0,3)}-${digits.slice(3)}`;
+  input.value = formatted;
+}
+
+// Free, no-API-key address lookup via OpenStreetMap's Nominatim. Purely a
+// convenience layer — if nothing matches (rural addresses and brand-new
+// buildings are common gaps in OSM's data), the field just stays a normal
+// text box and the person types their address by hand like always.
+// Debounced and gated to 4+ characters specifically to stay well within
+// Nominatim's fair-use policy for their free public server.
+let _addressSearchTimers = {};
+function handleAddressSearch(input, prefix) {
+  clearTimeout(_addressSearchTimers[prefix]);
+  const query = input.value.trim();
+  if (query.length < 4) { hideAddressSuggestions(prefix); return; }
+
+  _addressSearchTimers[prefix] = setTimeout(async () => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+      if (!res.ok) { hideAddressSuggestions(prefix); return; }
+      const results = await res.json();
+      renderAddressSuggestions(prefix, results);
+    } catch (e) {
+      hideAddressSuggestions(prefix); // network hiccup — just fall back to plain typing, no error shown
+    }
+  }, 500);
+}
+
+function renderAddressSuggestions(prefix, results) {
+  const box = document.getElementById(`${prefix}AddressSuggestions`);
+  if (!box) return;
+  if (!results?.length) { box.style.display = 'none'; return; }
+
+  box.innerHTML = results.map((r, i) => `
+    <div onclick="selectAddressSuggestion('${prefix}', ${i})" style="padding:8px 12px;font-size:13px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
+      ${r.display_name}
+    </div>`).join('');
+  box.style.display = 'block';
+  window[`_addressResults_${prefix}`] = results; // stash for selectAddressSuggestion to read by index
+}
+
+function hideAddressSuggestions(prefix) {
+  const box = document.getElementById(`${prefix}AddressSuggestions`);
+  if (box) box.style.display = 'none';
+}
+
+const US_STATE_ABBREVIATIONS = {
+  alabama:'AL', alaska:'AK', arizona:'AZ', arkansas:'AR', california:'CA', colorado:'CO',
+  connecticut:'CT', delaware:'DE', florida:'FL', georgia:'GA', hawaii:'HI', idaho:'ID',
+  illinois:'IL', indiana:'IN', iowa:'IA', kansas:'KS', kentucky:'KY', louisiana:'LA',
+  maine:'ME', maryland:'MD', massachusetts:'MA', michigan:'MI', minnesota:'MN',
+  mississippi:'MS', missouri:'MO', montana:'MT', nebraska:'NE', nevada:'NV',
+  'new hampshire':'NH', 'new jersey':'NJ', 'new mexico':'NM', 'new york':'NY',
+  'north carolina':'NC', 'north dakota':'ND', ohio:'OH', oklahoma:'OK', oregon:'OR',
+  pennsylvania:'PA', 'rhode island':'RI', 'south carolina':'SC', 'south dakota':'SD',
+  tennessee:'TN', texas:'TX', utah:'UT', vermont:'VT', virginia:'VA', washington:'WA',
+  'west virginia':'WV', wisconsin:'WI', wyoming:'WY', 'district of columbia':'DC',
+};
+
+function selectAddressSuggestion(prefix, index) {
+  const result = window[`_addressResults_${prefix}`]?.[index];
+  if (!result) return;
+  const a = result.address || {};
+
+  const streetParts = [a.house_number, a.road].filter(Boolean).join(' ');
+  document.getElementById(`${prefix}Address`).value = streetParts || result.display_name;
+  const cityEl = document.getElementById(`${prefix}City`);
+  const stateEl = document.getElementById(`${prefix}State`);
+  const zipEl = document.getElementById(`${prefix}Zip`);
+  if (cityEl) cityEl.value = a.city || a.town || a.village || a.county || '';
+  if (stateEl) stateEl.value = US_STATE_ABBREVIATIONS[(a.state || '').toLowerCase()] || (a.state || '').slice(0, 2).toUpperCase();
+  if (zipEl) zipEl.value = a.postcode || '';
+
+  hideAddressSuggestions(prefix);
+}
+
 function showFullProfileSheet(staffId) {
   const existing = document.getElementById('fullProfileSheet');
   if (existing) existing.remove();
@@ -3959,11 +4046,12 @@ function showFullProfileSheet(staffId) {
         </div>
         <div>
           <label class="inline-label">Phone</label>
-          <input class="inline-input" type="text" id="fpPhone" value="${s.phone || ''}" />
+          <input class="inline-input" type="text" id="fpPhone" value="${s.phone || ''}" placeholder="555-123-4567" oninput="formatPhoneInput(this)" />
         </div>
-        <div style="grid-column:1 / -1;">
+        <div style="grid-column:1 / -1;position:relative;">
           <label class="inline-label">Address</label>
-          <input class="inline-input" type="text" id="fpAddress" value="${s.address || ''}" placeholder="Street address" />
+          <input class="inline-input" type="text" id="fpAddress" value="${s.address || ''}" placeholder="Start typing an address..." autocomplete="off" oninput="handleAddressSearch(this, 'fp')" onblur="setTimeout(() => hideAddressSuggestions('fp'), 200)" />
+          <div id="fpAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
         </div>
         <div>
           <label class="inline-label">City</label>
@@ -4022,15 +4110,43 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">DEA</div>
-      <div id="fpDeaSection" style="display:${prescribes ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;">
-        <div>
-          <label class="inline-label">DEA number</label>
-          <input class="inline-input" type="text" id="fpDeaNumber" value="${s.dea_number || ''}" />
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">DEA & Controlled Substances</div>
+      <div id="fpDeaSection" style="display:${prescribes ? 'block' : 'none'};margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">DEA number</label>
+            <input class="inline-input" type="text" id="fpDeaNumber" value="${s.dea_number || ''}" />
+          </div>
+          <div>
+            <label class="inline-label">DEA issued</label>
+            <input class="inline-input" type="date" id="fpDeaIssued" value="${s.dea_issued_date || ''}" />
+          </div>
+          <div>
+            <label class="inline-label">DEA expiration</label>
+            <input class="inline-input" type="date" id="fpDeaExpiration" value="${s.dea_expiration_date || ''}" />
+          </div>
+          <div>
+            <label class="inline-label">DEA registered address</label>
+            <input class="inline-input" type="text" id="fpDeaAddress" value="${s.dea_registered_address || ''}" placeholder="If different from provider address above" />
+          </div>
         </div>
-        <div>
-          <label class="inline-label">DEA expiration</label>
-          <input class="inline-input" type="date" id="fpDeaExpiration" value="${s.dea_expiration_date || ''}" />
+        <label class="inline-label">DEA schedules authorized</label>
+        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px;">
+          ${['II','III','IV','V'].map(sched => `
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#fff;cursor:pointer;">
+              <input type="checkbox" class="fpDeaSchedule" value="${sched}" ${(s.dea_schedules || []).includes(sched) ? 'checked' : ''} />
+              Schedule ${sched}
+            </label>`).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label class="inline-label">State CDS/CSR number</label>
+            <input class="inline-input" type="text" id="fpStateCds" value="${s.state_cds_number || ''}" placeholder="If your state requires one separately" />
+          </div>
+          <div>
+            <label class="inline-label">State CDS/CSR expiration</label>
+            <input class="inline-input" type="date" id="fpStateCdsExpiration" value="${s.state_cds_expiration_date || ''}" />
+          </div>
         </div>
       </div>
       ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
@@ -4109,7 +4225,7 @@ function showFullProfileSheet(staffId) {
   // changes while the sheet is open, rather than requiring a full reopen.
   document.getElementById('fpDiscipline').addEventListener('change', function() {
     const nowPrescribes = PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
-    document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'grid' : 'none';
+    document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'block' : 'none';
     document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
   });
 }
@@ -4139,7 +4255,12 @@ async function saveFullProfileSheet(staffId) {
     caqh_issued_date: document.getElementById('fpCaqhIssued').value || null,
     caqh_expiration_date: document.getElementById('fpCaqhExpiration').value || null,
     dea_number: document.getElementById('fpDeaNumber')?.value.trim() || null,
+    dea_issued_date: document.getElementById('fpDeaIssued')?.value || null,
     dea_expiration_date: document.getElementById('fpDeaExpiration')?.value || null,
+    dea_registered_address: document.getElementById('fpDeaAddress')?.value.trim() || null,
+    dea_schedules: [...document.querySelectorAll('.fpDeaSchedule:checked')].map(el => el.value),
+    state_cds_number: document.getElementById('fpStateCds')?.value.trim() || null,
+    state_cds_expiration_date: document.getElementById('fpStateCdsExpiration')?.value || null,
     board_certified: document.getElementById('fpBoardCertified').value === 'true',
     board_name: document.getElementById('fpBoardName').value.trim() || null,
     board_certification_date: document.getElementById('fpBoardCertDate').value || null,
@@ -7173,7 +7294,12 @@ const CRED_DATA_SOURCES = [
     ['staff.license_type', 'License type'],
     ['staff.license_state', 'License state'],
     ['staff.dea_number', 'DEA number'],
+    ['staff.dea_issued_date', 'DEA issued date'],
     ['staff.dea_expiration_date', 'DEA expiration'],
+    ['staff.dea_registered_address', 'DEA registered address'],
+    ['staff.dea_schedules', 'DEA schedules authorized'],
+    ['staff.state_cds_number', 'State CDS/CSR number'],
+    ['staff.state_cds_expiration_date', 'State CDS/CSR expiration'],
     ['staff.email', 'Email'],
     ['staff.job_title', 'Job title'],
     ['staff.middle_name', 'Middle name'],
@@ -7202,6 +7328,7 @@ const CRED_DATE_FIELDS = new Set([
   'staff.caqh_issued_date', 'staff.caqh_expiration_date', 'staff.dea_expiration_date',
   'staff.date_of_birth', 'staff.license_expiration_date',
   'staff.board_certification_date', 'staff.board_certification_expiration_date',
+  'staff.dea_issued_date', 'staff.state_cds_expiration_date',
 ]);
 
 function resolveCredDataSource(path, company, staff) {
@@ -7210,6 +7337,7 @@ function resolveCredDataSource(path, company, staff) {
   if (!record) return '';
   const val = record[key];
   if (typeof val === 'boolean') return val ? 'Yes' : 'No';
+  if (Array.isArray(val)) return val.join(', ');
   if (val && CRED_DATE_FIELDS.has(path)) return fmtDate(val);
   return val || '';
 }
@@ -7363,7 +7491,12 @@ function guessDefaultMapping(fieldName) {
     [/caqh.*(issued|effective)|(issued|effective).*caqh/, 'staff.caqh_issued_date'],
     [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
+    [/dea.*(issued|effective)|(issued|effective).*dea/, 'staff.dea_issued_date'],
     [/dea.*(expir|renewal)|(expir|renewal).*dea/, 'staff.dea_expiration_date'],
+    [/dea.*(address)|(address).*dea/, 'staff.dea_registered_address'],
+    [/dea.*(schedule)/, 'staff.dea_schedules'],
+    [/(cds|csr).*(expir)/, 'staff.state_cds_expiration_date'],
+    [/(cds|csr).*(number|#)|state.*controlled/, 'staff.state_cds_number'],
     [/dea/, 'staff.dea_number'],
   ];
   for (const [re, val] of guesses) if (re.test(n)) return val;
