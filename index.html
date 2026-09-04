@@ -948,14 +948,6 @@
               <input class="inline-input" type="text" id="setNoticePhone" />
             </div>
             <div>
-              <label class="inline-label">Service location address</label>
-              <input class="inline-input" type="text" id="setServiceAddress" />
-            </div>
-            <div>
-              <label class="inline-label">Service location phone</label>
-              <input class="inline-input" type="text" id="setServicePhone" />
-            </div>
-            <div>
               <label class="inline-label">Credentialing contact — name</label>
               <input class="inline-input" type="text" id="setCredContactName" />
             </div>
@@ -1003,6 +995,44 @@
           <div id="malpracticePartnerLink" style="margin-bottom:10px;"></div>
           <button class="btn btn-sm btn-teal" onclick="saveCompanySettings()">Save</button>
           <div id="setCoStatus2" class="up-status" style="margin-top:10px;"></div>
+        </div>
+
+        <!-- Practice/service locations — a real one-to-many list, since a
+             growing business (especially urgent care) commonly has more
+             than one physical site. Matches how payer forms actually ask
+             for this (Curative's own roster has Primary/Secondary/Tertiary
+             Practice Location as separate fields). -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>Practice locations</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Every physical location you see patients from. Mark one as Primary — that's the one payer forms usually ask for first, with additional locations as Secondary/Tertiary.</p>
+          <div id="locationsListCred" style="margin-bottom:14px;"></div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:10px;align-items:end;">
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Location name</label>
+              <input class="inline-input" type="text" id="newLocationName" placeholder="e.g. Downtown Clinic" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Address</label>
+              <input class="inline-input" type="text" id="newLocationAddress" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">City</label>
+              <input class="inline-input" type="text" id="newLocationCity" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">State</label>
+              <input class="inline-input" type="text" id="newLocationState" maxlength="2" style="width:70px;" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Zip</label>
+              <input class="inline-input" type="text" id="newLocationZip" style="width:90px;" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Phone</label>
+              <input class="inline-input" type="text" id="newLocationPhone" />
+            </div>
+            <button class="btn btn-sm btn-teal" onclick="addCompanyLocation()">+ Add location</button>
+          </div>
         </div>
 
         <!-- Accreditations -->
@@ -5628,6 +5658,106 @@ function onAccBodySelectChanged() {
   document.getElementById('accBodyCustom').style.display = isCustom ? 'block' : 'none';
 }
 
+async function loadCompanyLocationsPanel() {
+  const container = document.getElementById('locationsListCred');
+  if (!container) return;
+
+  const { data, error } = await sb.from('company_locations')
+    .select('*').eq('company_id', currentCompany.id).order('sort_order');
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+
+  // One-time migration: if this company already had the old single
+  // "service location" fields filled in and hasn't created any locations
+  // yet, carry that data forward as their first (Primary) location rather
+  // than silently losing what they already entered.
+  if (!data?.length && (currentCompany.service_location_address || currentCompany.service_location_phone)) {
+    const { error: migrateErr } = await sb.from('company_locations').insert({
+      company_id: currentCompany.id,
+      location_name: 'Primary',
+      address: currentCompany.service_location_address || null,
+      phone: currentCompany.service_location_phone || null,
+      is_primary: true,
+      sort_order: 0,
+    });
+    if (!migrateErr) return loadCompanyLocationsPanel(); // reload to show the migrated row
+  }
+
+  if (!data?.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No locations yet — add one below.</div>';
+    return;
+  }
+
+  container.innerHTML = data.map(loc => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="flex:1;min-width:160px;color:#fff;font-size:13px;">
+        ${loc.is_primary ? '<span style="font-size:9px;font-weight:700;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:1px 5px;margin-right:6px;">PRIMARY</span>' : ''}
+        ${loc.location_name || 'Unnamed location'}
+      </span>
+      <span style="font-size:12px;color:rgba(255,255,255,.5);flex:2;min-width:220px;">${[loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ') || '—'}${loc.phone ? ' · ' + loc.phone : ''}</span>
+      ${!loc.is_primary ? `<button class="btn btn-sm btn-gold" onclick="setPrimaryLocation('${loc.id}')" style="font-size:11px;padding:3px 8px;">Make Primary</button>` : ''}
+      <button class="btn btn-sm btn-danger" onclick="deleteCompanyLocation('${loc.id}','${(loc.location_name||'this location').replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
+    </div>`).join('');
+}
+
+async function addCompanyLocation() {
+  const name = document.getElementById('newLocationName').value.trim();
+  const address = document.getElementById('newLocationAddress').value.trim();
+  const city = document.getElementById('newLocationCity').value.trim();
+  const state = document.getElementById('newLocationState').value.trim();
+  const zip = document.getElementById('newLocationZip').value.trim();
+  const phone = document.getElementById('newLocationPhone').value.trim();
+
+  if (!name && !address) { toast('Enter at least a location name or address.', true); return; }
+
+  const { count } = await sb.from('company_locations').select('id', { count: 'exact', head: true }).eq('company_id', currentCompany.id);
+  const isFirst = !count;
+
+  const { error } = await sb.from('company_locations').insert({
+    company_id: currentCompany.id,
+    location_name: name || null,
+    address: address || null,
+    city: city || null,
+    state: state || null,
+    zip: zip || null,
+    phone: phone || null,
+    is_primary: isFirst, // the very first location added is automatically Primary
+    sort_order: count || 0,
+  });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  ['newLocationName','newLocationAddress','newLocationCity','newLocationState','newLocationZip','newLocationPhone'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  toast(`✓ ${name || 'Location'} added`);
+  await loadCompanyLocationsPanel();
+}
+
+async function setPrimaryLocation(locationId) {
+  // Only one location can be Primary at a time — clear the old one first.
+  await sb.from('company_locations').update({ is_primary: false }).eq('company_id', currentCompany.id);
+  const { error } = await sb.from('company_locations').update({ is_primary: true }).eq('id', locationId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Primary location updated');
+  await loadCompanyLocationsPanel();
+}
+
+async function deleteCompanyLocation(locationId, name) {
+  if (!confirm(`Delete ${name}?`)) return;
+  const { error } = await sb.from('company_locations').delete().eq('id', locationId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`Removed ${name}`);
+  await loadCompanyLocationsPanel();
+}
+
+// Resolves the Primary/Secondary/Tertiary practice location fields used by
+// the credentialing template mapper — matches how real payer forms
+// actually structure this (Curative's roster has exactly these three).
+async function getOrderedCompanyLocations(companyId) {
+  const { data } = await sb.from('company_locations')
+    .select('*').eq('company_id', companyId).order('is_primary', { ascending: false }).order('sort_order');
+  return data || [];
+}
+
 async function loadAccreditationsPanel() {
   const container = document.getElementById('accreditationsListCred');
   const { data } = await sb.from('company_accreditations')
@@ -6798,8 +6928,6 @@ async function loadCredentialingTab() {
   document.getElementById('setBillingPhone').value     = c.billing_phone || '';
   document.getElementById('setNoticeAddress').value    = c.notice_address || '';
   document.getElementById('setNoticePhone').value      = c.notice_address_phone || '';
-  document.getElementById('setServiceAddress').value   = c.service_location_address || '';
-  document.getElementById('setServicePhone').value     = c.service_location_phone || '';
   document.getElementById('setCredContactName').value  = c.credentialing_contact_name || '';
   document.getElementById('setCredContactEmail').value = c.credentialing_contact_email || '';
   document.getElementById('setCredContactPhone').value = c.credentialing_contact_phone || '';
@@ -6823,6 +6951,7 @@ async function loadCredentialingTab() {
     }
   }
 
+  await loadCompanyLocationsPanel();
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
   if (isFullCredentialing) await loadCredentialingTemplates();
@@ -6847,8 +6976,15 @@ const CRED_DATA_SOURCES = [
     ['company.billing_phone', 'Billing phone'],
     ['company.notice_address', 'Notice address'],
     ['company.notice_address_phone', 'Notice address phone'],
-    ['company.service_location_address', 'Service location address'],
-    ['company.service_location_phone', 'Service location phone'],
+    ['company.location_1_name', 'Primary location — name'],
+    ['company.location_1_address', 'Primary location — address'],
+    ['company.location_1_phone', 'Primary location — phone'],
+    ['company.location_2_name', 'Secondary location — name'],
+    ['company.location_2_address', 'Secondary location — address'],
+    ['company.location_2_phone', 'Secondary location — phone'],
+    ['company.location_3_name', 'Tertiary location — name'],
+    ['company.location_3_address', 'Tertiary location — address'],
+    ['company.location_3_phone', 'Tertiary location — phone'],
     ['company.credentialing_contact_name', 'Credentialing contact — name'],
     ['company.credentialing_contact_email', 'Credentialing contact — email'],
     ['company.credentialing_contact_phone', 'Credentialing contact — phone'],
@@ -7032,8 +7168,15 @@ function guessDefaultMapping(fieldName) {
     [/billing.*phone/, 'company.billing_phone'],
     [/notice.*address/, 'company.notice_address'],
     [/notice.*phone/, 'company.notice_address_phone'],
-    [/service.*location.*address/, 'company.service_location_address'],
-    [/service.*location.*phone/, 'company.service_location_phone'],
+    [/secondary.*(name)|(name).*secondary/, 'company.location_2_name'],
+    [/secondary.*(address)|(address).*secondary/, 'company.location_2_address'],
+    [/secondary.*(phone)|(phone).*secondary/, 'company.location_2_phone'],
+    [/tertiary.*(name)|(name).*tertiary/, 'company.location_3_name'],
+    [/tertiary.*(address)|(address).*tertiary/, 'company.location_3_address'],
+    [/tertiary.*(phone)|(phone).*tertiary/, 'company.location_3_phone'],
+    [/(service|practice).*(location.*name|name)/, 'company.location_1_name'],
+    [/(service|practice).*(location.*address|address)/, 'company.location_1_address'],
+    [/(service|practice).*(location.*phone|phone)/, 'company.location_1_phone'],
     [/credentialing.*contact$|contact.*name/, 'company.credentialing_contact_name'],
     [/credentialing.*email/, 'company.credentialing_contact_email'],
     [/credentialing.*phone/, 'company.credentialing_contact_phone'],
@@ -7156,6 +7299,19 @@ async function generateFilledForm(templateId) {
     if (tmplErr) throw tmplErr;
     if (!tmpl) throw new Error('Template not found');
 
+    // Flatten the ordered locations list (Primary first, then by sort
+    // order) onto the company object as location_1/2/3_* fields, matching
+    // how real payer forms structure this — the generic resolver below
+    // doesn't need to know locations are a separate table at all.
+    const locations = await getOrderedCompanyLocations(currentCompany.id);
+    const companyWithLocations = { ...currentCompany };
+    locations.slice(0, 3).forEach((loc, i) => {
+      const n = i + 1;
+      companyWithLocations[`location_${n}_name`] = loc.location_name || '';
+      companyWithLocations[`location_${n}_address`] = [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
+      companyWithLocations[`location_${n}_phone`] = loc.phone || '';
+    });
+
     const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
     if (dlErr) throw dlErr;
     const bytes = await fileBlob.arrayBuffer();
@@ -7166,7 +7322,7 @@ async function generateFilledForm(templateId) {
 
     const skipped = [];
     for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
-      const value = resolveCredDataSource(sourcePath, currentCompany, staff);
+      const value = resolveCredDataSource(sourcePath, companyWithLocations, staff);
       try {
         form.getTextField(pdfFieldName).setText(String(value || ''));
       } catch (fieldErr) {
@@ -7615,8 +7771,6 @@ async function saveCompanySettings() {
     billing_phone:               document.getElementById('setBillingPhone').value.trim() || null,
     notice_address:              document.getElementById('setNoticeAddress').value.trim() || null,
     notice_address_phone:        document.getElementById('setNoticePhone').value.trim() || null,
-    service_location_address:   document.getElementById('setServiceAddress').value.trim() || null,
-    service_location_phone:     document.getElementById('setServicePhone').value.trim() || null,
     credentialing_contact_name:  document.getElementById('setCredContactName').value.trim() || null,
     credentialing_contact_email: document.getElementById('setCredContactEmail').value.trim() || null,
     credentialing_contact_phone: document.getElementById('setCredContactPhone').value.trim() || null,
