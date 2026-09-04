@@ -369,6 +369,23 @@
         <button class="btn btn-teal" id="upBtn" onclick="uploadDoc()">Upload document</button>
       </div>
     </div>
+    <!-- Credentialing file upload — deliberately upload-only, scoped to
+         this clinician's own record. No credentialing data (CAQH, DEA,
+         license number, etc.) is visible or editable here, ever — this is
+         purely so an admin can ask "can you upload a copy of your DL for
+         a credentialing application?" without a round trip through email. -->
+    <div class="panel" id="staffCredFilesPanel" style="display:none;">
+      <div class="panel-head"><span class="panel-title">📎 Credentialing files</span></div>
+      <div class="panel-body">
+        <p style="font-size:13px;color:rgba(255,255,255,.5);margin-bottom:14px;">If your office needs a specific document for a payer credentialing application — like a copy of your driver's license — upload it here.</p>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+          <input type="file" id="staffCredFileInput" style="color:#fff;font-size:12px;flex:1;min-width:160px;" />
+          <button class="btn btn-sm btn-teal" onclick="uploadStaffCredFile()">+ Upload</button>
+        </div>
+        <div id="staffCredFileErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+        <div id="staffCredFilesList">Loading...</div>
+      </div>
+    </div>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">My documents</span></div>
       <div class="panel-body" id="myDocsList">
@@ -1281,8 +1298,12 @@
         </div>
       </div>
 
-      <!-- Document type management -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <!-- Document type management — only relevant to the document-
+           compliance module (has_credtrack). A Credentialing-only company
+           has no Documents tab, no Missing Docs report, and no Expiration
+           Tracker for this to feed into — their actual file needs are now
+           served by the separate, simpler Credentialing Files system. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
         <h2>Document types</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
         <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;"></div>
@@ -2097,6 +2118,44 @@ async function initStaff() {
   await renderStatCards(window._staffId);
   await loadMyDocs(window._staffId);
   await restorePendingFrontPhoto();
+
+  // Upload-only, own-record-only credentialing files — only shown at all
+  // if this company has Credentialing enabled, and only ever touches this
+  // one clinician's own row (enforced by RLS, not just hidden in the UI).
+  const credFilesPanel = document.getElementById('staffCredFilesPanel');
+  if (credFilesPanel) {
+    credFilesPanel.style.display = (currentCompany.has_credentialing_addon && window._staffId) ? 'block' : 'none';
+    if (currentCompany.has_credentialing_addon && window._staffId) {
+      await renderCredentialingFilesList(document.getElementById('staffCredFilesList'), window._staffId, true);
+    }
+  }
+}
+
+async function uploadStaffCredFile() {
+  const fileInput = document.getElementById('staffCredFileInput');
+  const errEl = document.getElementById('staffCredFileErr');
+  errEl.style.display = 'none';
+
+  const file = fileInput.files[0];
+  if (!file) { errEl.textContent = 'Choose a file first.'; errEl.style.display = 'block'; return; }
+  if (!window._staffId) { errEl.textContent = 'Could not find your staff record — contact your admin.'; errEl.style.display = 'block'; return; }
+
+  const path = `${currentCompany.id}/${window._staffId}/${Date.now()}_${file.name}`;
+  const { error: uploadErr } = await sb.storage.from(CREDENTIALING_FILES_BUCKET).upload(path, file);
+  if (uploadErr) { errEl.textContent = uploadErr.message; errEl.style.display = 'block'; return; }
+
+  const { error: insertErr } = await sb.from('credentialing_files').insert({
+    company_id: currentCompany.id,
+    staff_id: window._staffId,
+    file_name: file.name,
+    storage_path: path,
+    uploaded_by: currentProfile.full_name || currentProfile.email,
+  });
+  if (insertErr) { errEl.textContent = insertErr.message; errEl.style.display = 'block'; return; }
+
+  fileInput.value = '';
+  toast(`✓ ${file.name} uploaded`);
+  await renderCredentialingFilesList(document.getElementById('staffCredFilesList'), window._staffId);
 }
 
 async function initPartnerView(partnerRecord) {
@@ -5941,7 +6000,7 @@ async function loadOrgCredFilesInline() {
   await renderCredentialingFilesList(list, null);
 }
 
-async function renderCredentialingFilesList(container, staffId) {
+async function renderCredentialingFilesList(container, staffId, readOnly) {
   let q = sb.from('credentialing_files').select('*').eq('company_id', currentCompany.id).order('uploaded_at', { ascending: false });
   q = staffId ? q.eq('staff_id', staffId) : q.is('staff_id', null);
   const { data, error } = await q;
@@ -5954,7 +6013,7 @@ async function renderCredentialingFilesList(container, staffId) {
       <span style="flex:1;font-size:13px;color:#fff;">📄 ${f.file_name}</span>
       <span style="font-size:11px;color:rgba(255,255,255,.4);">${f.uploaded_by || 'Unknown'} · ${new Date(f.uploaded_at).toLocaleDateString()}</span>
       <button class="btn btn-sm btn-ghost" onclick="downloadCredentialingFile('${f.id}','${f.storage_path}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:11px;padding:3px 8px;">Download</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteCredentialingFile('${f.id}','${f.storage_path}', ${staffId ? `'${staffId}'` : 'null'})" style="font-size:11px;padding:3px 8px;">Delete</button>
+      ${readOnly ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingFile('${f.id}','${f.storage_path}', ${staffId ? `'${staffId}'` : 'null'})" style="font-size:11px;padding:3px 8px;">Delete</button>`}
     </div>`).join('');
 }
 
@@ -6267,6 +6326,9 @@ async function loadSettings() {
   loadDisciplinesPanel();
   loadEntitiesPanel();
   loadSensitiveAccessLog();
+
+  const docTypesPanel = document.getElementById('docTypesPanelSettings');
+  if (docTypesPanel) docTypesPanel.style.display = c.has_credtrack ? 'block' : 'none';
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
