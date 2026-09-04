@@ -1459,6 +1459,7 @@
             <option value="unhandled_rejection">Unhandled rejection</option>
           </select>
           <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
+          <button class="btn btn-sm btn-teal" onclick="copyBugLogForClaude()">📋 Copy for Claude</button>
           <button class="btn btn-sm btn-danger" onclick="clearBugLog()">🗑 Clear log</button>
         </div>
         <div class="tbl-wrap">
@@ -7593,10 +7594,12 @@ async function loadBugLog() {
   const tbody = document.getElementById('bugLogTbody');
   if (error) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
+    _lastBugLogData = [];
     return;
   }
   if (!data?.length) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No errors logged.</td></tr>';
+    _lastBugLogData = [];
     return;
   }
 
@@ -7608,6 +7611,8 @@ async function loadBugLog() {
     (comps || []).forEach(c => { companyNames[c.id] = c.name; });
   }
 
+  _lastBugLogData = data.map(r => ({ ...r, companyName: companyNames[r.company_id] || null }));
+
   tbody.innerHTML = data.map(r => `<tr>
     <td style="white-space:nowrap;font-size:11px;color:rgba(255,255,255,.5);">${new Date(r.created_at).toLocaleString()}</td>
     <td><span class="badge badge-ok">${r.source_app || '—'}</span></td>
@@ -7617,6 +7622,55 @@ async function loadBugLog() {
     <td style="font-size:11px;">${companyNames[r.company_id] || '—'}</td>
     <td style="max-width:200px;white-space:normal;font-size:11px;color:rgba(255,255,255,.4);">${r.context || '—'}</td>
   </tr>`).join('');
+}
+
+// Formats whatever's currently loaded (respecting the app/type filters
+// already applied) into a clean block ready to paste straight into a new
+// Claude conversation — no manual retyping of error details needed to get
+// a fresh chat up to speed on what's actually broken.
+let _lastBugLogData = [];
+async function copyBugLogForClaude() {
+  if (!_lastBugLogData.length) { toast('No errors currently loaded to copy.', true); return; }
+
+  const appFilter  = document.getElementById('bugAppFilter')?.value  || 'All apps';
+  const typeFilter = document.getElementById('bugTypeFilter')?.value || 'All types';
+
+  const lines = [
+    `# Selko bug log export — ${new Date().toLocaleString()}`,
+    `Filtered to: ${appFilter === '' ? 'All apps' : appFilter} / ${typeFilter === '' ? 'All error types' : typeFilter}`,
+    `${_lastBugLogData.length} error${_lastBugLogData.length !== 1 ? 's' : ''} shown, most recent first.`,
+    '',
+  ];
+
+  _lastBugLogData.forEach((r, i) => {
+    lines.push(`## ${i + 1}. ${r.error_type || 'Unknown type'} — ${r.source_app || 'unknown app'}`);
+    lines.push(`- **When:** ${new Date(r.created_at).toLocaleString()}`);
+    if (r.user_email)   lines.push(`- **User:** ${r.user_email}`);
+    if (r.companyName)  lines.push(`- **Company:** ${r.companyName}`);
+    lines.push(`- **Message:** ${r.error_message || '—'}`);
+    if (r.context)       lines.push(`- **Context:** ${r.context}`);
+    lines.push('');
+  });
+
+  const text = lines.join('\n');
+
+  try {
+    await navigator.clipboard.writeText(text);
+    toast(`✓ Copied ${_lastBugLogData.length} error(s) — paste into a new Claude chat`);
+  } catch (e) {
+    // Clipboard access can fail (permissions, non-HTTPS, older browsers) —
+    // fall back to a downloadable file so the export is never a dead end.
+    const blob = new Blob([text], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `selko_bug_log_${new Date().toISOString().slice(0,10)}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+    toast('Clipboard access blocked — downloaded a file instead');
+  }
 }
 
 async function clearBugLog() {
