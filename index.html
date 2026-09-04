@@ -901,11 +901,8 @@
 
         <!-- Org-level credentialing info -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <h2 style="margin:0;">Organization credentialing profile</h2>
-            <button class="btn btn-sm btn-gold" onclick="showNotesLog(null, currentCompany.name)">📝 Organization Notes</button>
-          </div>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;margin-top:8px;">This is what gets pulled into payer credentialing applications automatically — fill it out once, reuse it on every form.</p>
+          <h2>Organization credentialing profile</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">This is what gets pulled into payer credentialing applications automatically — fill it out once, reuse it on every form.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
             <div>
               <label class="inline-label">Legal business name (as on W-9)</label>
@@ -1000,6 +997,19 @@
           <div id="setCoStatus2" class="up-status" style="margin-top:10px;"></div>
         </div>
 
+        <!-- Organization Notes — an always-visible running list, not a
+             pop-out, so anyone in the Credentialing tab sees the current
+             state of things without needing to click into anything. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>📝 Organization Notes</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">General organization-level credentialing notes — visible to your whole team at a glance.</p>
+          <div style="display:flex;gap:8px;margin-bottom:14px;">
+            <input class="inline-input" type="text" id="newOrgNoteText" placeholder="Add a note..." style="flex:1;" onkeydown="if(event.key==='Enter') addOrgNoteInline()" />
+            <button class="btn btn-sm btn-teal" onclick="addOrgNoteInline()">Add</button>
+          </div>
+          <div id="orgNotesInlineList" style="max-height:280px;overflow-y:auto;">Loading...</div>
+        </div>
+
         <!-- Practice/service locations — a real one-to-many list, since a
              growing business (especially urgent care) commonly has more
              than one physical site. Matches how payer forms actually ask
@@ -1070,6 +1080,12 @@
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Provider credentialing (CAQH / DEA)</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">CAQH ID and DEA number, per staff member — used for payer credentialing applications, separate from basic license tracking.</p>
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+            <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
+            <select class="inline-select" id="credStaffDisciplineFilter" style="max-width:180px;" onchange="renderCredentialingStaffTable()">
+              <option value="">All disciplines</option>
+            </select>
+          </div>
           <div class="tbl-wrap">
             <table>
               <thead><tr><th>Staff</th><th>CAQH ID</th><th>CAQH re-attestation due</th><th>DEA number</th><th>DEA expiration</th><th>Actions</th></tr></thead>
@@ -5766,6 +5782,51 @@ async function deleteCredentialingNote(noteId, staffId) {
   await loadNotesLog(staffId);
 }
 
+async function loadOrgNotesInline() {
+  const list = document.getElementById('orgNotesInlineList');
+  if (!list) return;
+
+  const { data, error } = await sb.from('credentialing_notes')
+    .select('*').eq('company_id', currentCompany.id).is('staff_id', null)
+    .order('created_at', { ascending: false });
+
+  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No organization notes yet.</div>'; return; }
+
+  list.innerHTML = data.map(n => `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="font-size:13px;color:#fff;margin-bottom:4px;white-space:pre-wrap;">${n.note_text}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:rgba(255,255,255,.4);">${n.created_by || 'Unknown'} · ${new Date(n.created_at).toLocaleString()}</span>
+        <button onclick="deleteOrgNoteInline('${n.id}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+async function addOrgNoteInline() {
+  const input = document.getElementById('newOrgNoteText');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const { error } = await sb.from('credentialing_notes').insert({
+    company_id: currentCompany.id,
+    staff_id: null,
+    note_text: text,
+    created_by: currentProfile.full_name || currentProfile.email,
+  });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  input.value = '';
+  await loadOrgNotesInline();
+}
+
+async function deleteOrgNoteInline(noteId) {
+  if (!confirm('Delete this note?')) return;
+  const { error } = await sb.from('credentialing_notes').delete().eq('id', noteId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  await loadOrgNotesInline();
+}
+
 async function loadCompanyLocationsPanel() {
   const container = document.getElementById('locationsListCred');
   if (!container) return;
@@ -7059,6 +7120,7 @@ async function loadCredentialingTab() {
     }
   }
 
+  await loadOrgNotesInline();
   await loadCompanyLocationsPanel();
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
@@ -7485,7 +7547,39 @@ async function renderCredentialingStaffTable() {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No staff yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = staffList.map(s => {
+
+  // Populate the discipline filter once per load, from whatever's actually
+  // on the roster — not the full company discipline list, so it never
+  // offers a discipline nobody currently has.
+  const disciplineSel = document.getElementById('credStaffDisciplineFilter');
+  if (disciplineSel && disciplineSel.options.length <= 1) {
+    const usedDisciplines = [...new Set(staffList.map(s => s.discipline).filter(Boolean))].sort();
+    disciplineSel.innerHTML = '<option value="">All disciplines</option>' + usedDisciplines.map(d => `<option value="${d}">${d}</option>`).join('');
+  }
+
+  const search = (document.getElementById('credStaffSearch')?.value || '').trim().toLowerCase();
+  const disciplineFilter = document.getElementById('credStaffDisciplineFilter')?.value || '';
+
+  // Search-first, not browse-first — with a roster that grows over time,
+  // dumping every provider by default just becomes a wall to scroll past.
+  // Nothing renders until you actually search or filter for someone.
+  if (!search && !disciplineFilter) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.35);padding:24px;">Search by name or pick a discipline above to find a provider — ${staffList.length} on file.</td></tr>`;
+    return;
+  }
+
+  const filtered = staffList.filter(s => {
+    const matchesSearch = !search || s.full_name.toLowerCase().includes(search);
+    const matchesDiscipline = !disciplineFilter || s.discipline === disciplineFilter;
+    return matchesSearch && matchesDiscipline;
+  });
+
+  if (!filtered.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No providers match that search.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = filtered.map(s => {
     const prescribes = PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
     const deaCells = prescribes
       ? `<td>${s.dea_number || '—'}</td><td>${credExpiryLabel(s.dea_expiration_date)}</td>`
