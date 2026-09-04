@@ -319,11 +319,11 @@
     <div class="page-header">
       <div>
         <h1 id="staffGreeting">My Credentials</h1>
-        <p>Upload and track your required documents.</p>
+        <p id="staffScreenSubtitle">Upload and track your required documents.</p>
       </div>
     </div>
     <div class="stat-grid" id="statCards"></div>
-    <div class="panel">
+    <div class="panel" id="staffUploadDocPanel">
       <div class="panel-head"><span class="panel-title">Upload a document</span></div>
       <div class="panel-body">
         <div class="form-grid-2" style="margin-bottom:14px;">
@@ -386,7 +386,7 @@
         <div id="staffCredFilesList">Loading...</div>
       </div>
     </div>
-    <div class="panel">
+    <div class="panel" id="staffMyDocsPanel">
       <div class="panel-head"><span class="panel-title">My documents</span></div>
       <div class="panel-body" id="myDocsList">
         <div class="empty-state"><div class="empty-icon">📂</div>No documents uploaded yet.</div>
@@ -2112,12 +2112,27 @@ async function toggleMyCredsView() {
 async function initStaff() {
   document.getElementById('staffGreeting').textContent =
     'My Credentials — ' + currentProfile.full_name.split(',')[0];
+
+  // Document compliance tracking (stat cards, standard upload, My
+  // documents) only applies when this company actually has that module —
+  // a credentialing-only company has none of it, same as the admin-side
+  // tabs gated earlier tonight. This was missed then; fixing it now.
+  const showDocCompliance = !!currentCompany.has_credtrack;
+  document.getElementById('statCards').style.display = showDocCompliance ? 'grid' : 'none';
+  document.getElementById('staffUploadDocPanel').style.display = showDocCompliance ? 'block' : 'none';
+  document.getElementById('staffMyDocsPanel').style.display = showDocCompliance ? 'block' : 'none';
+  document.getElementById('staffScreenSubtitle').textContent = showDocCompliance
+    ? 'Upload and track your required documents.'
+    : 'Manage your credentialing files below.';
+
   const { data: staffRec } = await sb.from('credtrack_staff')
     .select('*').eq('company_id', currentCompany.id).eq('email', currentProfile.email).maybeSingle();
   window._staffId = staffRec?.id || null;
-  await renderStatCards(window._staffId);
-  await loadMyDocs(window._staffId);
-  await restorePendingFrontPhoto();
+  if (showDocCompliance) {
+    await renderStatCards(window._staffId);
+    await loadMyDocs(window._staffId);
+    await restorePendingFrontPhoto();
+  }
 
   // Upload-only, own-record-only credentialing files — only shown if this
   // company has Credentialing AND is on Full tier (Basic keeps document
