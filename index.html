@@ -4058,7 +4058,7 @@ async function submitEnterSsn(staffId) {
 
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/encrypt-staff-ssn', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/encrypt-staff-ssn-ts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
       body: JSON.stringify({ staff_id: staffId, ssn }),
@@ -4116,7 +4116,7 @@ async function submitRevealSsn(staffId) {
   btn.textContent = 'Verifying...';
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reveal-staff-ssn', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reveal-staff-ssn-ts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
       body: JSON.stringify({ staff_id: staffId, justification }),
