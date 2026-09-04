@@ -3011,6 +3011,10 @@ function showStaffAuditLog(staffId, staffName) {
       license_number: 'License number', license_type: 'License type', license_state: 'License state',
       npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
       caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_issued_date: 'CAQH issued', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
+      middle_name: 'Middle name', date_of_birth: 'Date of birth', gender: 'Gender', license_expiration_date: 'License expiration',
+      board_certified: 'Board certified?', board_name: 'Board name', board_certification_date: 'Board certification date', board_certification_expiration_date: 'Board certification expiration',
+      supervising_physician_name: 'Supervising physician — name', supervising_physician_npi: 'Supervising physician — NPI',
+      hospital_affiliation_1: 'Hospital affiliation 1', hospital_affiliation_2: 'Hospital affiliation 2', hospital_affiliation_3: 'Hospital affiliation 3',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -3883,6 +3887,23 @@ function showFullProfileSheet(staffId) {
             <option value="admin" ${s.staff_type === 'admin' ? 'selected' : ''}>Admin</option>
           </select>
         </div>
+        <div>
+          <label class="inline-label">Middle name</label>
+          <input class="inline-input" type="text" id="fpMiddleName" value="${s.middle_name || ''}" />
+        </div>
+        <div>
+          <label class="inline-label">Date of birth</label>
+          <input class="inline-input" type="date" id="fpDob" value="${s.date_of_birth || ''}" />
+        </div>
+        <div>
+          <label class="inline-label">Gender</label>
+          <select class="inline-select" id="fpGender">
+            <option value="" ${!s.gender ? 'selected' : ''}>— Not specified —</option>
+            <option value="Male" ${s.gender === 'Male' ? 'selected' : ''}>Male</option>
+            <option value="Female" ${s.gender === 'Female' ? 'selected' : ''}>Female</option>
+            <option value="Other" ${s.gender === 'Other' ? 'selected' : ''}>Other</option>
+          </select>
+        </div>
       </div>
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">License & NPI</div>
@@ -3900,10 +3921,15 @@ function showFullProfileSheet(staffId) {
           <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" />
         </div>
         <div>
+          <label class="inline-label">License expiration</label>
+          <input class="inline-input" type="date" id="fpLicenseExpiration" value="${s.license_expiration_date || ''}" />
+        </div>
+        <div>
           <label class="inline-label">Individual NPI</label>
           <input class="inline-input" type="text" id="fpNpi" value="${s.npi_number || ''}" placeholder="e.g. 1234567890" />
         </div>
       </div>
+
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH</div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px;">
@@ -3934,6 +3960,50 @@ function showFullProfileSheet(staffId) {
       </div>
       ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
 
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Physician-level credentialing</div>
+      <div id="fpPhysicianSection" style="display:${prescribes ? 'block' : 'none'};margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Board certified?</label>
+            <select class="inline-select" id="fpBoardCertified">
+              <option value="false" ${!s.board_certified ? 'selected' : ''}>No</option>
+              <option value="true" ${s.board_certified ? 'selected' : ''}>Yes</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Board name</label>
+            <input class="inline-input" type="text" id="fpBoardName" value="${s.board_name || ''}" placeholder="e.g. American Board of Family Medicine" />
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Board certification date</label>
+            <input class="inline-input" type="date" id="fpBoardCertDate" value="${s.board_certification_date || ''}" />
+          </div>
+          <div>
+            <label class="inline-label">Board certification expiration</label>
+            <input class="inline-input" type="date" id="fpBoardCertExpiration" value="${s.board_certification_expiration_date || ''}" />
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Supervising physician — name</label>
+            <input class="inline-input" type="text" id="fpSupervisingName" value="${s.supervising_physician_name || ''}" placeholder="If applicable (e.g. NP/PA)" />
+          </div>
+          <div>
+            <label class="inline-label">Supervising physician — NPI</label>
+            <input class="inline-input" type="text" id="fpSupervisingNpi" value="${s.supervising_physician_npi || ''}" />
+          </div>
+        </div>
+        <label class="inline-label">Hospital affiliations</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
+          <input class="inline-input" type="text" id="fpHospitalAffiliation1" value="${s.hospital_affiliation_1 || ''}" placeholder="Hospital 1" />
+          <input class="inline-input" type="text" id="fpHospitalAffiliation2" value="${s.hospital_affiliation_2 || ''}" placeholder="Hospital 2" />
+          <input class="inline-input" type="text" id="fpHospitalAffiliation3" value="${s.hospital_affiliation_3 || ''}" placeholder="Hospital 3" />
+        </div>
+      </div>
+      ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
+
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
@@ -3960,11 +4030,12 @@ function showFullProfileSheet(staffId) {
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 
-  // Re-check the DEA section's visibility live if discipline changes while
-  // the sheet is open, rather than requiring a full reopen.
+  // Re-check the DEA/physician sections' visibility live if discipline
+  // changes while the sheet is open, rather than requiring a full reopen.
   document.getElementById('fpDiscipline').addEventListener('change', function() {
     const nowPrescribes = PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
     document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'grid' : 'none';
+    document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
   });
 }
 
@@ -3976,15 +4047,28 @@ async function saveFullProfileSheet(staffId) {
   const updates = {
     discipline: document.getElementById('fpDiscipline').value || null,
     staff_type: newStaffType,
+    middle_name: document.getElementById('fpMiddleName').value.trim() || null,
+    date_of_birth: document.getElementById('fpDob').value || null,
+    gender: document.getElementById('fpGender').value || null,
     license_number: document.getElementById('fpLicenseNumber').value.trim() || null,
     license_type: document.getElementById('fpLicenseType').value.trim() || null,
     license_state: document.getElementById('fpLicenseState').value.trim() || null,
+    license_expiration_date: document.getElementById('fpLicenseExpiration').value || null,
     npi_number: document.getElementById('fpNpi').value.trim() || null,
     caqh_id: document.getElementById('fpCaqhId').value.trim() || null,
     caqh_issued_date: document.getElementById('fpCaqhIssued').value || null,
     caqh_expiration_date: document.getElementById('fpCaqhExpiration').value || null,
     dea_number: document.getElementById('fpDeaNumber')?.value.trim() || null,
     dea_expiration_date: document.getElementById('fpDeaExpiration')?.value || null,
+    board_certified: document.getElementById('fpBoardCertified').value === 'true',
+    board_name: document.getElementById('fpBoardName').value.trim() || null,
+    board_certification_date: document.getElementById('fpBoardCertDate').value || null,
+    board_certification_expiration_date: document.getElementById('fpBoardCertExpiration').value || null,
+    supervising_physician_name: document.getElementById('fpSupervisingName').value.trim() || null,
+    supervising_physician_npi: document.getElementById('fpSupervisingNpi').value.trim() || null,
+    hospital_affiliation_1: document.getElementById('fpHospitalAffiliation1').value.trim() || null,
+    hospital_affiliation_2: document.getElementById('fpHospitalAffiliation2').value.trim() || null,
+    hospital_affiliation_3: document.getElementById('fpHospitalAffiliation3').value.trim() || null,
   };
 
   const { data: updated, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('profile_id').maybeSingle();
@@ -6786,12 +6870,27 @@ const CRED_DATA_SOURCES = [
     ['staff.dea_expiration_date', 'DEA expiration'],
     ['staff.email', 'Email'],
     ['staff.job_title', 'Job title'],
+    ['staff.middle_name', 'Middle name'],
+    ['staff.date_of_birth', 'Date of birth'],
+    ['staff.gender', 'Gender'],
+    ['staff.license_expiration_date', 'License expiration'],
+    ['staff.board_certified', 'Board certified? (Yes/No)'],
+    ['staff.board_name', 'Board name'],
+    ['staff.board_certification_date', 'Board certification date'],
+    ['staff.board_certification_expiration_date', 'Board certification expiration'],
+    ['staff.supervising_physician_name', 'Supervising physician — name'],
+    ['staff.supervising_physician_npi', 'Supervising physician — NPI'],
+    ['staff.hospital_affiliation_1', 'Hospital affiliation 1'],
+    ['staff.hospital_affiliation_2', 'Hospital affiliation 2'],
+    ['staff.hospital_affiliation_3', 'Hospital affiliation 3'],
   ]},
 ];
 
 const CRED_DATE_FIELDS = new Set([
   'company.malpractice_effective_date', 'company.malpractice_expiration_date',
   'staff.caqh_issued_date', 'staff.caqh_expiration_date', 'staff.dea_expiration_date',
+  'staff.date_of_birth', 'staff.license_expiration_date',
+  'staff.board_certification_date', 'staff.board_certification_expiration_date',
 ]);
 
 function resolveCredDataSource(path, company, staff) {
