@@ -3048,6 +3048,7 @@ function showStaffAuditLog(staffId, staffName) {
       board_certified: 'Board certified?', board_name: 'Board name', board_certification_date: 'Board certification date', board_certification_expiration_date: 'Board certification expiration',
       supervising_physician_name: 'Supervising physician — name', supervising_physician_npi: 'Supervising physician — NPI',
       hospital_affiliation_1: 'Hospital affiliation 1', hospital_affiliation_2: 'Hospital affiliation 2', hospital_affiliation_3: 'Hospital affiliation 3',
+      phone: 'Phone', address: 'Address', city: 'City', state: 'State', zip: 'Zip',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -3940,6 +3941,28 @@ function showFullProfileSheet(staffId) {
             <option value="Other" ${s.gender === 'Other' ? 'selected' : ''}>Other</option>
           </select>
         </div>
+        <div>
+          <label class="inline-label">Phone</label>
+          <input class="inline-input" type="text" id="fpPhone" value="${s.phone || ''}" />
+        </div>
+        <div style="grid-column:1 / -1;">
+          <label class="inline-label">Address</label>
+          <input class="inline-input" type="text" id="fpAddress" value="${s.address || ''}" placeholder="Street address" />
+        </div>
+        <div>
+          <label class="inline-label">City</label>
+          <input class="inline-input" type="text" id="fpCity" value="${s.city || ''}" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+          <div>
+            <label class="inline-label">State</label>
+            <input class="inline-input" type="text" id="fpState" value="${s.state || ''}" maxlength="2" placeholder="OK" />
+          </div>
+          <div>
+            <label class="inline-label">Zip</label>
+            <input class="inline-input" type="text" id="fpZip" value="${s.zip || ''}" />
+          </div>
+        </div>
       </div>
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">License & NPI</div>
@@ -4086,6 +4109,11 @@ async function saveFullProfileSheet(staffId) {
     middle_name: document.getElementById('fpMiddleName').value.trim() || null,
     date_of_birth: document.getElementById('fpDob').value || null,
     gender: document.getElementById('fpGender').value || null,
+    phone: document.getElementById('fpPhone').value.trim() || null,
+    address: document.getElementById('fpAddress').value.trim() || null,
+    city: document.getElementById('fpCity').value.trim() || null,
+    state: document.getElementById('fpState').value.trim() || null,
+    zip: document.getElementById('fpZip').value.trim() || null,
     license_number: document.getElementById('fpLicenseNumber').value.trim() || null,
     license_type: document.getElementById('fpLicenseType').value.trim() || null,
     license_state: document.getElementById('fpLicenseState').value.trim() || null,
@@ -7089,6 +7117,11 @@ const CRED_DATA_SOURCES = [
     ['staff.middle_name', 'Middle name'],
     ['staff.date_of_birth', 'Date of birth'],
     ['staff.gender', 'Gender'],
+    ['staff.phone', 'Phone'],
+    ['staff.address', 'Address'],
+    ['staff.city', 'City'],
+    ['staff.state', 'State'],
+    ['staff.zip', 'Zip'],
     ['staff.license_expiration_date', 'License expiration'],
     ['staff.board_certified', 'Board certified? (Yes/No)'],
     ['staff.board_name', 'Board name'],
