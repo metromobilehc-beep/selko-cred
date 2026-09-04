@@ -2119,13 +2119,16 @@ async function initStaff() {
   await loadMyDocs(window._staffId);
   await restorePendingFrontPhoto();
 
-  // Upload-only, own-record-only credentialing files — only shown at all
-  // if this company has Credentialing enabled, and only ever touches this
-  // one clinician's own row (enforced by RLS, not just hidden in the UI).
+  // Upload-only, own-record-only credentialing files — only shown if this
+  // company has Credentialing AND is on Full tier (Basic keeps document
+  // upload entirely backside/admin-managed, same distinction as the
+  // Templates panel), and only ever touches this one clinician's own row
+  // (enforced by RLS, not just hidden in the UI).
   const credFilesPanel = document.getElementById('staffCredFilesPanel');
   if (credFilesPanel) {
-    credFilesPanel.style.display = (currentCompany.has_credentialing_addon && window._staffId) ? 'block' : 'none';
-    if (currentCompany.has_credentialing_addon && window._staffId) {
+    const showCredFiles = currentCompany.has_credentialing_addon && currentCompany.credentialing_tier !== 'basic' && window._staffId;
+    credFilesPanel.style.display = showCredFiles ? 'block' : 'none';
+    if (showCredFiles) {
       await renderCredentialingFilesList(document.getElementById('staffCredFilesList'), window._staffId, true);
     }
   }
@@ -2136,6 +2139,11 @@ async function uploadStaffCredFile() {
   const errEl = document.getElementById('staffCredFileErr');
   errEl.style.display = 'none';
 
+  if (currentCompany.credentialing_tier === 'basic') {
+    errEl.textContent = 'Self-upload isn\'t available on your company\'s current plan — ask your admin to upload this for you.';
+    errEl.style.display = 'block';
+    return;
+  }
   const file = fileInput.files[0];
   if (!file) { errEl.textContent = 'Choose a file first.'; errEl.style.display = 'block'; return; }
   if (!window._staffId) { errEl.textContent = 'Could not find your staff record — contact your admin.'; errEl.style.display = 'block'; return; }
