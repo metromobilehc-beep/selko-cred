@@ -901,8 +901,11 @@
 
         <!-- Org-level credentialing info -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>Organization credentialing profile</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">This is what gets pulled into payer credentialing applications automatically — fill it out once, reuse it on every form.</p>
+          <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <h2 style="margin:0;">Organization credentialing profile</h2>
+            <button class="btn btn-sm btn-gold" onclick="showNotesLog(null, currentCompany.name)">📝 Organization Notes</button>
+          </div>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;margin-top:8px;">This is what gets pulled into payer credentialing applications automatically — fill it out once, reuse it on every form.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
             <div>
               <label class="inline-label">Legal business name (as on W-9)</label>
@@ -3897,7 +3900,10 @@ function showFullProfileSheet(staffId) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:680px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:2px;">${s.full_name}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;">
+        <div style="color:#fff;font-size:18px;font-weight:700;">${s.full_name}</div>
+        <button class="btn btn-sm btn-gold" onclick="showNotesLog('${staffId}','${s.full_name.replace(/'/g,"\\'")}')">📝 Notes</button>
+      </div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:20px;">Full credentialing profile — everything about this person in one place.</div>
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
@@ -5658,6 +5664,80 @@ function onAccBodySelectChanged() {
   document.getElementById('accBodyCustom').style.display = isCustom ? 'block' : 'none';
 }
 
+// ══ CREDENTIALING NOTES ══
+// A shared pop-out log — staffId null means an organization-level note,
+// otherwise it's scoped to that one provider. Simple running log: add and
+// delete, no editing history, since this is a team collaboration tool,
+// not a compliance audit trail like the SSN access log.
+async function showNotesLog(staffId, contextName) {
+  const existing = document.getElementById('notesLogModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'notesLogModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffId ? contextName : 'Organization Notes'}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">${staffId ? 'Credentialing notes for this provider.' : 'General organization-level credentialing notes.'}</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <input class="inline-input" type="text" id="newNoteText" placeholder="Add a note..." style="flex:1;" onkeydown="if(event.key==='Enter') addCredentialingNote('${staffId || ''}')" />
+        <button class="btn btn-sm btn-teal" onclick="addCredentialingNote('${staffId || ''}')">Add</button>
+      </div>
+      <div id="notesLogList" style="overflow-y:auto;flex:1;padding-right:8px;">Loading...</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('notesLogModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  await loadNotesLog(staffId);
+}
+
+async function loadNotesLog(staffId) {
+  const list = document.getElementById('notesLogList');
+  if (!list) return; // modal may have been closed already
+
+  let q = sb.from('credentialing_notes').select('*').eq('company_id', currentCompany.id).order('created_at', { ascending: false });
+  q = staffId ? q.eq('staff_id', staffId) : q.is('staff_id', null);
+  const { data, error } = await q;
+
+  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);text-align:center;padding:20px 0;">No notes yet.</div>'; return; }
+
+  list.innerHTML = data.map(n => `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="font-size:13px;color:#fff;margin-bottom:4px;white-space:pre-wrap;">${n.note_text}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <span style="font-size:11px;color:rgba(255,255,255,.4);">${n.created_by || 'Unknown'} · ${new Date(n.created_at).toLocaleString()}</span>
+        <button onclick="deleteCredentialingNote('${n.id}', ${staffId ? `'${staffId}'` : 'null'})" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;">Delete</button>
+      </div>
+    </div>`).join('');
+}
+
+async function addCredentialingNote(staffId) {
+  const input = document.getElementById('newNoteText');
+  const text = input.value.trim();
+  if (!text) return;
+
+  const { error } = await sb.from('credentialing_notes').insert({
+    company_id: currentCompany.id,
+    staff_id: staffId || null,
+    note_text: text,
+    created_by: currentProfile.full_name || currentProfile.email,
+  });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  input.value = '';
+  await loadNotesLog(staffId || null);
+}
+
+async function deleteCredentialingNote(noteId, staffId) {
+  if (!confirm('Delete this note?')) return;
+  const { error } = await sb.from('credentialing_notes').delete().eq('id', noteId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  await loadNotesLog(staffId);
+}
+
 async function loadCompanyLocationsPanel() {
   const container = document.getElementById('locationsListCred');
   if (!container) return;
@@ -7387,6 +7467,7 @@ async function renderCredentialingStaffTable() {
       <td><div class="td-actions">
         <button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_issued_date||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
         <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
+        <button class="btn btn-sm btn-gold" onclick="showNotesLog('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📝 Notes</button>
       </div></td>
     </tr>`;
   }).join('');
