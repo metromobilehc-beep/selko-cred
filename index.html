@@ -1080,9 +1080,14 @@
           ⚠ Clinical roles only (e.g. PT, RN, DO) — not job titles or access levels. Someone with no clinical discipline should be set to "N/A" on their own profile, not added here as a discipline.
         </p>
         <div id="disciplinesListCred" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;">
+        <div style="display:flex;gap:8px;margin-bottom:16px;">
           <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN" style="max-width:160px;" />
           <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add discipline</button>
+        </div>
+
+        <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;">
+          <p style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:10px;">CAQH-exempt disciplines — check any discipline that doesn't need a CAQH profile (e.g. PTA, COTA working under a supervising clinician). Exempt disciplines won't show up as "Missing CAQH ID" anywhere in the app.</p>
+          <div id="caqhExemptListCred" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
         </div>
       </div>
 
@@ -5900,6 +5905,33 @@ function loadDisciplinesPanel() {
       ${d}
       <span onclick="removeCompanyDiscipline('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
     </span>`).join('');
+
+  const exemptContainer = document.getElementById('caqhExemptListCred');
+  if (exemptContainer) {
+    const exemptList = getCaqhExemptDisciplines();
+    exemptContainer.innerHTML = disciplines.map(d => `
+      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#fff;cursor:pointer;">
+        <input type="checkbox" ${exemptList.includes(d) ? 'checked' : ''} onchange="toggleCaqhExempt('${d.replace(/'/g,"\\'")}', this.checked)" />
+        ${d}
+      </label>`).join('');
+  }
+}
+
+function getCaqhExemptDisciplines() {
+  return currentCompany?.caqh_exempt_disciplines || [];
+}
+
+async function toggleCaqhExempt(discipline, isExempt) {
+  const current = getCaqhExemptDisciplines();
+  const updated = isExempt
+    ? [...new Set([...current, discipline])]
+    : current.filter(d => d !== discipline);
+
+  const { error } = await sb.from('companies').update({ caqh_exempt_disciplines: updated }).eq('id', currentCompany.id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  currentCompany.caqh_exempt_disciplines = updated;
+  toast(isExempt ? `${discipline} is now CAQH-exempt` : `${discipline} no longer CAQH-exempt`);
 }
 
 async function addCompanyDiscipline() {
@@ -8981,7 +9013,8 @@ async function loadCredentialingOverviewStats() {
 
   document.getElementById('ovCredProviderCount').textContent = activeProviders.length;
 
-  const missingCaqh = activeProviders.filter(s => !s.caqh_id);
+  const caqhExemptDisciplines = getCaqhExemptDisciplines();
+  const missingCaqh = activeProviders.filter(s => !s.caqh_id && !caqhExemptDisciplines.includes(s.discipline));
   document.getElementById('ovCredMissingCaqh').textContent = missingCaqh.length;
 
   const withDays = (dateStr) => dateStr ? Math.ceil((new Date(dateStr) - new Date()) / 86400000) : null;
