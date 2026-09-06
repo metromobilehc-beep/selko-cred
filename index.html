@@ -549,66 +549,78 @@
 
       <div class="dark-panel" id="pnAddFormPanel" data-default-open="true">
         <h2>Add / update network record</h2>
-      <div class="inline-form" style="display:grid;grid-template-columns:repeat(auto-fill, minmax(180px, 1fr));gap:14px 16px;margin-bottom:14px;align-items:end;">
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
-          <select class="inline-select" id="pnStaff" onchange="onPnStaffChanged()"></select>
+
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Who this is for</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:16px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
+            <select class="inline-select" id="pnStaff" onchange="onPnStaffChanged()"></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;" id="pnEntityNameGroup">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Which company/agency?</label>
+            <select class="inline-select" id="pnEntitySelect" onchange="onPnEntitySelectChanged()"></select>
+            <input class="inline-input" type="text" id="pnEntityName" placeholder="Type the new entity name" style="display:none;" />
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;" id="pnEntityNameGroup">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Which company/agency?</label>
-          <select class="inline-select" id="pnEntitySelect" onchange="onPnEntitySelectChanged()"></select>
-          <input class="inline-input" type="text" id="pnEntityName" placeholder="Type the new entity name" style="display:none;" />
+
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;border-top:1px solid rgba(255,255,255,.1);padding-top:16px;">Payer and status</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:14px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Payer</label>
+            <select class="inline-select" id="pnPayer"></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Status</label>
+            <select class="inline-select" id="pnStatus">
+              <option value="pending">Pending</option>
+              <option value="in_network">In-network</option>
+              <option value="out_of_network">Out of network</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Payer</label>
-          <select class="inline-select" id="pnPayer"></select>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:14px 16px;margin-bottom:16px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmation code</label>
+            <input class="inline-input" type="text" id="pnConfCode" placeholder="e.g. AUTH-12345" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Network provider ID</label>
+            <input class="inline-input" type="text" id="pnNetworkProviderId" placeholder="Payer-issued ID" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Group ID</label>
+            <input class="inline-input" type="text" id="pnGroupId" placeholder="e.g. GRP-4021" />
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Status</label>
-          <select class="inline-select" id="pnStatus">
-            <option value="pending">Pending</option>
-            <option value="in_network">In-network</option>
-            <option value="out_of_network">Out of network</option>
-            <option value="expired">Expired</option>
-          </select>
+
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;border-top:1px solid rgba(255,255,255,.1);padding-top:16px;">📅 Timeline</div>
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:14px 16px;margin-bottom:16px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Submitted</label>
+            <input class="inline-input" type="date" id="pnSubmitted" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmed</label>
+            <input class="inline-input" type="date" id="pnConfirmed" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">In-network</label>
+            <input class="inline-input" type="date" id="pnInNetwork" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
+            <input class="inline-input" type="date" id="pnExpiration" />
+          </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Submitted</label>
-          <input class="inline-input" type="date" id="pnSubmitted" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmed</label>
-          <input class="inline-input" type="date" id="pnConfirmed" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">In-network</label>
-          <input class="inline-input" type="date" id="pnInNetwork" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
-          <input class="inline-input" type="date" id="pnExpiration" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Confirmation code</label>
-          <input class="inline-input" type="text" id="pnConfCode" placeholder="e.g. AUTH-12345" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Network provider ID</label>
-          <input class="inline-input" type="text" id="pnNetworkProviderId" placeholder="Payer-issued ID" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Group ID</label>
-          <input class="inline-input" type="text" id="pnGroupId" placeholder="e.g. GRP-4021" />
-        </div>
-        <div style="display:flex;flex-direction:column;gap:4px;grid-column:1 / -1;">
-          <label style="font-size:11px;color:rgba(255,255,255,.5);">Notes</label>
+
+        <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:16px;margin-bottom:14px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.5);display:block;margin-bottom:4px;">Notes</label>
           <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;box-sizing:border-box;"></textarea>
         </div>
-        <div>
-          <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()" style="width:100%;justify-content:center;">+ Add / update</button>
-        </div>
-      </div>
-      <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;"></div>
+
+        <button class="btn btn-sm btn-gold" onclick="savePayerNetwork()" style="width:100%;justify-content:center;">+ Add / update</button>
+        <div id="pnErr" class="up-status" style="display:none;color:#ff6b6b;"></div>
       </div>
 
       <div class="dark-panel" id="pnStaffTablePanel" data-default-open="true">
