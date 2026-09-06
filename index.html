@@ -532,8 +532,8 @@
               <input class="inline-input" type="text" id="nsName" placeholder="Jane Smith, PT" />
             </div>
             <div>
-              <label class="inline-label">Email</label>
-              <input class="inline-input" type="email" id="nsEmail" placeholder="jane@email.com" />
+              <label class="inline-label">Email (optional)</label>
+              <input class="inline-input" type="email" id="nsEmail" placeholder="jane@email.com — leave blank if they don't have one" />
             </div>
             <div>
               <label class="inline-label">Job title</label>
@@ -5201,12 +5201,11 @@ async function saveNewStaff() {
   const err   = document.getElementById('nsErr');
   err.style.display = 'none';
   if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
-  if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
   try {
     const { error } = await sb.from('credtrack_staff').insert({
       company_id: currentCompany.id,
       full_name:  name,
-      email:      email,
+      email:      email || null,
       job_title:  title || null,
       discipline: disc || null,
       staff_type: type,
