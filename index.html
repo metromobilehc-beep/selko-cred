@@ -9227,6 +9227,7 @@ async function loadSuperAdmin() {
         ` : `
           <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
           <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
+          <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}','${c.name.replace(/'/g,"\\'")}','${((c.admin_emails||[])[0]||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✉ Resend invite</button>
           <select class="filter-sel" id="moduleSelect_${c.id}" style="max-width:220px;transition:box-shadow .3s, border-color .3s;" onchange="setCompanyModules('${c.id}', this.value)" title="Which modules this company has access to. Both is the common case — choosing either single option below means the other is completely off, including its own tab.">
             <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
             <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
@@ -9820,6 +9821,105 @@ function hideAddCompany() {
   document.getElementById('coErr').style.display = 'none';
 }
 
+// Shared by company creation and the standalone "Resend invite" action —
+// one code path for actually sending/re-sending an admin login, so both
+// places behave identically and a future fix only needs to happen once.
+// Throws on failure; callers decide how to surface that.
+async function sendAdminInvite(companyId, adminName, email) {
+  const tempPassword = generateTempPassword();
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify({
+      email,
+      password: tempPassword,
+      name: adminName,
+      company_id: companyId,
+      role: 'admin',
+      login_url: 'https://cred.selko360.com',
+      app_label: 'Cred',
+      force_reset: false,
+    }),
+  });
+  const result = await res.json();
+  if (result.error) throw new Error(result.error);
+
+  // Only insert a new staff row if one doesn't already exist for this
+  // company+email — a resend targets someone who (per the missing-email
+  // scenario this exists for) may already have a staff record from the
+  // original attempt, and duplicating it would be a real mess to clean up.
+  const { data: existingStaff } = await sb.from('credtrack_staff')
+    .select('id').eq('company_id', companyId).eq('email', email).maybeSingle();
+  if (!existingStaff) {
+    await sb.from('credtrack_staff').insert({
+      company_id: companyId, full_name: adminName, email,
+      staff_type: 'admin', active: true,
+      profile_id: result.user_id || null,
+    });
+  }
+
+  if (result.password_reset) {
+    showTempPasswordModal(adminName, email, tempPassword, result.email_sent, result.email_error);
+  } else {
+    toast(`✓ ${adminName} already has a Selko login — admin access granted for this company.`);
+  }
+}
+
+// Quick one-click resend, right from a company's own card — no need to
+// navigate to the separate Invite panel and re-select the company. Looks
+// up any existing admin staff record for this company+email first, so the
+// name field isn't left for someone to retype from memory.
+async function showResendInvitePrompt(companyId, companyName, prefilledEmail) {
+  const existing = document.getElementById('resendInviteModal');
+  if (existing) existing.remove();
+
+  let prefilledName = '';
+  if (prefilledEmail) {
+    const { data: staffRec } = await sb.from('credtrack_staff')
+      .select('full_name').eq('company_id', companyId).eq('email', prefilledEmail).maybeSingle();
+    prefilledName = staffRec?.full_name || '';
+  }
+
+  const modal = document.createElement('div');
+  modal.id = 'resendInviteModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Resend invite — ${companyName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Sends a fresh login. If they already have one, this just confirms access — their existing password is left alone.</p>
+      <label class="inline-label">Admin name</label>
+      <input class="inline-input" type="text" id="resendInviteName" value="${prefilledName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;" />
+      <label class="inline-label">Admin email</label>
+      <input class="inline-input" type="email" id="resendInviteEmail" value="${(prefilledEmail||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px;" />
+      <div id="resendInviteErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitResendInvite('${companyId}')" style="flex:1;justify-content:center;">Send</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('resendInviteModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitResendInvite(companyId) {
+  const name  = document.getElementById('resendInviteName').value.trim();
+  const email = document.getElementById('resendInviteEmail').value.trim();
+  const errEl = document.getElementById('resendInviteErr');
+  errEl.style.display = 'none';
+
+  if (!name)  { errEl.textContent = 'Admin name is required.';  errEl.style.display = 'block'; return; }
+  if (!email) { errEl.textContent = 'Admin email is required.'; errEl.style.display = 'block'; return; }
+
+  try {
+    await sendAdminInvite(companyId, name, email);
+    document.getElementById('resendInviteModal')?.remove();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
 async function saveNewCompany() {
   const name      = document.getElementById('coName').value.trim();
   const slug      = document.getElementById('coSlug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
@@ -9860,37 +9960,8 @@ async function saveNewCompany() {
   // it — which is what actually caused staff to be un-addable, not a bug
   // in the staff-add flow itself.
   if (adminName && email && newCompany) {
-    const tempPassword = generateTempPassword();
     try {
-      const { data: { session } } = await sb.auth.getSession();
-      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({
-          email,
-          password: tempPassword,
-          name: adminName,
-          company_id: newCompany.id,
-          role: 'admin',
-          login_url: 'https://cred.selko360.com',
-          app_label: 'Cred',
-          force_reset: false,
-        }),
-      });
-      const result = await res.json();
-      if (result.error) throw new Error(result.error);
-
-      await sb.from('credtrack_staff').insert({
-        company_id: newCompany.id, full_name: adminName, email,
-        staff_type: 'admin', active: true,
-        profile_id: result.user_id || null,
-      });
-
-      if (result.password_reset) {
-        showTempPasswordModal(adminName, email, tempPassword, result.email_sent, result.email_error);
-      } else {
-        toast(`✓ ${adminName} already has a Selko login — admin access granted for this company.`);
-      }
+      await sendAdminInvite(newCompany.id, adminName, email);
     } catch (e) {
       // The company itself was created successfully even if this part
       // fails — don't lose that, just surface that the invite specifically
