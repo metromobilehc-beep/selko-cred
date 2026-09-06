@@ -1356,14 +1356,19 @@
               </select>
             </div>
             <div>
+              <label class="inline-label">Admin name</label>
+              <input class="inline-input" type="text" id="coAdminName" placeholder="Jane Smith" />
+            </div>
+            <div>
               <label class="inline-label">Admin email</label>
               <input class="inline-input" type="email" id="coEmail" placeholder="admin@company.com" />
             </div>
             <div style="display:flex;gap:6px;align-items:flex-end;">
-              <button class="btn btn-sm btn-teal" onclick="saveNewCompany()">Save</button>
+              <button class="btn btn-sm btn-teal" onclick="saveNewCompany()">Save & invite admin</button>
               <button class="btn btn-sm btn-ghost" onclick="hideAddCompany()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
             </div>
           </div>
+          <p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:8px;">Fill in Admin name + email to automatically send a login the moment the company is created — leave both blank to just create the company with no admin yet (you can invite one later from the company's row).</p>
           <div id="coErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
         </div>
 
@@ -9816,15 +9821,22 @@ function hideAddCompany() {
 }
 
 async function saveNewCompany() {
-  const name  = document.getElementById('coName').value.trim();
-  const slug  = document.getElementById('coSlug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
-  const plan  = document.getElementById('coPlan').value;
-  const email = document.getElementById('coEmail').value.trim();
-  const err   = document.getElementById('coErr');
+  const name      = document.getElementById('coName').value.trim();
+  const slug      = document.getElementById('coSlug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
+  const plan      = document.getElementById('coPlan').value;
+  const adminName = document.getElementById('coAdminName').value.trim();
+  const email     = document.getElementById('coEmail').value.trim();
+  const err       = document.getElementById('coErr');
   err.style.display = 'none';
   if (!name) { err.textContent = 'Company name is required.'; err.style.display = 'block'; return; }
   if (!slug) { err.textContent = 'Slug is required (letters, numbers, hyphens only).'; err.style.display = 'block'; return; }
-  const { error } = await sb.from('companies').insert({
+  // Admin name and email are optional together, but not one without the
+  // other — a lone email with no name isn't enough to invite anyone, and
+  // silently ignoring it would look like the invite happened when it didn't.
+  if (email && !adminName) { err.textContent = 'Enter an admin name too, or leave both blank to invite later.'; err.style.display = 'block'; return; }
+  if (adminName && !email) { err.textContent = 'Enter an admin email too, or leave both blank to invite later.'; err.style.display = 'block'; return; }
+
+  const { data: newCompany, error } = await sb.from('companies').insert({
     name, slug, plan,
     has_credtrack: true,
     has_compliance: false,
@@ -9832,9 +9844,61 @@ async function saveNewCompany() {
     branding_enabled: false,
     active: true,
     admin_emails: email ? [email] : [],
-  });
+  }).select().maybeSingle();
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+
   toast(name + ' added');
+  document.getElementById('coName').value = '';
+  document.getElementById('coSlug').value = '';
+  document.getElementById('coAdminName').value = '';
+  document.getElementById('coEmail').value = '';
+
+  // This is the piece that was missing — company creation used to stop
+  // here, requiring a completely separate manual "Invite admin" step
+  // afterward. Skipping that step silently (as happened with a real test
+  // company) left the company created but with no actual admin login for
+  // it — which is what actually caused staff to be un-addable, not a bug
+  // in the staff-add flow itself.
+  if (adminName && email && newCompany) {
+    const tempPassword = generateTempPassword();
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+          email,
+          password: tempPassword,
+          name: adminName,
+          company_id: newCompany.id,
+          role: 'admin',
+          login_url: 'https://cred.selko360.com',
+          app_label: 'Cred',
+          force_reset: false,
+        }),
+      });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+
+      await sb.from('credtrack_staff').insert({
+        company_id: newCompany.id, full_name: adminName, email,
+        staff_type: 'admin', active: true,
+        profile_id: result.user_id || null,
+      });
+
+      if (result.password_reset) {
+        showTempPasswordModal(adminName, email, tempPassword, result.email_sent, result.email_error);
+      } else {
+        toast(`✓ ${adminName} already has a Selko login — admin access granted for this company.`);
+      }
+    } catch (e) {
+      // The company itself was created successfully even if this part
+      // fails — don't lose that, just surface that the invite specifically
+      // needs to be retried (from the existing separate Invite panel).
+      toast(`Company created, but the admin invite failed: ${e.message}. Use the Invite panel below to retry.`, true);
+    }
+  }
+
   hideAddCompany();
   await loadSuperAdmin();
 }
