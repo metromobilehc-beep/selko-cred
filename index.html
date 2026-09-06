@@ -27,6 +27,12 @@
       <div class="logo-sub">Credential Manager</div>
     </div>
   </div>
+  <div id="hdrSearchWrap" style="position:relative;flex:1;max-width:360px;margin:0 20px;display:none;">
+    <input type="text" id="hdrSearchInput" placeholder="Search everything..." autocomplete="off"
+      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:7px 12px;font-size:13px;"
+      oninput="handleGlobalSearch(this.value)" onfocus="if(this.value.trim().length>=2) document.getElementById('hdrSearchResults').style.display='block';" />
+    <div id="hdrSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:10px;margin-top:6px;max-height:420px;overflow-y:auto;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4);"></div>
+  </div>
   <div id="hdrRight">
     <span id="hdrUser"></span>
     <span id="hdrRole"></span>
@@ -203,43 +209,78 @@
     <!-- DOCUMENTS TAB -->
     <div id="tabOverview" class="dark-panel">
       <h2 id="ovGreeting">Overview</h2>
-      <div id="ovStatsGrid" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px;margin:18px 0 24px;">
-        <div class="ov-stat-card">
-          <div class="ov-stat-num" id="ovStaffCount">—</div>
-          <div class="ov-stat-label">Active staff</div>
+
+      <div id="ovDocumentsSection" style="display:none;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Document compliance</div>
+        <div id="ovStatsGrid" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px;margin:18px 0 24px;">
+          <div class="ov-stat-card">
+            <div class="ov-stat-num" id="ovStaffCount">—</div>
+            <div class="ov-stat-label">Active staff</div>
+          </div>
+          <div class="ov-stat-card">
+            <div class="ov-stat-num" id="ovDocCount">—</div>
+            <div class="ov-stat-label">Documents on file</div>
+          </div>
+          <div class="ov-stat-card" id="ovComplianceCard">
+            <div class="ov-stat-num" id="ovComplianceRate">—</div>
+            <div class="ov-stat-label">Compliance rate</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovExpiringCount">—</div>
+            <div class="ov-stat-label">Expiring within 30 days</div>
+          </div>
+          <div class="ov-stat-card ov-stat-danger">
+            <div class="ov-stat-num" id="ovExpiredCount">—</div>
+            <div class="ov-stat-label">Expired</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovMissingCount">—</div>
+            <div class="ov-stat-label">Missing required docs</div>
+          </div>
         </div>
-        <div class="ov-stat-card">
-          <div class="ov-stat-num" id="ovDocCount">—</div>
-          <div class="ov-stat-label">Documents on file</div>
+
+        <div id="ovAttentionSection" style="display:none;">
+          <h3 style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px;">Needs attention</h3>
+          <div id="ovAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;"></div>
+          <button class="btn btn-sm btn-ghost" onclick="switchTab('exp')" style="color:#fff;border-color:rgba(255,255,255,.2);">View full expiration tracker →</button>
         </div>
-        <div class="ov-stat-card" id="ovComplianceCard">
-          <div class="ov-stat-num" id="ovComplianceRate">—</div>
-          <div class="ov-stat-label">Compliance rate</div>
-        </div>
-        <div class="ov-stat-card ov-stat-warn">
-          <div class="ov-stat-num" id="ovExpiringCount">—</div>
-          <div class="ov-stat-label">Expiring within 30 days</div>
-        </div>
-        <div class="ov-stat-card ov-stat-danger">
-          <div class="ov-stat-num" id="ovExpiredCount">—</div>
-          <div class="ov-stat-label">Expired</div>
-        </div>
-        <div class="ov-stat-card ov-stat-warn">
-          <div class="ov-stat-num" id="ovMissingCount">—</div>
-          <div class="ov-stat-label">Missing required docs</div>
+
+        <div id="ovAllClearSection" style="display:none;text-align:center;padding:30px 0;color:rgba(255,255,255,.4);">
+          ✓ Nothing needs attention right now — all tracked documents are current.
         </div>
       </div>
 
-      <div id="ovAttentionSection" style="display:none;">
+      <div id="ovCredentialingSection" style="display:none;border-top:1px solid rgba(255,255,255,.1);padding-top:20px;margin-top:20px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Credentialing</div>
+        <div id="ovCredStatsGrid" style="display:grid;grid-template-columns:repeat(3, minmax(0, 1fr));gap:14px;margin:18px 0 24px;">
+          <div class="ov-stat-card">
+            <div class="ov-stat-num" id="ovCredProviderCount">—</div>
+            <div class="ov-stat-label">Providers tracked</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovCredMissingCaqh">—</div>
+            <div class="ov-stat-label">Missing CAQH ID</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovCredCaqhDue">—</div>
+            <div class="ov-stat-label">CAQH re-attestation due (30d)</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovCredLicenseDue">—</div>
+            <div class="ov-stat-label">Licenses expiring (30d)</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovCredDeaDue">—</div>
+            <div class="ov-stat-label">DEA expiring (30d)</div>
+          </div>
+        </div>
+
         <h3 style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px;">Needs attention</h3>
-        <div id="ovAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;"></div>
-        <button class="btn btn-sm btn-ghost" onclick="switchTab('exp')" style="color:#fff;border-color:rgba(255,255,255,.2);">View full expiration tracker →</button>
+        <input type="text" id="ovCredAttentionSearch" placeholder="Search by name..." oninput="renderOvCredAttentionList()" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:8px 12px;font-size:13px;margin-bottom:12px;" />
+        <div id="ovCredAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <div id="ovCredAllClear" style="display:none;text-align:center;padding:20px 0;color:rgba(255,255,255,.4);">✓ Nothing needs attention right now.</div>
+        <button class="btn btn-sm btn-ghost" onclick="switchTab('credentialing')" style="color:#fff;border-color:rgba(255,255,255,.2);">Go to Credentialing →</button>
       </div>
-
-      <div id="ovAllClearSection" style="display:none;text-align:center;padding:30px 0;color:rgba(255,255,255,.4);">
-        ✓ Nothing needs attention right now — all tracked documents are current.
-      </div>
-
     </div>
 
 
@@ -1761,13 +1802,13 @@ async function initSession(user) {
       // Documents, Expiration Tracker, Overview, and Insurance are the
       // document-compliance side of the product — a credentialing-only
       // company (has_credentialing_addon but not has_credtrack) never sees
-      // these, same way a doc-compliance-only company never sees
-      // Credentialing. Overview specifically is Missing-Docs/compliance-%
-      // stats computed from document data this company doesn't have, so
-      // it's not just irrelevant, it'd show confusing "0% compliant"
-      // numbers if left visible.
+      // Overview now adapts to show whichever section(s) are actually
+      // active (loadOverview() handles the document vs credentialing
+      // split) — so unlike Docs/Expiration Tracker/Insurance, it stays
+      // visible whenever EITHER module is on, not just document tracking.
       const showDocCompliance = !!company.has_credtrack;
-      document.getElementById('tab-overview').style.display = showDocCompliance ? 'inline-flex' : 'none';
+      const showOverviewTab = showDocCompliance || !!company.has_credentialing_addon;
+      document.getElementById('tab-overview').style.display = showOverviewTab ? 'inline-flex' : 'none';
       document.getElementById('tab-docs').style.display = showDocCompliance ? 'inline-flex' : 'none';
       document.getElementById('tab-exp').style.display  = showDocCompliance ? 'inline-flex' : 'none';
       document.getElementById('tab-insurance').style.display = (showDocCompliance && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
@@ -1870,9 +1911,11 @@ async function toggleMyCredsView() {
     showScreen('staffScreen');
     await initStaff();
     btn.textContent = '← Back to Admin';
+    document.getElementById('hdrSearchWrap').style.display = 'none';
   } else {
     showScreen('adminScreen');
     btn.textContent = 'My Credentials';
+    document.getElementById('hdrSearchWrap').style.display = 'block';
     // Admin screen data was already loaded on initial login; just re-show it.
     switchTab(document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'docs');
   }
@@ -2444,12 +2487,170 @@ function showUpStatus(msg, type) {
 }
 
 // ══ ADMIN ══
+// ══ GLOBAL SEARCH ══
+// One search box, several tables — a straightforward set of parallel
+// ilike queries rather than full-text-search infrastructure, since at
+// this scale (dozens to low hundreds of records per company, not
+// millions) that's genuinely the simpler, faster-to-build option.
+let _globalSearchTimer;
+function handleGlobalSearch(query) {
+  clearTimeout(_globalSearchTimer);
+  const trimmed = query.trim();
+  const resultsBox = document.getElementById('hdrSearchResults');
+  if (trimmed.length < 2) { resultsBox.style.display = 'none'; return; }
+
+  _globalSearchTimer = setTimeout(async () => {
+    const results = await performGlobalSearch(trimmed);
+    renderGlobalSearchResults(results, trimmed);
+  }, 350);
+}
+
+async function performGlobalSearch(query) {
+  const like = `%${query}%`;
+  const companyId = currentCompany.id;
+
+  const [staffRes, empRes, notesRes, filesRes, accRes, locRes] = await Promise.all([
+    sb.from('credtrack_staff')
+      .select('id, full_name, discipline, license_number, npi_number, caqh_id, dea_number, email, phone, hospital_affiliation_1, hospital_affiliation_2, hospital_affiliation_3, board_name')
+      .eq('company_id', companyId)
+      .or(`full_name.ilike.${like},license_number.ilike.${like},npi_number.ilike.${like},caqh_id.ilike.${like},dea_number.ilike.${like},email.ilike.${like},phone.ilike.${like},hospital_affiliation_1.ilike.${like},hospital_affiliation_2.ilike.${like},hospital_affiliation_3.ilike.${like},board_name.ilike.${like}`)
+      .limit(6),
+
+    sb.from('staff_employment_history')
+      .select('id, staff_id, employer_name, position_title, supervisor_name, credtrack_staff!inner(full_name, company_id)')
+      .eq('credtrack_staff.company_id', companyId)
+      .or(`employer_name.ilike.${like},position_title.ilike.${like},supervisor_name.ilike.${like}`)
+      .limit(6),
+
+    sb.from('credentialing_notes')
+      .select('id, staff_id, note_text, credtrack_staff(full_name)')
+      .eq('company_id', companyId)
+      .ilike('note_text', like)
+      .limit(6),
+
+    sb.from('credentialing_files')
+      .select('id, staff_id, file_name, credtrack_staff(full_name)')
+      .eq('company_id', companyId)
+      .ilike('file_name', like)
+      .limit(6),
+
+    sb.from('company_accreditations')
+      .select('id, body_name, accreditation_number')
+      .eq('company_id', companyId)
+      .or(`body_name.ilike.${like},accreditation_number.ilike.${like}`)
+      .limit(6),
+
+    sb.from('company_locations')
+      .select('id, location_name, address, city')
+      .eq('company_id', companyId)
+      .or(`location_name.ilike.${like},address.ilike.${like},city.ilike.${like}`)
+      .limit(6),
+  ]);
+
+  return {
+    staff: staffRes.data || [],
+    employment: empRes.data || [],
+    notes: notesRes.data || [],
+    files: filesRes.data || [],
+    accreditations: accRes.data || [],
+    locations: locRes.data || [],
+  };
+}
+
+function renderGlobalSearchResults(results, query) {
+  const box = document.getElementById('hdrSearchResults');
+  const totalCount = Object.values(results).reduce((sum, arr) => sum + arr.length, 0);
+
+  if (!totalCount) {
+    box.innerHTML = `<div style="padding:16px;font-size:13px;color:rgba(255,255,255,.4);text-align:center;">No matches for "${query}"</div>`;
+    box.style.display = 'block';
+    return;
+  }
+
+  const sections = [];
+
+  if (results.staff.length) {
+    sections.push(renderSearchSection('👤 Staff', results.staff.map(s => ({
+      label: s.full_name,
+      sub: [s.discipline, s.license_number, s.npi_number].filter(Boolean).join(' · '),
+      onclick: `showFullProfileSheet('${s.id}')`,
+    }))));
+  }
+  if (results.employment.length) {
+    sections.push(renderSearchSection('💼 Employment history', results.employment.map(e => ({
+      label: e.employer_name,
+      sub: `${e.credtrack_staff?.full_name || 'Unknown'}${e.position_title ? ' · ' + e.position_title : ''}`,
+      onclick: `showEmploymentHistory('${e.staff_id}','${(e.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`,
+    }))));
+  }
+  if (results.notes.length) {
+    sections.push(renderSearchSection('📝 Notes', results.notes.map(n => ({
+      label: n.note_text.length > 60 ? n.note_text.slice(0, 60) + '…' : n.note_text,
+      sub: n.staff_id ? (n.credtrack_staff?.full_name || 'Unknown provider') : 'Organization note',
+      onclick: n.staff_id
+        ? `showNotesLog('${n.staff_id}','${(n.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`
+        : `showNotesLog(null, 'Organization Notes')`,
+    }))));
+  }
+  if (results.files.length) {
+    sections.push(renderSearchSection('📎 Files', results.files.map(f => ({
+      label: f.file_name,
+      sub: f.staff_id ? (f.credtrack_staff?.full_name || 'Unknown provider') : 'Organization file',
+      onclick: f.staff_id
+        ? `showCredentialingFiles('${f.staff_id}','${(f.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`
+        : `switchTab('credentialing')`,
+    }))));
+  }
+  if (results.accreditations.length) {
+    sections.push(renderSearchSection('🏅 Accreditations', results.accreditations.map(a => ({
+      label: a.body_name,
+      sub: a.accreditation_number || '',
+      onclick: `switchTab('credentialing')`,
+    }))));
+  }
+  if (results.locations.length) {
+    sections.push(renderSearchSection('📍 Locations', results.locations.map(l => ({
+      label: l.location_name || 'Unnamed location',
+      sub: [l.address, l.city].filter(Boolean).join(', '),
+      onclick: `switchTab('credentialing')`,
+    }))));
+  }
+
+  box.innerHTML = sections.join('');
+  box.style.display = 'block';
+}
+
+function renderSearchSection(title, items) {
+  return `
+    <div style="padding:8px 12px;font-size:10px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;background:rgba(255,255,255,.02);">${title}</div>
+    ${items.map(item => `
+      <div onclick="closeGlobalSearch(); ${item.onclick}" style="padding:8px 12px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.04);" onmouseover="this.style.background='rgba(255,255,255,.05)'" onmouseout="this.style.background='transparent'">
+        <div style="font-size:13px;color:#fff;">${item.label}</div>
+        ${item.sub ? `<div style="font-size:11px;color:rgba(255,255,255,.4);">${item.sub}</div>` : ''}
+      </div>
+    `).join('')}
+  `;
+}
+
+function closeGlobalSearch() {
+  document.getElementById('hdrSearchResults').style.display = 'none';
+  document.getElementById('hdrSearchInput').value = '';
+}
+
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('hdrSearchWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('hdrSearchResults').style.display = 'none';
+  }
+});
+
 async function initAdmin() {
   await loadStaffList();
   await loadAdminFilters();
   await autoArchiveExpiredDocs();
   await loadAdminDocs();
   await loadOverview();
+  document.getElementById('hdrSearchWrap').style.display = 'block';
   if (window._isPro) {
     document.getElementById('addDocTypeBtn').style.display     = 'inline-flex';
     document.getElementById('bulkDownloadBtn').style.display   = 'inline-flex';
@@ -8600,6 +8801,18 @@ function switchTab(tab) {
 async function loadOverview() {
   document.getElementById('ovGreeting').textContent = `Overview — ${currentCompany?.name || ''}`;
 
+  document.getElementById('ovDocumentsSection').style.display = currentCompany.has_credtrack ? 'block' : 'none';
+  document.getElementById('ovCredentialingSection').style.display = currentCompany.has_credentialing_addon ? 'block' : 'none';
+
+  if (currentCompany.has_credtrack) {
+    await loadDocumentOverviewStats();
+  }
+  if (currentCompany.has_credentialing_addon) {
+    await loadCredentialingOverviewStats();
+  }
+}
+
+async function loadDocumentOverviewStats() {
   // Active staff count
   const { data: staff } = await sb.from('credtrack_staff')
     .select('id, full_name, discipline')
@@ -8702,6 +8915,99 @@ async function loadOverview() {
     attentionSection.style.display = 'none';
     allClearSection.style.display = 'block';
   }
+}
+
+let _ovCredAttentionData = [];
+
+async function loadCredentialingOverviewStats() {
+  await loadStaffList();
+  const activeProviders = staffList.filter(s => s.active);
+
+  document.getElementById('ovCredProviderCount').textContent = activeProviders.length;
+
+  const missingCaqh = activeProviders.filter(s => !s.caqh_id);
+  document.getElementById('ovCredMissingCaqh').textContent = missingCaqh.length;
+
+  const withDays = (dateStr) => dateStr ? Math.ceil((new Date(dateStr) - new Date()) / 86400000) : null;
+
+  const caqhDue = activeProviders.filter(s => {
+    const d = withDays(s.caqh_expiration_date);
+    return d !== null && d <= 30;
+  });
+  document.getElementById('ovCredCaqhDue').textContent = caqhDue.length;
+
+  const licenseDue = activeProviders.filter(s => {
+    const d = withDays(s.license_expiration_date);
+    return d !== null && d <= 30;
+  });
+  document.getElementById('ovCredLicenseDue').textContent = licenseDue.length;
+
+  const deaDue = activeProviders.filter(s => {
+    if (!PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase())) return false;
+    const d = withDays(s.dea_expiration_date);
+    return d !== null && d <= 30;
+  });
+  document.getElementById('ovCredDeaDue').textContent = deaDue.length;
+
+  // Build one combined, de-duplicated attention list (a provider might
+  // have more than one issue) — stored so the search box can re-filter
+  // it locally without re-querying every keystroke.
+  const issuesByStaff = new Map();
+  const addIssue = (staff, label, urgent) => {
+    if (!issuesByStaff.has(staff.id)) issuesByStaff.set(staff.id, { staff, issues: [] });
+    issuesByStaff.get(staff.id).issues.push({ label, urgent });
+  };
+  missingCaqh.forEach(s => addIssue(s, 'Missing CAQH ID', false));
+  caqhDue.forEach(s => {
+    const d = withDays(s.caqh_expiration_date);
+    addIssue(s, d < 0 ? `CAQH expired ${Math.abs(d)}d ago` : `CAQH due in ${d}d`, d < 0);
+  });
+  licenseDue.forEach(s => {
+    const d = withDays(s.license_expiration_date);
+    addIssue(s, d < 0 ? `License expired ${Math.abs(d)}d ago` : `License expires in ${d}d`, d < 0);
+  });
+  deaDue.forEach(s => {
+    const d = withDays(s.dea_expiration_date);
+    addIssue(s, d < 0 ? `DEA expired ${Math.abs(d)}d ago` : `DEA expires in ${d}d`, d < 0);
+  });
+
+  _ovCredAttentionData = [...issuesByStaff.values()].sort((a, b) =>
+    (b.issues.some(i => i.urgent) ? 1 : 0) - (a.issues.some(i => i.urgent) ? 1 : 0)
+  );
+  renderOvCredAttentionList();
+}
+
+function renderOvCredAttentionList() {
+  const search = (document.getElementById('ovCredAttentionSearch')?.value || '').trim().toLowerCase();
+  const list = document.getElementById('ovCredAttentionList');
+  const allClear = document.getElementById('ovCredAllClear');
+
+  const filtered = _ovCredAttentionData.filter(item =>
+    !search || item.staff.full_name.toLowerCase().includes(search)
+  );
+
+  if (!_ovCredAttentionData.length) {
+    list.innerHTML = '';
+    allClear.style.display = 'block';
+    return;
+  }
+  allClear.style.display = 'none';
+
+  if (!filtered.length) {
+    list.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.3);padding:12px 0;">No matches.</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(item => {
+    const worstBadge = item.issues.some(i => i.urgent)
+      ? { style: 'background:rgba(239,68,68,.15);color:#ef4444;', label: item.issues.find(i => i.urgent).label }
+      : { style: 'background:rgba(245,158,11,.15);color:#f59e0b;', label: item.issues[0].label };
+    const extra = item.issues.length > 1 ? ` +${item.issues.length - 1} more` : '';
+    return `<div class="ov-attention-row" style="cursor:pointer;" onclick="showFullProfileSheet('${item.staff.id}')">
+      <span>${item.staff.full_name}${extra}</span>
+      <span class="ov-days-badge" style="${worstBadge.style}">${worstBadge.label}</span>
+    </div>`;
+  }).join('');
 }
 
 let _lastMissingByStaff = [];
