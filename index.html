@@ -4120,8 +4120,31 @@ function selectAddressSuggestion(prefix, index) {
   hideAddressSuggestions(prefix);
 }
 
+// One shared modal ID + tab bar across Info/Notes/Files/Employment — each
+// of the four show*() functions below still builds its own full content
+// exactly as before (no internal logic changed), they just all target the
+// same outer container now. Clicking a tab calls the other function
+// directly, which naturally replaces the shared modal's content — this
+// gives "switch without losing your place" without merging four complex
+// functions into one.
+const PROVIDER_TAB_MODAL_ID = 'providerTabModal';
+function renderProviderTabBar(staffId, staffName, activeTab) {
+  if (!staffId) return ''; // org-level Notes has no per-provider tabs
+  const safeName = staffName.replace(/'/g, "\\'");
+  const tabs = [
+    { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
+    { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
+    { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
+    { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
+  ];
+  return `
+    <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:10px;flex-wrap:wrap;">
+      ${tabs.map(t => `<button onclick="${t.fn}" style="background:${t.key === activeTab ? 'var(--teal)' : 'transparent'};color:#fff;border:1px solid ${t.key === activeTab ? 'var(--teal)' : 'rgba(255,255,255,.2)'};border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">${t.label}</button>`).join('')}
+    </div>`;
+}
+
 function showFullProfileSheet(staffId) {
-  const existing = document.getElementById('fullProfileSheet');
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
 
   const s = staffList.find(x => x.id === staffId);
@@ -4131,17 +4154,12 @@ function showFullProfileSheet(staffId) {
   const disciplines = getCompanyDisciplines();
 
   const modal = document.createElement('div');
-  modal.id = 'fullProfileSheet';
+  modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:680px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:2px;">
-        <div style="color:#fff;font-size:18px;font-weight:700;">${s.full_name}</div>
-        <div style="display:flex;gap:8px;">
-          <button class="btn btn-sm btn-gold" onclick="showNotesLog('${staffId}','${s.full_name.replace(/'/g,"\\'")}')">📝 Notes</button>
-          <button class="btn btn-sm btn-gold" onclick="showCredentialingFiles('${staffId}','${s.full_name.replace(/'/g,"\\'")}')">📎 Files</button>
-        </div>
-      </div>
+      ${renderProviderTabBar(staffId, s.full_name, 'info')}
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:2px;">${s.full_name}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:20px;">Full credentialing profile — everything about this person in one place.</div>
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
@@ -4349,7 +4367,7 @@ function showFullProfileSheet(staffId) {
       <div id="fullProfileErr" style="color:#f87171;font-size:12px;margin:14px 0 6px;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('fullProfileSheet').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -4438,7 +4456,7 @@ async function saveFullProfileSheet(staffId) {
     }
   }
 
-  document.getElementById('fullProfileSheet')?.remove();
+  document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
   toast('✓ Full profile updated');
   await loadStaffTable();
   await renderCredentialingStaffTable();
@@ -4488,7 +4506,7 @@ async function submitEnterSsn(staffId) {
     document.getElementById('ssnEnterModal')?.remove();
     toast('✓ SSN saved, encrypted');
     await loadStaffList();
-    document.getElementById('fullProfileSheet')?.remove();
+    document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
     showFullProfileSheet(staffId); // reopen so the "on file" state reflects immediately
   } catch (e) {
     errEl.textContent = e.message;
@@ -5970,15 +5988,155 @@ function onAccBodySelectChanged() {
 // otherwise it's scoped to that one provider. Simple running log: add and
 // delete, no editing history, since this is a team collaboration tool,
 // not a compliance audit trail like the SSN access log.
-async function showNotesLog(staffId, contextName) {
-  const existing = document.getElementById('notesLogModal');
+// ══ EMPLOYMENT HISTORY ══
+// One-to-many, same pattern as Accreditations/Locations — a provider has
+// several past employers over time. Field set matches real CAQH ProView
+// requirements: employer + position + dates + employer address (where
+// verification letters get sent) + supervisor contact (who verification
+// actually calls/emails) + reason for leaving + a gap explanation, since
+// CAQH and most payer applications require explaining any gap of 30-90+
+// days between one employment ending and the next starting.
+async function showEmploymentHistory(staffId, staffName) {
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
 
   const modal = document.createElement('div');
-  modal.id = 'notesLogModal';
+  modal.id = PROVIDER_TAB_MODAL_ID;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      ${renderProviderTabBar(staffId, staffName, 'employment')}
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Employment history — most payer applications want the last 5 years, with any gap over 30 days explained.</div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="empEmployerName" placeholder="Employer name" />
+          <input class="inline-input" type="text" id="empPositionTitle" placeholder="Position / title" />
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="empAddress" placeholder="Employer address" />
+          <input class="inline-input" type="text" id="empCity" placeholder="City" />
+          <input class="inline-input" type="text" id="empState" placeholder="State" maxlength="2" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:10px;align-items:center;">
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">Start date</label>
+            <input class="inline-input" type="date" id="empStartDate" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">End date</label>
+            <input class="inline-input" type="date" id="empEndDate" />
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#fff;cursor:pointer;padding-top:14px;">
+            <input type="checkbox" id="empIsCurrent" onchange="document.getElementById('empEndDate').disabled = this.checked;" />
+            Current
+          </label>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="empSupervisorName" placeholder="Supervisor name" />
+          <input class="inline-input" type="text" id="empSupervisorPhone" placeholder="Supervisor phone" oninput="formatPhoneInput(this)" />
+        </div>
+        <input class="inline-input" type="text" id="empReasonForLeaving" placeholder="Reason for leaving" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <input class="inline-input" type="text" id="empGapExplanation" placeholder="Gap explanation (if there's a gap before this job)" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <div id="employmentFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
+        <button class="btn btn-sm btn-teal" onclick="addEmploymentHistory('${staffId}')" style="width:100%;justify-content:center;">+ Add employment record</button>
+      </div>
+
+      <div id="employmentHistoryList" style="overflow-y:auto;flex:1;">Loading...</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  await loadEmploymentHistory(staffId);
+}
+
+async function loadEmploymentHistory(staffId) {
+  const list = document.getElementById('employmentHistoryList');
+  if (!list) return;
+
+  const { data, error } = await sb.from('staff_employment_history')
+    .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+
+  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No employment history on file yet.</div>'; return; }
+
+  list.innerHTML = data.map(e => {
+    const dateRange = `${e.start_date ? fmtDate(e.start_date) : '?'} – ${e.is_current ? 'Present' : (e.end_date ? fmtDate(e.end_date) : '?')}`;
+    const addr = [e.address, e.city, e.state].filter(Boolean).join(', ');
+    return `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
+        <div>
+          <div style="font-size:13px;color:#fff;font-weight:600;">${e.employer_name || 'Unnamed employer'}${e.position_title ? ' — ' + e.position_title : ''}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);">${dateRange}${addr ? ' · ' + addr : ''}</div>
+          ${e.supervisor_name ? `<div style="font-size:11px;color:rgba(255,255,255,.4);">Supervisor: ${e.supervisor_name}${e.supervisor_phone ? ' · ' + e.supervisor_phone : ''}</div>` : ''}
+          ${e.reason_for_leaving ? `<div style="font-size:11px;color:rgba(255,255,255,.4);">Reason for leaving: ${e.reason_for_leaving}</div>` : ''}
+          ${e.gap_explanation ? `<div style="font-size:11px;color:#fbbf24;">Gap: ${e.gap_explanation}</div>` : ''}
+        </div>
+        <button onclick="deleteEmploymentHistory('${e.id}','${staffId}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;white-space:nowrap;">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addEmploymentHistory(staffId) {
+  const errEl = document.getElementById('employmentFormErr');
+  errEl.style.display = 'none';
+
+  const employerName = document.getElementById('empEmployerName').value.trim();
+  const startDate = document.getElementById('empStartDate').value;
+  if (!employerName) { errEl.textContent = 'Employer name is required.'; errEl.style.display = 'block'; return; }
+  if (!startDate) { errEl.textContent = 'Start date is required.'; errEl.style.display = 'block'; return; }
+
+  const isCurrent = document.getElementById('empIsCurrent').checked;
+  const { error } = await sb.from('staff_employment_history').insert({
+    staff_id: staffId,
+    employer_name: employerName,
+    position_title: document.getElementById('empPositionTitle').value.trim() || null,
+    address: document.getElementById('empAddress').value.trim() || null,
+    city: document.getElementById('empCity').value.trim() || null,
+    state: document.getElementById('empState').value.trim() || null,
+    start_date: startDate,
+    end_date: isCurrent ? null : (document.getElementById('empEndDate').value || null),
+    is_current: isCurrent,
+    supervisor_name: document.getElementById('empSupervisorName').value.trim() || null,
+    supervisor_phone: document.getElementById('empSupervisorPhone').value.trim() || null,
+    reason_for_leaving: document.getElementById('empReasonForLeaving').value.trim() || null,
+    gap_explanation: document.getElementById('empGapExplanation').value.trim() || null,
+  });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  ['empEmployerName','empPositionTitle','empAddress','empCity','empState','empStartDate','empEndDate',
+   'empSupervisorName','empSupervisorPhone','empReasonForLeaving','empGapExplanation'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('empIsCurrent').checked = false;
+  document.getElementById('empEndDate').disabled = false;
+
+  toast('✓ Employment record added');
+  await loadEmploymentHistory(staffId);
+}
+
+async function deleteEmploymentHistory(id, staffId) {
+  if (!confirm('Delete this employment record?')) return;
+  const { error } = await sb.from('staff_employment_history').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Removed');
+  await loadEmploymentHistory(staffId);
+}
+
+async function showNotesLog(staffId, contextName) {
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      ${renderProviderTabBar(staffId, contextName, 'notes')}
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffId ? contextName : 'Organization Notes'}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">${staffId ? 'Credentialing notes for this provider.' : 'General organization-level credentialing notes.'}</div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -5986,7 +6144,7 @@ async function showNotesLog(staffId, contextName) {
         <button class="btn btn-sm btn-teal" onclick="addCredentialingNote('${staffId || ''}')">Add</button>
       </div>
       <div id="notesLogList" style="overflow-y:auto;flex:1;padding-right:8px;">Loading...</div>
-      <button class="btn btn-ghost" onclick="document.getElementById('notesLogModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -6124,14 +6282,15 @@ async function deleteCredentialingFile(fileId, storagePath, staffId) {
 }
 
 function showCredentialingFiles(staffId, staffName) {
-  const existing = document.getElementById('credFilesModal');
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
 
   const modal = document.createElement('div');
-  modal.id = 'credFilesModal';
+  modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:460px;max-height:80vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      ${renderProviderTabBar(staffId, staffName, 'files')}
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Credentialing files for this provider — license copies, board cert letters, anything needed for an application.</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
@@ -6140,7 +6299,7 @@ function showCredentialingFiles(staffId, staffName) {
       </div>
       <div id="providerCredFileErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div id="providerCredFilesList" style="overflow-y:auto;flex:1;">Loading...</div>
-      <button class="btn btn-ghost" onclick="document.getElementById('credFilesModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -7988,6 +8147,7 @@ async function renderCredentialingStaffTable() {
         <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
         <button class="btn btn-sm btn-gold" onclick="showNotesLog('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📝 Notes</button>
         <button class="btn btn-sm btn-gold" onclick="showCredentialingFiles('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📎 Files</button>
+        <button class="btn btn-sm btn-gold" onclick="showEmploymentHistory('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">💼 Employment</button>
       </div></td>
     </tr>`;
   }).join('');
