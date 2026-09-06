@@ -1105,6 +1105,10 @@
               <input class="inline-input" type="text" id="accNumber" style="width:170px;" />
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">Effective</label>
+              <input class="inline-input" type="date" id="accEffective" style="width:150px;" />
+            </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
               <label style="font-size:11px;color:rgba(255,255,255,.5);">Expires</label>
               <input class="inline-input" type="date" id="accExpiry" style="width:150px;" />
             </div>
@@ -3195,13 +3199,13 @@ function showStaffAuditLog(staffId, staffName) {
       license_number: 'License number', license_type: 'License type', license_state: 'License state',
       npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
       caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_issued_date: 'CAQH issued', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
-      middle_name: 'Middle name', date_of_birth: 'Date of birth', gender: 'Gender', license_expiration_date: 'License expiration',
+      middle_name: 'Middle name', date_of_birth: 'Date of birth', gender: 'Gender', license_issued_date: 'License issued date', license_expiration_date: 'License expiration',
       board_certified: 'Board certified?', board_name: 'Board name', board_certification_date: 'Board certification date', board_certification_expiration_date: 'Board certification expiration',
       supervising_physician_name: 'Supervising physician — name', supervising_physician_npi: 'Supervising physician — NPI',
       hospital_affiliation_1: 'Hospital affiliation 1', hospital_affiliation_2: 'Hospital affiliation 2', hospital_affiliation_3: 'Hospital affiliation 3',
       phone: 'Phone', address: 'Address', city: 'City', state: 'State', zip: 'Zip',
       dea_issued_date: 'DEA issued', dea_registered_address: 'DEA registered address', dea_schedules: 'DEA schedules',
-      state_cds_number: 'State CDS/CSR number', state_cds_expiration_date: 'State CDS/CSR expiration',
+      state_cds_number: 'State CDS/CSR number', state_cds_issued_date: 'State CDS/CSR issued', state_cds_expiration_date: 'State CDS/CSR expiration',
     };
     body.innerHTML = data.map(r => `
       <div style="border-bottom:1px solid rgba(255,255,255,.08);padding-bottom:6px;">
@@ -4236,6 +4240,10 @@ function showFullProfileSheet(staffId) {
           <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" />
         </div>
         <div>
+          <label class="inline-label">License issued</label>
+          <input class="inline-input" type="date" id="fpLicenseIssued" value="${s.license_issued_date || ''}" />
+        </div>
+        <div>
           <label class="inline-label">License expiration</label>
           <input class="inline-input" type="date" id="fpLicenseExpiration" value="${s.license_expiration_date || ''}" />
         </div>
@@ -4290,10 +4298,14 @@ function showFullProfileSheet(staffId) {
               Schedule ${sched}
             </label>`).join('')}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;">
           <div>
             <label class="inline-label">State CDS/CSR number</label>
             <input class="inline-input" type="text" id="fpStateCds" value="${s.state_cds_number || ''}" placeholder="If your state requires one separately" />
+          </div>
+          <div>
+            <label class="inline-label">State CDS/CSR issued</label>
+            <input class="inline-input" type="date" id="fpStateCdsIssued" value="${s.state_cds_issued_date || ''}" />
           </div>
           <div>
             <label class="inline-label">State CDS/CSR expiration</label>
@@ -4401,6 +4413,7 @@ async function saveFullProfileSheet(staffId) {
     license_number: document.getElementById('fpLicenseNumber').value.trim() || null,
     license_type: document.getElementById('fpLicenseType').value.trim() || null,
     license_state: document.getElementById('fpLicenseState').value.trim() || null,
+    license_issued_date: document.getElementById('fpLicenseIssued').value || null,
     license_expiration_date: document.getElementById('fpLicenseExpiration').value || null,
     npi_number: document.getElementById('fpNpi').value.trim() || null,
     caqh_id: document.getElementById('fpCaqhId').value.trim() || null,
@@ -4412,6 +4425,7 @@ async function saveFullProfileSheet(staffId) {
     dea_registered_address: document.getElementById('fpDeaAddress')?.value.trim() || null,
     dea_schedules: [...document.querySelectorAll('.fpDeaSchedule:checked')].map(el => el.value),
     state_cds_number: document.getElementById('fpStateCds')?.value.trim() || null,
+    state_cds_issued_date: document.getElementById('fpStateCdsIssued')?.value || null,
     state_cds_expiration_date: document.getElementById('fpStateCdsExpiration')?.value || null,
     board_certified: document.getElementById('fpBoardCertified').value === 'true',
     board_name: document.getElementById('fpBoardName').value.trim() || null,
@@ -6466,7 +6480,7 @@ async function loadAccreditationsPanel() {
     const expired = a.expiration_date && new Date(a.expiration_date) < new Date();
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="flex:1;color:#fff;font-size:13px;">${a.body_name}${a.accreditation_number ? ' — ' + a.accreditation_number : ''}</span>
+      <span style="flex:1;color:#fff;font-size:13px;">${a.body_name}${a.accreditation_number ? ' — ' + a.accreditation_number : ''}${a.effective_date ? `<div style="font-size:10px;color:rgba(255,255,255,.35);">Effective ${fmtDate(a.effective_date)}</div>` : ''}</span>
       <span style="font-size:12px;color:${expired ? '#f87171' : 'rgba(255,255,255,.4)'};">${a.expiration_date ? (expired ? 'Expired ' : 'Expires ') + fmtDate(a.expiration_date) : 'No expiration on file'}</span>
       <button class="btn btn-sm btn-danger" onclick="removeCompanyAccreditation('${a.id}','${a.body_name.replace(/'/g,"\\'")}')" style="font-size:11px;">Remove</button>
     </div>`;
@@ -6479,6 +6493,7 @@ async function addCompanyAccreditation() {
     ? document.getElementById('accBodyCustom').value.trim()
     : bodySelect;
   const number = document.getElementById('accNumber').value.trim() || null;
+  const effective = document.getElementById('accEffective').value || null;
   const expiry = document.getElementById('accExpiry').value || null;
 
   if (!bodyName) { toast('Enter the accrediting body name', true); return; }
@@ -6487,12 +6502,14 @@ async function addCompanyAccreditation() {
     company_id: currentCompany.id,
     body_name: bodyName,
     accreditation_number: number,
+    effective_date: effective,
     expiration_date: expiry,
   });
   if (error) { toast('Error: ' + error.message, true); return; }
 
   document.getElementById('accBodyCustom').value = '';
   document.getElementById('accNumber').value = '';
+  document.getElementById('accEffective').value = '';
   document.getElementById('accExpiry').value = '';
   loadAccreditationsPanel();
   toast(`✓ Added ${bodyName}`);
@@ -7712,6 +7729,7 @@ const CRED_DATA_SOURCES = [
     ['staff.dea_registered_address', 'DEA registered address'],
     ['staff.dea_schedules', 'DEA schedules authorized'],
     ['staff.state_cds_number', 'State CDS/CSR number'],
+    ['staff.state_cds_issued_date', 'State CDS/CSR issued date'],
     ['staff.state_cds_expiration_date', 'State CDS/CSR expiration'],
     ['staff.email', 'Email'],
     ['staff.job_title', 'Job title'],
@@ -7723,6 +7741,7 @@ const CRED_DATA_SOURCES = [
     ['staff.city', 'City'],
     ['staff.state', 'State'],
     ['staff.zip', 'Zip'],
+    ['staff.license_issued_date', 'License issued date'],
     ['staff.license_expiration_date', 'License expiration'],
     ['staff.board_certified', 'Board certified? (Yes/No)'],
     ['staff.board_name', 'Board name'],
@@ -7739,9 +7758,9 @@ const CRED_DATA_SOURCES = [
 const CRED_DATE_FIELDS = new Set([
   'company.malpractice_effective_date', 'company.malpractice_expiration_date',
   'staff.caqh_issued_date', 'staff.caqh_expiration_date', 'staff.dea_expiration_date',
-  'staff.date_of_birth', 'staff.license_expiration_date',
+  'staff.date_of_birth', 'staff.license_expiration_date', 'staff.license_issued_date',
   'staff.board_certification_date', 'staff.board_certification_expiration_date',
-  'staff.dea_issued_date', 'staff.state_cds_expiration_date',
+  'staff.dea_issued_date', 'staff.state_cds_expiration_date', 'staff.state_cds_issued_date',
 ]);
 
 function resolveCredDataSource(path, company, staff) {
