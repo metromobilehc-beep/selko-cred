@@ -4461,7 +4461,7 @@ function showFullProfileSheet(staffId) {
           <input class="inline-input" type="date" id="fpLicenseExpiration" value="${s.license_expiration_date || ''}" />
         </div>
         <div>
-          <label class="inline-label">Individual NPI</label>
+          <label class="inline-label">Individual NPI ${s.npi_verified ? '<span class="badge badge-verified" style="margin-left:4px;">✓ Verified</span>' : (s.npi_number ? '<span class="badge badge-pending" style="margin-left:4px;">Unverified</span>' : '')}</label>
           <input class="inline-input" type="text" id="fpNpi" value="${s.npi_number || ''}" placeholder="e.g. 1234567890" />
         </div>
       </div>
@@ -4636,6 +4636,14 @@ async function saveFullProfileSheet(staffId) {
   const before = staffList.find(s => s.id === staffId) || {};
   const errEl = document.getElementById('fullProfileErr');
 
+  const npiInput = document.getElementById('fpNpi').value.trim();
+  if (npiInput && !isValidNPI(npiInput)) {
+    errEl.textContent = 'The individual NPI doesn\'t look valid — it should be exactly 10 digits and pass the standard NPI checksum. Double-check for typos, or use "Look up NPI" to search the registry instead.';
+    errEl.style.display = 'block';
+    return;
+  }
+  const npiChanged = (npiInput || null) !== (before.npi_number || null);
+
   const newStaffType = document.getElementById('fpStaffType').value;
   const updates = {
     discipline: document.getElementById('fpDiscipline').value || null,
@@ -4653,7 +4661,7 @@ async function saveFullProfileSheet(staffId) {
     license_state: document.getElementById('fpLicenseState').value.trim() || null,
     license_issued_date: document.getElementById('fpLicenseIssued').value || null,
     license_expiration_date: document.getElementById('fpLicenseExpiration').value || null,
-    npi_number: document.getElementById('fpNpi').value.trim() || null,
+    npi_number: npiInput || null,
     caqh_id: document.getElementById('fpCaqhId').value.trim() || null,
     caqh_issued_date: document.getElementById('fpCaqhIssued').value || null,
     caqh_expiration_date: document.getElementById('fpCaqhExpiration').value || null,
@@ -4675,6 +4683,10 @@ async function saveFullProfileSheet(staffId) {
     hospital_affiliation_2: document.getElementById('fpHospitalAffiliation2').value.trim() || null,
     hospital_affiliation_3: document.getElementById('fpHospitalAffiliation3').value.trim() || null,
   };
+  // A manually-typed NPI hasn't been checked against the registry, so any
+  // change here clears a prior verification rather than letting it look
+  // confirmed when it's no longer been checked.
+  if (npiChanged) updates.npi_verified = false;
 
   const { data: updated, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('profile_id').maybeSingle();
   if (error) {
@@ -4841,7 +4853,7 @@ function showLicenseInfoMenu(staffId) {
   if (currentCompany.has_credtrack) {
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();verifyLicense('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>`);
   }
-  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}',${s.npi_verified ? 'true' : 'false'})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
   if (currentCompany.has_credtrack) {
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();attachVerificationProof('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>`);
   }
@@ -5344,7 +5356,7 @@ async function confirmDisciplineCred(id) {
   await loadStaffTable();
 }
 
-function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi) {
+function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi, currentNpiVerified) {
   const existing = document.getElementById('editLicenseModal');
   if (existing) existing.remove();
 
@@ -5370,7 +5382,7 @@ function showEditLicenseModal(id, name, currentNumber, currentType, currentState
         </div>
       </div>
       <div style="margin-bottom:18px;">
-        <label class="inline-label">NPI number</label>
+        <label class="inline-label">NPI number ${currentNpiVerified ? '<span class="badge badge-verified" style="margin-left:4px;">✓ Verified</span>' : (currentNpi ? '<span class="badge badge-pending" style="margin-left:4px;">Unverified</span>' : '')}</label>
         <input class="inline-input" type="text" id="editLicenseNpi" value="${currentNpi || ''}" placeholder="e.g. 1234567890" />
       </div>
       <div id="editLicenseErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
@@ -5391,12 +5403,29 @@ async function saveEditLicense(id) {
   const errEl  = document.getElementById('editLicenseErr');
   const before = staffList.find(s => s.id === id) || {};
 
-  const { error } = await sb.from('credtrack_staff').update({
+  // Reject malformed NPIs before saving — catches typos/placeholders
+  // (e.g. "12312312") that would otherwise sit unnoticed until a payer
+  // or CAQH submission bounces it.
+  if (npi && !isValidNPI(npi)) {
+    errEl.textContent = 'That doesn\'t look like a valid NPI — it should be exactly 10 digits and pass the standard NPI checksum. Double-check for typos, or use "Look up NPI" to search the registry instead.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const npiChanged = (npi || null) !== (before.npi_number || null);
+
+  const updates = {
     license_number: number || null,
     license_type:   type || null,
     license_state:  state || null,
     npi_number:     npi || null,
-  }).eq('id', id);
+  };
+  // A manually-typed NPI hasn't been checked against the registry, so any
+  // change here clears a prior verification rather than letting it look
+  // confirmed when it's no longer been checked.
+  if (npiChanged) updates.npi_verified = false;
+
+  const { error } = await sb.from('credtrack_staff').update(updates).eq('id', id);
 
   if (error) {
     errEl.textContent = error.message;
@@ -5511,6 +5540,21 @@ async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
   await loadStaffTable();
 }
 
+// Validates NPI format: exactly 10 digits, last digit is a Luhn check
+// digit computed with the required "80840" prefix (CMS NPI standard).
+// Catches typos/placeholder entries (e.g. "12312312") before they're saved.
+function isValidNPI(npi) {
+  if (!/^\d{10}$/.test(npi)) return false;
+  const digits = ("80840" + npi).split("").map(Number);
+  let sum = 0;
+  for (let i = digits.length - 1; i >= 0; i--) {
+    let d = digits[i];
+    if ((digits.length - 1 - i) % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
+    sum += d;
+  }
+  return sum % 10 === 0;
+}
+
 async function lookupNpi(staffId, fullName, licenseState) {
   const namePart = fullName.split(',')[0].trim(); // drop the credential after the comma, e.g. "Kym Crane, SLP" -> "Kym Crane"
   const nameWords = namePart.split(' ').filter(Boolean);
@@ -5564,10 +5608,21 @@ function showNpiResultsModal(staffId, fullName, results) {
 }
 
 async function applyNpiResult(staffId, npi) {
-  const { error } = await sb.from('credtrack_staff').update({ npi_number: npi }).eq('id', staffId);
+  // Picking a match directly from a live NPPES registry search result is
+  // itself a form of verification — unlike a manually-typed NPI, this one
+  // has already been confirmed against the federal registry, so it's
+  // stamped verified immediately with who/when, same audit pattern used
+  // for SSN access.
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from('credtrack_staff').update({
+    npi_number: npi,
+    npi_verified: true,
+    npi_verified_by: user?.id || null,
+    npi_verified_at: new Date().toISOString(),
+  }).eq('id', staffId);
   document.getElementById('npiResultsModal')?.remove();
   if (error) { toast('Error saving NPI: ' + error.message, true); return; }
-  toast(`✓ NPI ${npi} saved`);
+  toast(`✓ NPI ${npi} saved and verified`);
   await loadStaffTable();
 }
 
