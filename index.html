@@ -199,7 +199,7 @@
       <button class="tab"        id="tab-docs"     onclick="switchTab('docs')"><i class="ti ti-file-text"></i> Documents</button>
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
-      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Insurance</button>
+      <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
       <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> Credentialing</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
@@ -580,7 +580,7 @@
     <!-- SETTINGS TAB -->
     <div id="tabInsurance" style="display:none;">
       <div class="dark-panel">
-        <h2>Insurance network verification board</h2>
+        <h2>Health Care Network verification board</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
       </div>
 
@@ -1099,7 +1099,7 @@
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Company-wide insurance entities</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
-          The offices/locations selectable as "Company-wide" on the Insurance tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
+          The offices/locations selectable as "Company-wide" on the Health Care Network tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
         </p>
         <div id="entitiesListCred" style="margin-bottom:14px;"></div>
         <div style="display:flex;gap:8px;">
@@ -1180,7 +1180,7 @@
 
       <!-- Payer network management -->
       <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Insurance payer list</h2>
+        <h2>Health Care Network list</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
         <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
           <div style="flex:1;position:relative;">
@@ -2518,7 +2518,7 @@ const QUICK_ACTIONS = [
   { keywords: ['template', 'fillable form', 'generate form', 'one-click', 'blank form'], label: 'Credentialing Templates', sub: 'Credentialing tab (Full tier)', tab: 'credentialing' },
   { keywords: ['document type', 'doc type'], label: 'Document Types', sub: 'Settings tab', tab: 'settings' },
   { keywords: ['storage usage', 'storage'], label: 'Storage Usage', sub: 'Selko Admin (super admin only)', tab: 'super' },
-  { keywords: ['network record', 'payer network', 'in-network', 'insurance network', 'group id'], label: 'Payer Network Records', sub: 'Insurance tab', tab: 'insurance' },
+  { keywords: ['network record', 'payer network', 'in-network', 'insurance network', 'group id'], label: 'Payer Network Records', sub: 'Health Care Network tab', tab: 'insurance' },
   { keywords: ['sensitive access log', 'ssn log', 'audit log'], label: 'Sensitive Data Access Log', sub: 'Settings tab', tab: 'settings' },
   { keywords: ['hospital affiliation'], label: 'Hospital Affiliations', sub: 'Per-provider — Full Profile sheet', perProvider: true },
   { keywords: ['board certification', 'board certified'], label: 'Board Certification', sub: 'Per-provider — Full Profile sheet', perProvider: true },
