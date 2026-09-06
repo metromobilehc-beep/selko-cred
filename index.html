@@ -7331,6 +7331,55 @@ async function deletePayer(id, name) {
   await loadPayerBoard();
 }
 
+function showEditPayerModal(id, name, address, phone, fax, email) {
+  const existing = document.getElementById('editPayerModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'editPayerModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">${name}</div>
+      <label class="inline-label">Address</label>
+      <input class="inline-input" type="text" id="editPayerAddress" value="${address || ''}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div>
+          <label class="inline-label">Phone</label>
+          <input class="inline-input" type="text" id="editPayerPhone" value="${phone || ''}" oninput="formatPhoneInput(this)" style="width:100%;box-sizing:border-box;" />
+        </div>
+        <div>
+          <label class="inline-label">Fax</label>
+          <input class="inline-input" type="text" id="editPayerFax" value="${fax || ''}" oninput="formatPhoneInput(this)" style="width:100%;box-sizing:border-box;" />
+        </div>
+      </div>
+      <label class="inline-label">Email</label>
+      <input class="inline-input" type="text" id="editPayerEmail" value="${email || ''}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      <div id="editPayerErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveEditedPayer('${id}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editPayerModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveEditedPayer(id) {
+  const errEl = document.getElementById('editPayerErr');
+  const { error } = await sb.from('payers').update({
+    address: document.getElementById('editPayerAddress').value.trim() || null,
+    phone:   document.getElementById('editPayerPhone').value.trim() || null,
+    fax:     document.getElementById('editPayerFax').value.trim() || null,
+    email:   document.getElementById('editPayerEmail').value.trim() || null,
+  }).eq('id', id);
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  document.getElementById('editPayerModal')?.remove();
+  toast('✓ Payer details updated');
+  await loadPayersTable();
+}
+
 async function loadPayersTable() {
   const { data } = await sb.from('payers')
     .select('*')
@@ -7344,13 +7393,17 @@ async function loadPayersTable() {
     tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No payers added yet.</td></tr>';
     return;
   }
-  tbody.innerHTML = data.map(p => `<tr>
-    <td>${p.name}</td>
+  tbody.innerHTML = data.map(p => {
+    const contactLine = [p.phone, p.fax ? `Fax: ${p.fax}` : null, p.email].filter(Boolean).join(' · ');
+    return `<tr>
+    <td>${p.name}${p.address ? `<div style="font-size:10px;color:rgba(255,255,255,.35);">${p.address}</div>` : ''}${contactLine ? `<div style="font-size:10px;color:rgba(255,255,255,.35);">${contactLine}</div>` : ''}</td>
     <td><span style="font-size:11px;color:rgba(255,255,255,.4);">${p.company_id ? 'Custom' : 'Global'}</span></td>
     <td><div class="td-actions">
+      <button class="btn btn-sm btn-ghost" onclick="showEditPayerModal('${p.id}','${p.name.replace(/'/g,"\\'")}','${(p.address||'').replace(/'/g,"\\'")}','${p.phone||''}','${p.fax||''}','${(p.email||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       ${p.company_id ? `<button class="btn btn-sm btn-danger" onclick="deletePayer('${p.id}','${p.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div></td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   // populate the assignment form's payer dropdown too
   const sel = document.getElementById('pnPayer');
