@@ -4202,45 +4202,53 @@ for (const [fullName, abbr] of Object.entries(US_STATE_ABBREVIATIONS)) {
 }
 
 // ══ STATE LICENSING BOARD VERIFICATION ══
-// Deliberately transparent about gaps — the source data (Juan's sheet) is
-// inconsistent about where PT/PTA fits for roughly the back half of
-// states, so a missing match gets an honest "no link on file" message
-// here rather than silently showing nothing, which would look identical
-// to "verified, nothing to flag."
-let _stateBoardInfoTimer;
-function updateStateBoardInfo() {
-  clearTimeout(_stateBoardInfoTimer);
-  _stateBoardInfoTimer = setTimeout(async () => {
-    const infoEl = document.getElementById('fpStateBoardInfo');
-    if (!infoEl) return;
+// Search-driven, not automatic — an earlier automatic version tried to
+// match a provider's discipline against the sheet's column headers, but
+// the header often doesn't reflect what a specific state's cell actually
+// covers (e.g. a state's "All" column can really mean "MD, DO, PA" only),
+// which produced wrong matches. Showing every real entry for the
+// searched state and letting the admin pick avoids trusting a match that
+// isn't reliable.
+let _stateBoardSearchTimer;
+function handleStateBoardSearch(input) {
+  clearTimeout(_stateBoardSearchTimer);
+  const query = input.value.trim();
+  if (query.length < 2) { hideStateBoardSuggestions(); return; }
 
-    const stateAbbr = (document.getElementById('fpLicenseState')?.value || '').trim().toUpperCase();
-    const discipline = (document.getElementById('fpDiscipline')?.value || '').trim();
-    if (!stateAbbr || !discipline) { infoEl.innerHTML = ''; return; }
-
-    const fullStateName = STATE_ABBREVIATION_TO_FULL_NAME[stateAbbr];
-    if (!fullStateName) { infoEl.innerHTML = ''; return; } // not a recognized US state code — nothing to look up
-
-    const { data } = await sb.from('state_licensing_board_reference')
-      .select('discipline_group, verification_url, notes')
-      .eq('state_name', fullStateName);
-
-    const match = (data || []).find(row => {
-      if (row.discipline_group === 'All') return true;
-      const tokens = row.discipline_group.split(',').map(t => t.trim().toUpperCase());
-      // The sheet uses "DPT" (the terminal degree) in its column labels
-      // where Metro's own discipline code is just "PT" — same discipline,
-      // different abbreviation convention, so both need to match.
-      const normalizedTokens = tokens.map(t => t === 'DPT' ? 'PT' : t);
-      return normalizedTokens.includes(discipline.toUpperCase());
-    });
-
-    if (match && match.verification_url) {
-      infoEl.innerHTML = `<a href="${match.verification_url}" target="_blank" rel="noopener" style="color:var(--teal-l);">Verify ${discipline} license in ${stateAbbr} ↗</a>${match.notes ? ` · ${match.notes}` : ''}`;
-    } else {
-      infoEl.innerHTML = `<span style="color:rgba(255,255,255,.3);">No board verification link on file for ${discipline} in ${stateAbbr}.</span>`;
-    }
+  _stateBoardSearchTimer = setTimeout(async () => {
+    const { data, error } = await sb.from('state_licensing_board_reference')
+      .select('state_name, discipline_group, verification_url, notes')
+      .ilike('state_name', `%${query}%`)
+      .order('state_name')
+      .limit(20);
+    renderStateBoardSuggestions(error ? [] : data, query);
   }, 300);
+}
+
+function renderStateBoardSuggestions(results, query) {
+  const box = document.getElementById('fpStateBoardSuggestions');
+  if (!box) return;
+
+  if (!results.length) {
+    box.innerHTML = `<div style="padding:10px 12px;font-size:12px;color:rgba(255,255,255,.4);">No board entries on file for "${query}".</div>`;
+    box.style.display = 'block';
+    return;
+  }
+
+  box.innerHTML = results.map(r => `
+    <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="font-size:13px;color:#fff;">${r.state_name} <span style="color:rgba(255,255,255,.4);font-size:11px;">— ${r.discipline_group}</span></div>
+      ${r.verification_url
+        ? `<a href="${r.verification_url}" target="_blank" rel="noopener" style="font-size:11px;color:var(--teal-l);">Verify ↗</a>`
+        : `<span style="font-size:11px;color:rgba(255,255,255,.3);">No link on file</span>`}
+      ${r.notes ? ` <span style="font-size:11px;color:rgba(255,255,255,.4);">· ${r.notes}</span>` : ''}
+    </div>`).join('');
+  box.style.display = 'block';
+}
+
+function hideStateBoardSuggestions() {
+  const box = document.getElementById('fpStateBoardSuggestions');
+  if (box) box.style.display = 'none';
 }
 
 function selectAddressSuggestion(prefix, index) {
@@ -4449,8 +4457,7 @@ function showFullProfileSheet(staffId) {
         </div>
         <div>
           <label class="inline-label">License state</label>
-          <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" oninput="updateStateBoardInfo()" />
-          <div id="fpStateBoardInfo" style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;"></div>
+          <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" />
         </div>
         <div>
           <label class="inline-label">License issued</label>
@@ -4461,7 +4468,7 @@ function showFullProfileSheet(staffId) {
           <input class="inline-input" type="date" id="fpLicenseExpiration" value="${s.license_expiration_date || ''}" />
         </div>
         <div>
-          <label class="inline-label">Individual NPI ${s.npi_verified ? '<span class="badge badge-verified" style="margin-left:4px;">✓ Verified</span>' : (s.npi_number ? '<span class="badge badge-pending" style="margin-left:4px;">Unverified</span>' : '')}</label>
+          <label class="inline-label">Individual NPI</label>
           <input class="inline-input" type="text" id="fpNpi" value="${s.npi_number || ''}" placeholder="e.g. 1234567890" />
         </div>
       </div>
@@ -4592,6 +4599,12 @@ function showFullProfileSheet(staffId) {
       </div>
       ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
 
+      <label class="inline-label">State licensing board lookup</label>
+      <div style="position:relative;margin-bottom:14px;">
+        <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 200)" />
+        <div id="fpStateBoardSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
+      </div>
+
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
@@ -4625,24 +4638,14 @@ function showFullProfileSheet(staffId) {
     const nowPrescribes = PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
     document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'block' : 'none';
     document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
-    updateStateBoardInfo();
   });
 
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
-  updateStateBoardInfo(); // fire-and-forget — shows the board link (or an honest gap message) for whatever's already filled in
 }
 
 async function saveFullProfileSheet(staffId) {
   const before = staffList.find(s => s.id === staffId) || {};
   const errEl = document.getElementById('fullProfileErr');
-
-  const npiInput = document.getElementById('fpNpi').value.trim();
-  if (npiInput && !isValidNPI(npiInput)) {
-    errEl.textContent = 'The individual NPI doesn\'t look valid — it should be exactly 10 digits and pass the standard NPI checksum. Double-check for typos, or use "Look up NPI" to search the registry instead.';
-    errEl.style.display = 'block';
-    return;
-  }
-  const npiChanged = (npiInput || null) !== (before.npi_number || null);
 
   const newStaffType = document.getElementById('fpStaffType').value;
   const updates = {
@@ -4661,7 +4664,7 @@ async function saveFullProfileSheet(staffId) {
     license_state: document.getElementById('fpLicenseState').value.trim() || null,
     license_issued_date: document.getElementById('fpLicenseIssued').value || null,
     license_expiration_date: document.getElementById('fpLicenseExpiration').value || null,
-    npi_number: npiInput || null,
+    npi_number: document.getElementById('fpNpi').value.trim() || null,
     caqh_id: document.getElementById('fpCaqhId').value.trim() || null,
     caqh_issued_date: document.getElementById('fpCaqhIssued').value || null,
     caqh_expiration_date: document.getElementById('fpCaqhExpiration').value || null,
@@ -4683,10 +4686,6 @@ async function saveFullProfileSheet(staffId) {
     hospital_affiliation_2: document.getElementById('fpHospitalAffiliation2').value.trim() || null,
     hospital_affiliation_3: document.getElementById('fpHospitalAffiliation3').value.trim() || null,
   };
-  // A manually-typed NPI hasn't been checked against the registry, so any
-  // change here clears a prior verification rather than letting it look
-  // confirmed when it's no longer been checked.
-  if (npiChanged) updates.npi_verified = false;
 
   const { data: updated, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('profile_id').maybeSingle();
   if (error) {
@@ -4853,7 +4852,7 @@ function showLicenseInfoMenu(staffId) {
   if (currentCompany.has_credtrack) {
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();verifyLicense('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>`);
   }
-  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}',${s.npi_verified ? 'true' : 'false'})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
+  rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();showEditLicenseModal('${s.id}','${esc(s.full_name)}','${s.license_number||''}','${s.license_type||''}','${s.license_state||''}','${s.npi_number||''}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit license info</button>`);
   if (currentCompany.has_credtrack) {
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();attachVerificationProof('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>`);
   }
@@ -5356,7 +5355,7 @@ async function confirmDisciplineCred(id) {
   await loadStaffTable();
 }
 
-function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi, currentNpiVerified) {
+function showEditLicenseModal(id, name, currentNumber, currentType, currentState, currentNpi) {
   const existing = document.getElementById('editLicenseModal');
   if (existing) existing.remove();
 
@@ -5382,7 +5381,7 @@ function showEditLicenseModal(id, name, currentNumber, currentType, currentState
         </div>
       </div>
       <div style="margin-bottom:18px;">
-        <label class="inline-label">NPI number ${currentNpiVerified ? '<span class="badge badge-verified" style="margin-left:4px;">✓ Verified</span>' : (currentNpi ? '<span class="badge badge-pending" style="margin-left:4px;">Unverified</span>' : '')}</label>
+        <label class="inline-label">NPI number</label>
         <input class="inline-input" type="text" id="editLicenseNpi" value="${currentNpi || ''}" placeholder="e.g. 1234567890" />
       </div>
       <div id="editLicenseErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
@@ -5403,29 +5402,12 @@ async function saveEditLicense(id) {
   const errEl  = document.getElementById('editLicenseErr');
   const before = staffList.find(s => s.id === id) || {};
 
-  // Reject malformed NPIs before saving — catches typos/placeholders
-  // (e.g. "12312312") that would otherwise sit unnoticed until a payer
-  // or CAQH submission bounces it.
-  if (npi && !isValidNPI(npi)) {
-    errEl.textContent = 'That doesn\'t look like a valid NPI — it should be exactly 10 digits and pass the standard NPI checksum. Double-check for typos, or use "Look up NPI" to search the registry instead.';
-    errEl.style.display = 'block';
-    return;
-  }
-
-  const npiChanged = (npi || null) !== (before.npi_number || null);
-
-  const updates = {
+  const { error } = await sb.from('credtrack_staff').update({
     license_number: number || null,
     license_type:   type || null,
     license_state:  state || null,
     npi_number:     npi || null,
-  };
-  // A manually-typed NPI hasn't been checked against the registry, so any
-  // change here clears a prior verification rather than letting it look
-  // confirmed when it's no longer been checked.
-  if (npiChanged) updates.npi_verified = false;
-
-  const { error } = await sb.from('credtrack_staff').update(updates).eq('id', id);
+  }).eq('id', id);
 
   if (error) {
     errEl.textContent = error.message;
@@ -5540,21 +5522,6 @@ async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
   await loadStaffTable();
 }
 
-// Validates NPI format: exactly 10 digits, last digit is a Luhn check
-// digit computed with the required "80840" prefix (CMS NPI standard).
-// Catches typos/placeholder entries (e.g. "12312312") before they're saved.
-function isValidNPI(npi) {
-  if (!/^\d{10}$/.test(npi)) return false;
-  const digits = ("80840" + npi).split("").map(Number);
-  let sum = 0;
-  for (let i = digits.length - 1; i >= 0; i--) {
-    let d = digits[i];
-    if ((digits.length - 1 - i) % 2 === 1) { d *= 2; if (d > 9) d -= 9; }
-    sum += d;
-  }
-  return sum % 10 === 0;
-}
-
 async function lookupNpi(staffId, fullName, licenseState) {
   const namePart = fullName.split(',')[0].trim(); // drop the credential after the comma, e.g. "Kym Crane, SLP" -> "Kym Crane"
   const nameWords = namePart.split(' ').filter(Boolean);
@@ -5608,21 +5575,10 @@ function showNpiResultsModal(staffId, fullName, results) {
 }
 
 async function applyNpiResult(staffId, npi) {
-  // Picking a match directly from a live NPPES registry search result is
-  // itself a form of verification — unlike a manually-typed NPI, this one
-  // has already been confirmed against the federal registry, so it's
-  // stamped verified immediately with who/when, same audit pattern used
-  // for SSN access.
-  const { data: { user } } = await sb.auth.getUser();
-  const { error } = await sb.from('credtrack_staff').update({
-    npi_number: npi,
-    npi_verified: true,
-    npi_verified_by: user?.id || null,
-    npi_verified_at: new Date().toISOString(),
-  }).eq('id', staffId);
+  const { error } = await sb.from('credtrack_staff').update({ npi_number: npi }).eq('id', staffId);
   document.getElementById('npiResultsModal')?.remove();
   if (error) { toast('Error saving NPI: ' + error.message, true); return; }
-  toast(`✓ NPI ${npi} saved and verified`);
+  toast(`✓ NPI ${npi} saved`);
   await loadStaffTable();
 }
 
