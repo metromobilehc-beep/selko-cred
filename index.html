@@ -258,6 +258,10 @@
             <div class="ov-stat-label">Providers tracked</div>
           </div>
           <div class="ov-stat-card ov-stat-warn">
+            <div class="ov-stat-num" id="ovCredIncompleteCount">—</div>
+            <div class="ov-stat-label">Incomplete profiles</div>
+          </div>
+          <div class="ov-stat-card ov-stat-warn">
             <div class="ov-stat-num" id="ovCredMissingCaqh">—</div>
             <div class="ov-stat-label">Missing CAQH ID</div>
           </div>
@@ -277,7 +281,7 @@
 
         <h3 style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:10px;">Needs attention</h3>
         <input type="text" id="ovCredAttentionSearch" placeholder="Search by name..." oninput="renderOvCredAttentionList()" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:8px 12px;font-size:13px;margin-bottom:12px;" />
-        <div id="ovCredAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;"></div>
+        <div id="ovCredAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:300px;overflow-y:auto;padding-right:4px;"></div>
         <div id="ovCredAllClear" style="display:none;text-align:center;padding:20px 0;color:rgba(255,255,255,.4);">✓ Nothing needs attention right now.</div>
         <button class="btn btn-sm btn-ghost" onclick="switchTab('credentialing')" style="color:#fff;border-color:rgba(255,255,255,.2);">Go to Credentialing →</button>
       </div>
@@ -2493,6 +2497,49 @@ function showUpStatus(msg, type) {
 // this scale (dozens to low hundreds of records per company, not
 // millions) that's genuinely the simpler, faster-to-build option.
 let _globalSearchTimer;
+// "Jump to" — matches search intent against what you want to DO, not what
+// already exists as data. Static list, matched client-side, no query
+// needed — shown first since "how do I upload X" is usually what prompted
+// the search in the first place, not a lookup of existing records.
+const QUICK_ACTIONS = [
+  { keywords: ['employment', 'employment history', 'work history', 'employer', 'gap explanation'], label: 'Employment History', sub: 'Per-provider — find them below, then click Employment', perProvider: true },
+  { keywords: ['credentialing files', 'upload file', 'license copy', 'attach file', 'driver license', 'dl copy'], label: 'Credentialing Files', sub: 'Per-provider — find them below, then click Files', perProvider: true },
+  { keywords: ['provider notes'], label: 'Provider Notes', sub: 'Per-provider — find them below, then click Notes', perProvider: true },
+  { keywords: ['organization notes', 'org notes', 'general notes'], label: 'Organization Notes', sub: 'Credentialing tab', tab: 'credentialing' },
+  { keywords: ['practice location', 'locations', 'office location', 'secondary location'], label: 'Practice Locations', sub: 'Credentialing tab', tab: 'credentialing' },
+  { keywords: ['accreditation', 'achc', 'chap', 'joint commission'], label: 'Accreditations', sub: 'Credentialing tab', tab: 'credentialing' },
+  { keywords: ['malpractice', 'liability insurance'], label: 'Malpractice Insurance', sub: 'Credentialing tab — Organization profile', tab: 'credentialing' },
+  { keywords: ['ssn', 'social security'], label: 'Social Security Number', sub: 'Per-provider — Full Profile sheet', perProvider: true },
+  { keywords: ['template', 'fillable form', 'generate form', 'one-click', 'blank form'], label: 'Credentialing Templates', sub: 'Credentialing tab (Full tier)', tab: 'credentialing' },
+  { keywords: ['document type', 'doc type'], label: 'Document Types', sub: 'Settings tab', tab: 'settings' },
+  { keywords: ['storage usage', 'storage'], label: 'Storage Usage', sub: 'Selko Admin (super admin only)', tab: 'super' },
+  { keywords: ['network record', 'payer network', 'in-network', 'insurance network', 'group id'], label: 'Payer Network Records', sub: 'Insurance tab', tab: 'insurance' },
+  { keywords: ['sensitive access log', 'ssn log', 'audit log'], label: 'Sensitive Data Access Log', sub: 'Settings tab', tab: 'settings' },
+  { keywords: ['hospital affiliation'], label: 'Hospital Affiliations', sub: 'Per-provider — Full Profile sheet', perProvider: true },
+  { keywords: ['board certification', 'board certified'], label: 'Board Certification', sub: 'Per-provider — Full Profile sheet', perProvider: true },
+  { keywords: ['dea schedule', 'controlled substance', 'cds', 'csr'], label: 'DEA & Controlled Substances', sub: 'Per-provider — Full Profile sheet', perProvider: true },
+];
+
+function matchQuickActions(query) {
+  // Word-level matching, not whole-string — "employment hx" should still
+  // surface Employment History on the word "employment" alone, even
+  // though "hx" itself doesn't match anything.
+  const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  if (!words.length) return [];
+  return QUICK_ACTIONS.filter(a => words.some(w => a.keywords.some(k => k.includes(w))));
+}
+
+function jumpToQuickAction(index) {
+  const action = QUICK_ACTIONS[index];
+  closeGlobalSearch();
+  if (action.perProvider) {
+    switchTab('credentialing');
+    setTimeout(() => document.getElementById('credStaffSearch')?.focus(), 150);
+  } else {
+    switchTab(action.tab);
+  }
+}
+
 function handleGlobalSearch(query) {
   clearTimeout(_globalSearchTimer);
   const trimmed = query.trim();
@@ -2500,8 +2547,9 @@ function handleGlobalSearch(query) {
   if (trimmed.length < 2) { resultsBox.style.display = 'none'; return; }
 
   _globalSearchTimer = setTimeout(async () => {
+    const quickActions = matchQuickActions(trimmed);
     const results = await performGlobalSearch(trimmed);
-    renderGlobalSearchResults(results, trimmed);
+    renderGlobalSearchResults(results, trimmed, quickActions);
   }, 350);
 }
 
@@ -2557,9 +2605,9 @@ async function performGlobalSearch(query) {
   };
 }
 
-function renderGlobalSearchResults(results, query) {
+function renderGlobalSearchResults(results, query, quickActions) {
   const box = document.getElementById('hdrSearchResults');
-  const totalCount = Object.values(results).reduce((sum, arr) => sum + arr.length, 0);
+  const totalCount = Object.values(results).reduce((sum, arr) => sum + arr.length, 0) + quickActions.length;
 
   if (!totalCount) {
     box.innerHTML = `<div style="padding:16px;font-size:13px;color:rgba(255,255,255,.4);text-align:center;">No matches for "${query}"</div>`;
@@ -2568,6 +2616,14 @@ function renderGlobalSearchResults(results, query) {
   }
 
   const sections = [];
+
+  if (quickActions.length) {
+    sections.push(renderSearchSection('🧭 Jump to', quickActions.map(a => ({
+      label: a.label,
+      sub: a.sub,
+      onclick: `jumpToQuickAction(${QUICK_ACTIONS.indexOf(a)})`,
+    }))));
+  }
 
   if (results.staff.length) {
     sections.push(renderSearchSection('👤 Staff', results.staff.map(s => ({
@@ -8949,6 +9005,29 @@ async function loadCredentialingOverviewStats() {
   });
   document.getElementById('ovCredDeaDue').textContent = deaDue.length;
 
+  // Query which active providers have at least one employment history
+  // row, rather than fetching every row — a simple existence check keeps
+  // this fast regardless of how many entries any one person has.
+  const activeIds = activeProviders.map(s => s.id);
+  const { data: empRows } = activeIds.length
+    ? await sb.from('staff_employment_history').select('staff_id').in('staff_id', activeIds)
+    : { data: [] };
+  const staffWithEmployment = new Set((empRows || []).map(r => r.staff_id));
+
+  const missingNpi = activeProviders.filter(s => !s.npi_number);
+  const missingAddress = activeProviders.filter(s => !s.address);
+  const missingPhone = activeProviders.filter(s => !s.phone);
+  const missingEmployment = activeProviders.filter(s => !staffWithEmployment.has(s.id));
+
+  // One consolidated stat — a provider missing any of these counts once,
+  // not once per missing field, so this reads as "how many people need
+  // follow-up" rather than an inflated sum across categories.
+  const incompleteIds = new Set([
+    ...missingNpi.map(s => s.id), ...missingAddress.map(s => s.id),
+    ...missingPhone.map(s => s.id), ...missingEmployment.map(s => s.id),
+  ]);
+  document.getElementById('ovCredIncompleteCount').textContent = incompleteIds.size;
+
   // Build one combined, de-duplicated attention list (a provider might
   // have more than one issue) — stored so the search box can re-filter
   // it locally without re-querying every keystroke.
@@ -8970,6 +9049,10 @@ async function loadCredentialingOverviewStats() {
     const d = withDays(s.dea_expiration_date);
     addIssue(s, d < 0 ? `DEA expired ${Math.abs(d)}d ago` : `DEA expires in ${d}d`, d < 0);
   });
+  missingNpi.forEach(s => addIssue(s, 'Missing NPI', false));
+  missingAddress.forEach(s => addIssue(s, 'Missing address', false));
+  missingPhone.forEach(s => addIssue(s, 'Missing phone', false));
+  missingEmployment.forEach(s => addIssue(s, 'No employment history on file', false));
 
   _ovCredAttentionData = [...issuesByStaff.values()].sort((a, b) =>
     (b.issues.some(i => i.urgent) ? 1 : 0) - (a.issues.some(i => i.urgent) ? 1 : 0)
