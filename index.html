@@ -4242,8 +4242,8 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
     { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
   ];
   return `
-    <div style="display:flex;gap:6px;margin-bottom:14px;border-bottom:1px solid rgba(255,255,255,.1);padding-bottom:10px;flex-wrap:wrap;">
-      ${tabs.map(t => `<button onclick="${t.fn}" style="background:${t.key === activeTab ? 'var(--teal)' : 'transparent'};color:#fff;border:1px solid ${t.key === activeTab ? 'var(--teal)' : 'rgba(255,255,255,.2)'};border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;">${t.label}</button>`).join('')}
+    <div style="display:flex;flex-direction:column;gap:6px;">
+      ${tabs.map(t => `<button onclick="${t.fn}" style="background:${t.key === activeTab ? 'var(--teal)' : 'transparent'};color:#fff;border:1px solid ${t.key === activeTab ? 'var(--teal)' : 'rgba(255,255,255,.2)'};border-radius:6px;padding:8px 12px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap;text-align:left;width:100%;">${t.label}</button>`).join('')}
     </div>`;
 }
 
@@ -4261,8 +4261,11 @@ function showFullProfileSheet(staffId) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:680px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      ${renderProviderTabBar(staffId, s.full_name, 'info')}
+    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:760px;max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:28px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, s.full_name, 'info')}
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:28px;min-width:0;">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:2px;">${s.full_name}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:20px;">Full credentialing profile — everything about this person in one place.</div>
 
@@ -4492,6 +4495,7 @@ function showFullProfileSheet(staffId) {
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
         <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -6164,8 +6168,11 @@ async function showEmploymentHistory(staffId, staffName) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
-      ${renderProviderTabBar(staffId, staffName, 'employment')}
+    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:640px;max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, staffName, 'employment')}
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:85vh;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Employment history — most payer applications want the last 5 years, with any gap over 30 days explained.</div>
 
@@ -6205,6 +6212,7 @@ async function showEmploymentHistory(staffId, staffName) {
 
       <div id="employmentHistoryList" style="overflow-y:auto;flex:1;">Loading...</div>
       <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -6295,8 +6303,9 @@ async function showNotesLog(staffId, contextName) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:80vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
-      ${renderProviderTabBar(staffId, contextName, 'notes')}
+    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:${staffId ? '520' : '440'}px;max-height:80vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      ${staffId ? `<div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">${renderProviderTabBar(staffId, contextName, 'notes')}</div>` : ''}
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:80vh;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffId ? contextName : 'Organization Notes'}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">${staffId ? 'Credentialing notes for this provider.' : 'General organization-level credentialing notes.'}</div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -6305,6 +6314,7 @@ async function showNotesLog(staffId, contextName) {
       </div>
       <div id="notesLogList" style="overflow-y:auto;flex:1;padding-right:8px;">Loading...</div>
       <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
@@ -6449,8 +6459,11 @@ function showCredentialingFiles(staffId, staffName) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:460px;max-height:80vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
-      ${renderProviderTabBar(staffId, staffName, 'files')}
+    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:540px;max-height:80vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, staffName, 'files')}
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:80vh;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
       <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Credentialing files for this provider — license copies, board cert letters, anything needed for an application.</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
@@ -6460,6 +6473,7 @@ function showCredentialingFiles(staffId, staffName) {
       <div id="providerCredFileErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div id="providerCredFilesList" style="overflow-y:auto;flex:1;">Loading...</div>
       <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
