@@ -10921,8 +10921,10 @@ async function superInvite() {
 // Detects the synthetic login-ID placeholder used for staff with no real
 // email (see setupStaffLoginNoEmail) — so it never displays or gets
 // treated as if it were a real, contactable address anywhere in the app.
+// Recognizes both the current short domain and the original longer one,
+// so accounts created before this got shortened still display correctly.
 function isSyntheticStaffEmail(email) {
-  return !!email && email.endsWith('@login.selko-internal.local');
+  return !!email && (email.endsWith('@no-email.local') || email.endsWith('@login.selko-internal.local'));
 }
 
 function generateTempPassword() {
@@ -10994,7 +10996,7 @@ async function setupStaffLogin(staffId, fullName, email) {
 async function setupStaffLoginNoEmail(staffId, fullName) {
   if (!confirm(`Set up a login for ${fullName} without a real email?\n\nWhat this means:\n\n• You'll need to give ${fullName} their login ID and password yourself — there's no email to send them to.\n• Any future password reset also has to go through you directly, not a self-service email link.\n• They won't receive the automated daily reminder emails about missing or expiring documents.\n• The "Send checklist" reminder option won't be available for them.\n\nProceed?`)) return;
 
-  const syntheticId = `staff-${staffId.slice(0, 8)}@login.selko-internal.local`;
+  const syntheticId = `p${staffId.replace(/-/g, '').slice(0, 6)}@no-email.local`;
   const tempPassword = generateTempPassword();
 
   const staffRecord = staffList.find(s => s.id === staffId);
