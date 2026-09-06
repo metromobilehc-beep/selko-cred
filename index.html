@@ -1811,20 +1811,8 @@ async function initSession(user) {
       // Documents, Expiration Tracker, Overview, and Insurance are the
       // document-compliance side of the product — a credentialing-only
       // company (has_credentialing_addon but not has_credtrack) never sees
-      // Overview now adapts to show whichever section(s) are actually
-      // active (loadOverview() handles the document vs credentialing
-      // split) — so unlike Docs/Expiration Tracker/Insurance, it stays
-      // visible whenever EITHER module is on, not just document tracking.
-      const showDocCompliance = !!company.has_credtrack;
-      const showOverviewTab = showDocCompliance || !!company.has_credentialing_addon;
-      document.getElementById('tab-overview').style.display = showOverviewTab ? 'inline-flex' : 'none';
-      document.getElementById('tab-docs').style.display = showDocCompliance ? 'inline-flex' : 'none';
-      document.getElementById('tab-exp').style.display  = showDocCompliance ? 'inline-flex' : 'none';
-      document.getElementById('tab-insurance').style.display = (showDocCompliance && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
-      // Land on whichever tab this company actually has, rather than the
-      // default Overview tab showing a blank/hidden screen for a
-      // credentialing-only company.
-      if (!showDocCompliance) switchTab(company.has_credentialing_addon ? 'credentialing' : 'staff');
+      updateModuleTabVisibility(company, profile);
+      if (!company.has_credtrack) switchTab(company.has_credentialing_addon ? 'credentialing' : 'staff');
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -2705,6 +2693,34 @@ document.addEventListener('click', e => {
   }
 });
 
+// Shared, bidirectional — these buttons default to hidden in the HTML,
+// but that's only correct on a fresh page load. Without an explicit
+// "hide if not Pro" branch, a super admin switching from a Pro company
+// into a Standard one via View as Admin (or back out again) would keep
+// seeing Pro-only buttons that were shown earlier in the same session —
+// tier gating that looked broken because it was only ever one-directional.
+// Shared, bidirectional — same reasoning as updateProFeatureButtons()
+// below: this needs to run every time the active company changes (login,
+// View as Admin, exiting View as Admin), not just once, or a super admin
+// switching between companies of different module configurations would
+// keep seeing tabs that belong to whichever company they viewed earlier.
+function updateModuleTabVisibility(company, profile) {
+  const showDocCompliance = !!company.has_credtrack;
+  const showOverviewTab = showDocCompliance || !!company.has_credentialing_addon;
+  document.getElementById('tab-overview').style.display = showOverviewTab ? 'inline-flex' : 'none';
+  document.getElementById('tab-docs').style.display = showDocCompliance ? 'inline-flex' : 'none';
+  document.getElementById('tab-exp').style.display  = showDocCompliance ? 'inline-flex' : 'none';
+  document.getElementById('tab-insurance').style.display = (showDocCompliance && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
+}
+
+function updateProFeatureButtons() {
+  const display = window._isPro ? 'inline-flex' : 'none';
+  document.getElementById('addDocTypeBtn').style.display     = display;
+  document.getElementById('bulkDownloadBtn').style.display   = display;
+  document.getElementById('exportProExcelBtn').style.display = display;
+  document.getElementById('exportProPdfBtn').style.display   = display;
+}
+
 async function initAdmin() {
   await loadStaffList();
   await loadAdminFilters();
@@ -2712,12 +2728,7 @@ async function initAdmin() {
   await loadAdminDocs();
   await loadOverview();
   document.getElementById('hdrSearchWrap').style.display = 'block';
-  if (window._isPro) {
-    document.getElementById('addDocTypeBtn').style.display     = 'inline-flex';
-    document.getElementById('bulkDownloadBtn').style.display   = 'inline-flex';
-    document.getElementById('exportProExcelBtn').style.display = 'inline-flex';
-    document.getElementById('exportProPdfBtn').style.display   = 'inline-flex';
-  }
+  updateProFeatureButtons();
   if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
 }
 
@@ -8987,6 +8998,8 @@ async function viewAsAdmin(companyId, companyName) {
   currentCompany = company;
   window._isPro  = ['pro','enterprise'].includes(company.plan);
   window._hasCredAddon = !!company.has_credentialing_addon;
+  updateModuleTabVisibility(company, currentProfile);
+  updateProFeatureButtons();
 
   await loadStaffList();
   await loadAdminFilters();
@@ -9006,6 +9019,8 @@ async function exitViewAsAdmin() {
   currentCompany = { ..._superCompany };
   window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
   window._hasCredAddon = !!currentCompany.has_credentialing_addon;
+  updateModuleTabVisibility(currentCompany, currentProfile);
+  updateProFeatureButtons();
   _superProfile  = null;
   _superCompany  = null;
 
