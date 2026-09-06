@@ -981,6 +981,23 @@
 
     <div id="tabSettings" style="display:none;">
 
+      <!-- Own display name — shown in the header, and baked as a plain
+           text snapshot into many records at the moment they're created
+           (uploaded_by, verified_by, audit log entries, even inside note
+           text like "License verified... by [name]"). Renaming here only
+           fixes things going forward — it can't retroactively update
+           records that already captured the old name as text, since
+           those aren't live-linked back to this profile. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>My account</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Your display name — shown in the header and attributed on anything you create going forward. Records already created under your old name won't retroactively update, since your name is captured as text at the time, not a live link back to your account.</p>
+        <div style="display:flex;gap:10px;max-width:400px;">
+          <input class="inline-input" type="text" id="myAccountName" style="flex:1;" />
+          <button class="btn btn-sm btn-teal" onclick="saveMyAccountName()">Save</button>
+        </div>
+        <div id="myAccountNameErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+      </div>
+
       <!-- Sensitive-field access log — SSN views/entries specifically.
            No delete action exists anywhere in this app for this table —
            that's deliberate, so it's a genuine, tamper-resistant audit
@@ -6097,6 +6114,7 @@ function loadDisciplinesPanel() {
   container.innerHTML = disciplines.map(d => `
     <span class="badge badge-ok" style="display:flex;align-items:center;gap:6px;padding:6px 10px;">
       ${d}
+      <span onclick="showRenameDisciplineForm('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Rename">✎</span>
       <span onclick="removeCompanyDiscipline('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
     </span>`).join('');
 
@@ -6167,6 +6185,75 @@ async function addCompanyDiscipline() {
   input.value = '';
   loadDisciplinesPanel();
   toast(`✓ Added "${value}"`);
+}
+
+// A misspelled discipline added earlier can already have real staff
+// assigned to it by the time anyone notices — simply fixing the master
+// list (remove + re-add) wouldn't touch those existing records, leaving
+// them silently orphaned on the old, wrong spelling forever. This cascades
+// the correction everywhere it matters in one action.
+function showRenameDisciplineForm(oldName) {
+  const existing = document.getElementById('renameDisciplineModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'renameDisciplineModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:6px;">Rename "${oldName}"</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Updates every staff member currently set to this discipline, plus your CAQH-exempt list if it applies here.</p>
+      <input class="inline-input" type="text" id="renameDisciplineInput" value="${oldName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      <div id="renameDisciplineErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitRenameDiscipline('${oldName.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Rename</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('renameDisciplineModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitRenameDiscipline(oldName) {
+  const errEl = document.getElementById('renameDisciplineErr');
+  errEl.style.display = 'none';
+  const newName = document.getElementById('renameDisciplineInput').value.trim();
+  if (!newName) { errEl.textContent = 'Enter a name.'; errEl.style.display = 'block'; return; }
+  if (newName === oldName) { document.getElementById('renameDisciplineModal')?.remove(); return; }
+
+  const current = getCompanyDisciplines();
+  if (current.some(d => d.toLowerCase() === newName.toLowerCase() && d !== oldName)) {
+    errEl.textContent = `"${newName}" already exists as a separate discipline — merging isn't supported here, remove one first.`;
+    errEl.style.display = 'block';
+    return;
+  }
+
+  // Cascade to every staff record on the old spelling first.
+  const { data: affectedStaff, error: staffErr } = await sb.from('credtrack_staff')
+    .update({ discipline: newName })
+    .eq('company_id', currentCompany.id)
+    .eq('discipline', oldName)
+    .select('id');
+  if (staffErr) { errEl.textContent = staffErr.message; errEl.style.display = 'block'; return; }
+
+  // Update the master discipline list.
+  const updatedDisciplines = current.map(d => d === oldName ? newName : d);
+  const { error: coErr } = await sb.from('companies').update({ available_disciplines: updatedDisciplines }).eq('id', currentCompany.id);
+  if (coErr) { errEl.textContent = coErr.message; errEl.style.display = 'block'; return; }
+  currentCompany.available_disciplines = updatedDisciplines;
+
+  // Carry the CAQH-exempt flag over too, if it applied to the old name.
+  const exemptList = getCaqhExemptDisciplines();
+  if (exemptList.includes(oldName)) {
+    const updatedExempt = exemptList.map(d => d === oldName ? newName : d);
+    await sb.from('companies').update({ caqh_exempt_disciplines: updatedExempt }).eq('id', currentCompany.id);
+    currentCompany.caqh_exempt_disciplines = updatedExempt;
+  }
+
+  document.getElementById('renameDisciplineModal')?.remove();
+  toast(`✓ Renamed "${oldName}" to "${newName}" — updated ${affectedStaff?.length || 0} staff record(s)`);
+  loadDisciplinesPanel();
+  await loadStaffList(); // refresh in-memory staff data so every other view reflects the rename immediately
 }
 
 async function removeCompanyDiscipline(discipline) {
@@ -6814,8 +6901,25 @@ async function loadSensitiveAccessLog() {
     </tr>`).join('');
 }
 
+async function saveMyAccountName() {
+  const errEl = document.getElementById('myAccountNameErr');
+  errEl.style.display = 'none';
+  const newName = document.getElementById('myAccountName').value.trim();
+  if (!newName) { errEl.textContent = 'Enter a name.'; errEl.style.display = 'block'; return; }
+
+  const { error } = await sb.from('profiles').update({ full_name: newName }).eq('id', currentProfile.id);
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  currentProfile.full_name = newName;
+  const hdrUserEl = document.getElementById('hdrUser');
+  if (hdrUserEl) hdrUserEl.textContent = newName;
+  toast('✓ Name updated');
+}
+
 async function loadSettings() {
   const c = currentCompany;
+
+  document.getElementById('myAccountName').value = currentProfile.full_name || '';
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
