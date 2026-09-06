@@ -4879,7 +4879,7 @@ function showAccountActionsMenu(staffId) {
       rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
     }
   } else {
-    rows.push(`<span style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;display:block;">No email on file — add one via Edit to enable login</span>`);
+    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLoginNoEmail('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Set up login (no email)</button>`);
   }
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();editStaff('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>`);
   if (currentCompany.has_credtrack) {
@@ -10970,6 +10970,76 @@ async function setupStaffLogin(staffId, fullName, email) {
   } catch(e) {
     toast('Setup failed: ' + e.message, true);
   }
+}
+
+// For staff without a real email at all. Supabase Auth still needs some
+// identifier to log in with — so this generates a synthetic, clearly-fake
+// login ID and uses it as their actual username, explicitly skipping the
+// credentials email (send_email: false — there's nowhere for it to go
+// anyway). Both the login ID and password have to be relayed by the admin
+// directly, since there's no other channel to reach this account through
+// — which also means any future password reset must go through the admin
+// again via the same path, never a self-service "forgot password" email.
+async function setupStaffLoginNoEmail(staffId, fullName) {
+  if (!confirm(`Set up a login for ${fullName} without a real email?\n\nThis creates an internal login ID instead of a real address — you'll need to give both the login ID and password to ${fullName} yourself, since there's no email to send anything to. Any future password reset also has to go through you, not a self-service email link.`)) return;
+
+  const syntheticId = `staff-${staffId.slice(0, 8)}@login.selko-internal.local`;
+  const tempPassword = generateTempPassword();
+
+  const staffRecord = staffList.find(s => s.id === staffId);
+  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : (staffRecord?.staff_type === 'office' ? 'office' : 'staff');
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        email: syntheticId,
+        password: tempPassword,
+        name: fullName,
+        company_id: currentCompany.id,
+        role: actualRole,
+        app_label: 'Cred',
+        force_reset: false,
+        send_email: false, // nothing to send it to
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    if (result.user_id) {
+      // Save the synthetic ID onto the staff record too, matching how the
+      // normal flow relies on s.email — this is what future "Reset
+      // password" actions for this person will look up and reuse.
+      await sb.from('credtrack_staff').update({ profile_id: result.user_id, email: syntheticId }).eq('id', staffId);
+    }
+
+    showNoEmailTempPasswordModal(fullName, syntheticId, tempPassword);
+    await loadStaffTable();
+  } catch(e) {
+    toast('Setup failed: ' + e.message, true);
+  }
+}
+
+function showNoEmailTempPasswordModal(fullName, loginId, tempPassword) {
+  const div = document.createElement('div');
+  div.id = 'tempPassModal';
+  div.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+  div.innerHTML = `
+    <div style="background:#fff;border-radius:10px;padding:24px;max-width:380px;width:90%;font-family:sans-serif;">
+      <h3 style="margin:0 0 10px;color:#0b2340;">Login ready for ${fullName}</h3>
+      <p style="font-size:13px;color:#b3541e;margin-bottom:14px;">⚠ No real email — nothing was sent anywhere. Give both values below to ${fullName} directly.</p>
+      <div style="background:#f4f6f9;border-radius:6px;padding:12px;margin-bottom:14px;">
+        <div style="font-size:12px;color:#64748b;">Login ID <span style="font-weight:400;">(not a real email — this is what they type in place of one)</span></div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:8px;user-select:all;word-break:break-all;">${loginId}</div>
+        <div style="font-size:12px;color:#64748b;">Temporary password</div>
+        <div style="font-size:16px;font-weight:700;font-family:monospace;user-select:all;">${tempPassword}</div>
+      </div>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:14px;">They should change the password after logging in. Any future reset for this account has to go through an admin again, the same way — there's no email to send a reset link to.</p>
+      <button onclick="document.getElementById('tempPassModal').remove()" style="width:100%;padding:10px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Done</button>
+    </div>`;
+  document.body.appendChild(div);
 }
 
 function showTempPasswordModal(fullName, email, tempPassword, emailSent, emailError) {
