@@ -4098,7 +4098,7 @@ async function loadStaffTable() {
       : `<button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
     return `<tr>
     <td>${nameCell}</td>
-    <td style="font-size:12px;color:rgba(255,255,255,.5);">${s.email || '<em style="opacity:.4;">not set</em>'}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${isSyntheticStaffEmail(s.email) ? '<em style="opacity:.5;" title="No automated document reminders, no self-service password reset — both have to go through an admin manually.">No email (internal login only) ⚠</em>' : (s.email || '<em style="opacity:.4;">not set</em>')}</td>
     <td style="font-size:12px;">
       ${s.job_title || '—'}
       <button onclick="showDisciplineModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.discipline||''}')"
@@ -4872,7 +4872,10 @@ function showAccountActionsMenu(staffId) {
   const esc = (str) => (str || '').replace(/'/g, "\\'");
 
   const rows = [];
-  if (s.email) {
+  if (isSyntheticStaffEmail(s.email)) {
+    rows.push(`<div style="font-size:11px;color:rgba(255,255,255,.4);padding:4px 0;">🔒 Login already set up (no real email — internal login only). No automated document reminders reach them; password resets have to go through you.</div>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPasswordNoEmail('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
+  } else if (s.email) {
     rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}','${esc(s.full_name)}','${s.email}')" style="width:100%;justify-content:flex-start;">Set up login</button>`);
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPassword('${s.email}','${esc(s.full_name)}','${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
     if (currentCompany.has_credtrack) {
@@ -5224,7 +5227,9 @@ async function editStaff(id) {
 
   const name  = prompt('Full name:', s.full_name);
   if (name === null) return;
-  const email = prompt('Email:', s.email || '');
+  const email = isSyntheticStaffEmail(s.email)
+    ? prompt(`Email:\n\nThis is currently an internal login ID (no real email), not an address — changing or clearing it will break their existing login. Leave it as-is unless you're intentionally replacing their login.`, s.email)
+    : prompt('Email:', s.email || '');
   if (email === null) return;
   const title = prompt('Job title:', s.job_title || '');
   if (title === null) return;
@@ -10913,6 +10918,13 @@ async function superInvite() {
 // server-side, no email or link involved: the admin relays it to the person
 // however's fastest (text, verbally, sticky note), they log in normally,
 // and can change it from within the app afterward if you add that option.
+// Detects the synthetic login-ID placeholder used for staff with no real
+// email (see setupStaffLoginNoEmail) — so it never displays or gets
+// treated as if it were a real, contactable address anywhere in the app.
+function isSyntheticStaffEmail(email) {
+  return !!email && email.endsWith('@login.selko-internal.local');
+}
+
 function generateTempPassword() {
   const words = ['Coral','Amber','Delta','Cedar','Ember','Falcon','Granite','Harbor','Ivory','Juniper','Maple','Onyx','Quartz','River','Sable','Timber'];
   const word = words[Math.floor(Math.random() * words.length)];
@@ -10980,7 +10992,7 @@ async function setupStaffLogin(staffId, fullName, email) {
 // — which also means any future password reset must go through the admin
 // again via the same path, never a self-service "forgot password" email.
 async function setupStaffLoginNoEmail(staffId, fullName) {
-  if (!confirm(`Set up a login for ${fullName} without a real email?\n\nThis creates an internal login ID instead of a real address — you'll need to give both the login ID and password to ${fullName} yourself, since there's no email to send anything to. Any future password reset also has to go through you, not a self-service email link.`)) return;
+  if (!confirm(`Set up a login for ${fullName} without a real email?\n\nWhat this means:\n\n• You'll need to give ${fullName} their login ID and password yourself — there's no email to send them to.\n• Any future password reset also has to go through you directly, not a self-service email link.\n• They won't receive the automated daily reminder emails about missing or expiring documents.\n• The "Send checklist" reminder option won't be available for them.\n\nProceed?`)) return;
 
   const syntheticId = `staff-${staffId.slice(0, 8)}@login.selko-internal.local`;
   const tempPassword = generateTempPassword();
@@ -11018,6 +11030,46 @@ async function setupStaffLoginNoEmail(staffId, fullName) {
     await loadStaffTable();
   } catch(e) {
     toast('Setup failed: ' + e.message, true);
+  }
+}
+
+// Resets the password on an existing no-email account — reuses the same
+// synthetic login ID already stored rather than generating a new one, so
+// the person keeps logging in with the same identifier and only the
+// password changes.
+async function resetPasswordNoEmail(staffId, fullName) {
+  const staffRecord = staffList.find(s => s.id === staffId);
+  const syntheticId = staffRecord?.email;
+  if (!isSyntheticStaffEmail(syntheticId)) { toast('Could not find this account\'s login ID.', true); return; }
+
+  if (!confirm(`Reset the password for ${fullName}?\n\nYou'll need to give them the new password directly — there's no email to send it to.`)) return;
+
+  const tempPassword = generateTempPassword();
+  const actualRole = staffRecord?.staff_type === 'admin' ? 'admin' : (staffRecord?.staff_type === 'office' ? 'office' : 'staff');
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        email: syntheticId,
+        password: tempPassword,
+        name: fullName,
+        company_id: currentCompany.id,
+        role: actualRole,
+        app_label: 'Cred',
+        force_reset: true,
+        send_email: false,
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    showNoEmailTempPasswordModal(fullName, syntheticId, tempPassword);
+    await loadStaffTable();
+  } catch(e) {
+    toast('Reset failed: ' + e.message, true);
   }
 }
 
