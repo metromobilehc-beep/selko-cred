@@ -998,6 +998,36 @@
         <div id="myAccountNameErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
 
+      <!-- Billing — admin/office of the company being billed, or a super
+           admin managing it on their behalf. Actual dollar amounts live
+           entirely in Stripe (via lookup keys), never hardcoded here, so
+           pricing can change without touching this code. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="billingPanelSettings">
+        <h2>Billing</h2>
+        <div id="billingCurrentStatus" style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:14px;"></div>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Choose a plan below and continue to a secure Stripe checkout page — card details are entered there directly, never inside this app.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;max-width:500px;">
+          <div>
+            <label class="inline-label">Document tracking</label>
+            <select class="inline-select" id="billingDocTier">
+              <option value="">— None —</option>
+              <option value="doc_standard">Standard</option>
+              <option value="doc_pro">Pro</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Credentialing</label>
+            <select class="inline-select" id="billingCredTier">
+              <option value="">— None —</option>
+              <option value="cred_basic">Basic</option>
+              <option value="cred_full">Full</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-sm btn-gold" onclick="startCheckout()">Continue to checkout</button>
+        <div id="billingErr" style="color:#f87171;font-size:12px;margin-top:10px;display:none;"></div>
+      </div>
+
       <!-- Sensitive-field access log — SSN views/entries specifically.
            No delete action exists anywhere in this app for this table —
            that's deliberate, so it's a genuine, tamper-resistant audit
@@ -6916,6 +6946,50 @@ async function loadSensitiveAccessLog() {
     </tr>`).join('');
 }
 
+async function loadBillingStatus() {
+  const el = document.getElementById('billingCurrentStatus');
+  if (!el) return;
+
+  const { data: sub } = await sb.from('subscriptions').select('status, current_period_end').eq('company_id', currentCompany.id).maybeSingle();
+
+  const docLabel = currentCompany.plan === 'pro' ? 'Pro' : (currentCompany.plan === 'standard' ? 'Standard' : 'None');
+  const credLabel = currentCompany.has_credentialing_addon
+    ? (currentCompany.credentialing_tier === 'full' ? 'Full' : 'Basic')
+    : 'None';
+
+  const statusNote = sub?.status === 'past_due'
+    ? ' — <span style="color:#f87171;">payment past due</span>'
+    : sub?.status === 'cancelled'
+      ? ' — <span style="color:rgba(255,255,255,.4);">cancelled</span>'
+      : '';
+
+  el.innerHTML = `Current plan: <strong>Document tracking — ${docLabel}</strong>, <strong>Credentialing — ${credLabel}</strong>${statusNote}`;
+}
+
+async function startCheckout() {
+  const errEl = document.getElementById('billingErr');
+  errEl.style.display = 'none';
+
+  const docTier = document.getElementById('billingDocTier').value;
+  const credTier = document.getElementById('billingCredTier').value;
+  if (!docTier && !credTier) { errEl.textContent = 'Select at least one plan component.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/create-checkout-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ company_id: currentCompany.id, doc_tier: docTier || null, cred_tier: credTier || null }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    window.location.href = result.checkout_url;
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
 async function saveMyAccountName() {
   const errEl = document.getElementById('myAccountNameErr');
   errEl.style.display = 'none';
@@ -6935,6 +7009,7 @@ async function loadSettings() {
   const c = currentCompany;
 
   document.getElementById('myAccountName').value = currentProfile.full_name || '';
+  loadBillingStatus();
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
