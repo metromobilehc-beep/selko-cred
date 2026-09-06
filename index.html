@@ -1120,8 +1120,11 @@
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Insurance payer list</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
-        <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;">
-          <input type="text" id="payerName" placeholder="Payer name (e.g. BlueCross BlueShield of Oklahoma)" style="flex:1;" />
+        <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
+          <div style="flex:1;position:relative;">
+            <input type="text" id="payerName" placeholder="Payer name (e.g. BlueCross BlueShield of Oklahoma)" style="width:100%;box-sizing:border-box;" oninput="handlePayerNameSearch(this)" autocomplete="off" onblur="setTimeout(hidePayerSuggestions, 200)" />
+            <div id="payerNameSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:50;"></div>
+          </div>
           <button class="btn btn-sm btn-gold" onclick="savePayer()">+ Add payer</button>
         </div>
         <div id="payerErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
@@ -1487,6 +1490,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 // ══ STATE ══
 let currentProfile = null;
 let currentCompany = null;
+let currentCompanyPayerNames = []; // this company's own payer names, for the payer-suggestion "already have this one" filter
 let docTypes       = [];
 let staffList      = [];
 let _staffSortKey  = 'full_name';
@@ -6831,6 +6835,64 @@ async function deleteDocType(id, name) {
 }
 
 // ══ PAYER NETWORK MANAGEMENT ══
+// Quick-reference against payers already added by ANY company — avoids
+// retyping "BlueCross BlueShield of Oklahoma" as a slightly different
+// string every time a new company needs the same real-world payer, which
+// would otherwise fragment the same payer into inconsistent duplicate
+// entries across companies. Purely a naming reference: selecting a
+// suggestion just fills the text box, then "+ Add payer" proceeds exactly
+// as it always has, creating this company's own row.
+let _payerSearchTimer;
+function handlePayerNameSearch(input) {
+  clearTimeout(_payerSearchTimer);
+  const query = input.value.trim();
+  if (query.length < 2) { hidePayerSuggestions(); return; }
+
+  _payerSearchTimer = setTimeout(async () => {
+    const { data } = await sb.from('payers')
+      .select('name, company_id')
+      .not('company_id', 'is', null)
+      .neq('company_id', currentCompany.id)
+      .ilike('name', `%${query}%`)
+      .limit(30);
+    if (!data?.length) { hidePayerSuggestions(); return; }
+
+    // De-dupe by name (the same real payer may have been added by several
+    // companies with identical spelling) and drop anything this company
+    // already has on its own list.
+    const alreadyHave = new Set((currentCompanyPayerNames || []).map(n => n.toLowerCase()));
+    const seen = new Set();
+    const suggestions = data
+      .filter(p => !alreadyHave.has(p.name.toLowerCase()))
+      .filter(p => { const k = p.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+      .slice(0, 8);
+
+    renderPayerSuggestions(suggestions);
+  }, 300);
+}
+
+function renderPayerSuggestions(suggestions) {
+  const box = document.getElementById('payerNameSuggestions');
+  if (!box) return;
+  if (!suggestions.length) { box.style.display = 'none'; return; }
+
+  box.innerHTML = suggestions.map(p => `
+    <div onmousedown="selectPayerSuggestion('${p.name.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:13px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
+      ${p.name} <span style="font-size:10px;color:rgba(255,255,255,.3);">— already on another company</span>
+    </div>`).join('');
+  box.style.display = 'block';
+}
+
+function hidePayerSuggestions() {
+  const box = document.getElementById('payerNameSuggestions');
+  if (box) box.style.display = 'none';
+}
+
+function selectPayerSuggestion(name) {
+  document.getElementById('payerName').value = name;
+  hidePayerSuggestions();
+}
+
 async function savePayer() {
   const nameEl = document.getElementById('payerName');
   const name   = nameEl.value.trim();
@@ -6859,6 +6921,8 @@ async function loadPayersTable() {
     .select('*')
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('name');
+
+  currentCompanyPayerNames = (data || []).map(p => p.name); // for the "already have this one" suggestion filter
 
   const tbody = document.getElementById('payersTbody');
   if (!data?.length) {
