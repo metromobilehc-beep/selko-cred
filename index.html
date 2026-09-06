@@ -4151,6 +4151,79 @@ function selectAddressSuggestion(prefix, index) {
   hideAddressSuggestions(prefix);
 }
 
+// ══ HOSPITAL AFFILIATION SEARCH ══
+// Same debounced-suggestions pattern as the address lookup, but against
+// our own shared reference table (Juan's compiled list of ~515 hospitals
+// with verification portals) rather than an external service. Open to
+// every admin — this is a shared, non-confidential reference dataset.
+let _hospitalSearchTimers = {};
+function handleHospitalSearch(input, fieldNum) {
+  clearTimeout(_hospitalSearchTimers[fieldNum]);
+  const query = input.value.trim();
+  document.getElementById(`fpHospital${fieldNum}Info`).innerHTML = ''; // clear stale info while typing something new
+  if (query.length < 3) { hideHospitalSuggestions(fieldNum); return; }
+
+  _hospitalSearchTimers[fieldNum] = setTimeout(async () => {
+    const { data, error } = await sb.from('hospital_affiliations_reference')
+      .select('id, facility_name, details_notes, verification_url, verification_password')
+      .ilike('facility_name', `%${query}%`)
+      .limit(8);
+    if (error || !data?.length) { hideHospitalSuggestions(fieldNum); return; }
+    renderHospitalSuggestions(fieldNum, data);
+  }, 400);
+}
+
+function renderHospitalSuggestions(fieldNum, results) {
+  const box = document.getElementById(`fpHospital${fieldNum}Suggestions`);
+  if (!box) return;
+  box.innerHTML = results.map((r, i) => `
+    <div onclick="selectHospitalSuggestion(${fieldNum}, ${i})" style="padding:8px 12px;font-size:13px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
+      ${r.facility_name}${r.details_notes ? `<div style="font-size:10px;color:rgba(255,255,255,.4);">${r.details_notes}</div>` : ''}
+    </div>`).join('');
+  box.style.display = 'block';
+  window[`_hospitalResults_${fieldNum}`] = results;
+}
+
+function hideHospitalSuggestions(fieldNum) {
+  const box = document.getElementById(`fpHospital${fieldNum}Suggestions`);
+  if (box) box.style.display = 'none';
+}
+
+function selectHospitalSuggestion(fieldNum, index) {
+  const result = window[`_hospitalResults_${fieldNum}`]?.[index];
+  if (!result) return;
+  document.getElementById(`fpHospitalAffiliation${fieldNum}`).value = result.facility_name;
+  renderHospitalInfo(fieldNum, result);
+  hideHospitalSuggestions(fieldNum);
+}
+
+function renderHospitalInfo(fieldNum, hospital) {
+  const infoEl = document.getElementById(`fpHospital${fieldNum}Info`);
+  if (!infoEl) return;
+  const parts = [];
+  if (hospital.verification_url) parts.push(`<a href="${hospital.verification_url}" target="_blank" rel="noopener" style="color:var(--teal-l);">Verify affiliation ↗</a>`);
+  if (hospital.verification_password) parts.push(`Code: ${hospital.verification_password}`);
+  infoEl.innerHTML = parts.join(' · ');
+}
+
+// On opening the sheet, silently check whether each already-filled
+// hospital field matches something in the reference table, so the
+// verification link/code shows immediately rather than only after a
+// fresh selection.
+async function restoreHospitalInfoOnLoad(staff) {
+  for (const fieldNum of [1, 2, 3]) {
+    const value = staff[`hospital_affiliation_${fieldNum}`];
+    if (!value) continue;
+    const { data } = await sb.from('hospital_affiliations_reference')
+      .select('facility_name, verification_url, verification_password')
+      .ilike('facility_name', value)
+      .limit(1)
+      .maybeSingle();
+    if (data) renderHospitalInfo(fieldNum, data);
+  }
+}
+
+
 // One shared modal ID + tab bar across Info/Notes/Files/Employment — each
 // of the four show*() functions below still builds its own full content
 // exactly as before (no internal logic changed), they just all target the
@@ -4379,9 +4452,21 @@ function showFullProfileSheet(staffId) {
         </div>
         <label class="inline-label">Hospital affiliations</label>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
-          <input class="inline-input" type="text" id="fpHospitalAffiliation1" value="${s.hospital_affiliation_1 || ''}" placeholder="Hospital 1" />
-          <input class="inline-input" type="text" id="fpHospitalAffiliation2" value="${s.hospital_affiliation_2 || ''}" placeholder="Hospital 2" />
-          <input class="inline-input" type="text" id="fpHospitalAffiliation3" value="${s.hospital_affiliation_3 || ''}" placeholder="Hospital 3" />
+          <div style="position:relative;">
+            <input class="inline-input" type="text" id="fpHospitalAffiliation1" value="${s.hospital_affiliation_1 || ''}" placeholder="Hospital 1" autocomplete="off" oninput="handleHospitalSearch(this, 1)" onblur="setTimeout(() => hideHospitalSuggestions(1), 200)" />
+            <div id="fpHospital1Suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+            <div id="fpHospital1Info" style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;"></div>
+          </div>
+          <div style="position:relative;">
+            <input class="inline-input" type="text" id="fpHospitalAffiliation2" value="${s.hospital_affiliation_2 || ''}" placeholder="Hospital 2" autocomplete="off" oninput="handleHospitalSearch(this, 2)" onblur="setTimeout(() => hideHospitalSuggestions(2), 200)" />
+            <div id="fpHospital2Suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+            <div id="fpHospital2Info" style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;"></div>
+          </div>
+          <div style="position:relative;">
+            <input class="inline-input" type="text" id="fpHospitalAffiliation3" value="${s.hospital_affiliation_3 || ''}" placeholder="Hospital 3" autocomplete="off" oninput="handleHospitalSearch(this, 3)" onblur="setTimeout(() => hideHospitalSuggestions(3), 200)" />
+            <div id="fpHospital3Suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+            <div id="fpHospital3Info" style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;"></div>
+          </div>
         </div>
       </div>
       ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
@@ -4419,6 +4504,8 @@ function showFullProfileSheet(staffId) {
     document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'block' : 'none';
     document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
   });
+
+  restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
 }
 
 async function saveFullProfileSheet(staffId) {
@@ -5909,11 +5996,15 @@ function loadDisciplinesPanel() {
   const exemptContainer = document.getElementById('caqhExemptListCred');
   if (exemptContainer) {
     const exemptList = getCaqhExemptDisciplines();
-    exemptContainer.innerHTML = disciplines.map(d => `
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#fff;cursor:pointer;">
-        <input type="checkbox" ${exemptList.includes(d) ? 'checked' : ''} onchange="toggleCaqhExempt('${d.replace(/'/g,"\\'")}', this.checked)" />
-        ${d}
-      </label>`).join('');
+    exemptContainer.innerHTML = disciplines.map(d => {
+      const isExempt = exemptList.includes(d);
+      return `<button type="button" onclick="toggleCaqhExempt('${d.replace(/'/g,"\\'")}', ${!isExempt})"
+        style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:13px;cursor:pointer;font-weight:600;
+        background:${isExempt ? 'var(--teal)' : 'transparent'};color:${isExempt ? '#fff' : 'rgba(255,255,255,.6)'};
+        border:1px solid ${isExempt ? 'var(--teal)' : 'rgba(255,255,255,.2)'};">
+        ${isExempt ? '✓ ' : ''}${d}
+      </button>`;
+    }).join('');
   }
 }
 
@@ -5931,6 +6022,7 @@ async function toggleCaqhExempt(discipline, isExempt) {
   if (error) { toast('Error: ' + error.message, true); return; }
 
   currentCompany.caqh_exempt_disciplines = updated;
+  loadDisciplinesPanel();
   toast(isExempt ? `${discipline} is now CAQH-exempt` : `${discipline} no longer CAQH-exempt`);
 }
 
