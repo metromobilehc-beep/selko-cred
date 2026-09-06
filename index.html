@@ -2550,6 +2550,41 @@ async function checkStaffCompliance(staffId) {
   }
 }
 
+// Compresses an image file client-side before it's stored — resizes to a
+// generous max dimension and re-encodes as JPEG. Deliberately conservative
+// (2000px, 85% quality) since phone photos are typically far higher
+// resolution than legibility of printed text actually requires. Only
+// touches the copy being uploaded — never mutates the source file input,
+// so scanCredential() (which reads that same input independently) always
+// sees the original, full-quality file regardless of click order.
+// Non-image files (PDFs) and anything that fails to process pass through
+// unchanged — compression is never allowed to block an upload.
+async function compressImageFile(file) {
+  if (!file || !file.type || !file.type.startsWith('image/') || file.type === 'image/svg+xml') return file;
+
+  try {
+    const bitmap = await createImageBitmap(file);
+    const MAX_DIM = 2000;
+    const scale = Math.min(1, MAX_DIM / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0, w, h);
+
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.85));
+    if (!blob) return file; // encoding failed for some reason — fall back rather than block the upload
+
+    const newName = file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], newName, { type: 'image/jpeg' });
+  } catch (e) {
+    return file; // any failure (unsupported format, browser quirk) — just upload the original
+  }
+}
+
 async function uploadDoc() {
   const typeId  = document.getElementById('upType').value;
   const expDate = document.getElementById('upExp').value;
@@ -2575,10 +2610,11 @@ async function uploadDoc() {
 
   try {
     const docType = docTypes.find(d => d.id == typeId);
-    const ext  = file.name.split('.').pop();
+    const uploadFile = await compressImageFile(file);
+    const ext  = uploadFile.name.split('.').pop();
     const path = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}.${ext}`;
 
-    const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
+    const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, uploadFile, { contentType: uploadFile.type });
     if (stErr) throw stErr;
 
     // Optional second file (e.g. back of a license/ID)
@@ -2586,9 +2622,10 @@ async function uploadDoc() {
     const file2 = document.getElementById('upFile2').files[0];
     if (file2) {
       if (file2.size > 10 * 1024 * 1024) { showUpStatus('Back-of-document file must be under 10MB.', 'err'); return; }
-      const ext2  = file2.name.split('.').pop();
+      const uploadFile2 = await compressImageFile(file2);
+      const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}_back.${ext2}`;
-      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, file2, { contentType: file2.type });
+      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, uploadFile2, { contentType: uploadFile2.type });
       if (stErr2) throw stErr2;
       fileUrl2  = path2;
       fileName2 = file2.name;
@@ -5648,9 +5685,10 @@ async function adminUploadDoc() {
     // Upload file if provided
     if (file) {
       if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err'); return; }
-      const ext  = file.name.split('.').pop();
+      const uploadFile = await compressImageFile(file);
+      const ext  = uploadFile.name.split('.').pop();
       const path = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
-      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
+      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, uploadFile, { contentType: uploadFile.type });
       if (stErr) throw stErr;
       fileUrl  = path;  // store path, not public URL
       fileName = file.name;
@@ -5661,9 +5699,10 @@ async function adminUploadDoc() {
     const file2 = document.getElementById('auFile2').files[0] || document.getElementById('auCamera2').files[0];
     if (file2) {
       if (file2.size > 10 * 1024 * 1024) { showAuStatus('Back-of-document file must be under 10MB.', 'err'); return; }
-      const ext2  = file2.name.split('.').pop();
+      const uploadFile2 = await compressImageFile(file2);
+      const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}_back.${ext2}`;
-      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, file2, { contentType: file2.type });
+      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, uploadFile2, { contentType: uploadFile2.type });
       if (stErr2) throw stErr2;
       fileUrl2  = path2;
       fileName2 = file2.name;
