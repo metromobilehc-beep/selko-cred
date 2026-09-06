@@ -4098,7 +4098,7 @@ async function loadStaffTable() {
       : `<button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
     return `<tr>
     <td>${nameCell}</td>
-    <td style="font-size:12px;color:rgba(255,255,255,.5);">${isSyntheticStaffEmail(s.email) ? '<em style="opacity:.5;" title="No automated document reminders, no self-service password reset — both have to go through an admin manually.">No email (internal login only) ⚠</em>' : (s.email || '<em style="opacity:.4;">not set</em>')}</td>
+    <td style="font-size:12px;color:rgba(255,255,255,.5);">${isSyntheticStaffEmail(s.email) ? '<em style="opacity:.5;" title="No automated document reminders, no self-service password reset — both have to go through an admin manually. Update with a real email via Edit once one\'s available.">Placeholder — please update ⚠</em>' : (s.email || '<em style="opacity:.4;">not set</em>')}</td>
     <td style="font-size:12px;">
       ${s.job_title || '—'}
       <button onclick="showDisciplineModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.discipline||''}')"
@@ -4873,7 +4873,7 @@ function showAccountActionsMenu(staffId) {
 
   const rows = [];
   if (isSyntheticStaffEmail(s.email)) {
-    rows.push(`<div style="font-size:11px;color:rgba(255,255,255,.4);padding:4px 0;">🔒 Login already set up (no real email — internal login only). No automated document reminders reach them; password resets have to go through you.</div>`);
+    rows.push(`<div style="font-size:11px;color:rgba(255,255,255,.4);padding:4px 0;">🔒 Login already set up with a placeholder — please update to a real email via Edit when one's available. Until then: no automated document reminders reach them, and password resets have to go through you.</div>`);
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPasswordNoEmail('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
   } else if (s.email) {
     rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}','${esc(s.full_name)}','${s.email}')" style="width:100%;justify-content:flex-start;">Set up login</button>`);
@@ -11082,12 +11082,13 @@ function showNoEmailTempPasswordModal(fullName, loginId, tempPassword) {
       <h3 style="margin:0 0 10px;color:#0b2340;">Login ready for ${fullName}</h3>
       <p style="font-size:13px;color:#b3541e;margin-bottom:14px;">⚠ No real email — nothing was sent anywhere. Give both values below to ${fullName} directly.</p>
       <div style="background:#f4f6f9;border-radius:6px;padding:12px;margin-bottom:14px;">
-        <div style="font-size:12px;color:#64748b;">Login ID <span style="font-weight:400;">(not a real email — this is what they type in place of one)</span></div>
+        <div style="font-size:12px;color:#64748b;">Login ID <span style="font-weight:400;">(placeholder — not a real email, this is what they type in place of one)</span></div>
         <div style="font-size:13px;font-weight:600;margin-bottom:8px;user-select:all;word-break:break-all;">${loginId}</div>
         <div style="font-size:12px;color:#64748b;">Temporary password</div>
         <div style="font-size:16px;font-weight:700;font-family:monospace;user-select:all;">${tempPassword}</div>
       </div>
-      <p style="font-size:12px;color:#94a3b8;margin-bottom:14px;">They should change the password after logging in. Any future reset for this account has to go through an admin again, the same way — there's no email to send a reset link to.</p>
+      <p style="font-size:12px;color:#0d9488;margin-bottom:10px;">✎ Please update this to a real email address (via Edit) if ${fullName} ever gets one — that'll unlock automated reminders and self-service password resets for them.</p>
+      <p style="font-size:12px;color:#94a3b8;margin-bottom:14px;">They should change the password after logging in. Until then, any future reset for this account has to go through an admin again — there's no email to send a reset link to.</p>
       <button onclick="document.getElementById('tempPassModal').remove()" style="width:100%;padding:10px;background:#0d9488;color:#fff;border:none;border-radius:6px;font-weight:600;cursor:pointer;">Done</button>
     </div>`;
   document.body.appendChild(div);
