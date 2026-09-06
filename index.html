@@ -1179,7 +1179,7 @@
       </div>
 
       <!-- Payer network management -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" id="payersPanelSettings">
         <h2>Health Care Network list</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
         <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
@@ -2710,7 +2710,10 @@ function updateModuleTabVisibility(company, profile) {
   document.getElementById('tab-overview').style.display = showOverviewTab ? 'inline-flex' : 'none';
   document.getElementById('tab-docs').style.display = showDocCompliance ? 'inline-flex' : 'none';
   document.getElementById('tab-exp').style.display  = showDocCompliance ? 'inline-flex' : 'none';
-  document.getElementById('tab-insurance').style.display = (showDocCompliance && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
+  // Health Care Network tracks payer enrollment/in-network status — a
+  // credentialing concept, not a document-compliance one — so this is
+  // gated on Credentialing specifically, independent of has_credtrack.
+  document.getElementById('tab-insurance').style.display = (company.has_credentialing_addon && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
 }
 
 function updateProFeatureButtons() {
@@ -6739,6 +6742,12 @@ async function loadSettings() {
 
   const docTypesPanel = document.getElementById('docTypesPanelSettings');
   if (docTypesPanel) docTypesPanel.style.display = c.has_credtrack ? 'block' : 'none';
+
+  // Same reasoning as the Health Care Network tab itself — this manages
+  // payer network data, a credentialing concept, so it's gated on
+  // Credentialing rather than Documents, independent of has_credtrack.
+  const payersPanel = document.getElementById('payersPanelSettings');
+  if (payersPanel) payersPanel.style.display = c.has_credentialing_addon ? 'block' : 'none';
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
