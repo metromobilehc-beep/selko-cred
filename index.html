@@ -4261,7 +4261,7 @@ function showFullProfileSheet(staffId) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:760px;max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 50vw, 900px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
       <div style="width:150px;flex-shrink:0;padding:28px 12px;border-right:1px solid rgba(255,255,255,.1);">
         ${renderProviderTabBar(staffId, s.full_name, 'info')}
       </div>
@@ -6168,7 +6168,7 @@ async function showEmploymentHistory(staffId, staffName) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:640px;max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 50vw, 900px);max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
       <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
         ${renderProviderTabBar(staffId, staffName, 'employment')}
       </div>
@@ -6303,7 +6303,7 @@ async function showNotesLog(staffId, contextName) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:${staffId ? '520' : '440'}px;max-height:80vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(400px, 50vw, 900px);max-height:80vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
       ${staffId ? `<div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">${renderProviderTabBar(staffId, contextName, 'notes')}</div>` : ''}
       <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:80vh;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffId ? contextName : 'Organization Notes'}</div>
@@ -6459,7 +6459,7 @@ function showCredentialingFiles(staffId, staffName) {
   modal.id = PROVIDER_TAB_MODAL_ID;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;width:100%;max-width:540px;max-height:80vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 50vw, 900px);max-height:80vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
       <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
         ${renderProviderTabBar(staffId, staffName, 'files')}
       </div>
