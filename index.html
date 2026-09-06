@@ -1108,6 +1108,33 @@
         </div>
       </div>
 
+      <!-- Standard vs Pro comparison — same gating as Document types
+           below, since this is specifically about document-tracking
+           features. Shown regardless of current tier so a Standard
+           company can see what upgrading unlocks, and a Pro company can
+           confirm they already have everything. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="proComparisonPanelSettings">
+        <h2>Standard vs Pro — document features</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">You're currently on <span id="proComparisonCurrentTier" style="font-weight:700;color:#fff;"></span>. Here's exactly what changes on Pro.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Feature</th><th style="text-align:center;">Standard</th><th style="text-align:center;">Pro</th></tr></thead>
+            <tbody>
+              <tr><td>Create custom document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Duplicate a shared default type to customize it</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Access to Pro-only document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Detailed Missing Docs report (filterable, per-staff)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Bulk download all staff files</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Export compliance report (Excel / PDF)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Custom branding (logo, colors)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Upload, verify, track staff documents</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Overview stats, Expiration Tracker</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p id="proComparisonUpgradeNote" style="font-size:12px;color:rgba(255,255,255,.4);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
+      </div>
+
       <!-- Document type management — only relevant to the document-
            compliance module (has_credtrack). A Credentialing-only company
            has no Documents tab, no Missing Docs report, and no Expiration
@@ -4148,6 +4175,57 @@ const US_STATE_ABBREVIATIONS = {
   'west virginia':'WV', wisconsin:'WI', wyoming:'WY', 'district of columbia':'DC',
 };
 
+// Reverse map, formatted to match the reference sheet's exact naming
+// convention ("Alabama (AL)") — built once from the map above rather than
+// maintained as a second hardcoded list that could drift out of sync.
+const STATE_ABBREVIATION_TO_FULL_NAME = {};
+for (const [fullName, abbr] of Object.entries(US_STATE_ABBREVIATIONS)) {
+  const titled = fullName.replace(/\b\w/g, c => c.toUpperCase());
+  STATE_ABBREVIATION_TO_FULL_NAME[abbr] = `${titled} (${abbr})`;
+}
+
+// ══ STATE LICENSING BOARD VERIFICATION ══
+// Deliberately transparent about gaps — the source data (Juan's sheet) is
+// inconsistent about where PT/PTA fits for roughly the back half of
+// states, so a missing match gets an honest "no link on file" message
+// here rather than silently showing nothing, which would look identical
+// to "verified, nothing to flag."
+let _stateBoardInfoTimer;
+function updateStateBoardInfo() {
+  clearTimeout(_stateBoardInfoTimer);
+  _stateBoardInfoTimer = setTimeout(async () => {
+    const infoEl = document.getElementById('fpStateBoardInfo');
+    if (!infoEl) return;
+
+    const stateAbbr = (document.getElementById('fpLicenseState')?.value || '').trim().toUpperCase();
+    const discipline = (document.getElementById('fpDiscipline')?.value || '').trim();
+    if (!stateAbbr || !discipline) { infoEl.innerHTML = ''; return; }
+
+    const fullStateName = STATE_ABBREVIATION_TO_FULL_NAME[stateAbbr];
+    if (!fullStateName) { infoEl.innerHTML = ''; return; } // not a recognized US state code — nothing to look up
+
+    const { data } = await sb.from('state_licensing_board_reference')
+      .select('discipline_group, verification_url, notes')
+      .eq('state_name', fullStateName);
+
+    const match = (data || []).find(row => {
+      if (row.discipline_group === 'All') return true;
+      const tokens = row.discipline_group.split(',').map(t => t.trim().toUpperCase());
+      // The sheet uses "DPT" (the terminal degree) in its column labels
+      // where Metro's own discipline code is just "PT" — same discipline,
+      // different abbreviation convention, so both need to match.
+      const normalizedTokens = tokens.map(t => t === 'DPT' ? 'PT' : t);
+      return normalizedTokens.includes(discipline.toUpperCase());
+    });
+
+    if (match && match.verification_url) {
+      infoEl.innerHTML = `<a href="${match.verification_url}" target="_blank" rel="noopener" style="color:var(--teal-l);">Verify ${discipline} license in ${stateAbbr} ↗</a>${match.notes ? ` · ${match.notes}` : ''}`;
+    } else {
+      infoEl.innerHTML = `<span style="color:rgba(255,255,255,.3);">No board verification link on file for ${discipline} in ${stateAbbr}.</span>`;
+    }
+  }, 300);
+}
+
 function selectAddressSuggestion(prefix, index) {
   const result = window[`_addressResults_${prefix}`]?.[index];
   if (!result) return;
@@ -4354,7 +4432,8 @@ function showFullProfileSheet(staffId) {
         </div>
         <div>
           <label class="inline-label">License state</label>
-          <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" />
+          <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" oninput="updateStateBoardInfo()" />
+          <div id="fpStateBoardInfo" style="font-size:10px;color:rgba(255,255,255,.4);margin-top:4px;"></div>
         </div>
         <div>
           <label class="inline-label">License issued</label>
@@ -4529,9 +4608,11 @@ function showFullProfileSheet(staffId) {
     const nowPrescribes = PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
     document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'block' : 'none';
     document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
+    updateStateBoardInfo();
   });
 
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
+  updateStateBoardInfo(); // fire-and-forget — shows the board link (or an honest gap message) for whatever's already filled in
 }
 
 async function saveFullProfileSheet(staffId) {
@@ -6742,6 +6823,13 @@ async function loadSettings() {
 
   const docTypesPanel = document.getElementById('docTypesPanelSettings');
   if (docTypesPanel) docTypesPanel.style.display = c.has_credtrack ? 'block' : 'none';
+
+  const proComparisonPanel = document.getElementById('proComparisonPanelSettings');
+  if (proComparisonPanel) {
+    proComparisonPanel.style.display = c.has_credtrack ? 'block' : 'none';
+    document.getElementById('proComparisonCurrentTier').textContent = window._isPro ? 'Pro' : 'Standard';
+    document.getElementById('proComparisonUpgradeNote').style.display = window._isPro ? 'none' : 'block';
+  }
 
   // Same reasoning as the Health Care Network tab itself — this manages
   // payer network data, a credentialing concept, so it's gated on
