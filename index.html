@@ -2743,7 +2743,7 @@ function renderGlobalSearchResults(results, query, quickActions) {
       sub: n.staff_id ? (n.credtrack_staff?.full_name || 'Unknown provider') : 'Organization note',
       onclick: n.staff_id
         ? `showNotesLog('${n.staff_id}','${(n.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`
-        : `showNotesLog(null, 'Organization Notes')`,
+        : `switchTab('credentialing')`,
     }))));
   }
   if (results.files.length) {
