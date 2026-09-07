@@ -11841,6 +11841,19 @@ const DEMO_STAFF = [
   { full_name: 'Sam Okafor, PTA',      discipline: 'PTA',  job_title: 'Physical Therapist Assistant',     staff_type: 'clinician', license_type: 'PTA',  license_state: 'OK', license_number: null },
   { full_name: 'Devon Marsh',          discipline: '',     job_title: 'Office Coordinator',               staff_type: 'office',    license_type: null,   license_state: null, license_number: null },
   { full_name: 'Alex Kowalski',        discipline: '',     job_title: 'Agency Administrator',             staff_type: 'admin',     license_type: null,   license_state: null, license_number: null },
+  // Rich, fully-populated physician profile — not for the document tracker
+  // demo above, but so a sales demo can open one person's Full Profile and
+  // show off every credentialing-specific feature at once: Licenses,
+  // Education, Privileges, Claims, Employment, CAQH, DEA, board cert.
+  { full_name: 'Priya Sharma, MD', discipline: 'MD', job_title: 'Family Medicine Physician', staff_type: 'clinician',
+    license_type: 'MD', license_state: 'OK', license_number: 'MD-DEMO-9001',
+    license_issued_date: daysFromNow(-2200), license_expiration_date: daysFromNow(400),
+    npi_number: '1234567890', date_of_birth: '1985-06-14', gender: 'Female',
+    phone: '405-555-0142', address: '4200 N Lincoln Blvd', city: 'Oklahoma City', state: 'OK', zip: '73105',
+    caqh_id: '18293745', caqh_issued_date: daysFromNow(-365), caqh_expiration_date: daysFromNow(90),
+    dea_number: 'BS1234563', dea_issued_date: daysFromNow(-1000), dea_expiration_date: daysFromNow(430), dea_schedules: 'II, III, IV, V',
+    primary_specialty: 'Family Medicine', board_certified: true, board_name: 'American Board of Family Medicine',
+    board_certification_date: daysFromNow(-1800), board_certification_expiration_date: daysFromNow(700) },
 ];
 
 function daysFromNow(n) {
@@ -11930,6 +11943,41 @@ async function resetDemoCompanyData(companyId) {
         date_in_network: i === 0 ? daysFromNow(-90) : null,
       }));
       await sb.from('staff_payer_networks').insert(networkRows);
+    }
+
+    // Rich credentialing showcase data for the demo physician — education,
+    // hospital privileges, a resolved malpractice claim, and employment
+    // history with a gap explanation, so a sales demo can open her Full
+    // Profile and show every credentialing tab populated at once.
+    const physician = byName['Priya Sharma, MD'];
+    if (physician) {
+      await sb.from('staff_education_training').insert([
+        { staff_id: physician.id, training_type: 'Medical School', institution: 'University of Oklahoma College of Medicine',
+          address: '940 Stanton L Young Blvd', city: 'Oklahoma City', state: 'OK', zip: '73104',
+          start_date: daysFromNow(-4380), end_date: daysFromNow(-2920), completed: true },
+        { staff_id: physician.id, training_type: 'Residency', specialty: 'Family Medicine', institution: 'OU Health Family Medicine Residency',
+          address: '900 N Portland Ave', city: 'Oklahoma City', state: 'OK', zip: '73107',
+          program_director: 'Dr. Michael Trent', start_date: daysFromNow(-2920), end_date: daysFromNow(-1825), completed: true },
+      ]);
+
+      await sb.from('staff_hospital_privileges').insert([
+        { staff_id: physician.id, hospital_name: 'OU Health University of Oklahoma Medical Center', privilege_type: 'Full unrestricted',
+          address: '1200 Everett Dr', city: 'Oklahoma City', state: 'OK', zip: '73104', start_date: daysFromNow(-1800) },
+      ]);
+
+      await sb.from('staff_malpractice_claims').insert([
+        { staff_id: physician.id, claim_status: 'Closed — dismissed', date_filed: daysFromNow(-900), date_closed: daysFromNow(-600),
+          description: 'Sample data for demo purposes — claim dismissed, no payment made.' },
+      ]);
+
+      await sb.from('staff_employment_history').insert([
+        { staff_id: physician.id, employer_name: 'Metro Mobile Health Care', position_title: 'Family Medicine Physician',
+          address: '6153 S Quebec Ave', city: 'Tulsa', state: 'OK', zip: '74136', start_date: daysFromNow(-365), is_current: true,
+          supervisor_name: 'Stephen Mace, DPT', supervisor_phone: '918-555-0100' },
+        { staff_id: physician.id, employer_name: 'Sample Family Practice of Norman', position_title: 'Family Medicine Physician',
+          address: '3300 Marshall Ave', city: 'Norman', state: 'OK', zip: '73072', start_date: daysFromNow(-1825), end_date: daysFromNow(-425),
+          reason_for_leaving: 'Relocated closer to Tulsa', gap_explanation: 'Sample data for demo purposes — 5-month gap for relocation and licensing transfer.' },
+      ]);
     }
 
     toast('✓ Demo data reset — fresh fictional staff and sample credentials loaded');
