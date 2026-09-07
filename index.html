@@ -7268,9 +7268,15 @@ async function loadSettings() {
 
   const proComparisonPanel = document.getElementById('proComparisonPanelSettings');
   if (proComparisonPanel) {
-    proComparisonPanel.style.display = c.has_credtrack ? 'block' : 'none';
-    document.getElementById('proComparisonCurrentTier').textContent = window._isPro ? 'Pro' : 'Standard';
-    document.getElementById('proComparisonUpgradeNote').style.display = window._isPro ? 'none' : 'block';
+    // Only relevant as an upsell nudge for Standard — Pro and Enterprise
+    // already have everything this panel is comparing, so showing it to
+    // them would just be pointless noise, not useful confirmation.
+    const showComparison = c.has_credtrack && !window._isPro;
+    proComparisonPanel.style.display = showComparison ? 'block' : 'none';
+    if (showComparison) {
+      document.getElementById('proComparisonCurrentTier').textContent = 'Standard';
+      document.getElementById('proComparisonUpgradeNote').style.display = 'block';
+    }
   }
 
   // Same reasoning as the Health Care Network tab itself — this manages
