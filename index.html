@@ -761,6 +761,18 @@
               <input class="inline-input" type="text" id="setOrgNpi" placeholder="e.g. 1234567890" />
             </div>
             <div>
+              <label class="inline-label">Organizational Medicaid ID</label>
+              <input class="inline-input" type="text" id="setMedicaidId" placeholder="If applicable" />
+            </div>
+            <div>
+              <label class="inline-label">Taxonomy code</label>
+              <input class="inline-input" type="text" id="setTaxonomyCode" placeholder="e.g. 261QP2000X" />
+            </div>
+            <div>
+              <label class="inline-label">General fax number</label>
+              <input class="inline-input" type="text" id="setOrgFax" oninput="formatPhoneInput(this)" />
+            </div>
+            <div>
               <label class="inline-label">Group specialty</label>
               <input class="inline-input" type="text" id="setGroupSpecialty" placeholder="e.g. Home Health / Physical Therapy" />
             </div>
@@ -898,6 +910,10 @@
             <div>
               <label style="font-size:11px;color:rgba(255,255,255,.5);">Zip</label>
               <input class="inline-input" type="text" id="newLocationZip" style="width:90px;" />
+            </div>
+            <div>
+              <label style="font-size:11px;color:rgba(255,255,255,.5);">County</label>
+              <input class="inline-input" type="text" id="newLocationCounty" style="width:110px;" />
             </div>
             <div>
               <label style="font-size:11px;color:rgba(255,255,255,.5);">Phone</label>
@@ -6902,7 +6918,7 @@ async function loadCompanyLocationsPanel() {
         ${loc.is_primary ? '<span style="font-size:9px;font-weight:700;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:1px 5px;margin-right:6px;">PRIMARY</span>' : ''}
         ${loc.location_name || 'Unnamed location'}
       </span>
-      <span style="font-size:12px;color:rgba(255,255,255,.5);flex:2;min-width:220px;">${[loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ') || '—'}${loc.phone ? ' · ' + loc.phone : ''}</span>
+      <span style="font-size:12px;color:rgba(255,255,255,.5);flex:2;min-width:220px;">${[loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ') || '—'}${loc.county ? ' · ' + loc.county + ' County' : ''}${loc.phone ? ' · ' + loc.phone : ''}</span>
       ${!loc.is_primary ? `<button class="btn btn-sm btn-gold" onclick="setPrimaryLocation('${loc.id}')" style="font-size:11px;padding:3px 8px;">Make Primary</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deleteCompanyLocation('${loc.id}','${(loc.location_name||'this location').replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
     </div>`).join('');
@@ -6914,6 +6930,7 @@ async function addCompanyLocation() {
   const city = document.getElementById('newLocationCity').value.trim();
   const state = document.getElementById('newLocationState').value.trim();
   const zip = document.getElementById('newLocationZip').value.trim();
+  const county = document.getElementById('newLocationCounty').value.trim();
   const phone = document.getElementById('newLocationPhone').value.trim();
 
   if (!name && !address) { toast('Enter at least a location name or address.', true); return; }
@@ -6928,13 +6945,14 @@ async function addCompanyLocation() {
     city: city || null,
     state: state || null,
     zip: zip || null,
+    county: county || null,
     phone: phone || null,
     is_primary: isFirst, // the very first location added is automatically Primary
     sort_order: count || 0,
   });
   if (error) { toast('Error: ' + error.message, true); return; }
 
-  ['newLocationName','newLocationAddress','newLocationCity','newLocationState','newLocationZip','newLocationPhone'].forEach(id => {
+  ['newLocationName','newLocationAddress','newLocationCity','newLocationState','newLocationZip','newLocationCounty','newLocationPhone'].forEach(id => {
     document.getElementById(id).value = '';
   });
   toast(`✓ ${name || 'Location'} added`);
@@ -8403,6 +8421,9 @@ async function loadCredentialingTab() {
   const c = currentCompany;
   document.getElementById('setTaxId').value  = c.tax_id || '';
   document.getElementById('setOrgNpi').value = c.org_npi || '';
+  document.getElementById('setMedicaidId').value = c.medicaid_id || '';
+  document.getElementById('setTaxonomyCode').value = c.taxonomy_code || '';
+  document.getElementById('setOrgFax').value = c.fax || '';
   document.getElementById('setLegalName').value        = c.legal_business_name || '';
   document.getElementById('setDirectoryName').value    = c.provider_directory_name || '';
   document.getElementById('setGroupSpecialty').value   = c.group_specialty || '';
@@ -8455,6 +8476,9 @@ const CRED_DATA_SOURCES = [
     ['company.provider_directory_name', 'Provider directory name'],
     ['company.tax_id', 'Tax ID (EIN)'],
     ['company.org_npi', 'Organizational NPI'],
+    ['company.medicaid_id', 'Organizational Medicaid ID'],
+    ['company.taxonomy_code', 'Taxonomy code'],
+    ['company.fax', 'General fax number'],
     ['company.group_specialty', 'Group specialty'],
     ['company.virtual_only', 'Virtual only? (Yes/No)'],
     ['company.payment_remittance_address', 'Payment remittance address'],
@@ -8463,12 +8487,15 @@ const CRED_DATA_SOURCES = [
     ['company.notice_address_phone', 'Notice address phone'],
     ['company.location_1_name', 'Primary location — name'],
     ['company.location_1_address', 'Primary location — address'],
+    ['company.location_1_county', 'Primary location — county'],
     ['company.location_1_phone', 'Primary location — phone'],
     ['company.location_2_name', 'Secondary location — name'],
     ['company.location_2_address', 'Secondary location — address'],
+    ['company.location_2_county', 'Secondary location — county'],
     ['company.location_2_phone', 'Secondary location — phone'],
     ['company.location_3_name', 'Tertiary location — name'],
     ['company.location_3_address', 'Tertiary location — address'],
+    ['company.location_3_county', 'Tertiary location — county'],
     ['company.location_3_phone', 'Tertiary location — phone'],
     ['company.credentialing_contact_name', 'Credentialing contact — name'],
     ['company.credentialing_contact_email', 'Credentialing contact — email'],
@@ -8666,6 +8693,10 @@ function guessDefaultMapping(fieldName) {
     [/group.*practice.*name|practice.*name|directory/, 'company.provider_directory_name'],
     [/^tin$|tax.*id/, 'company.tax_id'],
     [/group.*npi|practice.*npi/, 'company.org_npi'],
+    [/medicaid/, 'company.medicaid_id'],
+    [/taxonomy/, 'company.taxonomy_code'],
+    [/^fax$|general.*fax/, 'company.fax'],
+    [/^county$|^county_2$|^county_3$/, 'company.location_1_county'],
     [/specialty/, 'staff.discipline'],
     [/virtual/, 'company.virtual_only'],
     [/remittance/, 'company.payment_remittance_address'],
@@ -8823,6 +8854,7 @@ async function generateFilledForm(templateId) {
       const n = i + 1;
       companyWithLocations[`location_${n}_name`] = loc.location_name || '';
       companyWithLocations[`location_${n}_address`] = [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
+      companyWithLocations[`location_${n}_county`] = loc.county || '';
       companyWithLocations[`location_${n}_phone`] = loc.phone || '';
     });
 
@@ -9229,6 +9261,9 @@ async function saveCompanySettings() {
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
+    medicaid_id: document.getElementById('setMedicaidId').value.trim() || null,
+    taxonomy_code: document.getElementById('setTaxonomyCode').value.trim() || null,
+    fax: document.getElementById('setOrgFax').value.trim() || null,
     legal_business_name:        document.getElementById('setLegalName').value.trim() || null,
     provider_directory_name:    document.getElementById('setDirectoryName').value.trim() || null,
     group_specialty:            document.getElementById('setGroupSpecialty').value.trim() || null,
