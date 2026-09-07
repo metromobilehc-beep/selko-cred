@@ -10744,14 +10744,18 @@ function renderOvCredAttentionList() {
   }
 
   list.innerHTML = filtered.map(item => {
-    const worstBadge = item.issues.some(i => i.urgent)
-      ? { style: 'background:rgba(239,68,68,.15);color:#ef4444;', label: item.issues.find(i => i.urgent).label }
-      : { style: 'background:rgba(245,158,11,.15);color:#f59e0b;', label: item.issues[0].label };
-    const extra = item.issues.length > 1 ? ` +${item.issues.length - 1} more` : '';
-    const allIssuesTooltip = item.issues.map(i => i.label).join(', ');
-    return `<div class="ov-attention-row" style="cursor:pointer;" onclick="showFullProfileSheet('${item.staff.id}')" title="${allIssuesTooltip}">
-      <span>${item.staff.full_name}${extra}</span>
-      <span class="ov-days-badge" style="${worstBadge.style}">${worstBadge.label}</span>
+    // Every issue gets its own visible badge now — no more picking one
+    // "worst" badge and hiding the rest behind a "+N more" that only
+    // showed on hover. Urgent issues (red) sort before routine ones
+    // (amber) so the most important thing is always the first badge.
+    const sortedIssues = [...item.issues].sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0));
+    const badges = sortedIssues.map(i => {
+      const style = i.urgent ? 'background:rgba(239,68,68,.15);color:#ef4444;' : 'background:rgba(245,158,11,.15);color:#f59e0b;';
+      return `<span class="ov-days-badge" style="${style}">${i.label}</span>`;
+    }).join('');
+    return `<div class="ov-attention-row" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px;" onclick="showFullProfileSheet('${item.staff.id}')">
+      <span>${item.staff.full_name}</span>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;">${badges}</div>
     </div>`;
   }).join('');
 }
