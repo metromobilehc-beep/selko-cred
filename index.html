@@ -733,15 +733,6 @@
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-top:12px;">Contact Selko to upgrade to Full.</p>
         </div>
 
-        <!-- Your data is always yours — a self-service export any company
-             can run themselves, any time, no need to ask Selko for it.
-             Deliberately staff credentialing data only, not documents. -->
-        <div class="dark-panel" style="margin-bottom:16px;">
-          <h2>📤 Export your credentialing data</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Your staff credentialing data belongs to you — export a complete copy any time, for your own records or to take with you if you ever leave. Covers every staff member's license, NPI, CAQH, and DEA info. Uploaded documents are part of the separate document-tracking service and aren't included here.</p>
-          <button class="btn btn-sm btn-teal" onclick="exportCredentialingDataExcel()">⬇ Export all staff credentialing data (Excel)</button>
-        </div>
-
         <!-- Org-level credentialing info -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Organization credentialing profile</h2>
@@ -1015,6 +1006,18 @@
         <div class="dark-panel" id="credTemplatesLock" style="display:none;">
           <h2>Credentialing form templates <span style="font-size:10px;color:var(--gold);margin-left:6px;">FULL CREDENTIALING</span></h2>
           <p style="color:rgba(255,255,255,.6);font-size:13px;">One-click filled payer applications — generated straight from the profile and staff data above. Included on Full Credentialing; contact Selko to upgrade from Basic.</p>
+        </div>
+
+        <!-- Your data is always yours — a self-service export any company
+             can run themselves, any time, no need to ask Selko for it.
+             Deliberately staff credentialing data only, not documents.
+             Moved to the bottom of the tab — occasional-use utility, not
+             something that needs to compete with the actual credentialing
+             tools for primary billing. -->
+        <div class="dark-panel" style="margin-bottom:16px;">
+          <h2>📤 Export your credentialing data</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Your staff credentialing data belongs to you — export a complete copy any time, for your own records or to take with you if you ever leave. Covers every staff member's license, NPI, CAQH, and DEA info. Uploaded documents are part of the separate document-tracking service and aren't included here.</p>
+          <button class="btn btn-sm btn-teal" onclick="exportCredentialingDataExcel()">⬇ Export all staff credentialing data (Excel)</button>
         </div>
       </div>
 
