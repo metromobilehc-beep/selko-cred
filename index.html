@@ -1266,7 +1266,7 @@
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Required</th><th>Applies To</th><th>Self-upload</th><th id="partnerVisibleTh" style="display:none;">Partner visible</th><th>Actions</th>
+              <th>Name</th><th>Expires</th><th>Required</th><th>Applies To</th><th>Self-upload</th><th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
@@ -1364,6 +1364,16 @@
             <table>
               <thead><tr><th>Name</th><th>Email</th><th>Agency</th><th>Status</th><th>Actions</th></tr></thead>
               <tbody id="partnerUsersTbody"></tbody>
+            </table>
+          </div>
+        </div>
+        <div style="margin-bottom:20px;">
+          <div style="font-size:13px;font-weight:600;color:#fff;margin-bottom:8px;">Step 4 — Document type visibility</div>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Which document types partners can see across all their assigned staff. Moved here from the main Document Types table, since this is specifically about partner access, not something every company needs to see.</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Document type</th><th>Visible to partners?</th><th>Scope</th></tr></thead>
+              <tbody id="partnerDocTypesTbody"></tbody>
             </table>
           </div>
         </div>
@@ -8455,6 +8465,7 @@ async function loadSettings() {
     await loadCredtrackAgencies();
     await loadAgencyAssignmentsTable();
     await loadPartnerUsersTable();
+    await loadPartnerDocTypesPanel();
   } else {
     partnerPanel.style.display = 'none';
     if (partnersHeader) partnersHeader.style.display = 'none';
@@ -8488,13 +8499,9 @@ async function loadDocTypesTable() {
 
   const partnerRecs = await getActivePartnerRecommendations();
 
-  const partnerCol = document.getElementById('partnerVisibleTh');
-  const hasPartnerAccess = !!currentCompany.has_partner_access;
-  if (partnerCol) partnerCol.style.display = hasPartnerAccess ? '' : 'none';
-
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = `<tr><td colspan="${hasPartnerAccess ? 7 : 6}" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No document types found.</td></tr>`;
     return;
   }
 
@@ -8518,7 +8525,7 @@ async function loadDocTypesTable() {
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 
-  const colCount = hasPartnerAccess ? 7 : 6;
+  const colCount = 6;
 
   tbody.innerHTML = sortedCategories.map((cat, catIdx) => {
     const catSlug = 'cat' + catIdx;
@@ -8571,16 +8578,6 @@ async function loadDocTypesTable() {
         ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}${lockedForMe ? ' 🔒' : ''}
       </span>
     </td>
-    ${hasPartnerAccess ? `<td>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
-        <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
-          onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
-          ${t.partner_visible ? '✓ Visible' : 'Hidden'}
-        </span>
-        ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
-               class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : ''}
-      </div>
-    </td>` : ''}
     <td><div class="td-actions" style="gap:4px;">
       ${lockedForMe
         ? `<span style="font-size:11px;color:rgba(255,255,255,.3);" title="${lockTitle}">${t.category || 'Other'} 🔒</span>`
@@ -8887,6 +8884,26 @@ async function toggleDocTypePartnerVisible(id, currentlyVisible) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(!currentlyVisible ? 'Now visible to agency partners' : 'Hidden from agency partners');
   await loadDocTypesTable();
+  if (document.getElementById('partnerDocTypesTbody')) await loadPartnerDocTypesPanel();
+}
+
+async function loadPartnerDocTypesPanel() {
+  const tbody = document.getElementById('partnerDocTypesTbody');
+  if (!tbody) return;
+  tbody.innerHTML = docTypes.map(t => `
+    <tr>
+      <td>${t.name}</td>
+      <td>
+        <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
+          onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
+          ${t.partner_visible ? '✓ Visible' : 'Hidden'}
+        </span>
+      </td>
+      <td>
+        ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
+               class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:11px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : '—'}
+      </td>
+    </tr>`).join('');
 }
 
 async function showDocTypePartnerScopeModal(id, name, currentAgencyIds) {
@@ -8928,6 +8945,7 @@ async function confirmDocTypePartnerScope(id) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(checked.length ? `Now visible only to ${checked.length} agenc${checked.length === 1 ? 'y' : 'ies'}` : 'Now visible to all partner agencies');
   await loadDocTypesTable();
+  if (document.getElementById('partnerDocTypesTbody')) await loadPartnerDocTypesPanel();
 }
 
 function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly) {
