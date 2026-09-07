@@ -7336,7 +7336,12 @@ async function showEducationTraining(staffId, staffName) {
         </div>
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="etInstitution" placeholder="Institution" />
-          <input class="inline-input" type="text" id="etAddress" placeholder="Institution address" />
+          <input class="inline-input" type="text" id="etAddress" placeholder="Street address" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="etCity" placeholder="City" />
+          <input class="inline-input" type="text" id="etState" placeholder="State/Country" />
+          <input class="inline-input" type="text" id="etZip" placeholder="Postal code" />
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="etProgramDirector" placeholder="Program director" />
@@ -7387,7 +7392,7 @@ async function loadEducationTraining(staffId) {
       <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
         <div>
           <div style="font-size:13px;color:#fff;font-weight:600;">${e.training_type || 'Entry'}${e.specialty ? ' — ' + e.specialty : ''}${e.completed ? ' <span style="color:var(--teal-l);font-size:10px;">✓ Completed</span>' : ''}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.5);">${e.institution || 'Unnamed institution'} · ${dateRange}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);">${e.institution || 'Unnamed institution'}${e.city ? ` (${[e.city, e.state].filter(Boolean).join(', ')})` : ''} · ${dateRange}</div>
           ${e.program_director ? `<div style="font-size:11px;color:rgba(255,255,255,.4);">Program director: ${e.program_director}${e.current_program_director ? ' (currently: ' + e.current_program_director + ')' : ''}</div>` : ''}
         </div>
         <button onclick="deleteEducationTraining('${e.id}','${staffId}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;white-space:nowrap;">Delete</button>
@@ -7411,6 +7416,9 @@ async function addEducationTraining(staffId) {
     specialty: document.getElementById('etSpecialty').value.trim() || null,
     institution: institution,
     address: document.getElementById('etAddress').value.trim() || null,
+    city: document.getElementById('etCity').value.trim() || null,
+    state: document.getElementById('etState').value.trim() || null,
+    zip: document.getElementById('etZip').value.trim() || null,
     program_director: document.getElementById('etProgramDirector').value.trim() || null,
     current_program_director: document.getElementById('etCurrentProgramDirector').value.trim() || null,
     start_date: document.getElementById('etStartDate').value || null,
@@ -7419,7 +7427,7 @@ async function addEducationTraining(staffId) {
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  ['etSpecialty','etInstitution','etAddress','etProgramDirector','etCurrentProgramDirector','etStartDate','etEndDate'].forEach(id => {
+  ['etSpecialty','etInstitution','etAddress','etCity','etState','etZip','etProgramDirector','etCurrentProgramDirector','etStartDate','etEndDate'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('etType').value = '';
@@ -7458,7 +7466,12 @@ async function showHospitalPrivileges(staffId, staffName) {
           <input class="inline-input" type="text" id="hpHospitalName" placeholder="Hospital name" />
           <input class="inline-input" type="text" id="hpPrivilegeType" placeholder="Type (e.g. Provisional, Full)" />
         </div>
-        <input class="inline-input" type="text" id="hpAddress" placeholder="Hospital address" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <input class="inline-input" type="text" id="hpAddress" placeholder="Street address" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="hpCity" placeholder="City" />
+          <input class="inline-input" type="text" id="hpState" placeholder="State/Country" />
+          <input class="inline-input" type="text" id="hpZip" placeholder="Postal code" />
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
           <div>
             <label style="font-size:10px;color:rgba(255,255,255,.4);">Start date</label>
@@ -7500,7 +7513,7 @@ async function loadHospitalPrivileges(staffId) {
       <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
         <div>
           <div style="font-size:13px;color:#fff;font-weight:600;">${p.hospital_name || 'Unnamed hospital'}${p.privilege_type ? ' — ' + p.privilege_type : ''}</div>
-          <div style="font-size:11px;color:rgba(255,255,255,.5);">${p.address ? p.address + ' · ' : ''}${dateRange}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);">${p.address ? p.address + (p.city ? `, ${[p.city, p.state].filter(Boolean).join(', ')}` : '') + ' · ' : ''}${dateRange}</div>
         </div>
         <button onclick="deleteHospitalPrivilege('${p.id}','${staffId}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;white-space:nowrap;">Delete</button>
       </div>
@@ -7520,12 +7533,15 @@ async function addHospitalPrivilege(staffId) {
     hospital_name: hospitalName,
     privilege_type: document.getElementById('hpPrivilegeType').value.trim() || null,
     address: document.getElementById('hpAddress').value.trim() || null,
+    city: document.getElementById('hpCity').value.trim() || null,
+    state: document.getElementById('hpState').value.trim() || null,
+    zip: document.getElementById('hpZip').value.trim() || null,
     start_date: document.getElementById('hpStartDate').value || null,
     end_date: document.getElementById('hpEndDate').value || null,
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  ['hpHospitalName','hpPrivilegeType','hpAddress','hpStartDate','hpEndDate'].forEach(id => {
+  ['hpHospitalName','hpPrivilegeType','hpAddress','hpCity','hpState','hpZip','hpStartDate','hpEndDate'].forEach(id => {
     document.getElementById(id).value = '';
   });
 
@@ -9682,6 +9698,9 @@ const CRED_DATA_SOURCES = [
     ['staff.education_1_specialty', 'Education/training 1 — specialty'],
     ['staff.education_1_institution', 'Education/training 1 — institution'],
     ['staff.education_1_address', 'Education/training 1 — institution address'],
+    ['staff.education_1_city', 'Education/training 1 — institution city'],
+    ['staff.education_1_state', 'Education/training 1 — institution state/country'],
+    ['staff.education_1_zip', 'Education/training 1 — institution postal code'],
     ['staff.education_1_program_director', 'Education/training 1 — program director'],
     ['staff.education_1_current_program_director', 'Education/training 1 — current program director'],
     ['staff.education_1_start_date', 'Education/training 1 — start date'],
@@ -9691,6 +9710,9 @@ const CRED_DATA_SOURCES = [
     ['staff.education_2_specialty', 'Education/training 2 — specialty'],
     ['staff.education_2_institution', 'Education/training 2 — institution'],
     ['staff.education_2_address', 'Education/training 2 — institution address'],
+    ['staff.education_2_city', 'Education/training 2 — institution city'],
+    ['staff.education_2_state', 'Education/training 2 — institution state/country'],
+    ['staff.education_2_zip', 'Education/training 2 — institution postal code'],
     ['staff.education_2_program_director', 'Education/training 2 — program director'],
     ['staff.education_2_current_program_director', 'Education/training 2 — current program director'],
     ['staff.education_2_start_date', 'Education/training 2 — start date'],
@@ -9700,6 +9722,9 @@ const CRED_DATA_SOURCES = [
     ['staff.education_3_specialty', 'Education/training 3 — specialty'],
     ['staff.education_3_institution', 'Education/training 3 — institution'],
     ['staff.education_3_address', 'Education/training 3 — institution address'],
+    ['staff.education_3_city', 'Education/training 3 — institution city'],
+    ['staff.education_3_state', 'Education/training 3 — institution state/country'],
+    ['staff.education_3_zip', 'Education/training 3 — institution postal code'],
     ['staff.education_3_program_director', 'Education/training 3 — program director'],
     ['staff.education_3_current_program_director', 'Education/training 3 — current program director'],
     ['staff.education_3_start_date', 'Education/training 3 — start date'],
@@ -9707,16 +9732,25 @@ const CRED_DATA_SOURCES = [
     ['staff.education_3_completed', 'Education/training 3 — completed?'],
     ['staff.hospital_privilege_1_name', 'Hospital privilege 1 — hospital name'],
     ['staff.hospital_privilege_1_address', 'Hospital privilege 1 — address'],
+    ['staff.hospital_privilege_1_city', 'Hospital privilege 1 — city'],
+    ['staff.hospital_privilege_1_state', 'Hospital privilege 1 — state/country'],
+    ['staff.hospital_privilege_1_zip', 'Hospital privilege 1 — postal code'],
     ['staff.hospital_privilege_1_type', 'Hospital privilege 1 — privilege type'],
     ['staff.hospital_privilege_1_start_date', 'Hospital privilege 1 — start date'],
     ['staff.hospital_privilege_1_end_date', 'Hospital privilege 1 — end date'],
     ['staff.hospital_privilege_2_name', 'Hospital privilege 2 — hospital name'],
     ['staff.hospital_privilege_2_address', 'Hospital privilege 2 — address'],
+    ['staff.hospital_privilege_2_city', 'Hospital privilege 2 — city'],
+    ['staff.hospital_privilege_2_state', 'Hospital privilege 2 — state/country'],
+    ['staff.hospital_privilege_2_zip', 'Hospital privilege 2 — postal code'],
     ['staff.hospital_privilege_2_type', 'Hospital privilege 2 — privilege type'],
     ['staff.hospital_privilege_2_start_date', 'Hospital privilege 2 — start date'],
     ['staff.hospital_privilege_2_end_date', 'Hospital privilege 2 — end date'],
     ['staff.hospital_privilege_3_name', 'Hospital privilege 3 — hospital name'],
     ['staff.hospital_privilege_3_address', 'Hospital privilege 3 — address'],
+    ['staff.hospital_privilege_3_city', 'Hospital privilege 3 — city'],
+    ['staff.hospital_privilege_3_state', 'Hospital privilege 3 — state/country'],
+    ['staff.hospital_privilege_3_zip', 'Hospital privilege 3 — postal code'],
     ['staff.hospital_privilege_3_type', 'Hospital privilege 3 — privilege type'],
     ['staff.hospital_privilege_3_start_date', 'Hospital privilege 3 — start date'],
     ['staff.hospital_privilege_3_end_date', 'Hospital privilege 3 — end date'],
@@ -9921,6 +9955,7 @@ function guessDefaultMapping(fieldName) {
     [/^county$|^county_2$|^county_3$/, 'company.location_1_county'],
     [/primary specialty/, 'staff.primary_specialty'],
     [/secondary specialty/, 'staff.secondary_specialty'],
+    [/postgraduate.*specialty|education.*specialty/, 'staff.education_1_specialty'],
     [/specialty/, 'staff.discipline'],
     [/virtual/, 'company.virtual_only'],
     [/remittance/, 'company.payment_remittance_address'],
@@ -10130,6 +10165,9 @@ async function generateFilledForm(templateId) {
       staffWithLicenses[`education_${n}_specialty`] = ed.specialty || '';
       staffWithLicenses[`education_${n}_institution`] = ed.institution || '';
       staffWithLicenses[`education_${n}_address`] = ed.address || '';
+      staffWithLicenses[`education_${n}_city`] = ed.city || '';
+      staffWithLicenses[`education_${n}_state`] = ed.state || '';
+      staffWithLicenses[`education_${n}_zip`] = ed.zip || '';
       staffWithLicenses[`education_${n}_program_director`] = ed.program_director || '';
       staffWithLicenses[`education_${n}_current_program_director`] = ed.current_program_director || '';
       staffWithLicenses[`education_${n}_start_date`] = ed.start_date || '';
@@ -10145,6 +10183,9 @@ async function generateFilledForm(templateId) {
       const n = i + 1;
       staffWithLicenses[`hospital_privilege_${n}_name`] = p.hospital_name || '';
       staffWithLicenses[`hospital_privilege_${n}_address`] = p.address || '';
+      staffWithLicenses[`hospital_privilege_${n}_city`] = p.city || '';
+      staffWithLicenses[`hospital_privilege_${n}_state`] = p.state || '';
+      staffWithLicenses[`hospital_privilege_${n}_zip`] = p.zip || '';
       staffWithLicenses[`hospital_privilege_${n}_type`] = p.privilege_type || '';
       staffWithLicenses[`hospital_privilege_${n}_start_date`] = p.start_date || '';
       staffWithLicenses[`hospital_privilege_${n}_end_date`] = p.end_date || '';
