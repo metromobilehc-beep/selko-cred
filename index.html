@@ -4794,6 +4794,24 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH ProView Login</div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Username, password, and security question answers — encrypted together, same protection as the SSN above. This never automates logging into CAQH on anyone's behalf; the link below just opens their real site so you can sign in and paste the password in yourself.</p>
+        <div id="caqhCredFieldArea" style="margin-bottom:8px;">
+          ${s.has_caqh_credentials_on_file
+            ? `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                 <span style="font-size:13px;color:#fff;">🔒 CAQH login on file</span>
+                 <button class="btn btn-sm btn-ghost" onclick="showRevealCaqhCredPrompt('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">View</button>
+                 <button class="btn btn-sm btn-ghost" onclick="showEnterCaqhCredForm('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Update</button>
+               </div>`
+            : `<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                 <span style="font-size:13px;color:rgba(255,255,255,.4);">Not on file</span>
+                 <button class="btn btn-sm btn-teal" onclick="showEnterCaqhCredForm('${staffId}')">+ Enter CAQH login</button>
+               </div>`}
+        </div>
+        <a href="https://proview.caqh.org" target="_blank" rel="noopener" style="font-size:12px;color:var(--teal-l);">Open CAQH ProView ↗</a>
+      </div>
+
       <div id="fullProfileErr" style="color:#f87171;font-size:12px;margin:14px 0 6px;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
@@ -5316,6 +5334,146 @@ async function submitRevealSsn(staffId) {
     errEl.style.display = 'block';
     btn.disabled = false;
     btn.textContent = 'View SSN';
+  }
+}
+
+// ══ CAQH credentials — same encrypted, break-glass pattern as SSN, but a
+// separate dedicated key (CAQH_ENCRYPTION_KEY) so a compromise of one
+// never exposes the other. The whole set (username, password, three
+// security Q&A pairs) is encrypted together as one blob, since they're
+// always entered and revealed together. ══
+function showEnterCaqhCredForm(staffId) {
+  const existing = document.getElementById('caqhCredEnterModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'caqhCredEnterModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Enter CAQH ProView login</div>
+      <label class="inline-label">Username</label>
+      <input class="inline-input" type="text" id="caqhCredUsername" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      <label class="inline-label">Password</label>
+      <input class="inline-input" type="text" id="caqhCredPassword" style="margin-bottom:14px;width:100%;box-sizing:border-box;" />
+      <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:8px;">Security questions (optional, but useful if CAQH ever asks for account recovery)</p>
+      ${[1, 2, 3].map(n => `
+        <input class="inline-input" type="text" id="caqhCredQ${n}" placeholder="Security question ${n}" style="margin-bottom:6px;width:100%;box-sizing:border-box;" />
+        <input class="inline-input" type="text" id="caqhCredA${n}" placeholder="Answer" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      `).join('')}
+      <div id="caqhCredEnterErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitEnterCaqhCred('${staffId}')" style="flex:1;justify-content:center;">Save (encrypted)</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('caqhCredEnterModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitEnterCaqhCred(staffId) {
+  const username = document.getElementById('caqhCredUsername').value.trim();
+  const password = document.getElementById('caqhCredPassword').value.trim();
+  const errEl = document.getElementById('caqhCredEnterErr');
+  errEl.style.display = 'none';
+
+  if (!username || !password) {
+    errEl.textContent = 'Username and password are both required.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/encrypt-caqh-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({
+        staff_id: staffId, username, password,
+        security_q1: document.getElementById('caqhCredQ1').value.trim() || null,
+        security_a1: document.getElementById('caqhCredA1').value.trim() || null,
+        security_q2: document.getElementById('caqhCredQ2').value.trim() || null,
+        security_a2: document.getElementById('caqhCredA2').value.trim() || null,
+        security_q3: document.getElementById('caqhCredQ3').value.trim() || null,
+        security_a3: document.getElementById('caqhCredA3').value.trim() || null,
+      }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not save CAQH credentials.');
+
+    document.getElementById('caqhCredEnterModal')?.remove();
+    toast('✓ CAQH login saved, encrypted');
+    await loadStaffList();
+    document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
+    showFullProfileSheet(staffId); // reopen so the "on file" state reflects immediately
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function showRevealCaqhCredPrompt(staffId) {
+  const existing = document.getElementById('caqhCredRevealModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'caqhCredRevealModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:6px;">Why do you need to view this CAQH login?</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:12px;">This access — including your reason — is permanently logged and cannot be deleted.</p>
+      <textarea id="caqhCredJustification" placeholder="e.g. Updating this provider's CAQH profile before a payer credentialing deadline" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box;"></textarea>
+      <div id="caqhCredRevealErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div id="caqhCredRevealValue" style="display:none;background:rgba(255,255,255,.05);border-radius:6px;padding:14px;font-size:13px;color:#fff;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="caqhCredRevealBtn" onclick="submitRevealCaqhCred('${staffId}')" style="flex:1;justify-content:center;">View credentials</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('caqhCredRevealModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitRevealCaqhCred(staffId) {
+  const justification = document.getElementById('caqhCredJustification').value.trim();
+  const errEl = document.getElementById('caqhCredRevealErr');
+  const btn = document.getElementById('caqhCredRevealBtn');
+  errEl.style.display = 'none';
+
+  if (justification.length < 10) {
+    errEl.textContent = 'Enter a real reason (at least a full sentence) — this is logged either way.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reveal-caqh-credentials', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ staff_id: staffId, justification }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not retrieve CAQH credentials.');
+
+    const c = result.credentials;
+    const qaRows = [1, 2, 3].map(n => c[`security_q${n}`] ? `<div style="margin-top:8px;"><span style="color:rgba(255,255,255,.4);">${c[`security_q${n}`]}</span><br>${c[`security_a${n}`] || ''}</div>` : '').join('');
+    document.getElementById('caqhCredRevealValue').innerHTML = `
+      <div><span style="color:rgba(255,255,255,.4);">Username</span><br><strong>${c.username}</strong></div>
+      <div style="margin-top:8px;"><span style="color:rgba(255,255,255,.4);">Password</span><br><strong>${c.password}</strong></div>
+      ${qaRows}`;
+    document.getElementById('caqhCredRevealValue').style.display = 'block';
+    document.getElementById('caqhCredJustification').disabled = true;
+    btn.style.display = 'none';
+    toast('This access has been logged.');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'View credentials';
   }
 }
 
@@ -10744,18 +10902,14 @@ function renderOvCredAttentionList() {
   }
 
   list.innerHTML = filtered.map(item => {
-    // Every issue gets its own visible badge now — no more picking one
-    // "worst" badge and hiding the rest behind a "+N more" that only
-    // showed on hover. Urgent issues (red) sort before routine ones
-    // (amber) so the most important thing is always the first badge.
-    const sortedIssues = [...item.issues].sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0));
-    const badges = sortedIssues.map(i => {
-      const style = i.urgent ? 'background:rgba(239,68,68,.15);color:#ef4444;' : 'background:rgba(245,158,11,.15);color:#f59e0b;';
-      return `<span class="ov-days-badge" style="${style}">${i.label}</span>`;
-    }).join('');
-    return `<div class="ov-attention-row" style="cursor:pointer;flex-direction:column;align-items:stretch;gap:6px;" onclick="showFullProfileSheet('${item.staff.id}')">
-      <span>${item.staff.full_name}</span>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;">${badges}</div>
+    const worstBadge = item.issues.some(i => i.urgent)
+      ? { style: 'background:rgba(239,68,68,.15);color:#ef4444;', label: item.issues.find(i => i.urgent).label }
+      : { style: 'background:rgba(245,158,11,.15);color:#f59e0b;', label: item.issues[0].label };
+    const extra = item.issues.length > 1 ? ` +${item.issues.length - 1} more` : '';
+    const allIssuesTooltip = item.issues.map(i => i.label).join(', ');
+    return `<div class="ov-attention-row" style="cursor:pointer;" onclick="showFullProfileSheet('${item.staff.id}')" title="${allIssuesTooltip}">
+      <span>${item.staff.full_name}${extra}</span>
+      <span class="ov-days-badge" style="${worstBadge.style}">${worstBadge.label}</span>
     </div>`;
   }).join('');
 }
