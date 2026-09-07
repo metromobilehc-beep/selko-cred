@@ -11819,7 +11819,7 @@ async function loadSuperAdmin() {
             <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Plan: Pro</option>
             <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Plan: Enterprise</option>
           </select>
-          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
+          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
         `}
@@ -11864,6 +11864,13 @@ function daysFromNow(n) {
 
 async function resetDemoCompanyData(companyId) {
   if (!confirm('Reset all demo data for this company? This deletes and re-seeds every staff member, document, and insurance record for the demo company. Safe to run anytime before a demo.')) return;
+
+  // Guard against a double-click (or clicking again while the first run
+  // is still in flight) submitting this twice — previously nothing
+  // stopped that, and since the delete step is safely idempotent but the
+  // insert step is not, a double-run silently doubled every staff member.
+  const btn = document.getElementById(`resetDemoBtn_${companyId}`);
+  if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Resetting...'; }
 
   try {
     // Wipe existing demo data (safe — this company should only ever contain seed data)
@@ -11984,6 +11991,12 @@ async function resetDemoCompanyData(companyId) {
     await loadSuperAdmin();
   } catch (e) {
     toast('Demo reset failed: ' + e.message, true);
+  } finally {
+    // Always re-enable, whether this succeeded, failed, or loadSuperAdmin()
+    // re-rendered the card entirely (in which case this exact button is
+    // already gone and this is just a harmless no-op).
+    const btnAfter = document.getElementById(`resetDemoBtn_${companyId}`);
+    if (btnAfter) { btnAfter.disabled = false; btnAfter.textContent = '↻ Reset Demo Data'; }
   }
 }
 
