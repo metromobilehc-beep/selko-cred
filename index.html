@@ -11911,10 +11911,38 @@ async function resetDemoCompanyData(companyId) {
   if (btn) { if (btn.disabled) return; btn.disabled = true; btn.textContent = 'Resetting...'; }
 
   try {
-    // Wipe existing demo data (safe — this company should only ever contain seed data)
-    await sb.from('staff_payer_networks').delete().eq('company_id', companyId);
-    await sb.from('credtrack_documents').delete().eq('company_id', companyId);
-    await sb.from('credtrack_staff').delete().eq('company_id', companyId);
+    // Wipe existing demo data (safe — this company should only ever contain
+    // seed data). Each delete is checked for a real error now — previously
+    // these were fire-and-forget, so a silently failed delete (RLS or
+    // otherwise) meant every reset just piled a fresh batch on top of
+    // whatever was already there, instead of actually starting clean.
+    const { error: delNetErr } = await sb.from('staff_payer_networks').delete().eq('company_id', companyId);
+    if (delNetErr) throw new Error('Could not clear existing payer network records: ' + delNetErr.message);
+    const { error: delDocErr } = await sb.from('credtrack_documents').delete().eq('company_id', companyId);
+    if (delDocErr) throw new Error('Could not clear existing documents: ' + delDocErr.message);
+    const { error: delFilesErr } = await sb.from('credentialing_files').delete().eq('company_id', companyId);
+    if (delFilesErr) throw new Error('Could not clear existing credentialing files: ' + delFilesErr.message);
+
+    // These four are keyed by staff_id, not company_id directly, so look up
+    // which staff IDs belong to this company first, then clear each table.
+    // Same reasoning as credentialing_files above — once a demo physician
+    // has real records in any of these, a second reset would hit the same
+    // foreign-key block without this.
+    const { data: existingStaffIds } = await sb.from('credtrack_staff').select('id').eq('company_id', companyId);
+    const staffIdList = (existingStaffIds || []).map(s => s.id);
+    if (staffIdList.length) {
+      const { error: delEduErr } = await sb.from('staff_education_training').delete().in('staff_id', staffIdList);
+      if (delEduErr) throw new Error('Could not clear existing education records: ' + delEduErr.message);
+      const { error: delPrivErr } = await sb.from('staff_hospital_privileges').delete().in('staff_id', staffIdList);
+      if (delPrivErr) throw new Error('Could not clear existing hospital privilege records: ' + delPrivErr.message);
+      const { error: delClaimErr } = await sb.from('staff_malpractice_claims').delete().in('staff_id', staffIdList);
+      if (delClaimErr) throw new Error('Could not clear existing malpractice claim records: ' + delClaimErr.message);
+      const { error: delEmpErr } = await sb.from('staff_employment_history').delete().in('staff_id', staffIdList);
+      if (delEmpErr) throw new Error('Could not clear existing employment history records: ' + delEmpErr.message);
+    }
+
+    const { error: delStaffErr } = await sb.from('credtrack_staff').delete().eq('company_id', companyId);
+    if (delStaffErr) throw new Error('Could not clear existing staff: ' + delStaffErr.message);
 
     // Re-insert fictional staff
     const { data: insertedStaff, error: staffErr } = await sb.from('credtrack_staff')
