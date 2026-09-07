@@ -708,6 +708,28 @@
     <!-- CREDENTIALING TAB (add-on) -->
     <div id="tabCredentialing" style="display:none;">
       <div id="credentialingContent">
+        <!-- Basic vs Full comparison — mirrors the Document tracking
+             Standard vs Pro panel in Settings, same reasoning: only shows
+             as an upsell nudge to companies actually on the lower tier
+             (Basic). Full and no-credentialing-at-all never see it. -->
+        <div class="dark-panel" style="margin-bottom:16px;" id="credTierComparisonPanel">
+          <h2>Basic vs Full — Credentialing features</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">You're currently on <strong style="color:#fff;">Basic</strong>. Here's exactly what changes on Full.</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Feature</th><th style="text-align:center;">Basic</th><th style="text-align:center;">Full</th></tr></thead>
+              <tbody>
+                <tr><td>One-click payer form generation (upload a blank PDF once, fill for any provider)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+                <tr><td>Import a blank form directly from a URL</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+                <tr><td>Clinician self-service file upload (their own "My Credentials" page)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+                <tr><td>Org profile, staff records, CAQH/DEA, Notes, Locations, Accreditations, Employment History</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+                <tr><td>Credentialing Files — admin upload and viewing</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-top:12px;">Contact Selko to upgrade to Full.</p>
+        </div>
+
         <!-- Your data is always yours — a self-service export any company
              can run themselves, any time, no need to ask Selko for it.
              Deliberately staff credentialing data only, not documents. -->
@@ -1341,43 +1363,6 @@
             <tbody id="accessLogTbody"></tbody>
           </table>
         </div>
-      </div>
-
-      <!-- Trial management (super admin only) -->
-      <div class="dark-panel" id="trialPanel" style="display:none;margin-bottom:16px;">
-        <h2>Trial management</h2>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
-          <div>
-            <label class="inline-label">Trial status</label>
-            <select class="inline-select" id="setTrialStatus">
-              <option value="active">Active</option>
-              <option value="trial">Trial</option>
-              <option value="expired">Expired</option>
-              <option value="suspended">Suspended</option>
-            </select>
-          </div>
-          <div>
-            <label class="inline-label">Trial expiry date</label>
-            <input class="inline-input" type="date" id="setTrialExpiry" />
-          </div>
-          <div>
-            <label class="inline-label">Plan</label>
-            <select class="inline-select" id="setTrialPlan">
-              <option value="standard">Standard</option>
-              <option value="pro">Pro</option>
-              <option value="enterprise">Enterprise</option>
-            </select>
-          </div>
-          <div>
-            <label class="inline-label">Credentialing add-on</label>
-            <select class="inline-select" id="setCredAddon">
-              <option value="false">Not included</option>
-              <option value="true">Included</option>
-            </select>
-          </div>
-        </div>
-        <button class="btn btn-sm btn-teal" onclick="saveTrialSettings()">Save trial settings</button>
-        <div id="setTrialStatus2" class="up-status" style="margin-top:10px;"></div>
       </div>
 
     </div>
@@ -7275,17 +7260,6 @@ async function loadSettings() {
     document.getElementById('brandingProTag').style.display = 'inline';
   }
 
-  // Trial panel (super admin only, and NOT when viewing as another company)
-  if (currentProfile.is_super_admin && !_superProfile) {
-    document.getElementById('trialPanel').style.display = 'block';
-    document.getElementById('setTrialStatus').value  = c.active ? 'active' : 'suspended';
-    document.getElementById('setTrialPlan').value    = c.plan || 'standard';
-    document.getElementById('setCredAddon').value    = c.has_credentialing_addon ? 'true' : 'false';
-    document.getElementById('setTrialExpiry').value  = c.custom_vars?.trial_expiry || '';
-  } else {
-    document.getElementById('trialPanel').style.display = 'none';
-  }
-
   // Document types table
   await loadDocTypesTable();
 
@@ -8414,6 +8388,11 @@ async function loadCredentialingTab() {
   content.style.display = 'block';
   lock.style.display = 'none';
 
+  const credComparisonPanel = document.getElementById('credTierComparisonPanel');
+  if (credComparisonPanel) {
+    credComparisonPanel.style.display = currentCompany.credentialing_tier === 'basic' ? 'block' : 'none';
+  }
+
   // Full Credentialing includes everything Basic does, plus the template
   // upload/mapping/generate-filled-form feature — Basic is org profile,
   // accreditations, and per-staff CAQH/DEA only (data entry, no generation).
@@ -9347,37 +9326,6 @@ async function saveBranding() {
   setTimeout(() => statusEl.style.display = 'none', 3000);
 }
 
-async function saveTrialSettings() {
-  const status   = document.getElementById('setTrialStatus').value;
-  const plan     = document.getElementById('setTrialPlan').value;
-  const expiry   = document.getElementById('setTrialExpiry').value;
-  const credAddon = document.getElementById('setCredAddon').value === 'true';
-  const statusEl = document.getElementById('setTrialStatus2');
-
-  const updates = {
-    active: status === 'active' || status === 'trial',
-    plan,
-    has_credentialing_addon: credAddon,
-    custom_vars: { ...(currentCompany.custom_vars || {}), trial_status: status, trial_expiry: expiry },
-  };
-
-  const { error } = await sb.from('companies').update(updates).eq('id', currentCompany.id);
-  if (error) {
-    statusEl.textContent = 'Error: ' + error.message;
-    statusEl.className = 'up-status up-err';
-    statusEl.style.display = 'block';
-    return;
-  }
-
-  currentCompany = { ...currentCompany, ...updates };
-  window._isPro  = ['pro','enterprise'].includes(plan);
-  window._hasCredAddon = credAddon;
-  statusEl.textContent = '✓ Trial settings saved';
-  statusEl.className = 'up-status up-ok';
-  statusEl.style.display = 'block';
-  toast('Trial settings saved');
-  setTimeout(() => statusEl.style.display = 'none', 3000);
-}
 let _superProfile = null;
 let _superCompany = null;
 
