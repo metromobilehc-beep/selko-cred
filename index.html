@@ -2076,15 +2076,19 @@ async function initStaff() {
   // The panel itself shows whenever Credentialing is on at all — a Basic-
   // tier company still has files an admin uploaded on this person's
   // record, and hiding them entirely would mean a clinician can't see
-  // something that genuinely exists about them. Only the upload capability
-  // (not viewing) is Full-tier-only, matching the Templates distinction —
-  // Basic keeps new files entering the system entirely backside/admin-
-  // managed. Delete is never available here either way (enforced by RLS,
-  // not just hidden in the UI).
+  // something that genuinely exists about them.
+  //
+  // Upload capability is further restricted to Full tier AND no Documents
+  // module — if a company also has Documents on, "Upload a document"
+  // already gives staff a structured upload path, and having a second,
+  // less-structured one alongside it just looked like two overlapping
+  // ways to do the same thing. For a Credentialing-only company, though,
+  // "Upload a document" doesn't exist at all (it's gated on has_credtrack),
+  // so this remains their only way to attach anything to their own record.
   const credFilesPanel = document.getElementById('staffCredFilesPanel');
   if (credFilesPanel) {
     const canSeeFiles = currentCompany.has_credentialing_addon && window._staffId;
-    const canUploadFiles = canSeeFiles && currentCompany.credentialing_tier !== 'basic';
+    const canUploadFiles = canSeeFiles && currentCompany.credentialing_tier !== 'basic' && !currentCompany.has_credtrack;
     credFilesPanel.style.display = canSeeFiles ? 'block' : 'none';
     document.getElementById('staffCredFileUploadRow').style.display = canUploadFiles ? 'flex' : 'none';
     document.getElementById('staffCredFilesDesc').textContent = canUploadFiles
