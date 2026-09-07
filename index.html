@@ -9654,15 +9654,27 @@ const CRED_DATA_SOURCES = [
     ['company.notice_address', 'Notice address'],
     ['company.notice_address_phone', 'Notice address phone'],
     ['company.location_1_name', 'Primary location — name'],
-    ['company.location_1_address', 'Primary location — address'],
+    ['company.location_1_address', 'Primary location — full address (combined)'],
+    ['company.location_1_street', 'Primary location — street address only'],
+    ['company.location_1_city', 'Primary location — city'],
+    ['company.location_1_state', 'Primary location — state/country'],
+    ['company.location_1_zip', 'Primary location — postal code'],
     ['company.location_1_county', 'Primary location — county'],
     ['company.location_1_phone', 'Primary location — phone'],
     ['company.location_2_name', 'Secondary location — name'],
-    ['company.location_2_address', 'Secondary location — address'],
+    ['company.location_2_address', 'Secondary location — full address (combined)'],
+    ['company.location_2_street', 'Secondary location — street address only'],
+    ['company.location_2_city', 'Secondary location — city'],
+    ['company.location_2_state', 'Secondary location — state/country'],
+    ['company.location_2_zip', 'Secondary location — postal code'],
     ['company.location_2_county', 'Secondary location — county'],
     ['company.location_2_phone', 'Secondary location — phone'],
     ['company.location_3_name', 'Tertiary location — name'],
-    ['company.location_3_address', 'Tertiary location — address'],
+    ['company.location_3_address', 'Tertiary location — full address (combined)'],
+    ['company.location_3_street', 'Tertiary location — street address only'],
+    ['company.location_3_city', 'Tertiary location — city'],
+    ['company.location_3_state', 'Tertiary location — state/country'],
+    ['company.location_3_zip', 'Tertiary location — postal code'],
     ['company.location_3_county', 'Tertiary location — county'],
     ['company.location_3_phone', 'Tertiary location — phone'],
     ['company.credentialing_contact_name', 'Credentialing contact — name'],
@@ -10180,6 +10192,10 @@ async function generateFilledForm(templateId) {
       const n = i + 1;
       companyWithLocations[`location_${n}_name`] = loc.location_name || '';
       companyWithLocations[`location_${n}_address`] = [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
+      companyWithLocations[`location_${n}_street`] = loc.address || '';
+      companyWithLocations[`location_${n}_city`] = loc.city || '';
+      companyWithLocations[`location_${n}_state`] = loc.state || '';
+      companyWithLocations[`location_${n}_zip`] = loc.zip || '';
       companyWithLocations[`location_${n}_county`] = loc.county || '';
       companyWithLocations[`location_${n}_phone`] = loc.phone || '';
     });
