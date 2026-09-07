@@ -917,10 +917,15 @@
           </div>
         </div>
 
-        <!-- Per-clinician credentialing fields (CAQH, DEA) -->
+        <!-- Find-and-manage entry point for a provider's full credentialing
+             record. Originally just CAQH/DEA (hence the table columns
+             below), but since Full Profile now covers everything and the
+             old separate Edit modal was removed, this search is really the
+             front door to a provider's whole record, not a CAQH/DEA-
+             specific tool anymore — header updated to match. -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>Provider credentialing (CAQH / DEA)</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">CAQH ID and DEA number, per staff member — used for payer credentialing applications, separate from basic license tracking.</p>
+          <h2>Provider credentialing</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Find a provider to view or edit their full credentialing record — CAQH, DEA, license, and everything else lives in their Full Profile.</p>
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
             <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
             <select class="inline-select" id="credStaffDisciplineFilter" style="max-width:180px;" onchange="renderCredentialingStaffTable()">
@@ -8836,7 +8841,6 @@ async function renderCredentialingStaffTable() {
       <td>${credExpiryLabel(s.caqh_expiration_date)}</td>
       ${deaCells}
       <td><div class="td-actions">
-        <button class="btn btn-sm btn-ghost" onclick="showEditCredentialingModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.caqh_id||''}','${s.caqh_issued_date||''}','${s.caqh_expiration_date||''}','${s.dea_number||''}','${s.dea_expiration_date||''}',${prescribes})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
         <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
         <button class="btn btn-sm btn-gold" onclick="showNotesLog('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📝 Notes</button>
         <button class="btn btn-sm btn-gold" onclick="showCredentialingFiles('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📎 Files</button>
@@ -8844,88 +8848,6 @@ async function renderCredentialingStaffTable() {
       </div></td>
     </tr>`;
   }).join('');
-}
-
-function showEditCredentialingModal(id, name, currentCaqh, currentCaqhIssued, currentCaqhExp, currentDea, currentDeaExp, prescribes) {
-  const existing = document.getElementById('editCredentialingModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'editCredentialingModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:18px;">${name}</div>
-      <div style="margin-bottom:12px;">
-        <label class="inline-label">CAQH ID</label>
-        <input class="inline-input" type="text" id="editCaqhId" value="${currentCaqh || ''}" placeholder="e.g. 12345678" />
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
-        <div>
-          <label class="inline-label">CAQH issued</label>
-          <input class="inline-input" type="date" id="editCaqhIssued" value="${currentCaqhIssued || ''}" />
-        </div>
-        <div>
-          <label class="inline-label">CAQH re-attestation due</label>
-          <input class="inline-input" type="date" id="editCaqhExpiration" value="${currentCaqhExp || ''}" />
-        </div>
-      </div>
-      <div style="display:${prescribes ? 'grid' : 'none'};grid-template-columns:1fr 1fr;gap:12px;margin-bottom:18px;">
-        <div>
-          <label class="inline-label">DEA number</label>
-          <input class="inline-input" type="text" id="editDeaNumber" value="${currentDea || ''}" placeholder="if applicable" />
-        </div>
-        <div>
-          <label class="inline-label">DEA expiration</label>
-          <input class="inline-input" type="date" id="editDeaExpiration" value="${currentDeaExp || ''}" />
-        </div>
-      </div>
-      ${prescribes ? '' : `
-      <p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:14px;">DEA fields hidden — not applicable to this discipline. Change the discipline first if that's wrong.</p>`}
-      <div id="editCredentialingErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveEditCredentialing('${id}')" style="flex:1;justify-content:center;">Save</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('editCredentialingModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function saveEditCredentialing(id) {
-  const caqh       = document.getElementById('editCaqhId').value.trim();
-  const caqhIssued = document.getElementById('editCaqhIssued').value || null;
-  const caqhExp    = document.getElementById('editCaqhExpiration').value || null;
-  const dea        = document.getElementById('editDeaNumber').value.trim();
-  const deaExp     = document.getElementById('editDeaExpiration').value || null;
-  const errEl = document.getElementById('editCredentialingErr');
-  const before = staffList.find(s => s.id === id) || {};
-
-  const { error } = await sb.from('credtrack_staff').update({
-    caqh_id: caqh || null,
-    caqh_issued_date: caqhIssued,
-    caqh_expiration_date: caqhExp,
-    dea_number: dea || null,
-    dea_expiration_date: deaExp,
-  }).eq('id', id);
-
-  if (error) {
-    errEl.textContent = error.message;
-    errEl.style.display = 'block';
-    return;
-  }
-
-  await logStaffFieldChanges(id, [
-    { field: 'caqh_id',              old: before.caqh_id,              new: caqh || null },
-    { field: 'caqh_issued_date',     old: before.caqh_issued_date,     new: caqhIssued },
-    { field: 'caqh_expiration_date', old: before.caqh_expiration_date, new: caqhExp },
-    { field: 'dea_number',           old: before.dea_number,           new: dea || null },
-    { field: 'dea_expiration_date',  old: before.dea_expiration_date,  new: deaExp },
-  ]);
-
-  document.getElementById('editCredentialingModal')?.remove();
-  toast('Credentialing info updated');
-  await renderCredentialingStaffTable();
 }
 
 async function emailInNetworkSummary() {
