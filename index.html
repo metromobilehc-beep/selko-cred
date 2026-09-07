@@ -1005,27 +1005,49 @@
       <div class="dark-panel" style="margin-bottom:16px;" id="billingPanelSettings">
         <h2>Billing</h2>
         <div id="billingCurrentStatus" style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:14px;"></div>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Choose a plan below and continue to a secure Stripe checkout page — card details are entered there directly, never inside this app.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;max-width:500px;">
-          <div>
-            <label class="inline-label">Document tracking</label>
-            <select class="inline-select" id="billingDocTier">
-              <option value="">— None —</option>
-              <option value="doc_standard">Standard</option>
-              <option value="doc_pro">Pro</option>
-            </select>
+
+        <div id="billingNewPlanPicker">
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Choose a plan below and continue to a secure Stripe checkout page — card details are entered there directly, never inside this app.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;max-width:500px;">
+            <div>
+              <label class="inline-label">Document tracking</label>
+              <select class="inline-select" id="billingDocTier" onchange="updateBundleHint()">
+                <option value="">— None —</option>
+                <option value="doc_standard">Standard</option>
+                <option value="doc_pro">Pro</option>
+              </select>
+            </div>
+            <div>
+              <label class="inline-label">Credentialing</label>
+              <select class="inline-select" id="billingCredTier" onchange="updateBundleHint()">
+                <option value="">— None —</option>
+                <option value="cred_basic">Basic</option>
+                <option value="cred_full">Full</option>
+              </select>
+            </div>
           </div>
-          <div>
-            <label class="inline-label">Credentialing</label>
-            <select class="inline-select" id="billingCredTier">
-              <option value="">— None —</option>
-              <option value="cred_basic">Basic</option>
-              <option value="cred_full">Full</option>
-            </select>
-          </div>
+          <div id="billingBundleHint" style="display:none;font-size:12px;color:var(--teal-l);margin-bottom:12px;">✓ 10% bundle discount applies automatically at checkout for choosing both.</div>
+          <button class="btn btn-sm btn-gold" onclick="startCheckout()">Continue to checkout</button>
         </div>
-        <button class="btn btn-sm btn-gold" onclick="startCheckout()">Continue to checkout</button>
+
+        <!-- Once a subscription already exists, upgrades/downgrades go
+             through Stripe's own Customer Portal instead of a second
+             checkout — running a second "Continue to checkout" against an
+             already-subscribed customer would create a duplicate, separately
+             billed subscription rather than actually changing the existing
+             one, since nothing here cancels or modifies it first. -->
+        <div id="billingManageExisting" style="display:none;">
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">You already have an active subscription — upgrades, downgrades, payment method changes, and cancellations are handled through Stripe's own billing portal, not the plan picker above.</p>
+          <button class="btn btn-sm btn-gold" onclick="openBillingPortal()">Manage billing</button>
+        </div>
+
         <div id="billingErr" style="color:#f87171;font-size:12px;margin-top:10px;display:none;"></div>
+
+        <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
+          <button class="btn btn-sm btn-ghost" onclick="verifyStripeBilling()" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Verify with Stripe</button>
+          <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:8px;">Pulls live from Stripe directly, not from what's cached here — useful if something looks off, or a webhook might have missed an update.</p>
+          <div id="billingVerifyResult" style="margin-top:10px;font-size:12px;color:rgba(255,255,255,.7);"></div>
+        </div>
       </div>
 
       <!-- Sensitive-field access log — SSN views/entries specifically.
@@ -6964,6 +6986,75 @@ async function loadBillingStatus() {
       : '';
 
   el.innerHTML = `Current plan: <strong>Document tracking — ${docLabel}</strong>, <strong>Credentialing — ${credLabel}</strong>${statusNote}`;
+
+  // Active or past_due both mean a real Stripe subscription already
+  // exists — route those through the Portal instead of the plan picker.
+  // Cancelled or no row at all means there's nothing for a second
+  // checkout to conflict with, so the picker is the right path.
+  const hasExistingSub = sub && ['active', 'past_due'].includes(sub.status);
+  document.getElementById('billingNewPlanPicker').style.display = hasExistingSub ? 'none' : 'block';
+  document.getElementById('billingManageExisting').style.display = hasExistingSub ? 'block' : 'none';
+}
+
+async function openBillingPortal() {
+  const errEl = document.getElementById('billingErr');
+  errEl.style.display = 'none';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/create-portal-session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ company_id: currentCompany.id }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    window.location.href = result.portal_url;
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function verifyStripeBilling() {
+  const resultEl = document.getElementById('billingVerifyResult');
+  resultEl.textContent = 'Checking Stripe...';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/verify-stripe-billing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ company_id: currentCompany.id }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    if (!result.has_stripe_customer) {
+      resultEl.innerHTML = '<span style="color:rgba(255,255,255,.4);">No Stripe customer on file for this company yet.</span>';
+      return;
+    }
+    if (!result.stripe_subscriptions.length) {
+      resultEl.innerHTML = '<span style="color:rgba(255,255,255,.4);">Stripe shows no subscriptions at all for this customer.</span>';
+      return;
+    }
+
+    resultEl.innerHTML = result.stripe_subscriptions.map(s => {
+      const items = s.items.map(i => `${i.lookup_key || i.nickname || 'unknown price'} ($${i.amount ?? '?'}/${i.currency})`).join(', ');
+      return `<div style="padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        <strong style="color:#fff;">Stripe status: ${s.status}</strong>${s.cancel_at_period_end ? ' (cancels at period end)' : ''}<br>
+        ${items}<br>
+        Renews/ends: ${new Date(s.current_period_end).toLocaleDateString()}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    resultEl.innerHTML = `<span style="color:#f87171;">${e.message}</span>`;
+  }
+}
+
+function updateBundleHint() {
+  const docTier = document.getElementById('billingDocTier').value;
+  const credTier = document.getElementById('billingCredTier').value;
+  document.getElementById('billingBundleHint').style.display = (docTier && credTier) ? 'block' : 'none';
 }
 
 async function startCheckout() {
