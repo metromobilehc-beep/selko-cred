@@ -4851,6 +4851,20 @@ function showCvImportReview(staffId, staffName, extracted) {
   modal.id = 'cvImportReviewModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
 
+  const ci = extracted.company_info;
+  const hasCompanyInfo = ci && (ci.address || ci.phone || ci.fax || ci.facility_name);
+  const companyRow = hasCompanyInfo ? `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
+      <input type="checkbox" id="cvCompanyCheck" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        ${ci.facility_name ? `Facility: <strong>${ci.facility_name}</strong><br>` : ''}
+        ${ci.address ? `Address: <strong>${[ci.address, ci.city, ci.state, ci.zip].filter(Boolean).join(', ')}</strong><br>` : ''}
+        ${ci.phone ? `Phone: <strong>${ci.phone}</strong><br>` : ''}
+        ${ci.fax ? `Fax: <strong>${ci.fax}</strong>` : ''}
+      </div>
+    </label>
+    <p style="font-size:11px;color:rgba(255,255,255,.35);margin:4px 0 0;">Applies to your company's Primary practice location and general fax number — only fills in fields that are currently blank, never overwrites something already on file. Creates a Primary location if you don't have one yet.</p>` : '';
+
   const pi = extracted.practitioner_info;
   const hasPractitionerInfo = pi && (pi.license_number || pi.caqh_id || pi.npi_number || pi.discipline);
   const practitionerRow = hasPractitionerInfo ? `
@@ -4909,13 +4923,14 @@ function showCvImportReview(staffId, staffName, extracted) {
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Review what was found for ${staffName}</div>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px;">Uncheck anything that's wrong or not needed — only checked items get saved. You can fine-tune or add more later from their Licenses/Education/Privileges tabs.</p>
 
+      ${hasCompanyInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Company / Facility Info</div>${companyRow}` : ''}
       ${hasPractitionerInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Basic Info (License / CAQH / NPI)</div>${practitionerRow}` : ''}
       ${extracted.education.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Education &amp; Training</div>${eduRows}` : ''}
       ${extracted.additional_licenses.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Additional Licenses</div>${licRows}` : ''}
       ${extracted.hospital_privileges.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
       ${hasSpecialtyInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Specialty &amp; Board Info</div>${specialtyRow}` : ''}
 
-      ${!hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !hasSpecialtyInfo
+      ${!hasCompanyInfo && !hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !hasSpecialtyInfo
         ? '<div style="font-size:13px;color:rgba(255,255,255,.4);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:12px;margin-top:12px;display:none;"></div>
@@ -4937,6 +4952,48 @@ async function saveCvImportSelections(staffId) {
   if (!extracted) return;
 
   try {
+    if (document.getElementById('cvCompanyCheck')?.checked && extracted.company_info) {
+      const ci = extracted.company_info;
+      const locations = await getOrderedCompanyLocations(currentCompany.id);
+      const primary = locations.find(l => l.is_primary) || locations[0];
+
+      if (primary) {
+        // Same "only fill blanks" safety rule as the practitioner info.
+        const locUpdates = {};
+        if (ci.address && !primary.address) locUpdates.address = ci.address;
+        if (ci.city && !primary.city) locUpdates.city = ci.city;
+        if (ci.state && !primary.state) locUpdates.state = ci.state;
+        if (ci.zip && !primary.zip) locUpdates.zip = ci.zip;
+        if (ci.phone && !primary.phone) locUpdates.phone = ci.phone;
+        if (ci.facility_name && !primary.location_name) locUpdates.location_name = ci.facility_name;
+        if (Object.keys(locUpdates).length) {
+          const { error } = await sb.from('company_locations').update(locUpdates).eq('id', primary.id);
+          if (error) throw error;
+        }
+      } else if (ci.address || ci.facility_name) {
+        // No location on file at all yet — create one as Primary, same as
+        // the first location a company adds manually always becomes.
+        const { error } = await sb.from('company_locations').insert({
+          company_id: currentCompany.id,
+          location_name: ci.facility_name || null,
+          address: ci.address || null,
+          city: ci.city || null,
+          state: ci.state || null,
+          zip: ci.zip || null,
+          phone: ci.phone || null,
+          is_primary: true,
+          sort_order: 0,
+        });
+        if (error) throw error;
+      }
+
+      if (ci.fax && !currentCompany.fax) {
+        const { error } = await sb.from('companies').update({ fax: ci.fax }).eq('id', currentCompany.id);
+        if (error) throw error;
+        currentCompany.fax = ci.fax;
+      }
+    }
+
     if (document.getElementById('cvPractitionerCheck')?.checked && extracted.practitioner_info) {
       const pi = extracted.practitioner_info;
       const current = staffList.find(s => s.id === staffId) || {};
