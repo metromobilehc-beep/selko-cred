@@ -7050,7 +7050,7 @@ async function loadEntitiesPanel() {
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <span style="flex:1;color:#fff;font-size:13px;">${e.name}</span>
       <button class="btn btn-sm btn-ghost" onclick="renameCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:11px;">Rename</button>
-      <button class="btn btn-sm btn-danger" onclick="removeCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="font-size:11px;">Remove</button>
+      <button class="btn btn-sm btn-danger" onclick="removeCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="font-size:11px;">Delete</button>
     </div>`).join('');
 }
 
@@ -7092,12 +7092,16 @@ async function renameCompanyEntity(id, currentName) {
 }
 
 async function removeCompanyEntity(id, name) {
-  if (!confirm(`Remove "${name}" from the list? This only stops it from being offered for new entries — any existing insurance records under this name are untouched.`)) return;
+  // A real delete, not a soft-deactivate — safe to do since existing
+  // staff_payer_networks records store this entity by name (a plain text
+  // field, matched on rename above), not a foreign key to this table's
+  // row. Deleting the row here never touches or breaks those records.
+  if (!confirm(`Permanently delete "${name}" from your entities list? Any existing insurance records already under this name are untouched — this only removes it from the list.`)) return;
 
-  const { error } = await sb.from('company_entities').update({ active: false }).eq('id', id);
+  const { error } = await sb.from('company_entities').delete().eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   loadEntitiesPanel();
-  toast(`Removed "${name}" from the list`);
+  toast(`✓ "${name}" deleted`);
 }
 
 function onAccBodySelectChanged() {
