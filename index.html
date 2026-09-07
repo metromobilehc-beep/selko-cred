@@ -4851,6 +4851,21 @@ function showCvImportReview(staffId, staffName, extracted) {
   modal.id = 'cvImportReviewModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
 
+  const pi = extracted.practitioner_info;
+  const hasPractitionerInfo = pi && (pi.license_number || pi.caqh_id || pi.npi_number || pi.discipline);
+  const practitionerRow = hasPractitionerInfo ? `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
+      <input type="checkbox" id="cvPractitionerCheck" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        ${pi.name ? `Matched name on document: <strong>${pi.name}</strong><br>` : ''}
+        ${pi.discipline ? `Discipline: <strong>${pi.discipline}</strong><br>` : ''}
+        ${pi.license_number ? `License #: <strong>${pi.license_number}</strong><br>` : ''}
+        ${pi.caqh_id ? `CAQH #: <strong>${pi.caqh_id}</strong><br>` : ''}
+        ${pi.npi_number ? `NPI #: <strong>${pi.npi_number}</strong>` : ''}
+      </div>
+    </label>
+    <p style="font-size:11px;color:rgba(255,255,255,.35);margin:4px 0 0;">Applies to ${staffName}'s own record — only fills in fields that are currently blank, never overwrites something already on file.</p>` : '';
+
   const eduRows = extracted.education.map((e, i) => `
     <label style="display:flex;align-items:start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
       <input type="checkbox" class="cvEduCheck" data-idx="${i}" checked style="margin-top:3px;" />
@@ -4894,12 +4909,13 @@ function showCvImportReview(staffId, staffName, extracted) {
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Review what was found for ${staffName}</div>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px;">Uncheck anything that's wrong or not needed — only checked items get saved. You can fine-tune or add more later from their Licenses/Education/Privileges tabs.</p>
 
-      ${extracted.education.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Education &amp; Training</div>${eduRows}` : ''}
+      ${hasPractitionerInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Basic Info (License / CAQH / NPI)</div>${practitionerRow}` : ''}
+      ${extracted.education.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Education &amp; Training</div>${eduRows}` : ''}
       ${extracted.additional_licenses.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Additional Licenses</div>${licRows}` : ''}
       ${extracted.hospital_privileges.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
       ${hasSpecialtyInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Specialty &amp; Board Info</div>${specialtyRow}` : ''}
 
-      ${!extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !hasSpecialtyInfo
+      ${!hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !hasSpecialtyInfo
         ? '<div style="font-size:13px;color:rgba(255,255,255,.4);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:12px;margin-top:12px;display:none;"></div>
@@ -4921,6 +4937,23 @@ async function saveCvImportSelections(staffId) {
   if (!extracted) return;
 
   try {
+    if (document.getElementById('cvPractitionerCheck')?.checked && extracted.practitioner_info) {
+      const pi = extracted.practitioner_info;
+      const current = staffList.find(s => s.id === staffId) || {};
+      // Only fill in what's currently blank — never overwrite a value
+      // that's already on file, since the scan could be wrong and this
+      // isn't the kind of field a human is reviewing character-by-character
+      // the way they would a full profile edit.
+      const updates = {};
+      if (pi.license_number && !current.license_number) updates.license_number = pi.license_number;
+      if (pi.caqh_id && !current.caqh_id) updates.caqh_id = pi.caqh_id;
+      if (pi.npi_number && !current.npi_number) updates.npi_number = pi.npi_number;
+      if (Object.keys(updates).length) {
+        const { error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId);
+        if (error) throw error;
+      }
+    }
+
     const eduToSave = [...document.querySelectorAll('.cvEduCheck:checked')].map(el => extracted.education[el.dataset.idx]);
     if (eduToSave.length) {
       const { error } = await sb.from('staff_education_training').insert(
