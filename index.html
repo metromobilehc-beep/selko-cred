@@ -203,7 +203,15 @@
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
-      <button class="tab"        id="tab-generalnotes" onclick="switchTab('generalnotes')"><i class="ti ti-note"></i> General Notes</button>
+
+      <div style="margin-top:16px;padding:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;">
+        <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:8px;">Memo</div>
+        <textarea id="sidebarMemoInput" placeholder="Quick note..." style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:12px;margin-bottom:8px;box-sizing:border-box;resize:vertical;"></textarea>
+        <div style="display:flex;gap:6px;">
+          <button class="btn btn-sm btn-teal" onclick="saveSidebarMemo()" style="flex:1;justify-content:center;">Save</button>
+          <button class="btn btn-sm btn-ghost" onclick="clearSidebarMemo()" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear</button>
+        </div>
+      </div>
     </div>
     <div class="admin-main">
 
@@ -1618,19 +1626,6 @@
 
     </div>
 
-    <div id="tabGeneralnotes" style="display:none;">
-      <div class="dark-panel">
-        <h2>📝 General Notes</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px;">Company-wide notes — not tied to any specific provider or document. For reminders, internal context, or anything that doesn't belong on one person's record.</p>
-
-        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:16px;">
-          <textarea id="generalNoteInput" placeholder="Add a note..." style="width:100%;min-height:80px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:10px;font-size:13px;margin-bottom:10px;box-sizing:border-box;"></textarea>
-          <button class="btn btn-sm btn-teal" onclick="addGeneralNote()">+ Add note</button>
-        </div>
-
-        <div id="generalNotesList" style="display:flex;flex-direction:column;gap:10px;"></div>
-      </div>
-    </div>
     <!-- closes admin-main -->
     </div>
     <!-- closes admin-layout -->
@@ -2907,6 +2902,7 @@ async function initAdmin() {
   await loadOverview();
   document.getElementById('hdrSearchWrap').style.display = 'block';
   updateProFeatureButtons();
+  loadSidebarMemo(); // fire-and-forget — sidebar widget, not tied to any specific tab
   if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
 }
 
@@ -10620,6 +10616,7 @@ async function viewAsAdmin(companyId, companyName) {
   window._hasCredAddon = !!company.has_credentialing_addon;
   updateModuleTabVisibility(company, currentProfile);
   updateProFeatureButtons();
+  loadSidebarMemo();
 
   await loadStaffList();
   await loadAdminFilters();
@@ -10641,6 +10638,7 @@ async function exitViewAsAdmin() {
   window._hasCredAddon = !!currentCompany.has_credentialing_addon;
   updateModuleTabVisibility(currentCompany, currentProfile);
   updateProFeatureButtons();
+  loadSidebarMemo();
   _superProfile  = null;
   _superCompany  = null;
 
@@ -10672,7 +10670,7 @@ function applyBranding(branding, logoUrl) {
 
 // ══ TABS ══
 function switchTab(tab) {
-  ['overview','docs','exp','staff','insurance','credentialing','settings','super','generalnotes'].forEach(t => {
+  ['overview','docs','exp','staff','insurance','credentialing','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
@@ -10686,7 +10684,6 @@ function switchTab(tab) {
   if (tab === 'credentialing') loadCredentialingTab();
   if (tab === 'settings')  loadSettings();
   if (tab === 'super')     loadSuperAdmin();
-  if (tab === 'generalnotes') loadGeneralNotes();
 }
 
 async function loadOverview() {
@@ -11451,39 +11448,32 @@ async function permanentlyDeleteDoc(id, filePath) {
   } catch(e) { toast('Delete failed: ' + e.message, true); }
 }
 
-async function loadGeneralNotes() {
-  const list = document.getElementById('generalNotesList');
-  if (!list) return;
-  list.innerHTML = 'Loading...';
+async function loadSidebarMemo() {
+  const input = document.getElementById('sidebarMemoInput');
+  if (!input) return;
 
-  const { data, error } = await sb.from('company_general_notes')
-    .select('*').eq('company_id', currentCompany.id).order('created_at', { ascending: false });
-
-  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
-  if (!data?.length) { list.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.3);padding:12px 0;">No notes yet.</div>'; return; }
-
-  list.innerHTML = data.map(n => `
-    <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:8px;padding:12px 14px;">
-      <div style="font-size:13px;color:#fff;white-space:pre-wrap;margin-bottom:6px;">${n.note_text}</div>
-      <div style="font-size:11px;color:rgba(255,255,255,.4);">${n.created_by || 'Unknown'} · ${new Date(n.created_at).toLocaleString()}</div>
-    </div>`).join('');
+  const { data } = await sb.from('company_memo').select('memo_text').eq('company_id', currentCompany.id).maybeSingle();
+  input.value = data?.memo_text || '';
 }
 
-async function addGeneralNote() {
-  const input = document.getElementById('generalNoteInput');
-  const text = input.value.trim();
-  if (!text) { toast('Enter a note first.', true); return; }
-
-  const { error } = await sb.from('company_general_notes').insert({
-    company_id: currentCompany.id,
-    note_text: text,
-    created_by: currentProfile.full_name || currentProfile.email,
-  });
+async function saveSidebarMemo() {
+  const text = document.getElementById('sidebarMemoInput').value;
+  const { error } = await sb.from('company_memo').upsert(
+    { company_id: currentCompany.id, memo_text: text, updated_at: new Date().toISOString() },
+    { onConflict: 'company_id' }
+  );
   if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Memo saved');
+}
 
-  input.value = '';
-  toast('✓ Note added');
-  await loadGeneralNotes();
+async function clearSidebarMemo() {
+  document.getElementById('sidebarMemoInput').value = '';
+  const { error } = await sb.from('company_memo').upsert(
+    { company_id: currentCompany.id, memo_text: '', updated_at: new Date().toISOString() },
+    { onConflict: 'company_id' }
+  );
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Memo cleared');
 }
 
 async function loadSuperAdmin() {
