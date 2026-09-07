@@ -4851,6 +4851,12 @@ function showFullProfileSheet(staffId) {
         <div id="fpStateBoardSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
       </div>
 
+      <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Documents on file</div>
+      <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Read-only summary — manage uploads from the Documents tab.</p>
+        <div id="fpDocsSummary" style="font-size:12px;color:rgba(255,255,255,.3);">Loading...</div>
+      </div>
+
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
@@ -4905,6 +4911,7 @@ function showFullProfileSheet(staffId) {
   });
 
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
+  if (currentCompany.has_credtrack) loadFpDocsSummary(staffId); // fire-and-forget
 }
 
 // For creating a brand-new staff member from a CV, rather than enriching
@@ -6035,6 +6042,37 @@ async function confirmDisciplineCred(id) {
   ]);
   toast('Discipline updated');
   await loadStaffTable();
+}
+
+// Read-only summary of this person's actual Document-tracking uploads,
+// shown right in the Full Profile sheet so a Credentialing-focused view
+// doesn't require switching to the separate Documents tab to see what's
+// on file. Gated to has_credtrack specifically (checked by the caller) —
+// this is Document-tracking data, not a Credentialing concept, so a
+// Credentialing-only company never loads or sees this at all.
+async function loadFpDocsSummary(staffId) {
+  const container = document.getElementById('fpDocsSummary');
+  if (!container) return;
+
+  const { data, error } = await sb.from('credtrack_documents')
+    .select('*, document_types(name)')
+    .eq('staff_id', staffId)
+    .eq('archived', false)
+    .order('created_at', { ascending: false });
+
+  if (error) { container.innerHTML = `<span style="color:#f87171;">${error.message}</span>`; return; }
+  if (!data?.length) { container.innerHTML = 'No documents uploaded yet.'; return; }
+
+  container.innerHTML = data.map(doc => {
+    const typeName = doc.document_types?.name || doc.label;
+    const badge = doc.verified
+      ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Verified</span>'
+      : '<span class="badge badge-pending" style="margin-left:6px;">Pending review</span>';
+    return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="color:#fff;">${typeName}${badge}</span>
+      ${statusBadge(doc.expiry_date)}
+    </div>`;
+  }).join('');
 }
 
 function showStaffTypeModal(id, name, currentType) {
