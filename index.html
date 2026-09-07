@@ -611,10 +611,14 @@
         <h2>Add / update network record</h2>
 
         <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Who this is for</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:16px;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff</label>
-            <select class="inline-select" id="pnStaff" onchange="onPnStaffChanged()"></select>
+        <div style="display:flex;gap:8px;margin-bottom:14px;">
+          <button type="button" id="pnModeStaffBtn" class="btn btn-sm btn-teal" onclick="setPnMode('staff')" style="flex:1;justify-content:center;">👤 A specific staff member</button>
+          <button type="button" id="pnModeCompanyBtn" class="btn btn-sm btn-ghost" onclick="setPnMode('company')" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">🏢 Company-wide</button>
+        </div>
+        <div style="margin-bottom:16px;">
+          <div style="display:flex;flex-direction:column;gap:4px;" id="pnStaffGroup">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Staff member</label>
+            <select class="inline-select" id="pnStaff"></select>
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;" id="pnEntityNameGroup">
             <label style="font-size:11px;color:rgba(255,255,255,.5);">Which company/agency?</label>
@@ -10262,9 +10266,17 @@ function renderQuickRef(records) {
   `).join('');
 }
 
-function onPnStaffChanged() {
-  const isCompanyWide = document.getElementById('pnStaff').value === '__company_wide__';
-  document.getElementById('pnEntityNameGroup').style.display = isCompanyWide ? 'flex' : 'none';
+let _pnMode = 'staff';
+function setPnMode(mode) {
+  _pnMode = mode;
+  const staffBtn = document.getElementById('pnModeStaffBtn');
+  const companyBtn = document.getElementById('pnModeCompanyBtn');
+  staffBtn.className = mode === 'staff' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost';
+  companyBtn.className = mode === 'company' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost';
+  if (mode === 'staff') { staffBtn.style.color = ''; staffBtn.style.borderColor = ''; companyBtn.style.color = '#fff'; companyBtn.style.borderColor = 'rgba(255,255,255,.2)'; }
+  else { companyBtn.style.color = ''; companyBtn.style.borderColor = ''; staffBtn.style.color = '#fff'; staffBtn.style.borderColor = 'rgba(255,255,255,.2)'; }
+  document.getElementById('pnStaffGroup').style.display = mode === 'staff' ? 'flex' : 'none';
+  document.getElementById('pnEntityNameGroup').style.display = mode === 'company' ? 'flex' : 'none';
 }
 
 function onPnEntitySelectChanged() {
@@ -10274,11 +10286,12 @@ function onPnEntitySelectChanged() {
 }
 
 async function loadPayerBoard() {
-  // populate staff dropdown from staffList
+  // populate staff dropdown — plain staff list now, since which mode
+  // ("staff" vs "company-wide") is picked via the explicit toggle buttons
+  // instead of a special option mixed into this same list.
   const staffSel = document.getElementById('pnStaff');
-  staffSel.innerHTML = '<option value="__company_wide__">🏢 Company-wide (not tied to one person)</option>' +
-    staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
-  onPnStaffChanged();
+  staffSel.innerHTML = staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('');
+  setPnMode('staff');
 
   // Known entity names — a real, admin-managed list now (Settings →
   // Company-wide insurance entities), not just derived from existing data
@@ -10385,8 +10398,7 @@ function renderPayerBoard() {
 }
 
 async function savePayerNetwork() {
-  const staffSelRaw   = document.getElementById('pnStaff').value;
-  const staffId       = staffSelRaw === '__company_wide__' ? null : staffSelRaw;
+  const staffId       = _pnMode === 'company' ? null : document.getElementById('pnStaff').value;
   const entitySelectVal = document.getElementById('pnEntitySelect').value;
   const entityName    = staffId === null
     ? (entitySelectVal === '__new_entity__'
