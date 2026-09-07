@@ -2648,6 +2648,7 @@ const QUICK_ACTIONS = [
   { keywords: ['additional license', 'multiple licenses', 'second license', 'another state license'], label: 'Additional Licenses', sub: 'Per-provider — find them below, then click Licenses', perProvider: true },
   { keywords: ['education', 'residency', 'fellowship', 'internship', 'medical school', 'program director', 'postgraduate'], label: 'Education & Training', sub: 'Per-provider — find them below, then click Education', perProvider: true },
   { keywords: ['hospital privileges', 'admitting privileges', 'privilege type'], label: 'Hospital Privileges', sub: 'Per-provider — find them below, then click Privileges', perProvider: true },
+  { keywords: ['malpractice claim', 'lawsuit', 'claim history', 'case status'], label: 'Malpractice Claims', sub: 'Per-provider — find them below, then click Claims', perProvider: true },
   { keywords: ['credentialing files', 'upload file', 'license copy', 'attach file', 'driver license', 'dl copy'], label: 'Credentialing Files', sub: 'Per-provider — find them below, then click Files', perProvider: true },
   { keywords: ['provider notes'], label: 'Provider Notes', sub: 'Per-provider — find them below, then click Notes', perProvider: true },
   { keywords: ['organization notes', 'org notes', 'general notes'], label: 'Organization Notes', sub: 'Credentialing tab', tab: 'credentialing' },
@@ -4465,6 +4466,7 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
     { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` },
     { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` },
     { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` },
+    { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` },
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
     { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
     { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
@@ -7038,6 +7040,118 @@ async function deleteHospitalPrivilege(id, staffId) {
   await loadHospitalPrivileges(staffId);
 }
 
+async function showMalpracticeClaims(staffId, staffName) {
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = PROVIDER_TAB_MODAL_ID;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(625px, 62.5vw, 1125px);max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, staffName, 'claims')}
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:85vh;">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Malpractice claims history — specific past claims or lawsuits, separate from the current carrier/policy info on the Info tab. Payer applications typically ask about this claim by claim, not just current coverage.</div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <select class="inline-select" id="mcStatus">
+            <option value="">— Status —</option>
+            <option value="Open">Open</option>
+            <option value="Closed - Settled">Closed - Settled</option>
+            <option value="Closed - Dismissed">Closed - Dismissed</option>
+            <option value="Closed - Verdict for Defendant">Closed - Verdict for Defendant</option>
+            <option value="Closed - Verdict for Plaintiff">Closed - Verdict for Plaintiff</option>
+          </select>
+          <div></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">Date claim filed</label>
+            <input class="inline-input" type="date" id="mcDateFiled" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">Date closed (if applicable)</label>
+            <input class="inline-input" type="date" id="mcDateClosed" />
+          </div>
+        </div>
+        <input class="inline-input" type="text" id="mcDescription" placeholder="Brief description" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <div id="claimsFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
+        <button class="btn btn-sm btn-teal" onclick="addMalpracticeClaim('${staffId}')" style="width:100%;justify-content:center;">+ Add claim record</button>
+      </div>
+
+      <div id="malpracticeClaimsList" style="overflow-y:auto;flex:1;">Loading...</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  await loadMalpracticeClaims(staffId);
+}
+
+async function loadMalpracticeClaims(staffId) {
+  const list = document.getElementById('malpracticeClaimsList');
+  if (!list) return;
+
+  const { data, error } = await sb.from('staff_malpractice_claims')
+    .select('*').eq('staff_id', staffId).order('date_filed', { ascending: false });
+
+  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No malpractice claims on file — leave blank if none to report.</div>'; return; }
+
+  list.innerHTML = data.map(c => {
+    const dates = [c.date_filed ? 'Filed ' + fmtDate(c.date_filed) : null, c.date_closed ? 'Closed ' + fmtDate(c.date_closed) : null].filter(Boolean).join(' · ');
+    return `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
+        <div>
+          <div style="font-size:13px;color:#fff;font-weight:600;">${c.claim_status || 'Status not set'}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);">${dates}</div>
+          ${c.description ? `<div style="font-size:11px;color:rgba(255,255,255,.4);">${c.description}</div>` : ''}
+        </div>
+        <button onclick="deleteMalpracticeClaim('${c.id}','${staffId}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;white-space:nowrap;">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addMalpracticeClaim(staffId) {
+  const errEl = document.getElementById('claimsFormErr');
+  errEl.style.display = 'none';
+
+  const status = document.getElementById('mcStatus').value;
+  const dateFiled = document.getElementById('mcDateFiled').value;
+  if (!status) { errEl.textContent = 'Select a status.'; errEl.style.display = 'block'; return; }
+  if (!dateFiled) { errEl.textContent = 'Date filed is required.'; errEl.style.display = 'block'; return; }
+
+  const { error } = await sb.from('staff_malpractice_claims').insert({
+    staff_id: staffId,
+    claim_status: status,
+    date_filed: dateFiled,
+    date_closed: document.getElementById('mcDateClosed').value || null,
+    description: document.getElementById('mcDescription').value.trim() || null,
+  });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  ['mcDateFiled','mcDateClosed','mcDescription'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('mcStatus').value = '';
+
+  toast('✓ Claim record added');
+  await loadMalpracticeClaims(staffId);
+}
+
+async function deleteMalpracticeClaim(id, staffId) {
+  if (!confirm('Delete this claim record?')) return;
+  const { error } = await sb.from('staff_malpractice_claims').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Removed');
+  await loadMalpracticeClaims(staffId);
+}
+
 async function showNotesLog(staffId, contextName) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -8962,6 +9076,14 @@ const CRED_DATA_SOURCES = [
     ['staff.hospital_privilege_3_type', 'Hospital privilege 3 — privilege type'],
     ['staff.hospital_privilege_3_start_date', 'Hospital privilege 3 — start date'],
     ['staff.hospital_privilege_3_end_date', 'Hospital privilege 3 — end date'],
+    ['staff.malpractice_claim_1_status', 'Malpractice claim 1 — status'],
+    ['staff.malpractice_claim_1_date_filed', 'Malpractice claim 1 — date filed'],
+    ['staff.malpractice_claim_1_date_closed', 'Malpractice claim 1 — date closed'],
+    ['staff.malpractice_claim_1_description', 'Malpractice claim 1 — description'],
+    ['staff.malpractice_claim_2_status', 'Malpractice claim 2 — status'],
+    ['staff.malpractice_claim_2_date_filed', 'Malpractice claim 2 — date filed'],
+    ['staff.malpractice_claim_2_date_closed', 'Malpractice claim 2 — date closed'],
+    ['staff.malpractice_claim_2_description', 'Malpractice claim 2 — description'],
     ['staff.caqh_id', 'CAQH ID'],
     ['staff.caqh_issued_date', 'CAQH issued date'],
     ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
@@ -9191,6 +9313,8 @@ function guessDefaultMapping(fieldName) {
     [/program successfully completed/, 'staff.education_1_completed'],
     [/primary hospital.*admitting privileges|hospital.*admitting privileges/, 'staff.hospital_privilege_1_name'],
     [/types of privileges/, 'staff.hospital_privilege_1_type'],
+    [/claim.*case.*status|case.*status/, 'staff.malpractice_claim_1_status'],
+    [/date claim was filed|date.*filed/, 'staff.malpractice_claim_1_date_filed'],
     [/caqh.*(issued|effective)|(issued|effective).*caqh/, 'staff.caqh_issued_date'],
     [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
@@ -9368,6 +9492,19 @@ async function generateFilledForm(templateId) {
       staffWithLicenses[`hospital_privilege_${n}_type`] = p.privilege_type || '';
       staffWithLicenses[`hospital_privilege_${n}_start_date`] = p.start_date || '';
       staffWithLicenses[`hospital_privilege_${n}_end_date`] = p.end_date || '';
+    });
+
+    // Same flattening for malpractice claims — most recent first, up to
+    // 2 entries as malpractice_claim_1/2_*, matching this form's own
+    // repeat count for claim fields.
+    const { data: claimEntries } = await sb.from('staff_malpractice_claims')
+      .select('*').eq('staff_id', staffId).order('date_filed', { ascending: false });
+    (claimEntries || []).slice(0, 2).forEach((c, i) => {
+      const n = i + 1;
+      staffWithLicenses[`malpractice_claim_${n}_status`] = c.claim_status || '';
+      staffWithLicenses[`malpractice_claim_${n}_date_filed`] = c.date_filed || '';
+      staffWithLicenses[`malpractice_claim_${n}_date_closed`] = c.date_closed || '';
+      staffWithLicenses[`malpractice_claim_${n}_description`] = c.description || '';
     });
 
     const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
