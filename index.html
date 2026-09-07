@@ -1024,6 +1024,10 @@
 
     <div id="tabSettings" style="display:none;">
 
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Account &amp; Billing</span>
+      </div>
+
       <!-- Own display name — shown in the header, and baked as a plain
            text snapshot into many records at the moment they're created
            (uploaded_by, verified_by, audit log entries, even inside note
@@ -1093,26 +1097,35 @@
         </div>
       </div>
 
-      <!-- Sensitive-field access log — SSN views/entries specifically.
-           No delete action exists anywhere in this app for this table —
-           that's deliberate, so it's a genuine, tamper-resistant audit
-           trail rather than something anyone could quietly clean up.
-           "Acknowledge" only adds metadata (who/when reviewed it) and
-           hides it from the default view — the row itself is untouched
-           and always fully visible again via the toggle below. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🔍 Sensitive data access log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:10px;cursor:pointer;">
-          <input type="checkbox" id="showAcknowledgedLog" onchange="loadSensitiveAccessLog()" />
-          Show acknowledged entries too
-        </label>
+      <!-- Standard vs Pro comparison — same gating as Document types
+           below, since this is specifically about document-tracking
+           features. Shown regardless of current tier so a Standard
+           company can see what upgrading unlocks, and a Pro company can
+           confirm they already have everything. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="proComparisonPanelSettings">
+        <h2>Standard vs Pro — document features</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">You're currently on <span id="proComparisonCurrentTier" style="font-weight:700;color:#fff;"></span>. Here's exactly what changes on Pro.</p>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th><th>Reviewed</th></tr></thead>
-            <tbody id="sensitiveAccessLogTbody"></tbody>
+            <thead><tr><th>Feature</th><th style="text-align:center;">Standard</th><th style="text-align:center;">Pro</th></tr></thead>
+            <tbody>
+              <tr><td>Create custom document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Duplicate a shared default type to customize it</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Access to Pro-only document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Detailed Missing Docs report (filterable, per-staff)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Bulk download all staff files</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Export compliance report (Excel / PDF)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Custom branding (logo, colors)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Upload, verify, track staff documents</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Overview stats, Expiration Tracker</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+            </tbody>
           </table>
         </div>
+        <p id="proComparisonUpgradeNote" style="font-size:12px;color:rgba(255,255,255,.4);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
+      </div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Profile</span>
       </div>
 
       <!-- Company settings -->
@@ -1187,6 +1200,10 @@
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
       </div>
 
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Clinical Setup</span>
+      </div>
+
       <!-- Clinical disciplines — per-company, since a PT/OT staffing company
            and an urgent care clinic (MD/DO/PA/NP/RN) need completely
            different values here -->
@@ -1210,50 +1227,6 @@
         </div>
       </div>
 
-      <!-- Company-wide insurance entities — for tracking network status at
-           the office/location level (e.g. Rise Rehab) rather than tied to
-           an individual staff member. A real master list, not just derived
-           from existing data, so entries can be added ahead of any actual
-           insurance record and renamed without breaking history. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Company-wide insurance entities</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
-          The offices/locations selectable as "Company-wide" on the Health Care Network tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
-        </p>
-        <div id="entitiesListCred" style="margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;">
-          <input class="inline-input" type="text" id="newEntityInput" placeholder="e.g. Rise Rehab - Downtown" style="max-width:220px;" />
-          <button class="btn btn-sm btn-teal" onclick="addCompanyEntity()">+ Add entity</button>
-        </div>
-      </div>
-
-      <!-- Standard vs Pro comparison — same gating as Document types
-           below, since this is specifically about document-tracking
-           features. Shown regardless of current tier so a Standard
-           company can see what upgrading unlocks, and a Pro company can
-           confirm they already have everything. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="proComparisonPanelSettings">
-        <h2>Standard vs Pro — document features</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">You're currently on <span id="proComparisonCurrentTier" style="font-weight:700;color:#fff;"></span>. Here's exactly what changes on Pro.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Feature</th><th style="text-align:center;">Standard</th><th style="text-align:center;">Pro</th></tr></thead>
-            <tbody>
-              <tr><td>Create custom document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Duplicate a shared default type to customize it</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Access to Pro-only document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Detailed Missing Docs report (filterable, per-staff)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Bulk download all staff files</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Export compliance report (Excel / PDF)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Custom branding (logo, colors)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Upload, verify, track staff documents</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Overview stats, Expiration Tracker</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p id="proComparisonUpgradeNote" style="font-size:12px;color:rgba(255,255,255,.4);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
-      </div>
-
       <!-- Document type management — only relevant to the document-
            compliance module (has_credtrack). A Credentialing-only company
            has no Documents tab, no Missing Docs report, and no Expiration
@@ -1271,6 +1244,51 @@
             <tbody id="docTypesTbody"></tbody>
           </table>
         </div>
+      </div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Health Care Network</span>
+      </div>
+
+      <!-- Company-wide insurance entities — for tracking network status at
+           the office/location level (e.g. Rise Rehab) rather than tied to
+           an individual staff member. A real master list, not just derived
+           from existing data, so entries can be added ahead of any actual
+           insurance record and renamed without breaking history. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Company-wide insurance entities</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
+          The offices/locations selectable as "Company-wide" on the Health Care Network tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
+        </p>
+        <div id="entitiesListCred" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newEntityInput" placeholder="e.g. Rise Rehab - Downtown" style="max-width:220px;" />
+          <button class="btn btn-sm btn-teal" onclick="addCompanyEntity()">+ Add entity</button>
+        </div>
+      </div>
+
+      <!-- Payer network management -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="payersPanelSettings">
+        <h2>Health Care Network list</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
+        <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
+          <div style="flex:1;position:relative;">
+            <input type="text" id="payerName" placeholder="Payer name (e.g. BlueCross BlueShield of Oklahoma)" style="width:100%;box-sizing:border-box;" oninput="handlePayerNameSearch(this)" autocomplete="off" onblur="setTimeout(hidePayerSuggestions, 200)" />
+            <div id="payerNameSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:50;"></div>
+          </div>
+          <button class="btn btn-sm btn-gold" onclick="savePayer()">+ Add payer</button>
+        </div>
+        <div id="payerErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Payer</th><th>Type</th><th>Actions</th></tr></thead>
+            <tbody id="payersTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
       </div>
 
       <!-- Agency partner access (only shown for companies with has_partner_access) -->
@@ -1324,22 +1342,28 @@
         </div>
       </div>
 
-      <!-- Payer network management -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="payersPanelSettings">
-        <h2>Health Care Network list</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
-        <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
-          <div style="flex:1;position:relative;">
-            <input type="text" id="payerName" placeholder="Payer name (e.g. BlueCross BlueShield of Oklahoma)" style="width:100%;box-sizing:border-box;" oninput="handlePayerNameSearch(this)" autocomplete="off" onblur="setTimeout(hidePayerSuggestions, 200)" />
-            <div id="payerNameSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:220px;overflow-y:auto;z-index:50;"></div>
-          </div>
-          <button class="btn btn-sm btn-gold" onclick="savePayer()">+ Add payer</button>
-        </div>
-        <div id="payerErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Audit &amp; Logs</span>
+      </div>
+
+      <!-- Sensitive-field access log — SSN views/entries specifically.
+           No delete action exists anywhere in this app for this table —
+           that's deliberate, so it's a genuine, tamper-resistant audit
+           trail rather than something anyone could quietly clean up.
+           "Acknowledge" only adds metadata (who/when reviewed it) and
+           hides it from the default view — the row itself is untouched
+           and always fully visible again via the toggle below. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🔍 Sensitive data access log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="showAcknowledgedLog" onchange="loadSensitiveAccessLog()" />
+          Show acknowledged entries too
+        </label>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Payer</th><th>Type</th><th>Actions</th></tr></thead>
-            <tbody id="payersTbody"></tbody>
+            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th><th>Reviewed</th></tr></thead>
+            <tbody id="sensitiveAccessLogTbody"></tbody>
           </table>
         </div>
       </div>
@@ -6342,6 +6366,20 @@ async function addCompanyDiscipline() {
       `Add "${value}" as a clinical discipline anyway?`
     );
     if (!confirmed) return;
+  } else if (!KNOWN_CLINICAL_DISCIPLINES.includes(value.toUpperCase())) {
+    // The inverse check — not "does this look like a job title" but "does
+    // this look like a real clinical credential at all." Deliberately a
+    // warning, not a block: there's no way to enumerate every real
+    // clinical license (Audiologist, Dietitian, Chiropractor, and plenty
+    // more exist beyond this list), so blocking outright would eventually
+    // lock out something genuinely valid. This just catches the common
+    // failure mode — a typo of a real code, like "DTP" instead of "DPT."
+    const confirmed = confirm(
+      `"${value}" isn't in the list of commonly recognized clinical disciplines (PT, PTA, OT, COTA, SLP, MD, DO, NP, PA, DPM, RN, and similar).\n\n` +
+      `If this is a typo, double-check the spelling. If it's a real, less common discipline, that's fine — just confirm to add it.\n\n` +
+      `Add "${value}" anyway?`
+    );
+    if (!confirmed) return;
   }
 
   const updated = [...current, value];
@@ -8900,6 +8938,19 @@ async function generateFilledForm(templateId) {
 // prescribe controlled substances at all). Edit directly here if a
 // company's discipline naming differs from these.
 const PRESCRIBING_DISCIPLINES = new Set(['MD', 'DO', 'NP', 'PA', 'DPM', 'DDS']);
+
+// Not exhaustive by design — real clinical credentials exist well beyond
+// this list (Audiologist, Dietitian, Chiropractor, and more), so this is
+// used as a soft "does this look right" check when adding a new
+// discipline, not a hard gate. Includes DPT alongside PT since payer/
+// state-board forms sometimes use the degree abbreviation interchangeably
+// with the practice-level code (see the state licensing board matching).
+const KNOWN_CLINICAL_DISCIPLINES = [
+  'PT', 'PTA', 'DPT', 'OT', 'OTA', 'COTA', 'SLP',
+  'RN', 'LPN', 'LVN', 'CNA', 'HHA',
+  'MD', 'DO', 'NP', 'PA', 'DPM', 'DDS', 'DMD',
+  'AUD', 'RD', 'DC', 'MSW', 'LCSW',
+];
 
 function credExpiryLabel(dateStr) {
   if (!dateStr) return '—';
