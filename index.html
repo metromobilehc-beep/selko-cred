@@ -532,11 +532,16 @@
             <option value="0">Still needs verification</option>
           </select>
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvImportInput').click()" style="color:#fff;border-color:rgba(255,255,255,.2);">📁 Import staff</button>
-          <button class="btn btn-sm btn-ghost" onclick="downloadCsvTemplate()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Download Excel template</button>
-          <button class="btn btn-sm btn-ghost" onclick="exportStaffRosterPDF()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export PDF</button>
+          <div style="position:relative;display:inline-block;">
+            <button class="btn btn-sm btn-ghost" id="staffMoreBtn" onclick="toggleStaffMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Import/Export</button>
+            <div id="staffMoreMenu" style="display:none;position:absolute;top:36px;left:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:200px;z-index:20;padding:4px;">
+              <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('csvImportInput').click()">📁 Import staff (Excel/CSV)</button>
+              <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('addStaffCvInput').click()">📄 Import from CV</button>
+              <button class="btn-more-item" onclick="closeStaffMoreMenu();downloadCsvTemplate()">⬇ Download Excel template</button>
+              <button class="btn-more-item" onclick="closeStaffMoreMenu();exportStaffRosterPDF()">⬇ Export PDF</button>
+            </div>
+          </div>
           <input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleCsvFileSelected(this)" />
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('addStaffCvInput').click()" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 Import from CV</button>
           <input type="file" id="addStaffCvInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleAddStaffCvFile(this)" />
           <span id="addStaffCvStatus" style="font-size:12px;color:rgba(255,255,255,.4);align-self:center;"></span>
         </div>
@@ -1667,6 +1672,20 @@ function closeDocsMoreMenu() {
 document.addEventListener('click', function(e) {
   const menu = document.getElementById('docsMoreMenu');
   const btn = document.getElementById('docsMoreBtn');
+  if (!menu || menu.style.display === 'none') return;
+  if (!menu.contains(e.target) && e.target !== btn) menu.style.display = 'none';
+});
+
+function toggleStaffMoreMenu() {
+  const menu = document.getElementById('staffMoreMenu');
+  menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+}
+function closeStaffMoreMenu() {
+  document.getElementById('staffMoreMenu').style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+  const menu = document.getElementById('staffMoreMenu');
+  const btn = document.getElementById('staffMoreBtn');
   if (!menu || menu.style.display === 'none') return;
   if (!menu.contains(e.target) && e.target !== btn) menu.style.display = 'none';
 });
@@ -4498,12 +4517,23 @@ const PROVIDER_TAB_MODAL_ID = 'providerTabModal';
 function renderProviderTabBar(staffId, staffName, activeTab) {
   if (!staffId) return ''; // org-level Notes has no per-provider tabs
   const safeName = staffName.replace(/'/g, "\\'");
+  // Licenses/Education/Privileges/Claims were built specifically for the
+  // physician/urgent-care credentialing use case — same bar as other
+  // Full-tier-only features (one-click form generation, clinician self-
+  // upload), not something a Documents-only or Basic Credentialing company
+  // has any use for. Nothing harmful about them showing regardless (a
+  // Basic company couldn't do anything with them), but seeing tabs for a
+  // feature set that doesn't apply is exactly the kind of clutter worth
+  // trimming as the app keeps growing.
+  const showFullCredTabs = currentCompany.has_credentialing_addon && currentCompany.credentialing_tier === 'full';
   const tabs = [
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
-    { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` },
-    { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` },
-    { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` },
-    { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` },
+    ...(showFullCredTabs ? [
+      { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` },
+      { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` },
+      { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` },
+      { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` },
+    ] : []),
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
     { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
     { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
@@ -4521,7 +4551,11 @@ function showFullProfileSheet(staffId) {
   const s = staffList.find(x => x.id === staffId);
   if (!s) { toast('Could not find this staff member — try refreshing.', true); return; }
 
-  const prescribes = PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
+  // Gated on credentialing being enabled at all, not just discipline —
+  // CAQH ID, DEA schedules, and board certification are fundamentally
+  // credentialing concepts, so a Documents-only company shouldn't see this
+  // section regardless of whether the person happens to be a physician.
+  const prescribes = currentCompany.has_credentialing_addon && PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
   const disciplines = getCompanyDisciplines();
 
   const modal = document.createElement('div');
@@ -4631,8 +4665,8 @@ function showFullProfileSheet(staffId) {
       </div>
 
 
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px;">
+      <div style="display:${currentCompany.has_credentialing_addon ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH</div>
+      <div style="display:${currentCompany.has_credentialing_addon ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px;">
         <div>
           <label class="inline-label">CAQH ID</label>
           <input class="inline-input" type="text" id="fpCaqhId" value="${s.caqh_id || ''}" placeholder="e.g. 12345678" />
@@ -4824,8 +4858,8 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH ProView Login</div>
-      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="display:${currentCompany.has_credentialing_addon ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH ProView Login</div>
+      <div style="display:${currentCompany.has_credentialing_addon ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Username, password, and security question answers — encrypted together, same protection as the SSN above. This never automates logging into CAQH on anyone's behalf; the link below just opens their real site so you can sign in and paste the password in yourself.</p>
         <div id="caqhCredFieldArea" style="margin-bottom:8px;">
           ${s.has_caqh_credentials_on_file
@@ -4855,7 +4889,7 @@ function showFullProfileSheet(staffId) {
   // Re-check the DEA/physician sections' visibility live if discipline
   // changes while the sheet is open, rather than requiring a full reopen.
   document.getElementById('fpDiscipline').addEventListener('change', function() {
-    const nowPrescribes = PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
+    const nowPrescribes = currentCompany.has_credentialing_addon && PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
     document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'block' : 'none';
     document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
   });
