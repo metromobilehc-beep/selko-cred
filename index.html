@@ -521,9 +521,12 @@
           </select>
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
           <button class="btn btn-sm btn-ghost" onclick="document.getElementById('csvImportInput').click()" style="color:#fff;border-color:rgba(255,255,255,.2);">📁 Import staff</button>
-          <a href="#" onclick="downloadCsvTemplate();return false;" style="font-size:12px;color:rgba(255,255,255,.5);align-self:center;">Download Excel template</a>
+          <button class="btn btn-sm btn-ghost" onclick="downloadCsvTemplate()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Download Excel template</button>
           <button class="btn btn-sm btn-ghost" onclick="exportStaffRosterPDF()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export PDF</button>
           <input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleCsvFileSelected(this)" />
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('addStaffCvInput').click()" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 Import from CV</button>
+          <input type="file" id="addStaffCvInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleAddStaffCvFile(this)" />
+          <span id="addStaffCvStatus" style="font-size:12px;color:rgba(255,255,255,.4);align-self:center;"></span>
         </div>
         <div class="inline-form" id="addStaffForm">
           <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;">
@@ -4809,6 +4812,61 @@ function showFullProfileSheet(staffId) {
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
 }
 
+// For creating a brand-new staff member from a CV, rather than enriching
+// an existing one. Runs the same extraction, but since there's no staffId
+// yet, this only pre-fills the Add Staff form's Name/Discipline fields
+// directly — the rest of the extracted data (education, licenses,
+// privileges, etc.) is stashed and applied via the same review screen
+// once the staff record actually exists, right after it's created.
+async function handleAddStaffCvFile(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  showAddStaff(); // make sure the form is open so the pre-filled name/discipline is visible
+
+  const statusEl = document.getElementById('addStaffCvStatus');
+  statusEl.textContent = 'Reading document with AI — this takes a few seconds…';
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    let mediaType = file.type || 'image/jpeg';
+    if (!file.type && file.name.toLowerCase().endsWith('.pdf')) mediaType = 'application/pdf';
+
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/parse-provider-cv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ fileBase64: base64, mediaType, fileName: file.name }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    const pi = result.extracted.practitioner_info;
+    if (pi?.name) document.getElementById('nsName').value = pi.name;
+    if (pi?.discipline) {
+      // Only set it if it's actually one of this company's configured
+      // disciplines — an extracted value that doesn't match a real
+      // option would just silently fail to select anything.
+      const disciplineSelect = document.getElementById('nsDiscipline');
+      const match = [...disciplineSelect.options].find(o => o.value.toUpperCase() === pi.discipline.toUpperCase());
+      if (match) disciplineSelect.value = match.value;
+    }
+
+    window._pendingAddStaffCvData = result.extracted;
+    input.value = '';
+    statusEl.textContent = pi?.name ? '✓ Name/discipline pre-filled — review, then Save to import the rest' : '✓ Read — review the form below, then Save to import the rest';
+  } catch (e) {
+    statusEl.textContent = '';
+    toast('Import failed: ' + e.message, true);
+  }
+}
+
 async function handleCvImportFile(staffId, staffName) {
   const fileInput = document.getElementById('cvImportFile');
   const file = fileInput.files[0];
@@ -5625,6 +5683,7 @@ function hideAddStaff() {
   document.getElementById('addStaffForm').style.display = 'none';
   ['nsName','nsEmail','nsTitle'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('nsErr').style.display = 'none';
+  window._pendingAddStaffCvData = null; // covers Cancel, and is a safety net for the save path too
 }
 
 async function saveNewStaff() {
@@ -5637,7 +5696,7 @@ async function saveNewStaff() {
   err.style.display = 'none';
   if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
   try {
-    const { error } = await sb.from('credtrack_staff').insert({
+    const { data: created, error } = await sb.from('credtrack_staff').insert({
       company_id: currentCompany.id,
       full_name:  name,
       email:      email || null,
@@ -5645,11 +5704,16 @@ async function saveNewStaff() {
       discipline: disc || null,
       staff_type: type,
       active:     true,
-    });
+    }).select().single();
     if (error) throw error;
     toast(name + ' added');
+    const pendingCvData = window._pendingAddStaffCvData;
     hideAddStaff();
     await loadStaffTable();
+
+    if (pendingCvData) {
+      showCvImportReview(created.id, name, pendingCvData);
+    }
   } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
 }
 
