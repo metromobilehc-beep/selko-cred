@@ -1282,7 +1282,7 @@
            an individual staff member. A real master list, not just derived
            from existing data, so entries can be added ahead of any actual
            insurance record and renamed without breaking history. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" id="entitiesPanelSettings">
         <h2>Company-wide insurance entities</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
           The offices/locations selectable as "Company-wide" on the Health Care Network tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
@@ -8347,6 +8347,13 @@ async function loadSettings() {
   // Credentialing rather than Documents, independent of has_credtrack.
   const payersPanel = document.getElementById('payersPanelSettings');
   if (payersPanel) payersPanel.style.display = c.has_credentialing_addon ? 'block' : 'none';
+
+  // This one was missed when the other two Health Care Network panels
+  // got gated earlier — it has no other purpose than configuring entries
+  // for that same tab, so a Documents-only company was seeing a whole
+  // settings panel for a feature they don't have.
+  const entitiesPanel = document.getElementById('entitiesPanelSettings');
+  if (entitiesPanel) entitiesPanel.style.display = c.has_credentialing_addon ? 'block' : 'none';
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
