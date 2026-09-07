@@ -2649,6 +2649,7 @@ const QUICK_ACTIONS = [
   { keywords: ['education', 'residency', 'fellowship', 'internship', 'medical school', 'program director', 'postgraduate'], label: 'Education & Training', sub: 'Per-provider — find them below, then click Education', perProvider: true },
   { keywords: ['hospital privileges', 'admitting privileges', 'privilege type'], label: 'Hospital Privileges', sub: 'Per-provider — find them below, then click Privileges', perProvider: true },
   { keywords: ['malpractice claim', 'lawsuit', 'claim history', 'case status'], label: 'Malpractice Claims', sub: 'Per-provider — find them below, then click Claims', perProvider: true },
+  { keywords: ['primary specialty', 'secondary specialty', 'board exam', 'citizenship', 'visa', 'military duty'], label: 'Board Exam & Demographics', sub: 'Per-provider — find them below, then click Info', perProvider: true },
   { keywords: ['credentialing files', 'upload file', 'license copy', 'attach file', 'driver license', 'dl copy'], label: 'Credentialing Files', sub: 'Per-provider — find them below, then click Files', perProvider: true },
   { keywords: ['provider notes'], label: 'Provider Notes', sub: 'Per-provider — find them below, then click Notes', perProvider: true },
   { keywords: ['organization notes', 'org notes', 'general notes'], label: 'Organization Notes', sub: 'Credentialing tab', tab: 'credentialing' },
@@ -4683,6 +4684,51 @@ function showFullProfileSheet(staffId) {
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div>
+            <label class="inline-label">Primary specialty</label>
+            <input class="inline-input" type="text" id="fpPrimarySpecialty" value="${s.primary_specialty || ''}" placeholder="e.g. Family Medicine" />
+          </div>
+          <div>
+            <label class="inline-label">Secondary specialty</label>
+            <input class="inline-input" type="text" id="fpSecondarySpecialty" value="${s.secondary_specialty || ''}" />
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Board exam status (if not yet certified)</label>
+            <select class="inline-select" id="fpBoardExamStatus" onchange="document.getElementById('fpBoardExamDateWrap').style.display = this.value === 'intending_to_sit' ? 'block' : 'none';">
+              <option value="">— Not applicable —</option>
+              <option value="taken_part_1_eligible_part_2" ${s.board_exam_status === 'taken_part_1_eligible_part_2' ? 'selected' : ''}>Taken Part I, eligible for Part II</option>
+              <option value="intending_to_sit" ${s.board_exam_status === 'intending_to_sit' ? 'selected' : ''}>Intending to sit for Boards on a date</option>
+              <option value="not_planning" ${s.board_exam_status === 'not_planning' ? 'selected' : ''}>Not planning to take Boards</option>
+            </select>
+          </div>
+          <div id="fpBoardExamDateWrap" style="display:${s.board_exam_status === 'intending_to_sit' ? 'block' : 'none'};">
+            <label class="inline-label">Intended exam date</label>
+            <input class="inline-input" type="date" id="fpBoardExamDate" value="${s.board_exam_intended_date || ''}" />
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
+            <label class="inline-label">Citizenship status</label>
+            <select class="inline-select" id="fpCitizenshipStatus" onchange="document.getElementById('fpVisaWrap').style.display = this.value === 'not_citizen' ? 'block' : 'none';">
+              <option value="citizen" ${s.citizenship_status !== 'not_citizen' ? 'selected' : ''}>American citizen</option>
+              <option value="not_citizen" ${s.citizenship_status === 'not_citizen' ? 'selected' : ''}>Not an American citizen</option>
+            </select>
+          </div>
+          <div id="fpVisaWrap" style="display:${s.citizenship_status === 'not_citizen' ? 'block' : 'none'};">
+            <label class="inline-label">Visa number / status</label>
+            <input class="inline-input" type="text" id="fpVisaStatus" value="${s.visa_number_status || ''}" />
+          </div>
+          <div>
+            <label class="inline-label">Currently on active/reserve military duty?</label>
+            <select class="inline-select" id="fpMilitaryDuty">
+              <option value="false" ${!s.military_duty_status ? 'selected' : ''}>No</option>
+              <option value="true" ${s.military_duty_status ? 'selected' : ''}>Yes</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div>
             <label class="inline-label">Supervising physician — name</label>
             <input class="inline-input" type="text" id="fpSupervisingName" value="${s.supervising_physician_name || ''}" placeholder="If applicable (e.g. NP/PA)" />
           </div>
@@ -4793,6 +4839,13 @@ async function saveFullProfileSheet(staffId) {
     board_name: document.getElementById('fpBoardName').value.trim() || null,
     board_certification_date: document.getElementById('fpBoardCertDate').value || null,
     board_certification_expiration_date: document.getElementById('fpBoardCertExpiration').value || null,
+    primary_specialty: document.getElementById('fpPrimarySpecialty').value.trim() || null,
+    secondary_specialty: document.getElementById('fpSecondarySpecialty').value.trim() || null,
+    board_exam_status: document.getElementById('fpBoardExamStatus').value || null,
+    board_exam_intended_date: document.getElementById('fpBoardExamDate').value || null,
+    citizenship_status: document.getElementById('fpCitizenshipStatus').value,
+    visa_number_status: document.getElementById('fpVisaStatus').value.trim() || null,
+    military_duty_status: document.getElementById('fpMilitaryDuty').value === 'true',
     supervising_physician_name: document.getElementById('fpSupervisingName').value.trim() || null,
     supervising_physician_npi: document.getElementById('fpSupervisingNpi').value.trim() || null,
     hospital_affiliation_1: document.getElementById('fpHospitalAffiliation1').value.trim() || null,
@@ -9084,6 +9137,13 @@ const CRED_DATA_SOURCES = [
     ['staff.malpractice_claim_2_date_filed', 'Malpractice claim 2 — date filed'],
     ['staff.malpractice_claim_2_date_closed', 'Malpractice claim 2 — date closed'],
     ['staff.malpractice_claim_2_description', 'Malpractice claim 2 — description'],
+    ['staff.primary_specialty', 'Primary specialty'],
+    ['staff.secondary_specialty', 'Secondary specialty'],
+    ['staff.board_exam_status', 'Board exam status'],
+    ['staff.board_exam_intended_date', 'Board exam intended date'],
+    ['staff.citizenship_status', 'Citizenship status'],
+    ['staff.visa_number_status', 'Visa number/status'],
+    ['staff.military_duty_status', 'Currently on active/reserve military duty?'],
     ['staff.caqh_id', 'CAQH ID'],
     ['staff.caqh_issued_date', 'CAQH issued date'],
     ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
@@ -9268,6 +9328,8 @@ function guessDefaultMapping(fieldName) {
     [/taxonomy/, 'company.taxonomy_code'],
     [/^fax$|general.*fax/, 'company.fax'],
     [/^county$|^county_2$|^county_3$/, 'company.location_1_county'],
+    [/primary specialty/, 'staff.primary_specialty'],
+    [/secondary specialty/, 'staff.secondary_specialty'],
     [/specialty/, 'staff.discipline'],
     [/virtual/, 'company.virtual_only'],
     [/remittance/, 'company.payment_remittance_address'],
@@ -9315,6 +9377,9 @@ function guessDefaultMapping(fieldName) {
     [/types of privileges/, 'staff.hospital_privilege_1_type'],
     [/claim.*case.*status|case.*status/, 'staff.malpractice_claim_1_status'],
     [/date claim was filed|date.*filed/, 'staff.malpractice_claim_1_date_filed'],
+    [/visa number.*status|visa.*status/, 'staff.visa_number_status'],
+    [/military duty/, 'staff.military_duty_status'],
+    [/not planning to take boards/, 'staff.board_exam_status'],
     [/caqh.*(issued|effective)|(issued|effective).*caqh/, 'staff.caqh_issued_date'],
     [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
