@@ -194,6 +194,7 @@
     </div>
 
     <div class="admin-layout">
+    <div style="display:flex;flex-direction:column;gap:12px;">
     <div class="tabs admin-sidebar">
       <button class="tab active" id="tab-overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
       <button class="tab"        id="tab-docs"     onclick="switchTab('docs')"><i class="ti ti-file-text"></i> Documents</button>
@@ -203,16 +204,18 @@
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
+    </div>
 
-      <div style="margin-top:16px;padding:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;">
-        <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:8px;">Memo</div>
-        <textarea id="sidebarMemoInput" placeholder="Quick note..." style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:12px;margin-bottom:8px;box-sizing:border-box;resize:vertical;"></textarea>
-        <div style="display:flex;gap:6px;">
-          <button class="btn btn-sm btn-teal" onclick="saveSidebarMemo()" style="flex:1;justify-content:center;">Save</button>
-          <button class="btn btn-sm btn-ghost" onclick="clearSidebarMemo()" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear</button>
-        </div>
+    <div style="margin:12px 0 0;padding:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;width:240px;box-sizing:border-box;">
+      <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:8px;">Memo</div>
+      <textarea id="sidebarMemoInput" placeholder="Quick note..." style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:12px;margin-bottom:8px;box-sizing:border-box;resize:vertical;"></textarea>
+      <div style="display:flex;gap:6px;">
+        <button class="btn btn-sm btn-teal" onclick="saveSidebarMemo()" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-sm btn-ghost" onclick="clearSidebarMemo()" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear</button>
       </div>
     </div>
+    </div>
+
     <div class="admin-main">
 
     <!-- DOCUMENTS TAB -->
