@@ -1435,132 +1435,8 @@
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
-      <!-- Storage usage — per company, so it's actually useful for
-           tracking growth and spotting an outlier, not just one opaque
-           platform-wide total. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>📦 Storage usage</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Uploaded credential document files, per company. Doesn't include branding logos or other non-credential uploads to this bucket.</p>
-        <div id="storageUsageTotal" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Company</th><th>Files</th><th>Storage used</th></tr></thead>
-            <tbody id="storageUsageTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Partner recommendations — contextual referral links (malpractice
-           insurance, CE credits, background checks) shown at the natural
-           point of need, not display ads. Platform-wide by default; a
-           company can opt out entirely in their own Settings. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🤝 Partner recommendations</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">One quiet, contextual link per category — shown right where a company would actually need it (e.g. an empty malpractice field), never as a banner or graphic. Applies to every company unless they turn it off in their own Settings.</p>
-        <div id="partnerRecsList" style="margin-bottom:14px;"></div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:10px;align-items:end;">
-          <div>
-            <label class="inline-label">Category</label>
-            <select class="inline-select" id="newPartnerCategory">
-              <option value="malpractice_insurance">Malpractice insurance</option>
-              <option value="ce_credits">CE credits / renewal</option>
-              <option value="background_check">Background check</option>
-            </select>
-          </div>
-          <div>
-            <label class="inline-label">Partner name</label>
-            <input class="inline-input" type="text" id="newPartnerName" placeholder="e.g. CM&F Group" />
-          </div>
-          <div>
-            <label class="inline-label">Link URL</label>
-            <input class="inline-input" type="url" id="newPartnerUrl" placeholder="https://..." />
-          </div>
-          <div>
-            <label class="inline-label">Link text</label>
-            <input class="inline-input" type="text" id="newPartnerText" placeholder="e.g. Compare rates" />
-          </div>
-          <button class="btn btn-sm btn-teal" onclick="addPartnerRecommendation()">+ Add</button>
-        </div>
-      </div>
-
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🗄 Records eligible for permanent deletion</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Company</th><th>Staff member</th><th>Document</th><th>Expired</th><th>Archived</th><th>Actions</th></tr></thead>
-            <tbody id="deletionReviewTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Recent uploads across every company — live view, complements the daily email digest -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>📤 Recent uploads</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Document uploads across every company in the last 7 days, newest first.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>When</th><th>Company</th><th>Staff member</th><th>Document</th></tr></thead>
-            <tbody id="recentUploadsTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Document type categories — the shared grouping labels used in
-           every company's Document Types table, since global and custom
-           types sit together in one list, sorted by category. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Document type categories</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Shared across every company — the section headers in each company's Document Types table. Adding one here makes it available for anyone to file a type under, immediately.</p>
-        <div id="categoriesListSuper" style="margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;">
-          <input class="inline-input" type="text" id="newCategoryName" placeholder="e.g. HR Documents" style="max-width:240px;" />
-          <button class="btn btn-sm btn-teal" onclick="addDocTypeCategory()">+ Add category</button>
-        </div>
-      </div>
-
-      <!-- Platform document types (tier + global/custom management) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Platform document types</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
-            <tbody id="platformDocTypesTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🐛 Bug log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Errors logged across all Selko apps that write to this table.</p>
-        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-          <select class="inline-select" id="bugAppFilter" onchange="loadBugLog()">
-            <option value="">All apps</option>
-            <option value="cred">Cred</option>
-            <option value="comply">Comply</option>
-            <option value="billing">Billing</option>
-            <option value="hep">HEP</option>
-          </select>
-          <select class="inline-select" id="bugTypeFilter" onchange="loadBugLog()">
-            <option value="">All error types</option>
-            <option value="login_failed">Login failed</option>
-            <option value="session_restore_failed">Session restore failed</option>
-            <option value="toast">Toast (in-app error)</option>
-            <option value="window_error">Uncaught JS error</option>
-            <option value="unhandled_rejection">Unhandled rejection</option>
-          </select>
-          <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
-          <button class="btn btn-sm btn-teal" onclick="copyBugLogForClaude()">📋 Copy for Claude</button>
-          <button class="btn btn-sm btn-danger" onclick="clearBugLog()">🗑 Clear log</button>
-        </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th></tr></thead>
-            <tbody id="bugLogTbody"></tbody>
-          </table>
-        </div>
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Management</span>
       </div>
 
       <!-- Add company -->
@@ -1629,6 +1505,142 @@
           </div>
         </div>
         <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+      </div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
+      </div>
+
+      <!-- Partner recommendations — contextual referral links (malpractice
+           insurance, CE credits, background checks) shown at the natural
+           point of need, not display ads. Platform-wide by default; a
+           company can opt out entirely in their own Settings. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🤝 Partner recommendations</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">One quiet, contextual link per category — shown right where a company would actually need it (e.g. an empty malpractice field), never as a banner or graphic. Applies to every company unless they turn it off in their own Settings.</p>
+        <div id="partnerRecsList" style="margin-bottom:14px;"></div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill, minmax(160px, 1fr));gap:10px;align-items:end;">
+          <div>
+            <label class="inline-label">Category</label>
+            <select class="inline-select" id="newPartnerCategory">
+              <option value="malpractice_insurance">Malpractice insurance</option>
+              <option value="ce_credits">CE credits / renewal</option>
+              <option value="background_check">Background check</option>
+            </select>
+          </div>
+          <div>
+            <label class="inline-label">Partner name</label>
+            <input class="inline-input" type="text" id="newPartnerName" placeholder="e.g. CM&F Group" />
+          </div>
+          <div>
+            <label class="inline-label">Link URL</label>
+            <input class="inline-input" type="url" id="newPartnerUrl" placeholder="https://..." />
+          </div>
+          <div>
+            <label class="inline-label">Link text</label>
+            <input class="inline-input" type="text" id="newPartnerText" placeholder="e.g. Compare rates" />
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="addPartnerRecommendation()">+ Add</button>
+        </div>
+      </div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Platform &amp; System</span>
+      </div>
+
+      <!-- Storage usage — per company, so it's actually useful for
+           tracking growth and spotting an outlier, not just one opaque
+           platform-wide total. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>📦 Storage usage</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Uploaded credential document files, per company. Doesn't include branding logos or other non-credential uploads to this bucket.</p>
+        <div id="storageUsageTotal" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Company</th><th>Files</th><th>Storage used</th></tr></thead>
+            <tbody id="storageUsageTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Recent uploads across every company — live view, complements the daily email digest -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>📤 Recent uploads</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Document uploads across every company in the last 7 days, newest first.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Company</th><th>Staff member</th><th>Document</th></tr></thead>
+            <tbody id="recentUploadsTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🗄 Records eligible for permanent deletion</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Company</th><th>Staff member</th><th>Document</th><th>Expired</th><th>Archived</th><th>Actions</th></tr></thead>
+            <tbody id="deletionReviewTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Document type categories — the shared grouping labels used in
+           every company's Document Types table, since global and custom
+           types sit together in one list, sorted by category. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Document type categories</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Shared across every company — the section headers in each company's Document Types table. Adding one here makes it available for anyone to file a type under, immediately.</p>
+        <div id="categoriesListSuper" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newCategoryName" placeholder="e.g. HR Documents" style="max-width:240px;" />
+          <button class="btn btn-sm btn-teal" onclick="addDocTypeCategory()">+ Add category</button>
+        </div>
+      </div>
+
+      <!-- Platform document types (tier + global/custom management) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Platform document types</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
+            <tbody id="platformDocTypesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🐛 Bug log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Errors logged across all Selko apps that write to this table.</p>
+        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+          <select class="inline-select" id="bugAppFilter" onchange="loadBugLog()">
+            <option value="">All apps</option>
+            <option value="cred">Cred</option>
+            <option value="comply">Comply</option>
+            <option value="billing">Billing</option>
+            <option value="hep">HEP</option>
+          </select>
+          <select class="inline-select" id="bugTypeFilter" onchange="loadBugLog()">
+            <option value="">All error types</option>
+            <option value="login_failed">Login failed</option>
+            <option value="session_restore_failed">Session restore failed</option>
+            <option value="toast">Toast (in-app error)</option>
+            <option value="window_error">Uncaught JS error</option>
+            <option value="unhandled_rejection">Unhandled rejection</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
+          <button class="btn btn-sm btn-teal" onclick="copyBugLogForClaude()">📋 Copy for Claude</button>
+          <button class="btn btn-sm btn-danger" onclick="clearBugLog()">🗑 Clear log</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th></tr></thead>
+            <tbody id="bugLogTbody"></tbody>
+          </table>
+        </div>
       </div>
 
     </div>
