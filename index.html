@@ -1369,6 +1369,17 @@
         </div>
       </div>
 
+      <!-- Quiet, static list — deliberately not a banner or anything
+           attention-grabbing. Just shown once, plainly, in Settings where
+           someone would look if they wanted it, respecting the original
+           design intent of a non-intrusive recommendation rather than
+           something that competes for attention. -->
+      <div class="dark-panel" id="partnerRecsStaticPanel" style="margin-bottom:16px;display:none;">
+        <h2>🤝 Recommended partners</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">A few partners Selko works with, in case they're useful.</p>
+        <div id="partnerRecsStaticList" style="display:flex;flex-direction:column;gap:8px;"></div>
+      </div>
+
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Audit &amp; Logs</span>
       </div>
@@ -2978,6 +2989,19 @@ async function checkCredentialingExpirations() {
 
 function closeCredExpiryBanner() {
   document.getElementById('credExpiryBanner').style.display = 'none';
+}
+
+async function loadPartnerRecsStatic() {
+  const panel = document.getElementById('partnerRecsStaticPanel');
+  const list = document.getElementById('partnerRecsStaticList');
+  if (!panel || !list) return;
+
+  const recs = await getActivePartnerRecommendations();
+  const entries = Object.values(recs);
+  if (!entries.length) { panel.style.display = 'none'; return; }
+
+  panel.style.display = 'block';
+  list.innerHTML = entries.map(r => `<div>${partnerLinkHtml(r)}</div>`).join('');
 }
 
 // Auto-archive: any document expired 3+ months ago gets hidden from the
@@ -8251,6 +8275,7 @@ async function loadSettings() {
 
   document.getElementById('myAccountName').value = currentProfile.full_name || '';
   loadBillingStatus();
+  loadPartnerRecsStatic();
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
@@ -10700,6 +10725,7 @@ async function viewAsAdmin(companyId, companyName) {
   updateModuleTabVisibility(company, currentProfile);
   updateProFeatureButtons();
   loadSidebarMemo();
+  _partnerRecsCache = null; // invalidate — the previous company's cached recs don't apply here
 
   await loadStaffList();
   await loadAdminFilters();
@@ -10722,6 +10748,7 @@ async function exitViewAsAdmin() {
   updateModuleTabVisibility(currentCompany, currentProfile);
   updateProFeatureButtons();
   loadSidebarMemo();
+  _partnerRecsCache = null;
   _superProfile  = null;
   _superCompany  = null;
 
