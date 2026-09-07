@@ -1058,13 +1058,20 @@
       <!-- Sensitive-field access log — SSN views/entries specifically.
            No delete action exists anywhere in this app for this table —
            that's deliberate, so it's a genuine, tamper-resistant audit
-           trail rather than something anyone could quietly clean up. -->
+           trail rather than something anyone could quietly clean up.
+           "Acknowledge" only adds metadata (who/when reviewed it) and
+           hides it from the default view — the row itself is untouched
+           and always fully visible again via the toggle below. -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🔍 Sensitive data access log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log.</p>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="showAcknowledgedLog" onchange="loadSensitiveAccessLog()" />
+          Show acknowledged entries too
+        </label>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th></tr></thead>
+            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th><th>Reviewed</th></tr></thead>
             <tbody id="sensitiveAccessLogTbody"></tbody>
           </table>
         </div>
@@ -1302,8 +1309,8 @@
       <!-- Document access audit log -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>📋 Access log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Who viewed or downloaded which staff documents, and when — including agency partners. Most recent 200 entries.</p>
-        <div class="filter-bar" style="margin-bottom:14px;">
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Who viewed or downloaded which staff documents, and when — including agency partners. Archiving hides old entries from the view below but never deletes them — the full record stays in the database permanently.</p>
+        <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
           <select class="filter-sel" id="fAccessLogRole" onchange="loadAccessLog()">
             <option value="">Everyone</option>
             <option value="partner">Agency partners only</option>
@@ -1314,11 +1321,23 @@
             <option value="view">View only</option>
             <option value="download">Download only</option>
           </select>
+          <button class="btn btn-sm btn-ghost" onclick="showPreviewAccessLogPDF()" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Preview & Export PDF</button>
           <button class="btn btn-sm btn-ghost" onclick="exportAccessLogCsv()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export CSV</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6);cursor:pointer;">
+            <input type="checkbox" id="showArchivedAccessLog" onchange="loadAccessLog()" />
+            Show archived entries too
+          </label>
+          <span style="color:rgba(255,255,255,.2);">|</span>
+          <span style="font-size:12px;color:rgba(255,255,255,.5);">Archive entries older than</span>
+          <input type="number" id="archiveOlderThanDays" value="90" min="1" style="width:60px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:4px 8px;font-size:12px;" />
+          <span style="font-size:12px;color:rgba(255,255,255,.5);">days</span>
+          <button class="btn btn-sm btn-gold" onclick="bulkArchiveAccessLog()">Archive</button>
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>When</th><th>Accessed by</th><th>Staff member</th><th>Document</th><th>Action</th></tr></thead>
+            <thead><tr><th>When</th><th>Accessed by</th><th>Staff member</th><th>Document</th><th>Action</th><th>Archived</th></tr></thead>
             <tbody id="accessLogTbody"></tbody>
           </table>
         </div>
@@ -6143,6 +6162,7 @@ async function exportAccessLogCsv() {
 async function loadAccessLog() {
   const roleFilter = document.getElementById('fAccessLogRole')?.value || '';
   const actionFilter = document.getElementById('fAccessLogAction')?.value || '';
+  const showArchived = document.getElementById('showArchivedAccessLog')?.checked;
 
   let q = sb.from('credtrack_access_log')
     .select('*')
@@ -6152,17 +6172,19 @@ async function loadAccessLog() {
 
   if (roleFilter) q = q.eq('accessed_by_role', roleFilter);
   if (actionFilter) q = q.eq('action', actionFilter);
+  if (!showArchived) q = q.is('archived_at', null);
 
   const { data, error } = await q;
   const tbody = document.getElementById('accessLogTbody');
   if (!tbody) return; // panel not on this screen (e.g. partner view)
+  _lastAccessLogData = data || []; // stashed for the PDF preview, so it exports exactly what's currently shown
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">Could not load access log: ${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">Could not load access log: ${error.message}</td></tr>`;
     return;
   }
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No access recorded yet.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">${showArchived ? 'No access recorded yet.' : 'Nothing unarchived — check "Show archived entries" to see the full history.'}</td></tr>`;
     return;
   }
 
@@ -6177,7 +6199,79 @@ async function loadAccessLog() {
     <td>${r.staff_full_name || '—'}</td>
     <td>${r.document_type_name || '—'}</td>
     <td><span class="badge ${r.action === 'download' ? 'badge-warn' : 'badge-ok'}">${r.action}</span></td>
+    <td style="font-size:11px;color:rgba(255,255,255,.4);white-space:nowrap;">${r.archived_at ? `✓ ${new Date(r.archived_at).toLocaleDateString()}` : '—'}</td>
   </tr>`).join('');
+}
+
+let _lastAccessLogData = [];
+
+async function bulkArchiveAccessLog() {
+  const days = parseInt(document.getElementById('archiveOlderThanDays')?.value, 10);
+  if (!days || days < 1) { toast('Enter a valid number of days.', true); return; }
+
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - days);
+
+  if (!confirm(`Archive every access-log entry older than ${days} days? They'll disappear from the default view but stay permanently in the database — nothing is deleted, and "Show archived entries" always brings them back.`)) return;
+
+  const { data, error } = await sb.from('credtrack_access_log')
+    .update({ archived_at: new Date().toISOString(), archived_by: currentProfile.full_name || currentProfile.email })
+    .eq('company_id', currentCompany.id)
+    .lt('created_at', cutoff.toISOString())
+    .is('archived_at', null)
+    .select('id');
+
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ Archived ${data?.length || 0} entr${(data?.length || 0) === 1 ? 'y' : 'ies'}`);
+  await loadAccessLog();
+}
+
+// Same preview-before-export pattern as the Missing Docs PDF — opens in a
+// new tab via a blob URL so the browser's own native PDF viewer provides
+// print/save/download, rather than committing straight to a file.
+function showPreviewAccessLogPDF() {
+  if (!_lastAccessLogData.length) { toast('Nothing currently shown to export — adjust the filters above first.', true); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const NAVY = [15, 31, 46];
+
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageWidth, 50, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(currentCompany.name, 24, 24);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(10);
+  doc.text(`Document access log — exported ${new Date().toLocaleString()}`, 24, 40);
+
+  doc.autoTable({
+    startY: 64,
+    head: [['When', 'Accessed by', 'Role', 'Staff member', 'Document', 'Action', 'Archived']],
+    body: _lastAccessLogData.map(r => [
+      new Date(r.created_at).toLocaleString(),
+      r.accessed_by_name || '—',
+      r.accessed_by_role || '—',
+      r.staff_full_name || '—',
+      r.document_type_name || '—',
+      r.action || '—',
+      r.archived_at ? new Date(r.archived_at).toLocaleDateString() : '—',
+    ]),
+    headStyles: { fillColor: [13, 148, 136], textColor: 255, fontStyle: 'bold' },
+    styles: { fontSize: 8 },
+  });
+
+  doc.setProperties({ title: `${currentCompany.name}_AccessLog` });
+  const blobUrl = doc.output('bloburl');
+  const previewWindow = window.open(blobUrl, '_blank');
+  if (!previewWindow) {
+    doc.save(`${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_AccessLog_${new Date().toISOString().slice(0,10)}.pdf`);
+    toast('Pop-up blocked, so this downloaded directly instead of previewing');
+  } else {
+    toast('Opened in a new tab — use your browser\'s own save/print/download controls from there');
+  }
 }
 
 function loadDisciplinesPanel() {
@@ -6949,17 +7043,21 @@ async function loadSensitiveAccessLog() {
   const tbody = document.getElementById('sensitiveAccessLogTbody');
   if (!tbody) return;
 
-  const { data, error } = await sb.from('sensitive_field_access_log')
+  const showAcknowledged = document.getElementById('showAcknowledgedLog')?.checked;
+
+  let q = sb.from('sensitive_field_access_log')
     .select('*, credtrack_staff(full_name)')
     .order('accessed_at', { ascending: false })
     .limit(100);
+  if (!showAcknowledged) q = q.is('acknowledged_at', null);
+  const { data, error } = await q;
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:#f87171;padding:16px;">${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#f87171;padding:16px;">${error.message}</td></tr>`;
     return;
   }
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.3);padding:16px;">No access logged yet.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:16px;">${showAcknowledged ? 'No access logged yet.' : 'Nothing unreviewed — check "Show acknowledged entries" to see the full history.'}</td></tr>`;
     return;
   }
 
@@ -6970,7 +7068,20 @@ async function loadSensitiveAccessLog() {
       <td><span class="badge ${r.action === 'read' ? 'badge-warn' : 'badge-ok'}">${r.action === 'read' ? 'Viewed' : 'Entered/updated'}</span></td>
       <td style="font-size:12px;">${r.accessed_by || '—'}</td>
       <td style="max-width:260px;white-space:normal;font-size:12px;color:rgba(255,255,255,.6);">${r.justification || '—'}</td>
+      <td style="font-size:11px;white-space:nowrap;">${r.acknowledged_at
+        ? `<span style="color:rgba(255,255,255,.4);">✓ by ${r.acknowledged_by || '—'}</span>`
+        : `<button class="btn btn-sm btn-ghost" onclick="acknowledgeAccessLogEntry('${r.id}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Acknowledge</button>`}</td>
     </tr>`).join('');
+}
+
+async function acknowledgeAccessLogEntry(id) {
+  const { error } = await sb.from('sensitive_field_access_log').update({
+    acknowledged_at: new Date().toISOString(),
+    acknowledged_by: currentProfile.full_name || currentProfile.email,
+  }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Marked reviewed');
+  await loadSensitiveAccessLog();
 }
 
 async function loadBillingStatus() {
