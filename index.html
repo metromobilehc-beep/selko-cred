@@ -2647,6 +2647,7 @@ const QUICK_ACTIONS = [
   { keywords: ['employment', 'employment history', 'work history', 'employer', 'gap explanation'], label: 'Employment History', sub: 'Per-provider — find them below, then click Employment', perProvider: true },
   { keywords: ['additional license', 'multiple licenses', 'second license', 'another state license'], label: 'Additional Licenses', sub: 'Per-provider — find them below, then click Licenses', perProvider: true },
   { keywords: ['education', 'residency', 'fellowship', 'internship', 'medical school', 'program director', 'postgraduate'], label: 'Education & Training', sub: 'Per-provider — find them below, then click Education', perProvider: true },
+  { keywords: ['hospital privileges', 'admitting privileges', 'privilege type'], label: 'Hospital Privileges', sub: 'Per-provider — find them below, then click Privileges', perProvider: true },
   { keywords: ['credentialing files', 'upload file', 'license copy', 'attach file', 'driver license', 'dl copy'], label: 'Credentialing Files', sub: 'Per-provider — find them below, then click Files', perProvider: true },
   { keywords: ['provider notes'], label: 'Provider Notes', sub: 'Per-provider — find them below, then click Notes', perProvider: true },
   { keywords: ['organization notes', 'org notes', 'general notes'], label: 'Organization Notes', sub: 'Credentialing tab', tab: 'credentialing' },
@@ -4463,6 +4464,7 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
     { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` },
     { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` },
+    { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` },
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
     { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
     { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
@@ -6932,6 +6934,110 @@ async function deleteEducationTraining(id, staffId) {
   await loadEducationTraining(staffId);
 }
 
+async function showHospitalPrivileges(staffId, staffName) {
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = PROVIDER_TAB_MODAL_ID;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(625px, 62.5vw, 1125px);max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, staffName, 'privileges')}
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:85vh;">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Hospital admitting privileges — separate from the general hospital affiliation links on the Info tab; this tracks the actual privilege type and dates.</div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="hpHospitalName" placeholder="Hospital name" />
+          <input class="inline-input" type="text" id="hpPrivilegeType" placeholder="Type (e.g. Provisional, Full)" />
+        </div>
+        <input class="inline-input" type="text" id="hpAddress" placeholder="Hospital address" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">Start date</label>
+            <input class="inline-input" type="date" id="hpStartDate" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">End date (if applicable)</label>
+            <input class="inline-input" type="date" id="hpEndDate" />
+          </div>
+        </div>
+        <div id="privilegesFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
+        <button class="btn btn-sm btn-teal" onclick="addHospitalPrivilege('${staffId}')" style="width:100%;justify-content:center;">+ Add privilege record</button>
+      </div>
+
+      <div id="hospitalPrivilegesList" style="overflow-y:auto;flex:1;">Loading...</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  await loadHospitalPrivileges(staffId);
+}
+
+async function loadHospitalPrivileges(staffId) {
+  const list = document.getElementById('hospitalPrivilegesList');
+  if (!list) return;
+
+  const { data, error } = await sb.from('staff_hospital_privileges')
+    .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+
+  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No hospital privileges on file yet.</div>'; return; }
+
+  list.innerHTML = data.map(p => {
+    const dateRange = [p.start_date ? fmtDate(p.start_date) : null, p.end_date ? fmtDate(p.end_date) : 'Present'].filter(Boolean).join(' – ');
+    return `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
+        <div>
+          <div style="font-size:13px;color:#fff;font-weight:600;">${p.hospital_name || 'Unnamed hospital'}${p.privilege_type ? ' — ' + p.privilege_type : ''}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);">${p.address ? p.address + ' · ' : ''}${dateRange}</div>
+        </div>
+        <button onclick="deleteHospitalPrivilege('${p.id}','${staffId}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;white-space:nowrap;">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addHospitalPrivilege(staffId) {
+  const errEl = document.getElementById('privilegesFormErr');
+  errEl.style.display = 'none';
+
+  const hospitalName = document.getElementById('hpHospitalName').value.trim();
+  if (!hospitalName) { errEl.textContent = 'Hospital name is required.'; errEl.style.display = 'block'; return; }
+
+  const { error } = await sb.from('staff_hospital_privileges').insert({
+    staff_id: staffId,
+    hospital_name: hospitalName,
+    privilege_type: document.getElementById('hpPrivilegeType').value.trim() || null,
+    address: document.getElementById('hpAddress').value.trim() || null,
+    start_date: document.getElementById('hpStartDate').value || null,
+    end_date: document.getElementById('hpEndDate').value || null,
+  });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  ['hpHospitalName','hpPrivilegeType','hpAddress','hpStartDate','hpEndDate'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+
+  toast('✓ Privilege record added');
+  await loadHospitalPrivileges(staffId);
+}
+
+async function deleteHospitalPrivilege(id, staffId) {
+  if (!confirm('Delete this hospital privilege record?')) return;
+  const { error } = await sb.from('staff_hospital_privileges').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Removed');
+  await loadHospitalPrivileges(staffId);
+}
+
 async function showNotesLog(staffId, contextName) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -8841,6 +8947,21 @@ const CRED_DATA_SOURCES = [
     ['staff.education_3_start_date', 'Education/training 3 — start date'],
     ['staff.education_3_end_date', 'Education/training 3 — end date'],
     ['staff.education_3_completed', 'Education/training 3 — completed?'],
+    ['staff.hospital_privilege_1_name', 'Hospital privilege 1 — hospital name'],
+    ['staff.hospital_privilege_1_address', 'Hospital privilege 1 — address'],
+    ['staff.hospital_privilege_1_type', 'Hospital privilege 1 — privilege type'],
+    ['staff.hospital_privilege_1_start_date', 'Hospital privilege 1 — start date'],
+    ['staff.hospital_privilege_1_end_date', 'Hospital privilege 1 — end date'],
+    ['staff.hospital_privilege_2_name', 'Hospital privilege 2 — hospital name'],
+    ['staff.hospital_privilege_2_address', 'Hospital privilege 2 — address'],
+    ['staff.hospital_privilege_2_type', 'Hospital privilege 2 — privilege type'],
+    ['staff.hospital_privilege_2_start_date', 'Hospital privilege 2 — start date'],
+    ['staff.hospital_privilege_2_end_date', 'Hospital privilege 2 — end date'],
+    ['staff.hospital_privilege_3_name', 'Hospital privilege 3 — hospital name'],
+    ['staff.hospital_privilege_3_address', 'Hospital privilege 3 — address'],
+    ['staff.hospital_privilege_3_type', 'Hospital privilege 3 — privilege type'],
+    ['staff.hospital_privilege_3_start_date', 'Hospital privilege 3 — start date'],
+    ['staff.hospital_privilege_3_end_date', 'Hospital privilege 3 — end date'],
     ['staff.caqh_id', 'CAQH ID'],
     ['staff.caqh_issued_date', 'CAQH issued date'],
     ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
@@ -9068,6 +9189,8 @@ function guessDefaultMapping(fieldName) {
     [/^program director_2$/, 'staff.education_2_program_director'],
     [/current program director/, 'staff.education_1_current_program_director'],
     [/program successfully completed/, 'staff.education_1_completed'],
+    [/primary hospital.*admitting privileges|hospital.*admitting privileges/, 'staff.hospital_privilege_1_name'],
+    [/types of privileges/, 'staff.hospital_privilege_1_type'],
     [/caqh.*(issued|effective)|(issued|effective).*caqh/, 'staff.caqh_issued_date'],
     [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
@@ -9232,6 +9355,19 @@ async function generateFilledForm(templateId) {
       staffWithLicenses[`education_${n}_start_date`] = ed.start_date || '';
       staffWithLicenses[`education_${n}_end_date`] = ed.end_date || '';
       staffWithLicenses[`education_${n}_completed`] = ed.completed ? 'Yes' : 'No';
+    });
+
+    // Same flattening for hospital privileges — most recent first, up to
+    // 3 entries as hospital_privilege_1/2/3_*.
+    const { data: privilegeEntries } = await sb.from('staff_hospital_privileges')
+      .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+    (privilegeEntries || []).slice(0, 3).forEach((p, i) => {
+      const n = i + 1;
+      staffWithLicenses[`hospital_privilege_${n}_name`] = p.hospital_name || '';
+      staffWithLicenses[`hospital_privilege_${n}_address`] = p.address || '';
+      staffWithLicenses[`hospital_privilege_${n}_type`] = p.privilege_type || '';
+      staffWithLicenses[`hospital_privilege_${n}_start_date`] = p.start_date || '';
+      staffWithLicenses[`hospital_privilege_${n}_end_date`] = p.end_date || '';
     });
 
     const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
