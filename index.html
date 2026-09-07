@@ -7089,10 +7089,11 @@ async function showEmploymentHistory(staffId, staffName) {
           <input class="inline-input" type="text" id="empEmployerName" placeholder="Employer name" />
           <input class="inline-input" type="text" id="empPositionTitle" placeholder="Position / title" />
         </div>
-        <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin-bottom:10px;">
+        <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="empAddress" placeholder="Employer address" />
           <input class="inline-input" type="text" id="empCity" placeholder="City" />
           <input class="inline-input" type="text" id="empState" placeholder="State" maxlength="2" />
+          <input class="inline-input" type="text" id="empZip" placeholder="Postal code" />
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:10px;align-items:center;">
           <div>
@@ -7174,6 +7175,7 @@ async function addEmploymentHistory(staffId) {
     address: document.getElementById('empAddress').value.trim() || null,
     city: document.getElementById('empCity').value.trim() || null,
     state: document.getElementById('empState').value.trim() || null,
+    zip: document.getElementById('empZip').value.trim() || null,
     start_date: startDate,
     end_date: isCurrent ? null : (document.getElementById('empEndDate').value || null),
     is_current: isCurrent,
@@ -7184,7 +7186,7 @@ async function addEmploymentHistory(staffId) {
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  ['empEmployerName','empPositionTitle','empAddress','empCity','empState','empStartDate','empEndDate',
+  ['empEmployerName','empPositionTitle','empAddress','empCity','empState','empZip','empStartDate','empEndDate',
    'empSupervisorName','empSupervisorPhone','empReasonForLeaving','empGapExplanation'].forEach(id => {
     document.getElementById(id).value = '';
   });
@@ -9762,6 +9764,49 @@ const CRED_DATA_SOURCES = [
     ['staff.malpractice_claim_2_date_filed', 'Malpractice claim 2 — date filed'],
     ['staff.malpractice_claim_2_date_closed', 'Malpractice claim 2 — date closed'],
     ['staff.malpractice_claim_2_description', 'Malpractice claim 2 — description'],
+    ['staff.employment_1_employer_name', 'Employment 1 (most recent) — employer name'],
+    ['staff.employment_1_position_title', 'Employment 1 — position/title'],
+    ['staff.employment_1_address', 'Employment 1 — address'],
+    ['staff.employment_1_city', 'Employment 1 — city'],
+    ['staff.employment_1_state', 'Employment 1 — state'],
+    ['staff.employment_1_zip', 'Employment 1 — postal code'],
+    ['staff.employment_1_start_date', 'Employment 1 — start date'],
+    ['staff.employment_1_end_date', 'Employment 1 — end date'],
+    ['staff.employment_1_is_current', 'Employment 1 — currently employed here?'],
+    ['staff.employment_1_supervisor_name', 'Employment 1 — supervisor name'],
+    ['staff.employment_1_supervisor_phone', 'Employment 1 — supervisor phone'],
+    ['staff.employment_1_reason_for_leaving', 'Employment 1 — reason for leaving'],
+    ['staff.employment_2_employer_name', 'Employment 2 — employer name'],
+    ['staff.employment_2_position_title', 'Employment 2 — position/title'],
+    ['staff.employment_2_address', 'Employment 2 — address'],
+    ['staff.employment_2_city', 'Employment 2 — city'],
+    ['staff.employment_2_state', 'Employment 2 — state'],
+    ['staff.employment_2_zip', 'Employment 2 — postal code'],
+    ['staff.employment_2_start_date', 'Employment 2 — start date'],
+    ['staff.employment_2_end_date', 'Employment 2 — end date'],
+    ['staff.employment_2_reason_for_leaving', 'Employment 2 — reason for leaving'],
+    ['staff.employment_3_employer_name', 'Employment 3 — employer name'],
+    ['staff.employment_3_position_title', 'Employment 3 — position/title'],
+    ['staff.employment_3_address', 'Employment 3 — address'],
+    ['staff.employment_3_city', 'Employment 3 — city'],
+    ['staff.employment_3_state', 'Employment 3 — state'],
+    ['staff.employment_3_zip', 'Employment 3 — postal code'],
+    ['staff.employment_3_start_date', 'Employment 3 — start date'],
+    ['staff.employment_3_end_date', 'Employment 3 — end date'],
+    ['staff.employment_3_reason_for_leaving', 'Employment 3 — reason for leaving'],
+    ['staff.employment_4_employer_name', 'Employment 4 — employer name'],
+    ['staff.employment_4_position_title', 'Employment 4 — position/title'],
+    ['staff.employment_4_address', 'Employment 4 — address'],
+    ['staff.employment_4_city', 'Employment 4 — city'],
+    ['staff.employment_4_state', 'Employment 4 — state'],
+    ['staff.employment_4_zip', 'Employment 4 — postal code'],
+    ['staff.employment_4_start_date', 'Employment 4 — start date'],
+    ['staff.employment_4_end_date', 'Employment 4 — end date'],
+    ['staff.employment_4_reason_for_leaving', 'Employment 4 — reason for leaving'],
+    ['staff.employment_gap_1_dates', 'Employment gap 1 — dates'],
+    ['staff.employment_gap_1_explanation', 'Employment gap 1 — explanation'],
+    ['staff.employment_gap_2_dates', 'Employment gap 2 — dates'],
+    ['staff.employment_gap_2_explanation', 'Employment gap 2 — explanation'],
     ['staff.primary_specialty', 'Primary specialty'],
     ['staff.secondary_specialty', 'Secondary specialty'],
     ['staff.board_exam_status', 'Board exam status'],
@@ -10203,6 +10248,40 @@ async function generateFilledForm(templateId) {
       staffWithLicenses[`malpractice_claim_${n}_date_closed`] = c.date_closed || '';
       staffWithLicenses[`malpractice_claim_${n}_description`] = c.description || '';
     });
+
+    // Same flattening for employment history — most recent first, up to
+    // 4 entries as employment_1/2/3/4_*, matching this form's own current
+    // + 3 previous employer layout.
+    const { data: employmentEntries } = await sb.from('staff_employment_history')
+      .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+    (employmentEntries || []).slice(0, 4).forEach((emp, i) => {
+      const n = i + 1;
+      staffWithLicenses[`employment_${n}_employer_name`] = emp.employer_name || '';
+      staffWithLicenses[`employment_${n}_position_title`] = emp.position_title || '';
+      staffWithLicenses[`employment_${n}_address`] = emp.address || '';
+      staffWithLicenses[`employment_${n}_city`] = emp.city || '';
+      staffWithLicenses[`employment_${n}_state`] = emp.state || '';
+      staffWithLicenses[`employment_${n}_zip`] = emp.zip || '';
+      staffWithLicenses[`employment_${n}_start_date`] = emp.start_date || '';
+      staffWithLicenses[`employment_${n}_end_date`] = emp.is_current ? 'Present' : (emp.end_date || '');
+      staffWithLicenses[`employment_${n}_is_current`] = emp.is_current ? 'Yes' : 'No';
+      staffWithLicenses[`employment_${n}_supervisor_name`] = emp.supervisor_name || '';
+      staffWithLicenses[`employment_${n}_supervisor_phone`] = emp.supervisor_phone || '';
+      staffWithLicenses[`employment_${n}_reason_for_leaving`] = emp.reason_for_leaving || '';
+    });
+    // Gap explanations are their own separate sequence, not tied 1:1 to a
+    // specific employer slot above — this form (and most others) lists
+    // them as standalone "Gap Dates / Explanation" rows at the end of
+    // Work History, so only entries that actually have one get pulled in,
+    // in the same most-recent-first order.
+    (employmentEntries || [])
+      .filter(emp => emp.gap_explanation)
+      .slice(0, 2)
+      .forEach((emp, i) => {
+        const n = i + 1;
+        staffWithLicenses[`employment_gap_${n}_dates`] = emp.end_date ? `Since ${fmtDate(emp.end_date)}` : '';
+        staffWithLicenses[`employment_gap_${n}_explanation`] = emp.gap_explanation || '';
+      });
 
     const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
     if (dlErr) throw dlErr;
