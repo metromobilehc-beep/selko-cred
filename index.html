@@ -8867,6 +8867,34 @@ async function deleteDocType(id, name) {
   await loadDocTypes();
 }
 
+// A Global type can be relied on by every company on the platform, unlike
+// a Custom type which only ever affects the one company that made it — so
+// this checks real usage first and refuses to delete anything actually in
+// use, rather than trusting a confirm() dialog alone to prevent an
+// accidental mass-orphaning of uploaded documents across companies.
+async function deleteGlobalDocType(id, name) {
+  const { count, error: countErr } = await sb.from('credtrack_documents')
+    .select('id', { count: 'exact', head: true }).eq('document_type_id', id);
+  if (countErr) { toast('Error checking usage: ' + countErr.message, true); return; }
+
+  if (count > 0) {
+    alert(`Can't delete "${name}" — it's actively in use. ${count} uploaded document${count === 1 ? '' : 's'} across your companies ${count === 1 ? 'is' : 'are'} tagged with this type, and deleting it would orphan ${count === 1 ? 'that reference' : 'those references'}.\n\nIf this type genuinely shouldn't exist anymore, use "Manage visibility" to hide it company by company instead — that's reversible and doesn't touch anything already uploaded.`);
+    return;
+  }
+
+  if (!confirm(`Delete the Global document type "${name}"? It isn't used by any uploaded document yet, so this is safe — but it will remove this type from every company on the platform, not just one. This cannot be undone.`)) return;
+
+  // Clean up leftover per-company visibility rows for this type too, so
+  // nothing orphaned lingers in that table once the type itself is gone.
+  await sb.from('company_hidden_document_types').delete().eq('document_type_id', id);
+
+  const { error } = await sb.from('document_types').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ "${name}" deleted platform-wide`);
+  await loadPlatformDocTypes();
+  await loadDocTypes();
+}
+
 // ══ PAYER NETWORK MANAGEMENT ══
 // Quick-reference against payers already added by ANY company — avoids
 // retyping "BlueCross BlueShield of Oklahoma" as a slightly different
@@ -11454,7 +11482,9 @@ async function loadPlatformDocTypes() {
         ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
       </button>
       ${!t.company_id ? `<button class="btn btn-sm btn-ghost" onclick="showManageDocTypeVisibility(${t.id},'${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage visibility</button>` : ''}
-      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+      ${t.company_id
+        ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>`
+        : `<button class="btn btn-sm btn-danger" onclick="deleteGlobalDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>`}
     </div></td>
   </tr>`).join('');
 }
