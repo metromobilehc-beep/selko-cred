@@ -6974,7 +6974,7 @@ async function loadBillingStatus() {
 
   const { data: sub } = await sb.from('subscriptions').select('status, current_period_end').eq('company_id', currentCompany.id).maybeSingle();
 
-  const docLabel = currentCompany.plan === 'pro' ? 'Pro' : (currentCompany.plan === 'standard' ? 'Standard' : 'None');
+  const docLabel = currentCompany.plan === 'enterprise' ? 'Enterprise' : (currentCompany.plan === 'pro' ? 'Pro' : (currentCompany.plan === 'standard' ? 'Standard' : 'None'));
   const credLabel = currentCompany.has_credentialing_addon
     ? (currentCompany.credentialing_tier === 'full' ? 'Full' : 'Basic')
     : 'None';
