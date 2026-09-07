@@ -11651,6 +11651,11 @@ async function loadSuperAdmin() {
             <option value="basic" ${c.credentialing_tier === 'basic' ? 'selected' : ''}>Credentialing: Basic</option>
             <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Credentialing: Full</option>
           </select>` : ''}
+          <select class="filter-sel" id="planSelect_${c.id}" style="max-width:170px;transition:box-shadow .3s, border-color .3s;" onchange="setCompanyPlan('${c.id}', this.value)" title="Document tracking plan tier — Standard vs Pro. Separate from the Credentialing tier above.">
+            <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Plan: Standard</option>
+            <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Plan: Pro</option>
+            <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Plan: Enterprise</option>
+          </select>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
@@ -12118,6 +12123,28 @@ async function setCredentialingTier(id, tier) {
   await loadSuperAdmin();
 
   const sel = document.getElementById(`credTierSelect_${id}`);
+  if (sel) {
+    sel.style.borderColor = 'var(--teal)';
+    sel.style.boxShadow = '0 0 0 3px rgba(20,184,166,.35)';
+    setTimeout(() => {
+      sel.style.borderColor = '';
+      sel.style.boxShadow = '';
+    }, 1500);
+  }
+}
+
+// Same direct, one-click pattern as Module and Credentialing tier above —
+// previously this required opening the separate Edit modal just to
+// change Plan, while these other two settings updated instantly right
+// on the card. Now all three live together in one place.
+async function setCompanyPlan(id, plan) {
+  const { error } = await sb.from('companies').update({ plan }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  const labels = { standard: 'Standard', pro: 'Pro', enterprise: 'Enterprise' };
+  toast(`✓ Plan set to: ${labels[plan]}`);
+  await loadSuperAdmin();
+
+  const sel = document.getElementById(`planSelect_${id}`);
   if (sel) {
     sel.style.borderColor = 'var(--teal)';
     sel.style.boxShadow = '0 0 0 3px rgba(20,184,166,.35)';
