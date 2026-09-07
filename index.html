@@ -10748,7 +10748,8 @@ function renderOvCredAttentionList() {
       ? { style: 'background:rgba(239,68,68,.15);color:#ef4444;', label: item.issues.find(i => i.urgent).label }
       : { style: 'background:rgba(245,158,11,.15);color:#f59e0b;', label: item.issues[0].label };
     const extra = item.issues.length > 1 ? ` +${item.issues.length - 1} more` : '';
-    return `<div class="ov-attention-row" style="cursor:pointer;" onclick="showFullProfileSheet('${item.staff.id}')">
+    const allIssuesTooltip = item.issues.map(i => i.label).join(', ');
+    return `<div class="ov-attention-row" style="cursor:pointer;" onclick="showFullProfileSheet('${item.staff.id}')" title="${allIssuesTooltip}">
       <span>${item.staff.full_name}${extra}</span>
       <span class="ov-days-badge" style="${worstBadge.style}">${worstBadge.label}</span>
     </div>`;
