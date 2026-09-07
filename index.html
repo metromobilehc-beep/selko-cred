@@ -838,23 +838,23 @@
               <label class="inline-label">Authorized signatory — email</label>
               <input class="inline-input" type="email" id="setSignatoryEmail" />
             </div>
-            <div>
+            <div class="malpractice-field">
               <label class="inline-label">Malpractice insurance carrier</label>
               <input class="inline-input" type="text" id="setMalpracticeCarrier" placeholder="e.g. CNA, The Doctors Company" />
             </div>
-            <div>
+            <div class="malpractice-field">
               <label class="inline-label">Malpractice policy number</label>
               <input class="inline-input" type="text" id="setMalpracticePolicy" />
             </div>
-            <div>
+            <div class="malpractice-field">
               <label class="inline-label">Malpractice coverage limits</label>
               <input class="inline-input" type="text" id="setMalpracticeLimits" placeholder="e.g. $1M/$3M" />
             </div>
-            <div>
+            <div class="malpractice-field">
               <label class="inline-label">Malpractice policy effective date</label>
               <input class="inline-input" type="date" id="setMalpracticeEffective" />
             </div>
-            <div>
+            <div class="malpractice-field">
               <label class="inline-label">Malpractice policy expiration date</label>
               <input class="inline-input" type="date" id="setMalpracticeExpiration" />
             </div>
@@ -2932,7 +2932,11 @@ function updateModuleTabVisibility(company, profile) {
   // Health Care Network tracks payer enrollment/in-network status — a
   // credentialing concept, not a document-compliance one — so this is
   // gated on Credentialing specifically, independent of has_credtrack.
-  document.getElementById('tab-insurance').style.display = (company.has_credentialing_addon && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
+  // Also respects the per-company panel visibility toggle, so this can be
+  // hidden entirely for a non-healthcare vertical (e.g. mortgage/real
+  // estate) even when Credentialing itself stays on.
+  const hcnHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('health_care_network');
+  document.getElementById('tab-insurance').style.display = (company.has_credentialing_addon && !hcnHidden && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
 }
 
 function updateProFeatureButtons() {
@@ -2952,6 +2956,7 @@ async function initAdmin() {
   document.getElementById('hdrSearchWrap').style.display = 'block';
   updateProFeatureButtons();
   loadSidebarMemo(); // fire-and-forget — sidebar widget, not tied to any specific tab
+  await getHiddenPanels(); // populates _hiddenPanelsCache before anything that gates on it renders
   if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
 }
 
@@ -4522,15 +4527,21 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
   // feature set that doesn't apply is exactly the kind of clutter worth
   // trimming as the app keeps growing.
   const showFullCredTabs = currentCompany.has_credentialing_addon && currentCompany.credentialing_tier === 'full';
+  // Each Full-tier tab also respects its own individual panel-visibility
+  // toggle, so a company can keep some of these (e.g. Education,
+  // Employment History — genuinely useful outside healthcare) while
+  // hiding others (e.g. Hospital Privileges, Claims) for a non-healthcare
+  // vertical, rather than an all-or-nothing switch.
+  const hidden = _hiddenPanelsCache || new Set();
   const tabs = [
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
     ...(showFullCredTabs ? [
-      { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` },
-      { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` },
-      { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` },
-      { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` },
-      { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
-    ] : []),
+      !hidden.has('additional_licenses') ? { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` } : null,
+      !hidden.has('education') ? { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` } : null,
+      !hidden.has('hospital_privileges') ? { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` } : null,
+      !hidden.has('malpractice') ? { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` } : null,
+      !hidden.has('employment_history') ? { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` } : null,
+    ].filter(Boolean) : []),
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
     { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
     { key: 'history', label: '🕒 History', fn: `showEditHistory('${staffId}','${safeName}')` },
@@ -4552,7 +4563,13 @@ function showFullProfileSheet(staffId) {
   // CAQH ID, DEA schedules, and board certification are fundamentally
   // credentialing concepts, so a Documents-only company shouldn't see this
   // section regardless of whether the person happens to be a physician.
-  const prescribes = currentCompany.has_credentialing_addon && PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
+  // Also respects panel visibility — DEA and Board Cert are combined into
+  // one visibility unit here since the existing section structure already
+  // shows them together; hiding either one hides both.
+  const prescribes = currentCompany.has_credentialing_addon
+    && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')))
+    && PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
+  const showCaqh = currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'));
   const disciplines = getCompanyDisciplines();
 
   const modal = document.createElement('div');
@@ -4669,14 +4686,14 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-        ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
+        ${(currentCompany.has_credtrack && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
         ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>` : ''}
-        <button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>
+        ${!(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup')) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
       </div>
 
 
-      <div style="display:${currentCompany.has_credentialing_addon ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH</div>
-      <div style="display:${currentCompany.has_credentialing_addon ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px;">
+      <div style="display:${showCaqh ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH</div>
+      <div style="display:${showCaqh ? 'grid' : 'none'};grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:10px;">
         <div>
           <label class="inline-label">CAQH ID</label>
           <input class="inline-input" type="text" id="fpCaqhId" value="${s.caqh_id || ''}" placeholder="e.g. 12345678" />
@@ -4874,8 +4891,8 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
-      <div style="display:${currentCompany.has_credentialing_addon ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH ProView Login</div>
-      <div style="display:${currentCompany.has_credentialing_addon ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+      <div style="display:${showCaqh ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH ProView Login</div>
+      <div style="display:${showCaqh ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Username, password, and security question answers — encrypted together, same protection as the SSN above. This never automates logging into CAQH on anyone's behalf; the link below just opens their real site so you can sign in and paste the password in yourself.</p>
         <div id="caqhCredFieldArea" style="margin-bottom:8px;">
           ${s.has_caqh_credentials_on_file
@@ -4905,7 +4922,9 @@ function showFullProfileSheet(staffId) {
   // Re-check the DEA/physician sections' visibility live if discipline
   // changes while the sheet is open, rather than requiring a full reopen.
   document.getElementById('fpDiscipline').addEventListener('change', function() {
-    const nowPrescribes = currentCompany.has_credentialing_addon && PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
+    const nowPrescribes = currentCompany.has_credentialing_addon
+      && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')))
+      && PRESCRIBING_DISCIPLINES.has(this.value.toUpperCase());
     document.getElementById('fpDeaSection').style.display = nowPrescribes ? 'block' : 'none';
     document.getElementById('fpPhysicianSection').style.display = nowPrescribes ? 'block' : 'none';
   });
@@ -8356,21 +8375,33 @@ async function loadSettings() {
   // Same reasoning as the Health Care Network tab itself — this manages
   // payer network data, a credentialing concept, so it's gated on
   // Credentialing rather than Documents, independent of has_credtrack.
+  // Also respects the per-company panel visibility toggle.
+  const hcnHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('health_care_network');
   const payersPanel = document.getElementById('payersPanelSettings');
-  if (payersPanel) payersPanel.style.display = c.has_credentialing_addon ? 'block' : 'none';
+  if (payersPanel) payersPanel.style.display = (c.has_credentialing_addon && !hcnHidden) ? 'block' : 'none';
 
   // This one was missed when the other two Health Care Network panels
   // got gated earlier — it has no other purpose than configuring entries
   // for that same tab, so a Documents-only company was seeing a whole
   // settings panel for a feature they don't have.
   const entitiesPanel = document.getElementById('entitiesPanelSettings');
-  if (entitiesPanel) entitiesPanel.style.display = c.has_credentialing_addon ? 'block' : 'none';
+  if (entitiesPanel) entitiesPanel.style.display = (c.has_credentialing_addon && !hcnHidden) ? 'block' : 'none';
 
   // The section divider itself needs the same gate as its two panels —
   // otherwise it's left floating with nothing underneath it once both are
   // hidden, which reads as more broken than not having the divider at all.
   const hcnHeader = document.getElementById('hcnSectionHeader');
-  if (hcnHeader) hcnHeader.style.display = c.has_credentialing_addon ? 'block' : 'none';
+  if (hcnHeader) hcnHeader.style.display = (c.has_credentialing_addon && !hcnHidden) ? 'block' : 'none';
+
+  // Malpractice fields — a healthcare concept, hideable independently of
+  // Health Care Network above. These sit as individual grid cells within a
+  // shared grid (not their own wrapping container), so each one is toggled
+  // by class rather than hiding one parent element, to avoid disrupting
+  // the grid's column layout.
+  const malpracticeHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('malpractice');
+  document.querySelectorAll('.malpractice-field').forEach(el => { el.style.display = malpracticeHidden ? 'none' : ''; });
+  const malpracticeLink = document.getElementById('malpracticePartnerLink');
+  if (malpracticeLink) malpracticeLink.style.display = malpracticeHidden ? 'none' : '';
 
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
@@ -8729,6 +8760,54 @@ async function toggleDocTypeVisibilityForCompany(typeId, companyId, nowVisible) 
       .insert({ document_type_id: typeId, company_id: companyId });
     if (error) toast('Error: ' + error.message, true);
   }
+}
+
+// Per-company panel visibility — lets a company's whole set of
+// healthcare-specific sections be hidden at once (or any other
+// combination), so the same layout can be reused for a different industry
+// vertical (e.g. mortgage/real estate document collection) without
+// needing separate code paths per industry.
+async function showManagePanelVisibility(companyId, companyName) {
+  const existing = document.getElementById('panelVisibilityModal');
+  if (existing) existing.remove();
+
+  const { data: hiddenRows } = await sb.from('company_hidden_panels').select('panel_key').eq('company_id', companyId);
+  const hiddenSet = new Set((hiddenRows || []).map(h => h.panel_key));
+
+  const modal = document.createElement('div');
+  modal.id = 'panelVisibilityModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Panel visibility — ${companyName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checked = this panel shows for this company. Unchecked = hidden entirely — useful for reusing the same layout in a different industry (e.g. hide everything healthcare-specific for a mortgage or real estate client).</p>
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        ${TOGGLEABLE_PANELS.map(p => `
+          <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:#fff;cursor:pointer;">
+            <input type="checkbox" data-panel-key="${p.key}" ${hiddenSet.has(p.key) ? '' : 'checked'} onchange="togglePanelVisibilityForCompany('${companyId}','${p.key}',this.checked)" />
+            ${p.label}
+          </label>`).join('')}
+      </div>
+      <button class="btn btn-ghost" onclick="document.getElementById('panelVisibilityModal').remove()" style="width:100%;justify-content:center;margin-top:16px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function togglePanelVisibilityForCompany(companyId, panelKey, nowVisible) {
+  if (nowVisible) {
+    const { error } = await sb.from('company_hidden_panels')
+      .delete().eq('company_id', companyId).eq('panel_key', panelKey);
+    if (error) { toast('Error: ' + error.message, true); return; }
+  } else {
+    const { error } = await sb.from('company_hidden_panels')
+      .insert({ company_id: companyId, panel_key: panelKey });
+    if (error) { toast('Error: ' + error.message, true); return; }
+  }
+  // If the company being edited is the one currently being viewed (e.g.
+  // via View as Admin), invalidate the cache so the change is reflected
+  // immediately without needing a full page reload.
+  if (currentCompany && currentCompany.id === companyId) _hiddenPanelsCache = null;
 }
 
 async function toggleDocTypeHidden(id, currentlyHidden) {
@@ -10900,10 +10979,12 @@ async function viewAsAdmin(companyId, companyName) {
   updateProFeatureButtons();
   loadSidebarMemo();
   _partnerRecsCache = null; // invalidate — the previous company's cached recs don't apply here
+  _hiddenPanelsCache = null;
 
   await loadStaffList();
   await loadAdminFilters();
   await loadDocTypes();
+  await getHiddenPanels();
 
   const banner = document.getElementById('viewAsBanner');
   banner.style.display = 'flex';
@@ -10923,6 +11004,7 @@ async function exitViewAsAdmin() {
   updateProFeatureButtons();
   loadSidebarMemo();
   _partnerRecsCache = null;
+  _hiddenPanelsCache = null;
   _superProfile  = null;
   _superCompany  = null;
 
@@ -10932,6 +11014,7 @@ async function exitViewAsAdmin() {
   await loadStaffList();
   await loadAdminFilters();
   await loadDocTypes();
+  await getHiddenPanels();
   switchTab('super');
   toast('Returned to Selko Admin');
 }
@@ -11857,6 +11940,7 @@ async function loadSuperAdmin() {
             <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Plan: Pro</option>
             <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Plan: Enterprise</option>
           </select>
+          <button class="btn btn-sm btn-ghost" onclick="showManagePanelVisibility('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
@@ -11869,6 +11953,36 @@ async function loadSuperAdmin() {
 // ══ DEMO COMPANY SEEDING ══
 // Fictional staff and credentials for the sales demo company (slug: 'demo').
 // None of this is real Metro staff data — safe to show prospects.
+// Master list of toggleable panels — the single source of truth for both
+// the "Manage panel visibility" checklist below and every gating check
+// elsewhere in the app. Adding a new hideable panel means adding one entry
+// here plus one gating check at that panel's location — nothing else
+// needs to change. Built to support expanding into non-healthcare
+// verticals (e.g. mortgage/real estate document collection) without
+// having to strip out healthcare-specific sections in code — a company
+// can just have them hidden instead.
+const TOGGLEABLE_PANELS = [
+  { key: 'health_care_network', label: 'Health Care Network (tab + Settings panels)' },
+  { key: 'caqh', label: 'CAQH section (Full Profile)' },
+  { key: 'dea', label: 'DEA & Controlled Substances section (Full Profile)' },
+  { key: 'board_cert', label: 'Board certification section (Full Profile)' },
+  { key: 'hospital_privileges', label: 'Hospital Privileges tab' },
+  { key: 'malpractice', label: 'Malpractice claims/insurance fields' },
+  { key: 'npi_lookup', label: 'NPI lookup feature' },
+  { key: 'licensing_board_lookup', label: 'State licensing board lookup feature' },
+  { key: 'education', label: 'Education/Training tab' },
+  { key: 'employment_history', label: 'Employment History tab' },
+  { key: 'additional_licenses', label: 'Additional Licenses tab' },
+];
+
+let _hiddenPanelsCache = null;
+async function getHiddenPanels() {
+  if (_hiddenPanelsCache) return _hiddenPanelsCache;
+  const { data } = await sb.from('company_hidden_panels').select('panel_key').eq('company_id', currentCompany.id);
+  _hiddenPanelsCache = new Set((data || []).map(r => r.panel_key));
+  return _hiddenPanelsCache;
+}
+
 const DEMO_STAFF = [
   { full_name: 'Jordan Reyes, PT',     discipline: 'PT',   job_title: 'Physical Therapist',              staff_type: 'clinician', license_type: 'PT',   license_state: 'OK', license_number: 'PT-DEMO-1001' },
   { full_name: 'Casey Whitfield, PTA', discipline: 'PTA',  job_title: 'Physical Therapist Assistant',    staff_type: 'clinician', license_type: 'PTA',  license_state: 'OK', license_number: 'PTA-DEMO-2001' },
