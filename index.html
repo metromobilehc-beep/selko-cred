@@ -4191,7 +4191,17 @@ async function loadStaffTable() {
     });
   }
 
+  const staffTypeOrder = { clinician: 0, office: 1, admin: 2 };
   filteredStaff = [...filteredStaff].sort((a, b) => {
+    // Staff type is always the primary sort — clinicians, then Office,
+    // then Admin — so the section dividers below always land in the same
+    // three groups regardless of which column the user has sorted by.
+    // Whatever column they picked still governs the order within each
+    // group, same as before.
+    const aType = staffTypeOrder[a.staff_type || 'clinician'] ?? 0;
+    const bType = staffTypeOrder[b.staff_type || 'clinician'] ?? 0;
+    if (aType !== bType) return aType - bType;
+
     let av = a[_staffSortKey], bv = b[_staffSortKey];
     if (_staffSortKey === 'active') { av = av ? 1 : 0; bv = bv ? 1 : 0; }
     else { av = (av || '').toString().toLowerCase(); bv = (bv || '').toString().toLowerCase(); }
@@ -4207,8 +4217,15 @@ async function loadStaffTable() {
   }
 
   const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
+  const staffTypeGroupLabels = { clinician: 'Clinical staff', office: 'Office staff', admin: 'Admin staff' };
 
-  tbody.innerHTML = filteredStaff.map(s => {
+  tbody.innerHTML = filteredStaff.map((s, idx) => {
+    const thisType = s.staff_type || 'clinician';
+    const prevType = idx > 0 ? (filteredStaff[idx - 1].staff_type || 'clinician') : null;
+    const groupDivider = thisType !== prevType
+      ? `<tr><td colspan="6" style="padding:10px 12px 6px;font-weight:700;font-size:11px;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02);">${staffTypeGroupLabels[thisType] || thisType}</td></tr>`
+      : '';
+
     const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
     const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
     const nameCell = fullyVerified
@@ -4217,7 +4234,7 @@ async function loadStaffTable() {
     const staffTypeCell = isOffice
       ? `<span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span>`
       : `<button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
-    return `<tr>
+    return `${groupDivider}<tr>
     <td>${nameCell}</td>
     <td style="font-size:12px;color:rgba(255,255,255,.5);">${isSyntheticStaffEmail(s.email) ? '<em style="opacity:.5;" title="No automated document reminders, no self-service password reset — both have to go through an admin manually. Update with a real email via Edit once one\'s available.">Placeholder — please update ⚠</em>' : (s.email || '<em style="opacity:.4;">not set</em>')}</td>
     <td style="font-size:12px;">
