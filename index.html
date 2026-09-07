@@ -4698,7 +4698,7 @@ function showFullProfileSheet(staffId) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
         ${(currentCompany.has_credtrack && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
         ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>` : ''}
-        ${!(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup')) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
+        ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
       </div>
 
 
