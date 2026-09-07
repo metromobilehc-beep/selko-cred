@@ -2646,6 +2646,7 @@ let _globalSearchTimer;
 const QUICK_ACTIONS = [
   { keywords: ['employment', 'employment history', 'work history', 'employer', 'gap explanation'], label: 'Employment History', sub: 'Per-provider — find them below, then click Employment', perProvider: true },
   { keywords: ['additional license', 'multiple licenses', 'second license', 'another state license'], label: 'Additional Licenses', sub: 'Per-provider — find them below, then click Licenses', perProvider: true },
+  { keywords: ['education', 'residency', 'fellowship', 'internship', 'medical school', 'program director', 'postgraduate'], label: 'Education & Training', sub: 'Per-provider — find them below, then click Education', perProvider: true },
   { keywords: ['credentialing files', 'upload file', 'license copy', 'attach file', 'driver license', 'dl copy'], label: 'Credentialing Files', sub: 'Per-provider — find them below, then click Files', perProvider: true },
   { keywords: ['provider notes'], label: 'Provider Notes', sub: 'Per-provider — find them below, then click Notes', perProvider: true },
   { keywords: ['organization notes', 'org notes', 'general notes'], label: 'Organization Notes', sub: 'Credentialing tab', tab: 'credentialing' },
@@ -4461,6 +4462,7 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
   const tabs = [
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
     { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` },
+    { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` },
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
     { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
     { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` },
@@ -6801,6 +6803,135 @@ async function deleteAdditionalLicense(id, staffId) {
   await loadAdditionalLicenses(staffId);
 }
 
+const EDUCATION_TRAINING_TYPES = ['Medical School', 'Undergraduate', 'Internship', 'Residency', 'Fellowship', 'Teaching Appointment', 'Other Graduate Education'];
+
+async function showEducationTraining(staffId, staffName) {
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = PROVIDER_TAB_MODAL_ID;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(625px, 62.5vw, 1125px);max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, staffName, 'education')}
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:85vh;">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Education and postgraduate training — medical school, internship, residency, fellowship, and any teaching appointments.</div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <select class="inline-select" id="etType">
+            <option value="">— Type —</option>
+            ${EDUCATION_TRAINING_TYPES.map(t => `<option value="${t}">${t}</option>`).join('')}
+          </select>
+          <input class="inline-input" type="text" id="etSpecialty" placeholder="Specialty (if applicable)" />
+        </div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="etInstitution" placeholder="Institution" />
+          <input class="inline-input" type="text" id="etAddress" placeholder="Institution address" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="etProgramDirector" placeholder="Program director" />
+          <input class="inline-input" type="text" id="etCurrentProgramDirector" placeholder="Current program director (if different)" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;margin-bottom:10px;align-items:center;">
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">Start date</label>
+            <input class="inline-input" type="date" id="etStartDate" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:rgba(255,255,255,.4);">End date</label>
+            <input class="inline-input" type="date" id="etEndDate" />
+          </div>
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#fff;cursor:pointer;padding-top:14px;">
+            <input type="checkbox" id="etCompleted" />
+            Completed
+          </label>
+        </div>
+        <div id="educationFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
+        <button class="btn btn-sm btn-teal" onclick="addEducationTraining('${staffId}')" style="width:100%;justify-content:center;">+ Add entry</button>
+      </div>
+
+      <div id="educationTrainingList" style="overflow-y:auto;flex:1;">Loading...</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  await loadEducationTraining(staffId);
+}
+
+async function loadEducationTraining(staffId) {
+  const list = document.getElementById('educationTrainingList');
+  if (!list) return;
+
+  const { data, error } = await sb.from('staff_education_training')
+    .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+
+  if (error) { list.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { list.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No education or training entries on file yet.</div>'; return; }
+
+  list.innerHTML = data.map(e => {
+    const dateRange = `${e.start_date ? fmtDate(e.start_date) : '?'} – ${e.end_date ? fmtDate(e.end_date) : '?'}`;
+    return `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="display:flex;justify-content:space-between;align-items:start;gap:8px;">
+        <div>
+          <div style="font-size:13px;color:#fff;font-weight:600;">${e.training_type || 'Entry'}${e.specialty ? ' — ' + e.specialty : ''}${e.completed ? ' <span style="color:var(--teal-l);font-size:10px;">✓ Completed</span>' : ''}</div>
+          <div style="font-size:11px;color:rgba(255,255,255,.5);">${e.institution || 'Unnamed institution'} · ${dateRange}</div>
+          ${e.program_director ? `<div style="font-size:11px;color:rgba(255,255,255,.4);">Program director: ${e.program_director}${e.current_program_director ? ' (currently: ' + e.current_program_director + ')' : ''}</div>` : ''}
+        </div>
+        <button onclick="deleteEducationTraining('${e.id}','${staffId}')" style="background:none;border:none;color:rgba(255,255,255,.3);font-size:11px;cursor:pointer;padding:0;white-space:nowrap;">Delete</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function addEducationTraining(staffId) {
+  const errEl = document.getElementById('educationFormErr');
+  errEl.style.display = 'none';
+
+  const trainingType = document.getElementById('etType').value;
+  const institution = document.getElementById('etInstitution').value.trim();
+  if (!trainingType) { errEl.textContent = 'Select a type.'; errEl.style.display = 'block'; return; }
+  if (!institution) { errEl.textContent = 'Institution is required.'; errEl.style.display = 'block'; return; }
+
+  const { error } = await sb.from('staff_education_training').insert({
+    staff_id: staffId,
+    training_type: trainingType,
+    specialty: document.getElementById('etSpecialty').value.trim() || null,
+    institution: institution,
+    address: document.getElementById('etAddress').value.trim() || null,
+    program_director: document.getElementById('etProgramDirector').value.trim() || null,
+    current_program_director: document.getElementById('etCurrentProgramDirector').value.trim() || null,
+    start_date: document.getElementById('etStartDate').value || null,
+    end_date: document.getElementById('etEndDate').value || null,
+    completed: document.getElementById('etCompleted').checked,
+  });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  ['etSpecialty','etInstitution','etAddress','etProgramDirector','etCurrentProgramDirector','etStartDate','etEndDate'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('etType').value = '';
+  document.getElementById('etCompleted').checked = false;
+
+  toast('✓ Entry added');
+  await loadEducationTraining(staffId);
+}
+
+async function deleteEducationTraining(id, staffId) {
+  if (!confirm('Delete this education/training record?')) return;
+  const { error } = await sb.from('staff_education_training').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Removed');
+  await loadEducationTraining(staffId);
+}
+
 async function showNotesLog(staffId, contextName) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -8683,6 +8814,33 @@ const CRED_DATA_SOURCES = [
     ['staff.additional_license_3_state', 'Additional license 3 — state'],
     ['staff.additional_license_3_issued_date', 'Additional license 3 — issued date'],
     ['staff.additional_license_3_expiration_date', 'Additional license 3 — expiration'],
+    ['staff.education_1_type', 'Education/training 1 — type'],
+    ['staff.education_1_specialty', 'Education/training 1 — specialty'],
+    ['staff.education_1_institution', 'Education/training 1 — institution'],
+    ['staff.education_1_address', 'Education/training 1 — institution address'],
+    ['staff.education_1_program_director', 'Education/training 1 — program director'],
+    ['staff.education_1_current_program_director', 'Education/training 1 — current program director'],
+    ['staff.education_1_start_date', 'Education/training 1 — start date'],
+    ['staff.education_1_end_date', 'Education/training 1 — end date'],
+    ['staff.education_1_completed', 'Education/training 1 — completed?'],
+    ['staff.education_2_type', 'Education/training 2 — type'],
+    ['staff.education_2_specialty', 'Education/training 2 — specialty'],
+    ['staff.education_2_institution', 'Education/training 2 — institution'],
+    ['staff.education_2_address', 'Education/training 2 — institution address'],
+    ['staff.education_2_program_director', 'Education/training 2 — program director'],
+    ['staff.education_2_current_program_director', 'Education/training 2 — current program director'],
+    ['staff.education_2_start_date', 'Education/training 2 — start date'],
+    ['staff.education_2_end_date', 'Education/training 2 — end date'],
+    ['staff.education_2_completed', 'Education/training 2 — completed?'],
+    ['staff.education_3_type', 'Education/training 3 — type'],
+    ['staff.education_3_specialty', 'Education/training 3 — specialty'],
+    ['staff.education_3_institution', 'Education/training 3 — institution'],
+    ['staff.education_3_address', 'Education/training 3 — institution address'],
+    ['staff.education_3_program_director', 'Education/training 3 — program director'],
+    ['staff.education_3_current_program_director', 'Education/training 3 — current program director'],
+    ['staff.education_3_start_date', 'Education/training 3 — start date'],
+    ['staff.education_3_end_date', 'Education/training 3 — end date'],
+    ['staff.education_3_completed', 'Education/training 3 — completed?'],
     ['staff.caqh_id', 'CAQH ID'],
     ['staff.caqh_issued_date', 'CAQH issued date'],
     ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
@@ -8904,6 +9062,12 @@ function guessDefaultMapping(fieldName) {
     [/^state of registration$/, 'staff.additional_license_1_state'],
     [/^state of registration_2$/, 'staff.additional_license_2_state'],
     [/^state of registration_3$/, 'staff.additional_license_3_state'],
+    [/^institution$/, 'staff.education_1_institution'],
+    [/^institution_2$/, 'staff.education_2_institution'],
+    [/^program director$/, 'staff.education_1_program_director'],
+    [/^program director_2$/, 'staff.education_2_program_director'],
+    [/current program director/, 'staff.education_1_current_program_director'],
+    [/program successfully completed/, 'staff.education_1_completed'],
     [/caqh.*(issued|effective)|(issued|effective).*caqh/, 'staff.caqh_issued_date'],
     [/caqh.*(expir|attest|renewal)|(expir|attest|renewal).*caqh/, 'staff.caqh_expiration_date'],
     [/caqh/, 'staff.caqh_id'],
@@ -9051,6 +9215,23 @@ async function generateFilledForm(templateId) {
       staffWithLicenses[`additional_license_${n}_state`] = lic.state || '';
       staffWithLicenses[`additional_license_${n}_issued_date`] = lic.original_date_of_issue || '';
       staffWithLicenses[`additional_license_${n}_expiration_date`] = lic.expiration_date || '';
+    });
+
+    // Same flattening for education/postgraduate training — most recent
+    // first, up to 3 entries as education_1/2/3_*.
+    const { data: educationEntries } = await sb.from('staff_education_training')
+      .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+    (educationEntries || []).slice(0, 3).forEach((ed, i) => {
+      const n = i + 1;
+      staffWithLicenses[`education_${n}_type`] = ed.training_type || '';
+      staffWithLicenses[`education_${n}_specialty`] = ed.specialty || '';
+      staffWithLicenses[`education_${n}_institution`] = ed.institution || '';
+      staffWithLicenses[`education_${n}_address`] = ed.address || '';
+      staffWithLicenses[`education_${n}_program_director`] = ed.program_director || '';
+      staffWithLicenses[`education_${n}_current_program_director`] = ed.current_program_director || '';
+      staffWithLicenses[`education_${n}_start_date`] = ed.start_date || '';
+      staffWithLicenses[`education_${n}_end_date`] = ed.end_date || '';
+      staffWithLicenses[`education_${n}_completed`] = ed.completed ? 'Yes' : 'No';
     });
 
     const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
