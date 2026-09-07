@@ -4498,7 +4498,14 @@ function showFullProfileSheet(staffId) {
       </div>
       <div style="flex:1;overflow-y:auto;padding:28px;min-width:0;">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:2px;">${s.full_name}</div>
-      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:20px;">Full credentialing profile — everything about this person in one place.</div>
+      <div style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">Full credentialing profile — everything about this person in one place.</div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:rgba(255,255,255,.5);flex:1;min-width:200px;">Have their CV or resume? Import education, licenses, hospital privileges, and specialty info automatically — you'll review everything before it saves.</span>
+        <input type="file" id="cvImportFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleCvImportFile('${staffId}','${s.full_name.replace(/'/g,"\\'")}')" />
+        <label for="cvImportFile" class="btn btn-sm btn-teal" style="cursor:pointer;">📄 Import from CV</label>
+        <span id="cvImportStatus" style="font-size:11px;color:rgba(255,255,255,.4);"></span>
+      </div>
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
@@ -4800,6 +4807,164 @@ function showFullProfileSheet(staffId) {
   });
 
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
+}
+
+async function handleCvImportFile(staffId, staffName) {
+  const fileInput = document.getElementById('cvImportFile');
+  const file = fileInput.files[0];
+  if (!file) return;
+
+  const statusEl = document.getElementById('cvImportStatus');
+  statusEl.textContent = 'Reading document with AI — this takes a few seconds…';
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    let mediaType = file.type || 'image/jpeg';
+    if (!file.type && file.name.toLowerCase().endsWith('.pdf')) mediaType = 'application/pdf';
+
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/parse-provider-cv', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ fileBase64: base64, mediaType, fileName: file.name }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    statusEl.textContent = '';
+    fileInput.value = '';
+    showCvImportReview(staffId, staffName, result.extracted);
+  } catch (e) {
+    statusEl.textContent = '';
+    toast('Import failed: ' + e.message, true);
+  }
+}
+
+function showCvImportReview(staffId, staffName, extracted) {
+  const modal = document.createElement('div');
+  modal.id = 'cvImportReviewModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const eduRows = extracted.education.map((e, i) => `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+      <input type="checkbox" class="cvEduCheck" data-idx="${i}" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        <strong>${e.training_type || 'Entry'}</strong>${e.specialty ? ' — ' + e.specialty : ''}${e.completed ? ' <span style="color:var(--teal-l);font-size:10px;">✓ Completed</span>' : ''}<br>
+        <span style="color:rgba(255,255,255,.5);">${e.institution || ''}${e.program_director ? ' · Dir: ' + e.program_director : ''} · ${e.start_date || '?'} – ${e.end_date || '?'}</span>
+      </div>
+    </label>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">Nothing found.</div>';
+
+  const licRows = extracted.additional_licenses.map((l, i) => `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+      <input type="checkbox" class="cvLicCheck" data-idx="${i}" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        <strong>${l.license_type || 'License'}</strong>${l.state ? ' — ' + l.state : ''}<br>
+        <span style="color:rgba(255,255,255,.5);">${l.license_number ? '#' + l.license_number : ''} · Issued ${l.original_date_of_issue || '?'} · Expires ${l.expiration_date || '?'}</span>
+      </div>
+    </label>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">Nothing found.</div>';
+
+  const privRows = extracted.hospital_privileges.map((p, i) => `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+      <input type="checkbox" class="cvPrivCheck" data-idx="${i}" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        <strong>${p.hospital_name || 'Hospital'}</strong>${p.privilege_type ? ' — ' + p.privilege_type : ''}<br>
+        <span style="color:rgba(255,255,255,.5);">${p.address || ''} · ${p.start_date || '?'} – ${p.end_date || 'Present'}</span>
+      </div>
+    </label>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">Nothing found.</div>';
+
+  const hasSpecialtyInfo = extracted.primary_specialty || extracted.secondary_specialty || extracted.board_certified !== null;
+  const specialtyRow = hasSpecialtyInfo ? `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
+      <input type="checkbox" id="cvSpecialtyCheck" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        ${extracted.primary_specialty ? `Primary specialty: <strong>${extracted.primary_specialty}</strong><br>` : ''}
+        ${extracted.secondary_specialty ? `Secondary specialty: <strong>${extracted.secondary_specialty}</strong><br>` : ''}
+        ${extracted.board_certified !== null ? `Board certified: <strong>${extracted.board_certified ? 'Yes' : 'No'}</strong>${extracted.board_name ? ' — ' + extracted.board_name : ''}` : ''}
+      </div>
+    </label>` : '';
+
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Review what was found for ${staffName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:16px;">Uncheck anything that's wrong or not needed — only checked items get saved. You can fine-tune or add more later from their Licenses/Education/Privileges tabs.</p>
+
+      ${extracted.education.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Education &amp; Training</div>${eduRows}` : ''}
+      ${extracted.additional_licenses.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Additional Licenses</div>${licRows}` : ''}
+      ${extracted.hospital_privileges.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
+      ${hasSpecialtyInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Specialty &amp; Board Info</div>${specialtyRow}` : ''}
+
+      ${!extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !hasSpecialtyInfo
+        ? '<div style="font-size:13px;color:rgba(255,255,255,.4);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
+
+      <div id="cvImportSaveErr" style="color:#f87171;font-size:12px;margin-top:12px;display:none;"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn btn-teal" onclick="saveCvImportSelections('${staffId}')" style="flex:1;justify-content:center;">Save selected</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('cvImportReviewModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  window._cvImportData = extracted;
+}
+
+async function saveCvImportSelections(staffId) {
+  const errEl = document.getElementById('cvImportSaveErr');
+  errEl.style.display = 'none';
+  const extracted = window._cvImportData;
+  if (!extracted) return;
+
+  try {
+    const eduToSave = [...document.querySelectorAll('.cvEduCheck:checked')].map(el => extracted.education[el.dataset.idx]);
+    if (eduToSave.length) {
+      const { error } = await sb.from('staff_education_training').insert(
+        eduToSave.map(e => ({ staff_id: staffId, training_type: e.training_type, specialty: e.specialty, institution: e.institution, address: e.address, program_director: e.program_director, start_date: e.start_date, end_date: e.end_date, completed: !!e.completed }))
+      );
+      if (error) throw error;
+    }
+
+    const licToSave = [...document.querySelectorAll('.cvLicCheck:checked')].map(el => extracted.additional_licenses[el.dataset.idx]);
+    if (licToSave.length) {
+      const { error } = await sb.from('staff_additional_licenses').insert(
+        licToSave.map(l => ({ staff_id: staffId, license_type: l.license_type, license_number: l.license_number, state: l.state, original_date_of_issue: l.original_date_of_issue, expiration_date: l.expiration_date }))
+      );
+      if (error) throw error;
+    }
+
+    const privToSave = [...document.querySelectorAll('.cvPrivCheck:checked')].map(el => extracted.hospital_privileges[el.dataset.idx]);
+    if (privToSave.length) {
+      const { error } = await sb.from('staff_hospital_privileges').insert(
+        privToSave.map(p => ({ staff_id: staffId, hospital_name: p.hospital_name, address: p.address, privilege_type: p.privilege_type, start_date: p.start_date, end_date: p.end_date }))
+      );
+      if (error) throw error;
+    }
+
+    if (document.getElementById('cvSpecialtyCheck')?.checked) {
+      const updates = {};
+      if (extracted.primary_specialty) updates.primary_specialty = extracted.primary_specialty;
+      if (extracted.secondary_specialty) updates.secondary_specialty = extracted.secondary_specialty;
+      if (extracted.board_certified !== null) updates.board_certified = extracted.board_certified;
+      if (extracted.board_name) updates.board_name = extracted.board_name;
+      if (Object.keys(updates).length) {
+        const { error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId);
+        if (error) throw error;
+      }
+    }
+
+    document.getElementById('cvImportReviewModal')?.remove();
+    window._cvImportData = null;
+    toast('✓ Imported successfully');
+    await loadStaffTable();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
 }
 
 async function saveFullProfileSheet(staffId) {
