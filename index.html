@@ -1262,6 +1262,10 @@
       <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
         <h2>Document types</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
+          Show hidden types too
+        </label>
         <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.65);line-height:1.5;"></div>
         <div class="tbl-wrap">
           <table>
@@ -8533,12 +8537,24 @@ async function loadDocTypesTable() {
     return;
   }
 
+  // By default this only shows what's actually visible to this company —
+  // a hidden type disappears from here too, not just the upload dropdown,
+  // and a category with nothing visible left in it disappears entirely
+  // rather than showing an empty-looking heading. "Show hidden types too"
+  // brings everything back, including anything currently hidden, since
+  // that's still where "Unhide" lives if it's ever needed again.
+  const visibleData = window._showHiddenDocTypes ? data : data.filter(t => !hiddenIds.has(t.id));
+  if (!visibleData.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">Nothing visible — everything is currently hidden for this company. Check "Show hidden types too" above to see and manage them.</td></tr>`;
+    return;
+  }
+
   // Group by category so this doesn't turn into one giant flat list as
   // more types get added over time (e.g. OSHA/compliance items alongside
   // clinical licenses) — same "collapse the bulk" pattern used elsewhere
   // tonight (Documents tab, Expiration Tracker).
   const groups = {};
-  data.forEach(t => {
+  visibleData.forEach(t => {
     const cat = t.category || 'Other';
     (groups[cat] = groups[cat] || []).push(t);
   });
