@@ -10002,7 +10002,9 @@ const CRED_DATA_SOURCES = [
     ['company.malpractice_expiration_date', 'Malpractice policy expiration date'],
   ]},
   { group: 'Selected staff member', options: [
-    ['staff.full_name', 'Provider name'],
+    ['staff.full_name', 'Provider name (combined, e.g. "Priya Sharma, MD")'],
+    ['staff.last_name', 'Provider — last name only'],
+    ['staff.first_name', 'Provider — first name only'],
     ['staff.discipline', 'Specialty/discipline'],
     ['staff.npi_number', 'Individual NPI'],
     ['staff.additional_license_1_type', 'Additional license 1 — type'],
@@ -10519,6 +10521,17 @@ async function generateFilledForm(templateId) {
     const { data: extraLicenses } = await sb.from('staff_additional_licenses')
       .select('*').eq('staff_id', staffId).order('original_date_of_issue', { ascending: false });
     const staffWithLicenses = { ...staff };
+
+    // full_name is consistently stored as "First [Middle] Last, Credential"
+    // throughout the app (same format the license-verification/state-board
+    // lookup feature already parses this exact way) — split here rather
+    // than adding new database columns, since most credentialing forms ask
+    // for these as genuinely separate fields, not one combined name.
+    const nameOnly = (staff.full_name || '').split(',')[0].trim();
+    const nameParts = nameOnly.split(' ').filter(Boolean);
+    staffWithLicenses.last_name = nameParts.length ? nameParts[nameParts.length - 1] : '';
+    staffWithLicenses.first_name = nameParts.length ? nameParts[0] : '';
+
     (extraLicenses || []).slice(0, 3).forEach((lic, i) => {
       const n = i + 1;
       staffWithLicenses[`additional_license_${n}_type`] = lic.license_type || '';
