@@ -10182,6 +10182,54 @@ const CRED_DATA_SOURCES = [
     ['staff.hospital_privilege_8_type', 'Hospital privilege 8 — privilege type'],
     ['staff.hospital_privilege_8_start_date', 'Hospital privilege 8 — start date'],
     ['staff.hospital_privilege_8_end_date', 'Hospital privilege 8 — end date'],
+    ['staff.hospital_privilege_9_name', 'Hospital privilege 9 — hospital name'],
+    ['staff.hospital_privilege_9_address', 'Hospital privilege 9 — address'],
+    ['staff.hospital_privilege_9_city', 'Hospital privilege 9 — city'],
+    ['staff.hospital_privilege_9_state', 'Hospital privilege 9 — state/country'],
+    ['staff.hospital_privilege_9_zip', 'Hospital privilege 9 — postal code'],
+    ['staff.hospital_privilege_9_type', 'Hospital privilege 9 — privilege type'],
+    ['staff.hospital_privilege_9_start_date', 'Hospital privilege 9 — start date'],
+    ['staff.hospital_privilege_9_end_date', 'Hospital privilege 9 — end date'],
+    ['staff.hospital_privilege_10_name', 'Hospital privilege 10 — hospital name'],
+    ['staff.hospital_privilege_10_address', 'Hospital privilege 10 — address'],
+    ['staff.hospital_privilege_10_city', 'Hospital privilege 10 — city'],
+    ['staff.hospital_privilege_10_state', 'Hospital privilege 10 — state/country'],
+    ['staff.hospital_privilege_10_zip', 'Hospital privilege 10 — postal code'],
+    ['staff.hospital_privilege_10_type', 'Hospital privilege 10 — privilege type'],
+    ['staff.hospital_privilege_10_start_date', 'Hospital privilege 10 — start date'],
+    ['staff.hospital_privilege_10_end_date', 'Hospital privilege 10 — end date'],
+    ['staff.hospital_privilege_11_name', 'Hospital privilege 11 — hospital name'],
+    ['staff.hospital_privilege_11_address', 'Hospital privilege 11 — address'],
+    ['staff.hospital_privilege_11_city', 'Hospital privilege 11 — city'],
+    ['staff.hospital_privilege_11_state', 'Hospital privilege 11 — state/country'],
+    ['staff.hospital_privilege_11_zip', 'Hospital privilege 11 — postal code'],
+    ['staff.hospital_privilege_11_type', 'Hospital privilege 11 — privilege type'],
+    ['staff.hospital_privilege_11_start_date', 'Hospital privilege 11 — start date'],
+    ['staff.hospital_privilege_11_end_date', 'Hospital privilege 11 — end date'],
+    ['staff.hospital_privilege_12_name', 'Hospital privilege 12 — hospital name'],
+    ['staff.hospital_privilege_12_address', 'Hospital privilege 12 — address'],
+    ['staff.hospital_privilege_12_city', 'Hospital privilege 12 — city'],
+    ['staff.hospital_privilege_12_state', 'Hospital privilege 12 — state/country'],
+    ['staff.hospital_privilege_12_zip', 'Hospital privilege 12 — postal code'],
+    ['staff.hospital_privilege_12_type', 'Hospital privilege 12 — privilege type'],
+    ['staff.hospital_privilege_12_start_date', 'Hospital privilege 12 — start date'],
+    ['staff.hospital_privilege_12_end_date', 'Hospital privilege 12 — end date'],
+    ['staff.hospital_privilege_13_name', 'Hospital privilege 13 — hospital name'],
+    ['staff.hospital_privilege_13_address', 'Hospital privilege 13 — address'],
+    ['staff.hospital_privilege_13_city', 'Hospital privilege 13 — city'],
+    ['staff.hospital_privilege_13_state', 'Hospital privilege 13 — state/country'],
+    ['staff.hospital_privilege_13_zip', 'Hospital privilege 13 — postal code'],
+    ['staff.hospital_privilege_13_type', 'Hospital privilege 13 — privilege type'],
+    ['staff.hospital_privilege_13_start_date', 'Hospital privilege 13 — start date'],
+    ['staff.hospital_privilege_13_end_date', 'Hospital privilege 13 — end date'],
+    ['staff.hospital_privilege_14_name', 'Hospital privilege 14 — hospital name'],
+    ['staff.hospital_privilege_14_address', 'Hospital privilege 14 — address'],
+    ['staff.hospital_privilege_14_city', 'Hospital privilege 14 — city'],
+    ['staff.hospital_privilege_14_state', 'Hospital privilege 14 — state/country'],
+    ['staff.hospital_privilege_14_zip', 'Hospital privilege 14 — postal code'],
+    ['staff.hospital_privilege_14_type', 'Hospital privilege 14 — privilege type'],
+    ['staff.hospital_privilege_14_start_date', 'Hospital privilege 14 — start date'],
+    ['staff.hospital_privilege_14_end_date', 'Hospital privilege 14 — end date'],
     ['staff.malpractice_claim_1_status', 'Malpractice claim 1 — status'],
     ['staff.malpractice_claim_1_date_filed', 'Malpractice claim 1 — date filed'],
     ['staff.malpractice_claim_1_date_closed', 'Malpractice claim 1 — date closed'],
@@ -10728,11 +10776,13 @@ async function generateFilledForm(templateId) {
 
     // Same flattening for hospital privileges — most recent first, up to
     // 8 entries as hospital_privilege_1-8_* (extended from 3 to support
-    // forms like the LHL234's Attachment D, which asks for 5 additional
-    // current hospital affiliations beyond the base 3).
+    // forms like the LHL234's Attachment D (which asks for 5 additional
+    // current hospital affiliations beyond the base 3) and Attachment E
+    // (6 more previous hospital affiliations) — extended to 14 total so
+    // both attachments get their own non-overlapping slot range.
     const { data: privilegeEntries } = await sb.from('staff_hospital_privileges')
       .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
-    (privilegeEntries || []).slice(0, 8).forEach((p, i) => {
+    (privilegeEntries || []).slice(0, 14).forEach((p, i) => {
       const n = i + 1;
       staffWithLicenses[`hospital_privilege_${n}_name`] = p.hospital_name || '';
       staffWithLicenses[`hospital_privilege_${n}_address`] = p.address || '';
