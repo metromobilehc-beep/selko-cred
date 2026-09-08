@@ -8778,6 +8778,10 @@ async function showManagePanelVisibility(companyId, companyName) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Panel visibility — ${companyName}</div>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checked = this panel shows for this company. Unchecked = hidden entirely — useful for reusing the same layout in a different industry (e.g. hide everything healthcare-specific for a mortgage or real estate client).</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-sm btn-ghost" onclick="bulkSetPanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}',false)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Hide all</button>
+        <button class="btn btn-sm btn-ghost" onclick="bulkSetPanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}',true)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Show all</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:2px;">
         ${TOGGLEABLE_PANELS.map(p => `
           <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:#fff;cursor:pointer;">
@@ -8789,6 +8793,25 @@ async function showManagePanelVisibility(companyId, companyName) {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function bulkSetPanelVisibility(companyId, companyName, showAll) {
+  // Clean slate first, then re-populate as needed — avoids unique-
+  // constraint conflicts with whatever's already hidden, and keeps the
+  // logic simple: no rows means everything's visible (existing behavior),
+  // so "Show all" just needs the delete with nothing to insert after.
+  const { error: delErr } = await sb.from('company_hidden_panels').delete().eq('company_id', companyId);
+  if (delErr) { toast('Error: ' + delErr.message, true); return; }
+
+  if (!showAll) {
+    const rows = TOGGLEABLE_PANELS.map(p => ({ company_id: companyId, panel_key: p.key }));
+    const { error: insErr } = await sb.from('company_hidden_panels').insert(rows);
+    if (insErr) { toast('Error: ' + insErr.message, true); return; }
+  }
+
+  if (currentCompany && currentCompany.id === companyId) _hiddenPanelsCache = null;
+  toast(showAll ? '✓ All panels now visible' : '✓ All panels hidden');
+  await showManagePanelVisibility(companyId, companyName); // re-render so every checkbox reflects the new state
 }
 
 async function togglePanelVisibilityForCompany(companyId, panelKey, nowVisible) {
