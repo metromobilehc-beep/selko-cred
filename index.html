@@ -1228,14 +1228,14 @@
       </div>
 
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
-        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Clinical Setup</span>
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Professional Setup</span>
       </div>
 
       <!-- Clinical disciplines — per-company, since a PT/OT staffing company
            and an urgent care clinic (MD/DO/PA/NP/RN) need completely
            different values here -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-        <h2 id="disciplinesPanelTitle">Clinical disciplines</h2>
+        <h2 id="disciplinesPanelTitle">Professional roles</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">
           Define the professional roles used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, MD/DO/PA/NP/RN for an urgent care clinic, or Title Agent/Escrow Officer/Notary for a title company. These appear anywhere a role is selected: adding staff, editing a staff member's role, and scoping which document types apply to which roles.
         </p>
@@ -6043,8 +6043,8 @@ function showDisciplineModal(id, name, currentDiscipline) {
   if (existing) existing.remove();
 
   const options = [
-    { value: '', label: 'N/A', desc: 'No clinical discipline' },
-    ...getCompanyDisciplines().map(d => ({ value: d, label: d, desc: 'Clinical discipline' })),
+    { value: '', label: 'N/A', desc: 'No professional role' },
+    ...getCompanyDisciplines().map(d => ({ value: d, label: d, desc: 'Professional role' })),
   ];
 
   const modal = document.createElement('div');
@@ -6053,7 +6053,7 @@ function showDisciplineModal(id, name, currentDiscipline) {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Set clinical discipline. Used to match discipline-specific document requirements (e.g. PT license only required for PTs, not PTAs).</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:18px;">Set professional role. Used to match role-specific document requirements (e.g. PT license only required for PTs, not PTAs).</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
         ${options.map(o => `
           <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1.5px solid ${o.value===currentDiscipline?'var(--teal)':'rgba(255,255,255,.15)'};background:${o.value===currentDiscipline?'rgba(13,148,136,.12)':'rgba(255,255,255,.03)'};border-radius:8px;cursor:pointer;">
@@ -6964,10 +6964,10 @@ async function addCompanyDiscipline() {
   const suspiciousWords = ['office', 'admin', 'administrator', 'clinician', 'staff', 'coordinator', 'manager', 'supervisor', 'clerk', 'receptionist'];
   if (suspiciousWords.includes(value.toLowerCase())) {
     const confirmed = confirm(
-      `"${value}" looks like a job title or access level, not a clinical discipline (e.g. PT, RN, DO).\n\n` +
-      `Clinical disciplines control which document requirements apply to someone (like "PT License" only for PTs). ` +
+      `"${value}" looks like a job title or access level, not a professional role (e.g. PT, RN, DO, Title Agent).\n\n` +
+      `Professional roles control which document requirements apply to someone (like "PT License" only for PTs). ` +
       `Job titles and access levels are set elsewhere — under Staff Type, when editing a staff member.\n\n` +
-      `Add "${value}" as a clinical discipline anyway?`
+      `Add "${value}" as a professional role anyway?`
     );
     if (!confirmed) return;
   } else if (!KNOWN_CLINICAL_DISCIPLINES.includes(value.toUpperCase())) {
@@ -6979,8 +6979,8 @@ async function addCompanyDiscipline() {
     // lock out something genuinely valid. This just catches the common
     // failure mode — a typo of a real code, like "DTP" instead of "DPT."
     const confirmed = confirm(
-      `"${value}" isn't in the list of commonly recognized clinical disciplines (PT, PTA, OT, COTA, SLP, MD, DO, NP, PA, DPM, RN, and similar).\n\n` +
-      `If this is a typo, double-check the spelling. If it's a real, less common discipline, that's fine — just confirm to add it.\n\n` +
+      `"${value}" isn't in the list of commonly recognized clinical role codes (PT, PTA, OT, COTA, SLP, MD, DO, NP, PA, DPM, RN, and similar).\n\n` +
+      `If this is a typo, double-check the spelling. If it's a real role — a less common clinical credential, or a non-clinical professional role like Title Agent — that's fine, just confirm to add it.\n\n` +
       `Add "${value}" anyway?`
     );
     if (!confirmed) return;
