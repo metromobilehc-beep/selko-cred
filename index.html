@@ -4743,7 +4743,7 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">DEA & Controlled Substances</div>
+      <div style="display:${deaModuleActive ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">DEA & Controlled Substances</div>
       <div id="fpDeaSection" style="display:${prescribes ? 'block' : 'none'};margin-bottom:10px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div>
@@ -4796,7 +4796,7 @@ function showFullProfileSheet(staffId) {
       </div>
       ${(!prescribes && deaModuleActive) ? `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>` : ''}
 
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Physician-level credentialing</div>
+      <div style="display:${deaModuleActive ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Physician-level credentialing</div>
       <div id="fpPhysicianSection" style="display:${prescribes ? 'block' : 'none'};margin-bottom:10px;">
         <div style="display:grid;grid-template-columns:1fr 2fr;gap:14px;margin-bottom:14px;">
           <div>
@@ -4895,10 +4895,10 @@ function showFullProfileSheet(staffId) {
           </div>
         </div>
       </div>
-      ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
+      ${(!prescribes && deaModuleActive) ? `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>` : ''}
 
-      <label class="inline-label">State licensing board lookup</label>
-      <div style="position:relative;margin-bottom:14px;">
+      <label class="inline-label" style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};">State licensing board lookup</label>
+      <div style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};position:relative;margin-bottom:14px;">
         <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 200)" />
         <div id="fpStateBoardSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
       </div>
