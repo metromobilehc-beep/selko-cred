@@ -12134,6 +12134,7 @@ async function loadSuperAdmin() {
 // can just have them hidden instead.
 const TOGGLEABLE_PANELS = [
   { key: 'credentialing_teaser', label: 'Credentialing tab (hides it completely, including the upgrade-teaser view)' },
+  { key: 'credentialing_module_option', label: 'Credentialing module option (removes "Credentialing only"/"Both" from the Module dropdown in Subscription Settings — only "Document tracking only" remains selectable)' },
   { key: 'health_care_network', label: 'Health Care Network (tab + Settings panels)' },
   { key: 'caqh', label: 'CAQH section (Full Profile)' },
   { key: 'dea', label: 'DEA & Controlled Substances section (Full Profile)' },
@@ -12742,6 +12743,11 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
   const { data: c } = await sb.from('companies').select('*').eq('id', companyId).single();
   if (!c) { toast('Company not found', true); return; }
 
+  // Fetched fresh for this specific company, since it may not be the one
+  // currently being viewed (_hiddenPanelsCache is scoped to that instead).
+  const { data: hiddenRows } = await sb.from('company_hidden_panels').select('panel_key').eq('company_id', companyId);
+  const moduleOptionHidden = (hiddenRows || []).some(r => r.panel_key === 'credentialing_module_option');
+
   const modal = document.createElement('div');
   modal.id = 'subscriptionSettingsModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -12750,11 +12756,13 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Subscription settings — ${companyName}</div>
 
       <label class="inline-label">Module</label>
-      <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
+      <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
         <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
+        ${!moduleOptionHidden ? `
         <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
-        <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>
+        <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>` : ''}
       </select>
+      ${moduleOptionHidden ? `<p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
       ${c.has_credentialing_addon ? `
       <label class="inline-label">Credentialing tier</label>
