@@ -10189,6 +10189,69 @@ const CRED_DATA_SOURCES = [
     ['staff.employment_4_start_date', 'Employment 4 — start date'],
     ['staff.employment_4_end_date', 'Employment 4 — end date'],
     ['staff.employment_4_reason_for_leaving', 'Employment 4 — reason for leaving'],
+    ['staff.employment_5_employer_name', 'Employment 5 — employer name'],
+    ['staff.employment_5_position_title', 'Employment 5 — position/title'],
+    ['staff.employment_5_address', 'Employment 5 — address'],
+    ['staff.employment_5_city', 'Employment 5 — city'],
+    ['staff.employment_5_state', 'Employment 5 — state'],
+    ['staff.employment_5_zip', 'Employment 5 — postal code'],
+    ['staff.employment_5_start_date', 'Employment 5 — start date'],
+    ['staff.employment_5_end_date', 'Employment 5 — end date'],
+    ['staff.employment_5_reason_for_leaving', 'Employment 5 — reason for leaving'],
+    ['staff.employment_6_employer_name', 'Employment 6 — employer name'],
+    ['staff.employment_6_position_title', 'Employment 6 — position/title'],
+    ['staff.employment_6_address', 'Employment 6 — address'],
+    ['staff.employment_6_city', 'Employment 6 — city'],
+    ['staff.employment_6_state', 'Employment 6 — state'],
+    ['staff.employment_6_zip', 'Employment 6 — postal code'],
+    ['staff.employment_6_start_date', 'Employment 6 — start date'],
+    ['staff.employment_6_end_date', 'Employment 6 — end date'],
+    ['staff.employment_6_reason_for_leaving', 'Employment 6 — reason for leaving'],
+    ['staff.employment_7_employer_name', 'Employment 7 — employer name'],
+    ['staff.employment_7_position_title', 'Employment 7 — position/title'],
+    ['staff.employment_7_address', 'Employment 7 — address'],
+    ['staff.employment_7_city', 'Employment 7 — city'],
+    ['staff.employment_7_state', 'Employment 7 — state'],
+    ['staff.employment_7_zip', 'Employment 7 — postal code'],
+    ['staff.employment_7_start_date', 'Employment 7 — start date'],
+    ['staff.employment_7_end_date', 'Employment 7 — end date'],
+    ['staff.employment_7_reason_for_leaving', 'Employment 7 — reason for leaving'],
+    ['staff.employment_8_employer_name', 'Employment 8 — employer name'],
+    ['staff.employment_8_position_title', 'Employment 8 — position/title'],
+    ['staff.employment_8_address', 'Employment 8 — address'],
+    ['staff.employment_8_city', 'Employment 8 — city'],
+    ['staff.employment_8_state', 'Employment 8 — state'],
+    ['staff.employment_8_zip', 'Employment 8 — postal code'],
+    ['staff.employment_8_start_date', 'Employment 8 — start date'],
+    ['staff.employment_8_end_date', 'Employment 8 — end date'],
+    ['staff.employment_8_reason_for_leaving', 'Employment 8 — reason for leaving'],
+    ['staff.employment_9_employer_name', 'Employment 9 — employer name'],
+    ['staff.employment_9_position_title', 'Employment 9 — position/title'],
+    ['staff.employment_9_address', 'Employment 9 — address'],
+    ['staff.employment_9_city', 'Employment 9 — city'],
+    ['staff.employment_9_state', 'Employment 9 — state'],
+    ['staff.employment_9_zip', 'Employment 9 — postal code'],
+    ['staff.employment_9_start_date', 'Employment 9 — start date'],
+    ['staff.employment_9_end_date', 'Employment 9 — end date'],
+    ['staff.employment_9_reason_for_leaving', 'Employment 9 — reason for leaving'],
+    ['staff.employment_10_employer_name', 'Employment 10 — employer name'],
+    ['staff.employment_10_position_title', 'Employment 10 — position/title'],
+    ['staff.employment_10_address', 'Employment 10 — address'],
+    ['staff.employment_10_city', 'Employment 10 — city'],
+    ['staff.employment_10_state', 'Employment 10 — state'],
+    ['staff.employment_10_zip', 'Employment 10 — postal code'],
+    ['staff.employment_10_start_date', 'Employment 10 — start date'],
+    ['staff.employment_10_end_date', 'Employment 10 — end date'],
+    ['staff.employment_10_reason_for_leaving', 'Employment 10 — reason for leaving'],
+    ['staff.employment_11_employer_name', 'Employment 11 — employer name'],
+    ['staff.employment_11_position_title', 'Employment 11 — position/title'],
+    ['staff.employment_11_address', 'Employment 11 — address'],
+    ['staff.employment_11_city', 'Employment 11 — city'],
+    ['staff.employment_11_state', 'Employment 11 — state'],
+    ['staff.employment_11_zip', 'Employment 11 — postal code'],
+    ['staff.employment_11_start_date', 'Employment 11 — start date'],
+    ['staff.employment_11_end_date', 'Employment 11 — end date'],
+    ['staff.employment_11_reason_for_leaving', 'Employment 11 — reason for leaving'],
     ['staff.employment_gap_1_dates', 'Employment gap 1 — dates'],
     ['staff.employment_gap_1_explanation', 'Employment gap 1 — explanation'],
     ['staff.employment_gap_2_dates', 'Employment gap 2 — dates'],
@@ -10653,11 +10716,12 @@ async function generateFilledForm(templateId) {
     });
 
     // Same flattening for employment history — most recent first, up to
-    // 4 entries as employment_1/2/3/4_*, matching this form's own current
-    // + 3 previous employer layout.
+    // 11 entries as employment_1-11_* (extended from 4 to support forms
+    // like the LHL234's Attachment C, which asks for 7 additional previous
+    // employers beyond the base 4).
     const { data: employmentEntries } = await sb.from('staff_employment_history')
       .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
-    (employmentEntries || []).slice(0, 4).forEach((emp, i) => {
+    (employmentEntries || []).slice(0, 11).forEach((emp, i) => {
       const n = i + 1;
       staffWithLicenses[`employment_${n}_employer_name`] = emp.employer_name || '';
       staffWithLicenses[`employment_${n}_position_title`] = emp.position_title || '';
