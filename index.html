@@ -4595,9 +4595,15 @@ function showFullProfileSheet(staffId) {
   // Also respects panel visibility — DEA and Board Cert are combined into
   // one visibility unit here since the existing section structure already
   // shows them together; hiding either one hides both.
-  const prescribes = currentCompany.has_credentialing_addon
-    && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')))
-    && PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
+  // Isolates whether DEA/Board Cert are active for this company at all
+  // (module on, not hidden via panel visibility) from whether this one
+  // person's specific discipline happens to prescribe — needed so the
+  // "not applicable to this discipline" message below only shows when
+  // that's genuinely why it's hidden, not when the whole concept is
+  // hidden for the company regardless of anyone's discipline.
+  const deaModuleActive = currentCompany.has_credentialing_addon
+    && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')));
+  const prescribes = deaModuleActive && PRESCRIBING_DISCIPLINES.has((s.discipline || '').toUpperCase());
   const showCaqh = currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'));
   const disciplines = getCompanyDisciplines();
 
@@ -4788,7 +4794,7 @@ function showFullProfileSheet(staffId) {
           </div>
         </div>
       </div>
-      ${prescribes ? '' : `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>`}
+      ${(!prescribes && deaModuleActive) ? `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">DEA fields hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>` : ''}
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Physician-level credentialing</div>
       <div id="fpPhysicianSection" style="display:${prescribes ? 'block' : 'none'};margin-bottom:10px;">
