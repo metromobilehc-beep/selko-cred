@@ -12556,7 +12556,7 @@ async function resetDemoCompanyData(companyId) {
     // Profile and show every credentialing tab populated at once.
     const physician = byName['Priya Sharma, MD'];
     if (physician) {
-      await sb.from('staff_education_training').insert([
+      const { error: eduInsertErr } = await sb.from('staff_education_training').insert([
         { staff_id: physician.id, training_type: 'Medical School', institution: 'University of Oklahoma College of Medicine',
           address: '940 Stanton L Young Blvd', city: 'Oklahoma City', state: 'OK', zip: '73104',
           start_date: daysFromNow(-4380), end_date: daysFromNow(-2920), completed: true },
@@ -12580,8 +12580,9 @@ async function resetDemoCompanyData(companyId) {
           address: '801 NE 13th St', city: 'Oklahoma City', state: 'OK', zip: '73104',
           start_date: daysFromNow(-730), end_date: daysFromNow(-365), completed: true },
       ]);
+      if (eduInsertErr) throw new Error('Could not seed education records: ' + eduInsertErr.message);
 
-      await sb.from('staff_hospital_privileges').insert([
+      const { error: privInsertErr } = await sb.from('staff_hospital_privileges').insert([
         { staff_id: physician.id, hospital_name: 'OU Health University of Oklahoma Medical Center', privilege_type: 'Full unrestricted',
           address: '1200 Everett Dr', city: 'Oklahoma City', state: 'OK', zip: '73104', start_date: daysFromNow(-1800) },
         { staff_id: physician.id, hospital_name: 'INTEGRIS Baptist Medical Center', privilege_type: 'Courtesy',
@@ -12613,21 +12614,24 @@ async function resetDemoCompanyData(companyId) {
         { staff_id: physician.id, hospital_name: 'Duncan Regional Hospital', privilege_type: 'Courtesy',
           address: '1800 Beech Ave', city: 'Duncan', state: 'OK', zip: '73533', start_date: daysFromNow(-1900), end_date: daysFromNow(-1400) },
       ]);
+      if (privInsertErr) throw new Error('Could not seed hospital privilege records: ' + privInsertErr.message);
 
-      await sb.from('staff_additional_licenses').insert([
+      const { error: licInsertErr } = await sb.from('staff_additional_licenses').insert([
         { staff_id: physician.id, license_type: 'DPS Controlled Substance Registration', license_number: 'CS-DEMO-4471', state: 'OK',
           original_date_of_issue: daysFromNow(-1000), expiration_date: daysFromNow(430) },
       ]);
+      if (licInsertErr) throw new Error('Could not seed additional license records: ' + licInsertErr.message);
 
-      await sb.from('staff_malpractice_claims').insert([
+      const { error: claimInsertErr } = await sb.from('staff_malpractice_claims').insert([
         { staff_id: physician.id, claim_status: 'Closed — dismissed', date_filed: daysFromNow(-900), date_closed: daysFromNow(-600),
           description: 'Sample data for demo purposes — claim dismissed, no payment made.' },
         // Second entry — fills malpractice_claim_2 (Attachment G's second slot)
         { staff_id: physician.id, claim_status: 'Closed — settled without prejudice', date_filed: daysFromNow(-1600), date_closed: daysFromNow(-1400),
           description: 'Sample data for demo purposes — settled without admission of liability, minor payment made.' },
       ]);
+      if (claimInsertErr) throw new Error('Could not seed malpractice claim records: ' + claimInsertErr.message);
 
-      await sb.from('staff_employment_history').insert([
+      const { error: empInsertErr } = await sb.from('staff_employment_history').insert([
         { staff_id: physician.id, employer_name: 'Metro Mobile Health Care', position_title: 'Family Medicine Physician',
           address: '6153 S Quebec Ave', city: 'Tulsa', state: 'OK', zip: '74136', start_date: daysFromNow(-365), is_current: true,
           supervisor_name: 'Stephen Mace, DPT', supervisor_phone: '918-555-0100' },
@@ -12657,6 +12661,7 @@ async function resetDemoCompanyData(companyId) {
           address: '1800 Beech Ave', city: 'Duncan', state: 'OK', zip: '73533', start_date: daysFromNow(-2900), end_date: daysFromNow(-2560),
           reason_for_leaving: 'Sample data for demo purposes' },
       ]);
+      if (empInsertErr) throw new Error('Could not seed employment history records: ' + empInsertErr.message);
     }
 
     // Company-level profile fields — previously never seeded at all, so a
