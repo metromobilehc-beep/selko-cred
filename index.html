@@ -12181,13 +12181,15 @@ const DEMO_STAFF = [
   // show off every credentialing-specific feature at once: Licenses,
   // Education, Privileges, Claims, Employment, CAQH, DEA, board cert.
   { full_name: 'Priya Sharma, MD', discipline: 'MD', job_title: 'Family Medicine Physician', staff_type: 'clinician',
+    middle_name: 'Anjali',
     license_type: 'MD', license_state: 'OK', license_number: 'MD-DEMO-9001',
     license_issued_date: daysFromNow(-2200), license_expiration_date: daysFromNow(400),
     npi_number: '1234567890', date_of_birth: '1985-06-14', gender: 'Female',
     phone: '405-555-0142', address: '4200 N Lincoln Blvd', city: 'Oklahoma City', state: 'OK', zip: '73105',
     caqh_id: '18293745', caqh_issued_date: daysFromNow(-365), caqh_expiration_date: daysFromNow(90),
     dea_number: 'BS1234563', dea_issued_date: daysFromNow(-1000), dea_expiration_date: daysFromNow(430), dea_schedules: ['II', 'III', 'IV', 'V'],
-    primary_specialty: 'Family Medicine', board_certified: true, board_name: 'American Board of Family Medicine',
+    primary_specialty: 'Family Medicine', secondary_specialty: 'Geriatric Medicine',
+    board_certified: true, board_name: 'American Board of Family Medicine',
     board_certification_date: daysFromNow(-1800), board_certification_expiration_date: daysFromNow(700) },
 ];
 
@@ -12236,6 +12238,8 @@ async function resetDemoCompanyData(companyId) {
       if (delClaimErr) throw new Error('Could not clear existing malpractice claim records: ' + delClaimErr.message);
       const { error: delEmpErr } = await sb.from('staff_employment_history').delete().in('staff_id', staffIdList);
       if (delEmpErr) throw new Error('Could not clear existing employment history records: ' + delEmpErr.message);
+      const { error: delLicErr } = await sb.from('staff_additional_licenses').delete().in('staff_id', staffIdList);
+      if (delLicErr) throw new Error('Could not clear existing additional license records: ' + delLicErr.message);
     }
 
     const { error: delStaffErr } = await sb.from('credtrack_staff').delete().eq('company_id', companyId);
@@ -12333,6 +12337,13 @@ async function resetDemoCompanyData(companyId) {
       await sb.from('staff_hospital_privileges').insert([
         { staff_id: physician.id, hospital_name: 'OU Health University of Oklahoma Medical Center', privilege_type: 'Full unrestricted',
           address: '1200 Everett Dr', city: 'Oklahoma City', state: 'OK', zip: '73104', start_date: daysFromNow(-1800) },
+        { staff_id: physician.id, hospital_name: 'INTEGRIS Baptist Medical Center', privilege_type: 'Courtesy',
+          address: '3300 NW Expressway', city: 'Oklahoma City', state: 'OK', zip: '73112', start_date: daysFromNow(-900) },
+      ]);
+
+      await sb.from('staff_additional_licenses').insert([
+        { staff_id: physician.id, license_type: 'DPS Controlled Substance Registration', license_number: 'CS-DEMO-4471', state: 'OK',
+          original_date_of_issue: daysFromNow(-1000), expiration_date: daysFromNow(430) },
       ]);
 
       await sb.from('staff_malpractice_claims').insert([
@@ -12348,6 +12359,36 @@ async function resetDemoCompanyData(companyId) {
           address: '3300 Marshall Ave', city: 'Norman', state: 'OK', zip: '73072', start_date: daysFromNow(-1825), end_date: daysFromNow(-425),
           reason_for_leaving: 'Relocated closer to Tulsa', gap_explanation: 'Sample data for demo purposes — 5-month gap for relocation and licensing transfer.' },
       ]);
+    }
+
+    // Company-level profile fields — previously never seeded at all, so a
+    // demo generating a real filled form would have shown blanks for every
+    // org-level field (legal name, Tax ID, practice location) even with a
+    // fully populated physician. This is what actually lets a live demo
+    // show a genuinely complete, real-looking filled credentialing form.
+    const { error: companyUpdateErr } = await sb.from('companies').update({
+      legal_business_name: 'Selko Demo Family Medicine, PLLC',
+      provider_directory_name: 'Selko Demo Family Medicine',
+      tax_id: '73-DEMO4471',
+      credentialing_contact_name: 'Stephen Mace, DPT',
+      credentialing_contact_email: 'smacedpt@gmail.com',
+      credentialing_contact_phone: '918-555-0100',
+      malpractice_carrier: 'The Doctors Company',
+      malpractice_policy_number: 'TDC-DEMO-88213',
+      malpractice_coverage_limits: '$1M/$3M',
+      malpractice_effective_date: daysFromNow(-365),
+      malpractice_expiration_date: daysFromNow(365),
+    }).eq('id', companyId);
+    if (companyUpdateErr) throw new Error('Could not seed company profile: ' + companyUpdateErr.message);
+
+    const { count: existingLocCount } = await sb.from('company_locations').select('id', { count: 'exact', head: true }).eq('company_id', companyId);
+    if (!existingLocCount) {
+      const { error: locErr } = await sb.from('company_locations').insert([
+        { company_id: companyId, location_name: 'Selko Demo Family Medicine — Main Clinic',
+          address: '4200 N Lincoln Blvd', city: 'Oklahoma City', state: 'OK', zip: '73105', county: 'Oklahoma',
+          phone: '405-555-0142', is_primary: true, sort_order: 0 },
+      ]);
+      if (locErr) throw new Error('Could not seed practice location: ' + locErr.message);
     }
 
     toast('✓ Demo data reset — fresh fictional staff and sample credentials loaded');
