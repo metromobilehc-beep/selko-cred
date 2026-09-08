@@ -1091,7 +1091,7 @@
                 <option value="doc_pro">Pro</option>
               </select>
             </div>
-            <div>
+            <div id="billingCredColumn">
               <label class="inline-label">Credentialing</label>
               <select class="inline-select" id="billingCredTier" onchange="updateBundleHint()">
                 <option value="">— None —</option>
@@ -8283,6 +8283,16 @@ async function loadBillingStatus() {
       : '';
 
   el.innerHTML = `Current plan: <strong>Document tracking — ${docLabel}</strong>, <strong>Credentialing — ${credLabel}</strong>${statusNote}`;
+
+  // Same "Credentialing module option" toggle as Selko Admin's
+  // Subscription Settings — if a company shouldn't be offered
+  // Credentialing at all (e.g. a non-healthcare vertical), this column
+  // shouldn't be selectable here either, not just admin-side.
+  const credColumn = document.getElementById('billingCredColumn');
+  if (credColumn) {
+    const moduleOptionHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('credentialing_module_option');
+    credColumn.style.display = moduleOptionHidden ? 'none' : 'block';
+  }
 
   // Active or past_due both mean a real Stripe subscription already
   // exists — route those through the Portal instead of the plan picker.
