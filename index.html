@@ -1244,11 +1244,11 @@
         </p>
         <div id="disciplinesListCred" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
         <div style="display:flex;gap:8px;margin-bottom:16px;">
-          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN" style="max-width:160px;" />
+          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN, or Title Agent" style="max-width:160px;" />
           <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add discipline</button>
         </div>
 
-        <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;">
+        <div id="caqhExemptSection" style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;">
           <p style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:10px;">CAQH-exempt disciplines — check any discipline that doesn't need a CAQH profile (e.g. PTA, COTA working under a supervising clinician). Exempt disciplines won't show up as "Missing CAQH ID" anywhere in the app.</p>
           <div id="caqhExemptListCred" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
         </div>
@@ -6906,6 +6906,12 @@ function loadDisciplinesPanel() {
       <span onclick="showRenameDisciplineForm('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Rename">✎</span>
       <span onclick="removeCompanyDiscipline('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
     </span>`).join('');
+
+  // CAQH is a credentialing concept, not a general staff/discipline one —
+  // this whole sub-section was showing regardless of module, even to a
+  // pure Documents-only or non-healthcare company with no use for it.
+  const caqhSection = document.getElementById('caqhExemptSection');
+  if (caqhSection) caqhSection.style.display = (currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'))) ? 'block' : 'none';
 
   const exemptContainer = document.getElementById('caqhExemptListCred');
   if (exemptContainer) {
@@ -12857,6 +12863,7 @@ async function applyIndustryPreset(companyId, companyName, presetKey) {
     currentCompany.staff_type_label = preset.staff_type_label;
     await getHiddenPanels();
     updateModuleTabVisibility(currentCompany, currentProfile);
+    if (document.getElementById('caqhExemptSection')) loadDisciplinesPanel();
   }
 
   document.getElementById('industryPresetModal')?.remove();
