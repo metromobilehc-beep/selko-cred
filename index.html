@@ -8734,6 +8734,10 @@ async function showManageDocTypeVisibility(typeId, typeName) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Visibility — ${typeName}</div>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checked = this company sees it. Unchecked = hidden for them specifically, same as if they'd clicked "Hide for us" themselves.</p>
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button class="btn btn-sm btn-ghost" onclick="bulkSetDocTypeVisibility(${typeId},'${typeName.replace(/'/g,"\\'")}',false)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Hide for all</button>
+        <button class="btn btn-sm btn-ghost" onclick="bulkSetDocTypeVisibility(${typeId},'${typeName.replace(/'/g,"\\'")}',true)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Show for all</button>
+      </div>
       <div style="display:flex;flex-direction:column;gap:2px;">
         ${(allCompanies || []).map(c => `
           <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:#fff;cursor:pointer;">
@@ -8745,6 +8749,26 @@ async function showManageDocTypeVisibility(typeId, typeName) {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function bulkSetDocTypeVisibility(typeId, typeName, showForAll) {
+  // Clean slate first, then re-populate as needed — same approach as the
+  // panel visibility bulk actions: no rows means visible to everyone
+  // (existing behavior), so "Show for all" just needs the delete.
+  const { error: delErr } = await sb.from('company_hidden_document_types').delete().eq('document_type_id', typeId);
+  if (delErr) { toast('Error: ' + delErr.message, true); return; }
+
+  if (!showForAll) {
+    const { data: allCompanies } = await sb.from('companies').select('id');
+    const rows = (allCompanies || []).map(c => ({ document_type_id: typeId, company_id: c.id }));
+    if (rows.length) {
+      const { error: insErr } = await sb.from('company_hidden_document_types').insert(rows);
+      if (insErr) { toast('Error: ' + insErr.message, true); return; }
+    }
+  }
+
+  toast(showForAll ? '✓ Now visible to every company' : '✓ Now hidden from every company');
+  await showManageDocTypeVisibility(typeId, typeName); // re-render so every checkbox reflects the new state
 }
 
 async function toggleDocTypeVisibilityForCompany(typeId, companyId, nowVisible) {
