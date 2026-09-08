@@ -12082,23 +12082,8 @@ async function loadSuperAdmin() {
           <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
           <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
           <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}','${c.name.replace(/'/g,"\\'")}','${((c.admin_emails||[])[0]||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✉ Resend invite</button>
-          <select class="filter-sel" id="moduleSelect_${c.id}" style="max-width:220px;transition:box-shadow .3s, border-color .3s;" onchange="setCompanyModules('${c.id}', this.value)" title="Which modules this company has access to. Both is the common case — choosing either single option below means the other is completely off, including its own tab.">
-            <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
-            <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
-            <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>
-          </select>
-          ${c.has_credentialing_addon ? `
-          <select class="filter-sel" id="credTierSelect_${c.id}" style="max-width:170px;transition:box-shadow .3s, border-color .3s;" onchange="setCredentialingTier('${c.id}', this.value)" title="Basic: org profile, accreditations, per-staff CAQH/DEA only. Full: Basic plus the template upload/generate-filled-form feature.">
-            <option value="basic" ${c.credentialing_tier === 'basic' ? 'selected' : ''}>Credentialing: Basic</option>
-            <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Credentialing: Full</option>
-          </select>` : ''}
-          <select class="filter-sel" id="planSelect_${c.id}" style="max-width:170px;transition:box-shadow .3s, border-color .3s;" onchange="setCompanyPlan('${c.id}', this.value)" title="Document tracking plan tier — Standard vs Pro. Separate from the Credentialing tier above.">
-            <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Plan: Standard</option>
-            <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Plan: Pro</option>
-            <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Plan: Enterprise</option>
-          </select>
-          <button class="btn btn-sm btn-ghost" onclick="showManagePanelVisibility('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
-          <button class="btn btn-sm btn-ghost" onclick="showEditCredTeaserModal('${c.id}','${c.name.replace(/'/g,"\\'")}','${(c.credentialing_teaser_label||'').replace(/'/g,"\\'")}','${(c.credentialing_teaser_description||'').replace(/'/g,"\\'")}','${(c.discipline_label||'').replace(/'/g,"\\'")}','${(c.staff_type_label||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize terminology</button>
+          <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">⚙ Subscription Settings</button>
+          <button class="btn btn-sm btn-ghost" onclick="showCustomizeModal('${c.id}','${c.name.replace(/'/g,"\\'")}','${(c.credentialing_teaser_label||'').replace(/'/g,"\\'")}','${(c.credentialing_teaser_description||'').replace(/'/g,"\\'")}','${(c.discipline_label||'').replace(/'/g,"\\'")}','${(c.staff_type_label||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🎨 Customize</button>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
@@ -12715,6 +12700,90 @@ async function setCompanyPlan(id, plan) {
       sel.style.boxShadow = '';
     }, 1500);
   }
+}
+
+// Consolidates the three subscription-level dropdowns (Module, Credentialing
+// tier, Plan) that used to sit directly on each company's card — same
+// underlying setCompanyModules/setCredentialingTier/setCompanyPlan
+// functions, just moved into one popup so the card itself stays short.
+async function showSubscriptionSettingsModal(companyId, companyName) {
+  const existing = document.getElementById('subscriptionSettingsModal');
+  if (existing) existing.remove();
+
+  const { data: c } = await sb.from('companies').select('*').eq('id', companyId).single();
+  if (!c) { toast('Company not found', true); return; }
+
+  const modal = document.createElement('div');
+  modal.id = 'subscriptionSettingsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Subscription settings — ${companyName}</div>
+
+      <label class="inline-label">Module</label>
+      <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
+        <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
+        <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
+        <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>
+      </select>
+
+      ${c.has_credentialing_addon ? `
+      <label class="inline-label">Credentialing tier</label>
+      <select class="inline-select" id="modalCredTierSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalCredTierChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
+        <option value="basic" ${c.credentialing_tier === 'basic' ? 'selected' : ''}>Basic</option>
+        <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Full</option>
+      </select>` : ''}
+
+      <label class="inline-label">Plan</label>
+      <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
+        <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard</option>
+        <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro</option>
+        <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise</option>
+      </select>
+
+      <button class="btn btn-ghost" onclick="document.getElementById('subscriptionSettingsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+// Wrappers so the modal correctly waits for each save to actually finish
+// (setCompanyModules/etc. are async — chaining a re-open right after them
+// in an inline onchange wouldn't wait, and would reopen with stale data).
+async function applyModalModuleChange(companyId, companyName, value) {
+  await setCompanyModules(companyId, value);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+async function applyModalCredTierChange(companyId, companyName, value) {
+  await setCredentialingTier(companyId, value);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+async function applyModalPlanChange(companyId, companyName, value) {
+  await setCompanyPlan(companyId, value);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+
+// Consolidates the two customization buttons (panel visibility, terminology)
+// that used to sit directly on each company's card — just a menu pointing
+// into the two existing modals, nothing new about how either works.
+function showCustomizeModal(companyId, companyName, teaserLabel, teaserDesc, discLabel, staffLabel) {
+  const existing = document.getElementById('customizeModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'customizeModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Customize — ${companyName}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('customizeModal').remove();showManagePanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('customizeModal').remove();showEditCredTeaserModal('${companyId}','${companyName.replace(/'/g,"\\'")}','${(teaserLabel||'').replace(/'/g,"\\'")}','${(teaserDesc||'').replace(/'/g,"\\'")}','${(discLabel||'').replace(/'/g,"\\'")}','${(staffLabel||'').replace(/'/g,"\\'")}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize terminology</button>
+      </div>
+      <button class="btn btn-ghost" onclick="document.getElementById('customizeModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
 async function softDeleteCompany(id, name) {
