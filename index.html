@@ -12563,6 +12563,22 @@ async function resetDemoCompanyData(companyId) {
         { staff_id: physician.id, training_type: 'Residency', specialty: 'Family Medicine', institution: 'OU Health Family Medicine Residency',
           address: '900 N Portland Ave', city: 'Oklahoma City', state: 'OK', zip: '73107',
           program_director: 'Dr. Michael Trent', start_date: daysFromNow(-2920), end_date: daysFromNow(-1825), completed: true },
+        // Extended set — fills education_4 through education_8 (Attachment B slots)
+        { staff_id: physician.id, training_type: 'Fellowship', specialty: 'Geriatric Medicine', institution: 'OU Health Geriatric Medicine Fellowship',
+          address: '1122 NE 13th St', city: 'Oklahoma City', state: 'OK', zip: '73117',
+          program_director: 'Dr. Elena Whitfield', start_date: daysFromNow(-1825), end_date: daysFromNow(-1460), completed: true },
+        { staff_id: physician.id, training_type: 'Teaching Appointment', specialty: 'Family Medicine', institution: 'OU Health Family Medicine Residency',
+          address: '900 N Portland Ave', city: 'Oklahoma City', state: 'OK', zip: '73107',
+          program_director: 'Dr. Michael Trent', start_date: daysFromNow(-1460), end_date: daysFromNow(-1095), completed: true },
+        { staff_id: physician.id, training_type: 'Internship', specialty: 'Internal Medicine', institution: 'St. Anthony Hospital',
+          address: '1000 N Lee Ave', city: 'Oklahoma City', state: 'OK', zip: '73102',
+          program_director: 'Dr. Robert Kim', start_date: daysFromNow(-2920), end_date: daysFromNow(-2555), completed: true },
+        { staff_id: physician.id, training_type: 'Fellowship', specialty: 'Sports Medicine', institution: 'OU Health Sports Medicine Fellowship',
+          address: '1201 N Lincoln Blvd', city: 'Oklahoma City', state: 'OK', zip: '73104',
+          program_director: 'Dr. Sarah Bunch', start_date: daysFromNow(-1095), end_date: daysFromNow(-730), completed: true },
+        { staff_id: physician.id, training_type: 'Other Graduate-Level Education', specialty: 'Healthcare Administration', institution: 'University of Oklahoma College of Public Health',
+          address: '801 NE 13th St', city: 'Oklahoma City', state: 'OK', zip: '73104',
+          start_date: daysFromNow(-730), end_date: daysFromNow(-365), completed: true },
       ]);
 
       await sb.from('staff_hospital_privileges').insert([
@@ -12570,6 +12586,32 @@ async function resetDemoCompanyData(companyId) {
           address: '1200 Everett Dr', city: 'Oklahoma City', state: 'OK', zip: '73104', start_date: daysFromNow(-1800) },
         { staff_id: physician.id, hospital_name: 'INTEGRIS Baptist Medical Center', privilege_type: 'Courtesy',
           address: '3300 NW Expressway', city: 'Oklahoma City', state: 'OK', zip: '73112', start_date: daysFromNow(-900) },
+        // Extended set — fills hospital_privilege_4 through _14 (Attachments D & E).
+        // First 5 are current (no end_date), matching Attachment D's "other
+        // current hospital affiliations"; last 6 have an end_date, matching
+        // Attachment E's "other previous hospital affiliations".
+        { staff_id: physician.id, hospital_name: 'Mercy Hospital Oklahoma City', privilege_type: 'Courtesy',
+          address: '4300 W Memorial Rd', city: 'Oklahoma City', state: 'OK', zip: '73120', start_date: daysFromNow(-700) },
+        { staff_id: physician.id, hospital_name: 'SSM Health St. Anthony Hospital', privilege_type: 'Full unrestricted',
+          address: '1000 N Lee Ave', city: 'Oklahoma City', state: 'OK', zip: '73102', start_date: daysFromNow(-600) },
+        { staff_id: physician.id, hospital_name: 'Norman Regional Hospital', privilege_type: 'Courtesy',
+          address: '901 N Porter Ave', city: 'Norman', state: 'OK', zip: '73071', start_date: daysFromNow(-500) },
+        { staff_id: physician.id, hospital_name: 'INTEGRIS Southwest Medical Center', privilege_type: 'Courtesy',
+          address: '4401 S Western Ave', city: 'Oklahoma City', state: 'OK', zip: '73109', start_date: daysFromNow(-400) },
+        { staff_id: physician.id, hospital_name: 'AllianceHealth Deaconess', privilege_type: 'Full unrestricted',
+          address: '5501 N Portland Ave', city: 'Oklahoma City', state: 'OK', zip: '73112', start_date: daysFromNow(-300) },
+        { staff_id: physician.id, hospital_name: 'St. Anthony Hospital — Shawnee', privilege_type: 'Full unrestricted',
+          address: '1102 W MacArthur St', city: 'Shawnee', state: 'OK', zip: '74804', start_date: daysFromNow(-2500), end_date: daysFromNow(-1900) },
+        { staff_id: physician.id, hospital_name: 'Norman Regional HealthPlex', privilege_type: 'Courtesy',
+          address: '3300 HealthPlex Pkwy', city: 'Norman', state: 'OK', zip: '73072', start_date: daysFromNow(-2400), end_date: daysFromNow(-1800) },
+        { staff_id: physician.id, hospital_name: 'Purcell Municipal Hospital', privilege_type: 'Courtesy',
+          address: '1500 N Green Ave', city: 'Purcell', state: 'OK', zip: '73080', start_date: daysFromNow(-2200), end_date: daysFromNow(-1700) },
+        { staff_id: physician.id, hospital_name: 'McBride Orthopedic Hospital', privilege_type: 'Provisional',
+          address: '1211 N Shartel Ave', city: 'Oklahoma City', state: 'OK', zip: '73103', start_date: daysFromNow(-2100), end_date: daysFromNow(-1600) },
+        { staff_id: physician.id, hospital_name: 'Chickasaw Nation Medical Center', privilege_type: 'Courtesy',
+          address: '1921 Stonecipher Blvd', city: 'Ada', state: 'OK', zip: '74820', start_date: daysFromNow(-2000), end_date: daysFromNow(-1500) },
+        { staff_id: physician.id, hospital_name: 'Duncan Regional Hospital', privilege_type: 'Courtesy',
+          address: '1800 Beech Ave', city: 'Duncan', state: 'OK', zip: '73533', start_date: daysFromNow(-1900), end_date: daysFromNow(-1400) },
       ]);
 
       await sb.from('staff_additional_licenses').insert([
@@ -12580,6 +12622,9 @@ async function resetDemoCompanyData(companyId) {
       await sb.from('staff_malpractice_claims').insert([
         { staff_id: physician.id, claim_status: 'Closed — dismissed', date_filed: daysFromNow(-900), date_closed: daysFromNow(-600),
           description: 'Sample data for demo purposes — claim dismissed, no payment made.' },
+        // Second entry — fills malpractice_claim_2 (Attachment G's second slot)
+        { staff_id: physician.id, claim_status: 'Closed — settled without prejudice', date_filed: daysFromNow(-1600), date_closed: daysFromNow(-1400),
+          description: 'Sample data for demo purposes — settled without admission of liability, minor payment made.' },
       ]);
 
       await sb.from('staff_employment_history').insert([
@@ -12589,6 +12634,28 @@ async function resetDemoCompanyData(companyId) {
         { staff_id: physician.id, employer_name: 'Sample Family Practice of Norman', position_title: 'Family Medicine Physician',
           address: '3300 Marshall Ave', city: 'Norman', state: 'OK', zip: '73072', start_date: daysFromNow(-1825), end_date: daysFromNow(-425),
           reason_for_leaving: 'Relocated closer to Tulsa', gap_explanation: 'Sample data for demo purposes — 5-month gap for relocation and licensing transfer.' },
+        // Extended set — fills employment_5 through employment_11 (Attachment C slots)
+        { staff_id: physician.id, employer_name: 'OU Health Family Medicine Clinic', position_title: 'Attending Physician',
+          address: '900 N Portland Ave', city: 'Oklahoma City', state: 'OK', zip: '73107', start_date: daysFromNow(-2555), end_date: daysFromNow(-1825),
+          reason_for_leaving: 'Completed post-residency attending term' },
+        { staff_id: physician.id, employer_name: 'Mercy Family Care Clinic', position_title: 'Associate Physician',
+          address: '4300 W Memorial Rd', city: 'Oklahoma City', state: 'OK', zip: '73120', start_date: daysFromNow(-3100), end_date: daysFromNow(-2600),
+          reason_for_leaving: 'Sample data for demo purposes' },
+        { staff_id: physician.id, employer_name: 'Shawnee Community Health Center', position_title: 'Staff Physician',
+          address: '1102 W MacArthur St', city: 'Shawnee', state: 'OK', zip: '74804', start_date: daysFromNow(-3600), end_date: daysFromNow(-3150),
+          reason_for_leaving: 'Sample data for demo purposes' },
+        { staff_id: physician.id, employer_name: 'Norman Family Medicine Associates', position_title: 'Locum Tenens Physician',
+          address: '901 N Porter Ave', city: 'Norman', state: 'OK', zip: '73071', start_date: daysFromNow(-4000), end_date: daysFromNow(-3650),
+          reason_for_leaving: 'Sample data for demo purposes' },
+        { staff_id: physician.id, employer_name: 'Purcell Rural Health Clinic', position_title: 'Staff Physician',
+          address: '1500 N Green Ave', city: 'Purcell', state: 'OK', zip: '73080', start_date: daysFromNow(-4200), end_date: daysFromNow(-4050),
+          reason_for_leaving: 'Sample data for demo purposes' },
+        { staff_id: physician.id, employer_name: 'Chickasaw Nation Health Clinic', position_title: 'Contract Physician',
+          address: '1921 Stonecipher Blvd', city: 'Ada', state: 'OK', zip: '74820', start_date: daysFromNow(-4350), end_date: daysFromNow(-4210),
+          reason_for_leaving: 'Sample data for demo purposes' },
+        { staff_id: physician.id, employer_name: 'Duncan Family Practice', position_title: 'Resident Moonlighting Physician',
+          address: '1800 Beech Ave', city: 'Duncan', state: 'OK', zip: '73533', start_date: daysFromNow(-2900), end_date: daysFromNow(-2560),
+          reason_for_leaving: 'Sample data for demo purposes' },
       ]);
     }
 
@@ -12618,6 +12685,10 @@ async function resetDemoCompanyData(companyId) {
         { company_id: companyId, location_name: 'Selko Demo Family Medicine — Main Clinic',
           address: '4200 N Lincoln Blvd', city: 'Oklahoma City', state: 'OK', zip: '73105', county: 'Oklahoma',
           phone: '405-555-0142', is_primary: true, sort_order: 0 },
+        // Second location — fills location_2_* (Attachment F's slot)
+        { company_id: companyId, location_name: 'Selko Demo Family Medicine — Norman Satellite Clinic',
+          address: '3300 Marshall Ave', city: 'Norman', state: 'OK', zip: '73072', county: 'Cleveland',
+          phone: '405-555-0198', is_primary: false, sort_order: 1 },
       ]);
       if (locErr) throw new Error('Could not seed practice location: ' + locErr.message);
     }
