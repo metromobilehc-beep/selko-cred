@@ -10058,6 +10058,66 @@ const CRED_DATA_SOURCES = [
     ['staff.education_3_start_date', 'Education/training 3 — start date'],
     ['staff.education_3_end_date', 'Education/training 3 — end date'],
     ['staff.education_3_completed', 'Education/training 3 — completed?'],
+    ['staff.education_4_type', 'Education/training 4 — type'],
+    ['staff.education_4_specialty', 'Education/training 4 — specialty'],
+    ['staff.education_4_institution', 'Education/training 4 — institution'],
+    ['staff.education_4_address', 'Education/training 4 — institution address'],
+    ['staff.education_4_city', 'Education/training 4 — institution city'],
+    ['staff.education_4_state', 'Education/training 4 — institution state/country'],
+    ['staff.education_4_zip', 'Education/training 4 — institution postal code'],
+    ['staff.education_4_program_director', 'Education/training 4 — program director'],
+    ['staff.education_4_current_program_director', 'Education/training 4 — current program director'],
+    ['staff.education_4_start_date', 'Education/training 4 — start date'],
+    ['staff.education_4_end_date', 'Education/training 4 — end date'],
+    ['staff.education_4_completed', 'Education/training 4 — completed?'],
+    ['staff.education_5_type', 'Education/training 5 — type'],
+    ['staff.education_5_specialty', 'Education/training 5 — specialty'],
+    ['staff.education_5_institution', 'Education/training 5 — institution'],
+    ['staff.education_5_address', 'Education/training 5 — institution address'],
+    ['staff.education_5_city', 'Education/training 5 — institution city'],
+    ['staff.education_5_state', 'Education/training 5 — institution state/country'],
+    ['staff.education_5_zip', 'Education/training 5 — institution postal code'],
+    ['staff.education_5_program_director', 'Education/training 5 — program director'],
+    ['staff.education_5_current_program_director', 'Education/training 5 — current program director'],
+    ['staff.education_5_start_date', 'Education/training 5 — start date'],
+    ['staff.education_5_end_date', 'Education/training 5 — end date'],
+    ['staff.education_5_completed', 'Education/training 5 — completed?'],
+    ['staff.education_6_type', 'Education/training 6 — type'],
+    ['staff.education_6_specialty', 'Education/training 6 — specialty'],
+    ['staff.education_6_institution', 'Education/training 6 — institution'],
+    ['staff.education_6_address', 'Education/training 6 — institution address'],
+    ['staff.education_6_city', 'Education/training 6 — institution city'],
+    ['staff.education_6_state', 'Education/training 6 — institution state/country'],
+    ['staff.education_6_zip', 'Education/training 6 — institution postal code'],
+    ['staff.education_6_program_director', 'Education/training 6 — program director'],
+    ['staff.education_6_current_program_director', 'Education/training 6 — current program director'],
+    ['staff.education_6_start_date', 'Education/training 6 — start date'],
+    ['staff.education_6_end_date', 'Education/training 6 — end date'],
+    ['staff.education_6_completed', 'Education/training 6 — completed?'],
+    ['staff.education_7_type', 'Education/training 7 — type'],
+    ['staff.education_7_specialty', 'Education/training 7 — specialty'],
+    ['staff.education_7_institution', 'Education/training 7 — institution'],
+    ['staff.education_7_address', 'Education/training 7 — institution address'],
+    ['staff.education_7_city', 'Education/training 7 — institution city'],
+    ['staff.education_7_state', 'Education/training 7 — institution state/country'],
+    ['staff.education_7_zip', 'Education/training 7 — institution postal code'],
+    ['staff.education_7_program_director', 'Education/training 7 — program director'],
+    ['staff.education_7_current_program_director', 'Education/training 7 — current program director'],
+    ['staff.education_7_start_date', 'Education/training 7 — start date'],
+    ['staff.education_7_end_date', 'Education/training 7 — end date'],
+    ['staff.education_7_completed', 'Education/training 7 — completed?'],
+    ['staff.education_8_type', 'Education/training 8 — type'],
+    ['staff.education_8_specialty', 'Education/training 8 — specialty'],
+    ['staff.education_8_institution', 'Education/training 8 — institution'],
+    ['staff.education_8_address', 'Education/training 8 — institution address'],
+    ['staff.education_8_city', 'Education/training 8 — institution city'],
+    ['staff.education_8_state', 'Education/training 8 — institution state/country'],
+    ['staff.education_8_zip', 'Education/training 8 — institution postal code'],
+    ['staff.education_8_program_director', 'Education/training 8 — program director'],
+    ['staff.education_8_current_program_director', 'Education/training 8 — current program director'],
+    ['staff.education_8_start_date', 'Education/training 8 — start date'],
+    ['staff.education_8_end_date', 'Education/training 8 — end date'],
+    ['staff.education_8_completed', 'Education/training 8 — completed?'],
     ['staff.hospital_privilege_1_name', 'Hospital privilege 1 — hospital name'],
     ['staff.hospital_privilege_1_address', 'Hospital privilege 1 — address'],
     ['staff.hospital_privilege_1_city', 'Hospital privilege 1 — city'],
@@ -10542,10 +10602,12 @@ async function generateFilledForm(templateId) {
     });
 
     // Same flattening for education/postgraduate training — most recent
-    // first, up to 3 entries as education_1/2/3_*.
+    // first, up to 8 entries as education_1-8_* (extended from 3 to
+    // support forms like the LHL234's Attachment B, which asks for 5
+    // additional post-graduate education entries beyond the base 3).
     const { data: educationEntries } = await sb.from('staff_education_training')
       .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
-    (educationEntries || []).slice(0, 3).forEach((ed, i) => {
+    (educationEntries || []).slice(0, 8).forEach((ed, i) => {
       const n = i + 1;
       staffWithLicenses[`education_${n}_type`] = ed.training_type || '';
       staffWithLicenses[`education_${n}_specialty`] = ed.specialty || '';
