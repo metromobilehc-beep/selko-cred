@@ -12778,6 +12778,7 @@ function showCustomizeModal(companyId, companyName, teaserLabel, teaserDesc, dis
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Customize — ${companyName}</div>
       <div style="display:flex;flex-direction:column;gap:8px;">
+        <button class="btn btn-sm btn-teal" onclick="document.getElementById('customizeModal').remove();showIndustryPresetModal('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="justify-content:flex-start;">🏭 Apply industry preset</button>
         <button class="btn btn-sm btn-ghost" onclick="document.getElementById('customizeModal').remove();showManagePanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
         <button class="btn btn-sm btn-ghost" onclick="document.getElementById('customizeModal').remove();showEditCredTeaserModal('${companyId}','${companyName.replace(/'/g,"\\'")}','${(teaserLabel||'').replace(/'/g,"\\'")}','${(teaserDesc||'').replace(/'/g,"\\'")}','${(discLabel||'').replace(/'/g,"\\'")}','${(staffLabel||'').replace(/'/g,"\\'")}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize terminology</button>
       </div>
@@ -12785,6 +12786,82 @@ function showCustomizeModal(companyId, companyName, teaserLabel, teaserDesc, dis
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+// Industry presets — a single "apply everything at once" action, rather
+// than needing to separately toggle every panel and type every label for
+// each new vertical. Add a new industry here (key + panels to hide +
+// terminology) and it's immediately available with no other code changes.
+const INDUSTRY_PRESETS = {
+  healthcare: {
+    label: 'Healthcare (default)',
+    hidePanels: false, // "Show all" — every panel visible, standard behavior
+    discipline_label: null,
+    staff_type_label: null,
+  },
+  title_insurance: {
+    label: 'Title Insurance',
+    hidePanels: true, // "Hide all" — every healthcare-specific panel gone, including the Credentialing tab teaser
+    discipline_label: 'Role',
+    staff_type_label: 'Title Agent',
+  },
+};
+
+function showIndustryPresetModal(companyId, companyName) {
+  const existing = document.getElementById('industryPresetModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'industryPresetModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Apply industry preset — ${companyName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Applies panel visibility and terminology together in one step. You can still fine-tune either individually afterward — this just sets sensible defaults for a whole industry at once.</p>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        ${Object.entries(INDUSTRY_PRESETS).map(([key, p]) => `
+          <button class="btn btn-sm btn-ghost" onclick="applyIndustryPreset('${companyId}','${companyName.replace(/'/g,"\\'")}','${key}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">${p.label}</button>
+        `).join('')}
+      </div>
+      <button class="btn btn-ghost" onclick="document.getElementById('industryPresetModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function applyIndustryPreset(companyId, companyName, presetKey) {
+  const preset = INDUSTRY_PRESETS[presetKey];
+  if (!preset) return;
+  if (!confirm(`Apply the "${preset.label}" preset to ${companyName}? This will set panel visibility and terminology together — you can still adjust either individually afterward.`)) return;
+
+  // Panel visibility — reuses the exact same bulk logic as the "Hide
+  // all"/"Show all" buttons in Manage panel visibility.
+  const { error: delErr } = await sb.from('company_hidden_panels').delete().eq('company_id', companyId);
+  if (delErr) { toast('Error: ' + delErr.message, true); return; }
+  if (preset.hidePanels) {
+    const rows = TOGGLEABLE_PANELS.map(p => ({ company_id: companyId, panel_key: p.key }));
+    const { error: insErr } = await sb.from('company_hidden_panels').insert(rows);
+    if (insErr) { toast('Error: ' + insErr.message, true); return; }
+  }
+
+  // Terminology
+  const { error: termErr } = await sb.from('companies').update({
+    discipline_label: preset.discipline_label,
+    staff_type_label: preset.staff_type_label,
+  }).eq('id', companyId);
+  if (termErr) { toast('Error: ' + termErr.message, true); return; }
+
+  if (currentCompany && currentCompany.id === companyId) {
+    _hiddenPanelsCache = null;
+    currentCompany.discipline_label = preset.discipline_label;
+    currentCompany.staff_type_label = preset.staff_type_label;
+    await getHiddenPanels();
+    updateModuleTabVisibility(currentCompany, currentProfile);
+  }
+
+  document.getElementById('industryPresetModal')?.remove();
+  toast(`✓ "${preset.label}" preset applied`);
+  await loadSuperAdmin();
 }
 
 async function softDeleteCompany(id, name) {
