@@ -560,7 +560,7 @@
               <input class="inline-input" type="text" id="nsTitle" placeholder="Physical Therapist" />
             </div>
             <div>
-              <label class="inline-label">Discipline</label>
+              <label class="inline-label" id="nsDisciplineLabel">Discipline</label>
               <select class="inline-select" id="nsDiscipline">
                 <option value="">— N/A —</option>
               </select>
@@ -568,7 +568,7 @@
             <div>
               <label class="inline-label">Staff type</label>
               <select class="inline-select" id="nsType">
-                <option value="clinician">Clinician</option>
+                <option value="clinician" id="nsTypeClinicianOpt">Clinician</option>
                 <option value="office">Office</option>
                 <option value="admin">Admin</option>
               </select>
@@ -4619,7 +4619,7 @@ function showFullProfileSheet(staffId) {
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
         <div>
-          <label class="inline-label">Discipline</label>
+          <label class="inline-label">${currentCompany.discipline_label || 'Discipline'}</label>
           <select class="inline-select" id="fpDiscipline">
             <option value="">— None —</option>
             ${disciplines.map(d => `<option value="${d}" ${s.discipline === d ? 'selected' : ''}>${d}</option>`).join('')}
@@ -4628,7 +4628,7 @@ function showFullProfileSheet(staffId) {
         <div>
           <label class="inline-label">Staff type</label>
           <select class="inline-select" id="fpStaffType">
-            <option value="clinician" ${(!s.staff_type || s.staff_type === 'clinician') ? 'selected' : ''}>Clinician</option>
+            <option value="clinician" ${(!s.staff_type || s.staff_type === 'clinician') ? 'selected' : ''}>${currentCompany.staff_type_label || 'Clinician'}</option>
             <option value="office" ${s.staff_type === 'office' ? 'selected' : ''}>Office</option>
             <option value="admin" ${s.staff_type === 'admin' ? 'selected' : ''}>Admin</option>
           </select>
@@ -5926,6 +5926,13 @@ async function confirmCsvImport() {
 function showAddStaff() {
   document.getElementById('addStaffForm').style.display = 'block';
   populateDisciplineSelect(document.getElementById('nsDiscipline'), '', '— N/A —');
+  // Customizable per company — falls back to the original healthcare
+  // wording for existing clients, but a company like a title agency can
+  // have its own relevant terms instead.
+  const dLabel = document.getElementById('nsDisciplineLabel');
+  if (dLabel) dLabel.textContent = currentCompany.discipline_label || 'Discipline';
+  const cOpt = document.getElementById('nsTypeClinicianOpt');
+  if (cOpt) cOpt.textContent = currentCompany.staff_type_label || 'Clinician';
 }
 function hideAddStaff() {
   document.getElementById('addStaffForm').style.display = 'none';
@@ -6124,7 +6131,7 @@ function showStaffTypeModal(id, name, currentType) {
   if (existing) existing.remove();
 
   const options = [
-    { value: 'clinician', label: 'Clinician', desc: 'Field/clinical staff' },
+    { value: 'clinician', label: currentCompany.staff_type_label || 'Clinician', desc: 'Field/clinical staff' },
     { value: 'office',    label: 'Office',    desc: 'Office/administrative staff' },
     { value: 'admin',     label: 'Admin',     desc: 'Full staff & credential management access' },
   ];
@@ -8840,7 +8847,7 @@ async function showManagePanelVisibility(companyId, companyName) {
 // always seeing hardcoded healthcare wording ("clinician," "CAQH ID/DEA
 // number"). Leaving both fields blank falls back to the original
 // healthcare-specific text, so existing clients are unaffected.
-function showEditCredTeaserModal(companyId, companyName, currentLabel, currentDesc) {
+function showEditCredTeaserModal(companyId, companyName, currentLabel, currentDesc, currentDiscLabel, currentStaffLabel) {
   const existing = document.getElementById('credTeaserModal');
   if (existing) existing.remove();
 
@@ -8848,9 +8855,18 @@ function showEditCredTeaserModal(companyId, companyName, currentLabel, currentDe
   modal.id = 'credTeaserModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Customize teaser — ${companyName}</div>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Shown in the sidebar tab and the locked-state panel when Credentialing isn't enabled for this company. Leave blank to use the default healthcare wording.</p>
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Customize terminology — ${companyName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Leave any field blank to keep the original healthcare wording — nothing changes for existing clients unless set here.</p>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;margin-top:6px;">Staff wording</div>
+      <label class="inline-label">"Discipline" field label</label>
+      <input class="inline-input" type="text" id="credDiscLabelInput" value="${currentDiscLabel || ''}" placeholder="Discipline" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
+      <label class="inline-label">"Clinician" staff-type label</label>
+      <input class="inline-input" type="text" id="credStaffLabelInput" value="${currentStaffLabel || ''}" placeholder="Clinician" style="width:100%;box-sizing:border-box;margin-bottom:14px;" />
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Credentialing tab teaser</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Shown in the sidebar tab and the locked-state panel when Credentialing isn't enabled for this company.</p>
       <label class="inline-label">Tab label</label>
       <input class="inline-input" type="text" id="credTeaserLabelInput" value="${currentLabel || ''}" placeholder="Credentialing" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
       <label class="inline-label">Locked-panel description</label>
@@ -8867,16 +8883,22 @@ function showEditCredTeaserModal(companyId, companyName, currentLabel, currentDe
 async function saveCredTeaser(companyId) {
   const label = document.getElementById('credTeaserLabelInput').value.trim();
   const desc = document.getElementById('credTeaserDescInput').value.trim();
+  const discLabel = document.getElementById('credDiscLabelInput').value.trim();
+  const staffLabel = document.getElementById('credStaffLabelInput').value.trim();
   const { error } = await sb.from('companies').update({
     credentialing_teaser_label: label || null,
     credentialing_teaser_description: desc || null,
+    discipline_label: discLabel || null,
+    staff_type_label: staffLabel || null,
   }).eq('id', companyId);
   if (error) { toast('Error: ' + error.message, true); return; }
   document.getElementById('credTeaserModal')?.remove();
-  toast('✓ Teaser wording saved');
+  toast('✓ Terminology saved');
   if (currentCompany && currentCompany.id === companyId) {
     currentCompany.credentialing_teaser_label = label || null;
     currentCompany.credentialing_teaser_description = desc || null;
+    currentCompany.discipline_label = discLabel || null;
+    currentCompany.staff_type_label = staffLabel || null;
     updateModuleTabVisibility(currentCompany, currentProfile);
   }
   await loadSuperAdmin();
@@ -12076,7 +12098,7 @@ async function loadSuperAdmin() {
             <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Plan: Enterprise</option>
           </select>
           <button class="btn btn-sm btn-ghost" onclick="showManagePanelVisibility('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
-          <button class="btn btn-sm btn-ghost" onclick="showEditCredTeaserModal('${c.id}','${c.name.replace(/'/g,"\\'")}','${(c.credentialing_teaser_label||'').replace(/'/g,"\\'")}','${(c.credentialing_teaser_description||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize teaser</button>
+          <button class="btn btn-sm btn-ghost" onclick="showEditCredTeaserModal('${c.id}','${c.name.replace(/'/g,"\\'")}','${(c.credentialing_teaser_label||'').replace(/'/g,"\\'")}','${(c.credentialing_teaser_description||'').replace(/'/g,"\\'")}','${(c.discipline_label||'').replace(/'/g,"\\'")}','${(c.staff_type_label||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize terminology</button>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
