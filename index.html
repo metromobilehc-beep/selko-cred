@@ -200,7 +200,7 @@
       <button class="tab"        id="tab-docs"     onclick="switchTab('docs')"><i class="ti ti-file-text"></i> Documents</button>
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
-      <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> Credentialing</button>
+      <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> <span id="tabCredentialingLabel">Credentialing</span></button>
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
@@ -1043,8 +1043,8 @@
       </div>
 
       <div class="dark-panel" id="credentialingLock" style="display:none;">
-        <h2>Credentialing <span style="font-size:10px;color:var(--gold);margin-left:6px;">ADD-ON</span></h2>
-        <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:14px;">Payer-credentialing-level detail on top of basic document compliance — track organizational Tax ID/NPI, accreditations (ACHC, CHAP, Joint Commission), and per-clinician CAQH ID/DEA number, all in one place.</p>
+        <h2 id="credentialingLockTitle">Credentialing <span style="font-size:10px;color:var(--gold);margin-left:6px;">ADD-ON</span></h2>
+        <p id="credentialingLockDesc" style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:14px;">Payer-credentialing-level detail on top of basic document compliance — track organizational Tax ID/NPI, accreditations (ACHC, CHAP, Joint Commission), and per-clinician CAQH ID/DEA number, all in one place.</p>
         <p style="color:rgba(255,255,255,.4);font-size:12px;">Contact Selko to add this to your plan.</p>
       </div>
     </div>
@@ -2947,6 +2947,21 @@ function updateModuleTabVisibility(company, profile) {
   // estate) even when Credentialing itself stays on.
   const hcnHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('health_care_network');
   document.getElementById('tab-insurance').style.display = (company.has_credentialing_addon && !hcnHidden && (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin)) ? 'inline-flex' : 'none';
+
+  // Deliberately shown even when Credentialing isn't enabled — this is an
+  // intentional upsell teaser for Documents-only clients, not a bug. Only
+  // hidden entirely if a company has genuinely no use for it at all (e.g.
+  // a non-healthcare vertical like title insurance), via the explicit
+  // credentialing_teaser panel-visibility toggle. The label itself is
+  // also customizable per company — defaults to "Credentialing" for
+  // existing healthcare clients, but a company can be given its own
+  // relevant teaser wording instead (e.g. a future "Title Services" tease
+  // for a non-clinical vertical), rather than always saying the one
+  // clinical-specific word regardless of audience.
+  const teaserHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('credentialing_teaser');
+  document.getElementById('tab-credentialing').style.display = (company.has_credentialing_addon || !teaserHidden) ? 'inline-flex' : 'none';
+  const tabLabel = document.getElementById('tabCredentialingLabel');
+  if (tabLabel) tabLabel.textContent = company.credentialing_teaser_label || 'Credentialing';
 }
 
 function updateProFeatureButtons() {
@@ -8819,6 +8834,54 @@ async function showManagePanelVisibility(companyId, companyName) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
+// Customizable Credentialing-tab teaser — same wording that shows in the
+// sidebar tab and the locked-state panel, editable per company so a
+// non-clinical vertical can tease something relevant to them instead of
+// always seeing hardcoded healthcare wording ("clinician," "CAQH ID/DEA
+// number"). Leaving both fields blank falls back to the original
+// healthcare-specific text, so existing clients are unaffected.
+function showEditCredTeaserModal(companyId, companyName, currentLabel, currentDesc) {
+  const existing = document.getElementById('credTeaserModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'credTeaserModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Customize teaser — ${companyName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Shown in the sidebar tab and the locked-state panel when Credentialing isn't enabled for this company. Leave blank to use the default healthcare wording.</p>
+      <label class="inline-label">Tab label</label>
+      <input class="inline-input" type="text" id="credTeaserLabelInput" value="${currentLabel || ''}" placeholder="Credentialing" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
+      <label class="inline-label">Locked-panel description</label>
+      <textarea id="credTeaserDescInput" placeholder="Payer-credentialing-level detail on top of basic document compliance..." style="width:100%;min-height:90px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box;">${currentDesc || ''}</textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveCredTeaser('${companyId}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('credTeaserModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveCredTeaser(companyId) {
+  const label = document.getElementById('credTeaserLabelInput').value.trim();
+  const desc = document.getElementById('credTeaserDescInput').value.trim();
+  const { error } = await sb.from('companies').update({
+    credentialing_teaser_label: label || null,
+    credentialing_teaser_description: desc || null,
+  }).eq('id', companyId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  document.getElementById('credTeaserModal')?.remove();
+  toast('✓ Teaser wording saved');
+  if (currentCompany && currentCompany.id === companyId) {
+    currentCompany.credentialing_teaser_label = label || null;
+    currentCompany.credentialing_teaser_description = desc || null;
+    updateModuleTabVisibility(currentCompany, currentProfile);
+  }
+  await loadSuperAdmin();
+}
+
 async function bulkSetPanelVisibility(companyId, companyName, showAll) {
   // Clean slate first, then re-populate as needed — avoids unique-
   // constraint conflicts with whatever's already hidden, and keeps the
@@ -9751,6 +9814,13 @@ async function loadCredentialingTab() {
   if (!window._hasCredAddon) {
     content.style.display = 'none';
     lock.style.display = 'block';
+    // Same customization as the tab label — falls back to the original
+    // healthcare-specific wording for existing clients, but a company can
+    // have its own relevant teaser title/description set instead.
+    const lockTitle = document.getElementById('credentialingLockTitle');
+    const lockDesc = document.getElementById('credentialingLockDesc');
+    if (lockTitle) lockTitle.innerHTML = `${currentCompany.credentialing_teaser_label || 'Credentialing'} <span style="font-size:10px;color:var(--gold);margin-left:6px;">ADD-ON</span>`;
+    if (lockDesc) lockDesc.textContent = currentCompany.credentialing_teaser_description || 'Payer-credentialing-level detail on top of basic document compliance — track organizational Tax ID/NPI, accreditations (ACHC, CHAP, Joint Commission), and per-clinician CAQH ID/DEA number, all in one place.';
     return;
   }
   content.style.display = 'block';
@@ -12006,6 +12076,7 @@ async function loadSuperAdmin() {
             <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Plan: Enterprise</option>
           </select>
           <button class="btn btn-sm btn-ghost" onclick="showManagePanelVisibility('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
+          <button class="btn btn-sm btn-ghost" onclick="showEditCredTeaserModal('${c.id}','${c.name.replace(/'/g,"\\'")}','${(c.credentialing_teaser_label||'').replace(/'/g,"\\'")}','${(c.credentialing_teaser_description||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize teaser</button>
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
           ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
           <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
