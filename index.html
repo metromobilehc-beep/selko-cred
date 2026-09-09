@@ -1003,6 +1003,7 @@
         <div class="dark-panel" id="credTemplatesPanel" data-default-open="true">
           <h2>Credentialing form templates</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application once, map its fields to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
+          <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="loadCredentialingTemplates()" />
           <div id="credTemplatesList" style="margin-bottom:14px;"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
             <div style="display:flex;flex-direction:column;gap:4px;">
@@ -10439,25 +10440,59 @@ function resolveCredDataSource(path, company, staff) {
   return val || '';
 }
 
+let _credTemplatesCache = null;
 async function loadCredentialingTemplates() {
   const container = document.getElementById('credTemplatesList');
-  const { data, error } = await sb.from('credentialing_templates')
-    .select('*')
-    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
-    .order('name');
-  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
-  if (!data?.length) {
+  const searchTerm = document.getElementById('credTemplateSearch')?.value?.trim().toLowerCase() || '';
+
+  // Checked boxes would otherwise be lost every time the search filter
+  // re-renders the list (e.g. typing to narrow down before finishing a
+  // selection) — captured here and re-applied after rendering below.
+  const previouslyChecked = new Set(
+    Array.from(document.querySelectorAll('.credTemplateCheckbox:checked')).map(el => el.value)
+  );
+
+  // Only re-fetch from the database the first time (or after an
+  // upload/delete resets the cache) — typing in the search box just
+  // re-renders from what's already in memory, so it stays fast even as
+  // more templates get added (main LHL234 + 7 attachments and counting).
+  if (!_credTemplatesCache) {
+    const { data, error } = await sb.from('credentialing_templates')
+      .select('*')
+      .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
+      .order('name');
+    if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+    _credTemplatesCache = data || [];
+  }
+
+  if (!_credTemplatesCache.length) {
     container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No templates yet — upload one below.</div>';
     return;
   }
 
-  container.innerHTML = data.map(t => `
+  const data = searchTerm
+    ? _credTemplatesCache.filter(t => t.name.toLowerCase().includes(searchTerm))
+    : _credTemplatesCache;
+
+  if (!data.length) {
+    container.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,.4);">No templates match "${searchTerm}".</div>`;
+    return;
+  }
+
+  container.innerHTML = `
+    <datalist id="credGenStaffList">
+      ${staffList.map(s => `<option data-id="${s.id}" value="${s.full_name.replace(/"/g,'&quot;')}"></option>`).join('')}
+    </datalist>
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:6px;flex-wrap:wrap;background:rgba(255,255,255,.03);border-radius:6px;padding:8px;">
+      <span style="font-size:12px;color:rgba(255,255,255,.5);">Check multiple forms below to fill them all at once:</span>
+      <input type="text" class="inline-input" id="credBatchStaffSearch" list="credGenStaffList" placeholder="Search staff for batch..." style="max-width:200px;" value="${(document.getElementById('credBatchStaffSearch')?.value || '').replace(/"/g,'&quot;')}" />
+      <button class="btn btn-sm btn-gold" id="credBatchGenerateBtn" onclick="generateBatchFilledForms()">📦 Generate selected as zip</button>
+    </div>
+    ` + data.map(t => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <input type="checkbox" class="credTemplateCheckbox" value="${t.id}" ${previouslyChecked.has(t.id) ? 'checked' : ''} />
       <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}</span>
-      <select class="filter-sel" id="genStaffFor_${t.id}" style="max-width:200px;">
-        <option value="">Select staff...</option>
-        ${staffList.map(s => `<option value="${s.id}">${s.full_name}</option>`).join('')}
-      </select>
+      <input type="text" class="inline-input" id="genStaffFor_${t.id}" list="credGenStaffList" placeholder="Type to search staff..." style="max-width:200px;" />
       <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${t.id}')">📄 Generate filled copy</button>
       ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div>`).join('');
@@ -10710,6 +10745,7 @@ async function saveTemplateMapping(name) {
     _pendingTemplateFile = null;
     _pendingTemplateFieldNames = [];
     toast(`✓ Template "${name}" saved`);
+    _credTemplatesCache = null; // new template added — force a fresh fetch
     await loadCredentialingTemplates();
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
@@ -10724,175 +10760,198 @@ async function deleteCredentialingTemplate(id, name) {
   if (error) { toast('Error: ' + error.message, true); return; }
   if (tmpl?.storage_path) await sb.storage.from('credentialing-templates').remove([tmpl.storage_path]);
   toast(`Deleted "${name}"`);
+  _credTemplatesCache = null; // template removed — force a fresh fetch
   await loadCredentialingTemplates();
 }
 
+// Gathers everything needed to fill any credentialing form for one staff
+// member — split out from the per-template fill step so a batch/zip
+// generation only has to do this once per person, not once per form.
+async function buildCredDataForStaff(staffId, staff) {
+  // Flatten the ordered locations list (Primary first, then by sort
+  // order) onto the company object as location_1/2/3_* fields, matching
+  // how real payer forms structure this — the generic resolver below
+  // doesn't need to know locations are a separate table at all.
+  const locations = await getOrderedCompanyLocations(currentCompany.id);
+  const companyWithLocations = { ...currentCompany };
+  locations.slice(0, 3).forEach((loc, i) => {
+    const n = i + 1;
+    companyWithLocations[`location_${n}_name`] = loc.location_name || '';
+    companyWithLocations[`location_${n}_address`] = [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
+    companyWithLocations[`location_${n}_street`] = loc.address || '';
+    companyWithLocations[`location_${n}_city`] = loc.city || '';
+    companyWithLocations[`location_${n}_state`] = loc.state || '';
+    companyWithLocations[`location_${n}_zip`] = loc.zip || '';
+    companyWithLocations[`location_${n}_county`] = loc.county || '';
+    companyWithLocations[`location_${n}_phone`] = loc.phone || '';
+  });
+
+  // Same flattening approach for additional licenses — a physician with
+  // licenses in multiple states maps onto additional_license_1/2/3_*
+  // fields, so the resolver below never needs to know these come from a
+  // separate table either.
+  const { data: extraLicenses } = await sb.from('staff_additional_licenses')
+    .select('*').eq('staff_id', staffId).order('original_date_of_issue', { ascending: false });
+  const staffWithLicenses = { ...staff };
+
+  // full_name is consistently stored as "First [Middle] Last, Credential"
+  // throughout the app (same format the license-verification/state-board
+  // lookup feature already parses this exact way) — split here rather
+  // than adding new database columns, since most credentialing forms ask
+  // for these as genuinely separate fields, not one combined name.
+  const nameOnly = (staff.full_name || '').split(',')[0].trim();
+  const nameParts = nameOnly.split(' ').filter(Boolean);
+  staffWithLicenses.last_name = nameParts.length ? nameParts[nameParts.length - 1] : '';
+  staffWithLicenses.first_name = nameParts.length ? nameParts[0] : '';
+
+  (extraLicenses || []).slice(0, 3).forEach((lic, i) => {
+    const n = i + 1;
+    staffWithLicenses[`additional_license_${n}_type`] = lic.license_type || '';
+    staffWithLicenses[`additional_license_${n}_number`] = lic.license_number || '';
+    staffWithLicenses[`additional_license_${n}_state`] = lic.state || '';
+    staffWithLicenses[`additional_license_${n}_issued_date`] = lic.original_date_of_issue || '';
+    staffWithLicenses[`additional_license_${n}_expiration_date`] = lic.expiration_date || '';
+  });
+
+  // Same flattening for education/postgraduate training — most recent
+  // first, up to 8 entries as education_1-8_* (extended from 3 to
+  // support forms like the LHL234's Attachment B, which asks for 5
+  // additional post-graduate education entries beyond the base 3).
+  const { data: educationEntries } = await sb.from('staff_education_training')
+    .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+  (educationEntries || []).slice(0, 8).forEach((ed, i) => {
+    const n = i + 1;
+    staffWithLicenses[`education_${n}_type`] = ed.training_type || '';
+    staffWithLicenses[`education_${n}_specialty`] = ed.specialty || '';
+    staffWithLicenses[`education_${n}_institution`] = ed.institution || '';
+    staffWithLicenses[`education_${n}_address`] = ed.address || '';
+    staffWithLicenses[`education_${n}_city`] = ed.city || '';
+    staffWithLicenses[`education_${n}_state`] = ed.state || '';
+    staffWithLicenses[`education_${n}_zip`] = ed.zip || '';
+    staffWithLicenses[`education_${n}_program_director`] = ed.program_director || '';
+    staffWithLicenses[`education_${n}_current_program_director`] = ed.current_program_director || '';
+    staffWithLicenses[`education_${n}_start_date`] = ed.start_date || '';
+    staffWithLicenses[`education_${n}_end_date`] = ed.end_date || '';
+    staffWithLicenses[`education_${n}_completed`] = ed.completed ? 'Yes' : 'No';
+  });
+
+  // Same flattening for hospital privileges — most recent first, up to
+  // 8 entries as hospital_privilege_1-8_* (extended from 3 to support
+  // forms like the LHL234's Attachment D (which asks for 5 additional
+  // current hospital affiliations beyond the base 3) and Attachment E
+  // (6 more previous hospital affiliations) — extended to 14 total so
+  // both attachments get their own non-overlapping slot range.
+  const { data: privilegeEntries } = await sb.from('staff_hospital_privileges')
+    .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+  (privilegeEntries || []).slice(0, 14).forEach((p, i) => {
+    const n = i + 1;
+    staffWithLicenses[`hospital_privilege_${n}_name`] = p.hospital_name || '';
+    staffWithLicenses[`hospital_privilege_${n}_address`] = p.address || '';
+    staffWithLicenses[`hospital_privilege_${n}_city`] = p.city || '';
+    staffWithLicenses[`hospital_privilege_${n}_state`] = p.state || '';
+    staffWithLicenses[`hospital_privilege_${n}_zip`] = p.zip || '';
+    staffWithLicenses[`hospital_privilege_${n}_type`] = p.privilege_type || '';
+    staffWithLicenses[`hospital_privilege_${n}_start_date`] = p.start_date || '';
+    staffWithLicenses[`hospital_privilege_${n}_end_date`] = p.end_date || '';
+  });
+
+  // Same flattening for malpractice claims — most recent first, up to
+  // 2 entries as malpractice_claim_1/2_*, matching this form's own
+  // repeat count for claim fields.
+  const { data: claimEntries } = await sb.from('staff_malpractice_claims')
+    .select('*').eq('staff_id', staffId).order('date_filed', { ascending: false });
+  (claimEntries || []).slice(0, 2).forEach((c, i) => {
+    const n = i + 1;
+    staffWithLicenses[`malpractice_claim_${n}_status`] = c.claim_status || '';
+    staffWithLicenses[`malpractice_claim_${n}_date_filed`] = c.date_filed || '';
+    staffWithLicenses[`malpractice_claim_${n}_date_closed`] = c.date_closed || '';
+    staffWithLicenses[`malpractice_claim_${n}_description`] = c.description || '';
+  });
+
+  // Same flattening for employment history — most recent first, up to
+  // 11 entries as employment_1-11_* (extended from 4 to support forms
+  // like the LHL234's Attachment C, which asks for 7 additional previous
+  // employers beyond the base 4).
+  const { data: employmentEntries } = await sb.from('staff_employment_history')
+    .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
+  (employmentEntries || []).slice(0, 11).forEach((emp, i) => {
+    const n = i + 1;
+    staffWithLicenses[`employment_${n}_employer_name`] = emp.employer_name || '';
+    staffWithLicenses[`employment_${n}_position_title`] = emp.position_title || '';
+    staffWithLicenses[`employment_${n}_address`] = emp.address || '';
+    staffWithLicenses[`employment_${n}_city`] = emp.city || '';
+    staffWithLicenses[`employment_${n}_state`] = emp.state || '';
+    staffWithLicenses[`employment_${n}_zip`] = emp.zip || '';
+    staffWithLicenses[`employment_${n}_start_date`] = emp.start_date || '';
+    staffWithLicenses[`employment_${n}_end_date`] = emp.is_current ? 'Present' : (emp.end_date || '');
+    staffWithLicenses[`employment_${n}_is_current`] = emp.is_current ? 'Yes' : 'No';
+    staffWithLicenses[`employment_${n}_supervisor_name`] = emp.supervisor_name || '';
+    staffWithLicenses[`employment_${n}_supervisor_phone`] = emp.supervisor_phone || '';
+    staffWithLicenses[`employment_${n}_reason_for_leaving`] = emp.reason_for_leaving || '';
+  });
+  // Gap explanations are their own separate sequence, not tied 1:1 to a
+  // specific employer slot above — this form (and most others) lists
+  // them as standalone "Gap Dates / Explanation" rows at the end of
+  // Work History, so only entries that actually have one get pulled in,
+  // in the same most-recent-first order.
+  (employmentEntries || [])
+    .filter(emp => emp.gap_explanation)
+    .slice(0, 2)
+    .forEach((emp, i) => {
+      const n = i + 1;
+      staffWithLicenses[`employment_gap_${n}_dates`] = emp.end_date ? `Since ${fmtDate(emp.end_date)}` : '';
+      staffWithLicenses[`employment_gap_${n}_explanation`] = emp.gap_explanation || '';
+    });
+
+  return { companyWithLocations, staffWithLicenses };
+}
+
+// Fills one template's PDF fields from already-gathered company/staff data
+// — returns the filled bytes (as a Blob) plus any mapped fields that no
+// longer matched the actual PDF, rather than downloading directly, so a
+// batch run can zip several of these together instead of triggering one
+// browser download per form.
+async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
+  const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
+  if (dlErr) throw dlErr;
+  const bytes = await fileBlob.arrayBuffer();
+
+  const { PDFDocument } = PDFLib;
+  const pdfDoc = await PDFDocument.load(bytes);
+  const form = pdfDoc.getForm();
+
+  const skipped = [];
+  for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
+    const value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
+    try {
+      form.getTextField(pdfFieldName).setText(String(value || ''));
+    } catch (fieldErr) {
+      skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF — skip, don't fail the whole generation
+    }
+  }
+
+  const filledBytes = await pdfDoc.save();
+  return { blob: new Blob([filledBytes], { type: 'application/pdf' }), skipped };
+}
+
 async function generateFilledForm(templateId) {
-  const staffId = document.getElementById(`genStaffFor_${templateId}`)?.value;
-  if (!staffId) { toast('Select a staff member first', true); return; }
-  const staff = staffList.find(s => s.id === staffId);
-  if (!staff) { toast('Staff member not found', true); return; }
+  const typedName = document.getElementById(`genStaffFor_${templateId}`)?.value?.trim();
+  if (!typedName) { toast('Search and select a staff member first', true); return; }
+  // Datalist inputs only match by displayed text, not a separate value —
+  // so the typed name (expected to exactly match one selected from the
+  // list) is resolved back to the actual staff record here.
+  const staff = staffList.find(s => s.full_name.toLowerCase() === typedName.toLowerCase());
+  if (!staff) { toast('No staff member matches that name — pick one from the search suggestions', true); return; }
+  const staffId = staff.id;
 
   try {
     const { data: tmpl, error: tmplErr } = await sb.from('credentialing_templates').select('*').eq('id', templateId).maybeSingle();
     if (tmplErr) throw tmplErr;
     if (!tmpl) throw new Error('Template not found');
 
-    // Flatten the ordered locations list (Primary first, then by sort
-    // order) onto the company object as location_1/2/3_* fields, matching
-    // how real payer forms structure this — the generic resolver below
-    // doesn't need to know locations are a separate table at all.
-    const locations = await getOrderedCompanyLocations(currentCompany.id);
-    const companyWithLocations = { ...currentCompany };
-    locations.slice(0, 3).forEach((loc, i) => {
-      const n = i + 1;
-      companyWithLocations[`location_${n}_name`] = loc.location_name || '';
-      companyWithLocations[`location_${n}_address`] = [loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ');
-      companyWithLocations[`location_${n}_street`] = loc.address || '';
-      companyWithLocations[`location_${n}_city`] = loc.city || '';
-      companyWithLocations[`location_${n}_state`] = loc.state || '';
-      companyWithLocations[`location_${n}_zip`] = loc.zip || '';
-      companyWithLocations[`location_${n}_county`] = loc.county || '';
-      companyWithLocations[`location_${n}_phone`] = loc.phone || '';
-    });
+    const { companyWithLocations, staffWithLicenses } = await buildCredDataForStaff(staffId, staff);
+    const { blob, skipped } = await fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses);
 
-    // Same flattening approach for additional licenses — a physician with
-    // licenses in multiple states maps onto additional_license_1/2/3_*
-    // fields, so the resolver below never needs to know these come from a
-    // separate table either.
-    const { data: extraLicenses } = await sb.from('staff_additional_licenses')
-      .select('*').eq('staff_id', staffId).order('original_date_of_issue', { ascending: false });
-    const staffWithLicenses = { ...staff };
-
-    // full_name is consistently stored as "First [Middle] Last, Credential"
-    // throughout the app (same format the license-verification/state-board
-    // lookup feature already parses this exact way) — split here rather
-    // than adding new database columns, since most credentialing forms ask
-    // for these as genuinely separate fields, not one combined name.
-    const nameOnly = (staff.full_name || '').split(',')[0].trim();
-    const nameParts = nameOnly.split(' ').filter(Boolean);
-    staffWithLicenses.last_name = nameParts.length ? nameParts[nameParts.length - 1] : '';
-    staffWithLicenses.first_name = nameParts.length ? nameParts[0] : '';
-
-    (extraLicenses || []).slice(0, 3).forEach((lic, i) => {
-      const n = i + 1;
-      staffWithLicenses[`additional_license_${n}_type`] = lic.license_type || '';
-      staffWithLicenses[`additional_license_${n}_number`] = lic.license_number || '';
-      staffWithLicenses[`additional_license_${n}_state`] = lic.state || '';
-      staffWithLicenses[`additional_license_${n}_issued_date`] = lic.original_date_of_issue || '';
-      staffWithLicenses[`additional_license_${n}_expiration_date`] = lic.expiration_date || '';
-    });
-
-    // Same flattening for education/postgraduate training — most recent
-    // first, up to 8 entries as education_1-8_* (extended from 3 to
-    // support forms like the LHL234's Attachment B, which asks for 5
-    // additional post-graduate education entries beyond the base 3).
-    const { data: educationEntries } = await sb.from('staff_education_training')
-      .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
-    (educationEntries || []).slice(0, 8).forEach((ed, i) => {
-      const n = i + 1;
-      staffWithLicenses[`education_${n}_type`] = ed.training_type || '';
-      staffWithLicenses[`education_${n}_specialty`] = ed.specialty || '';
-      staffWithLicenses[`education_${n}_institution`] = ed.institution || '';
-      staffWithLicenses[`education_${n}_address`] = ed.address || '';
-      staffWithLicenses[`education_${n}_city`] = ed.city || '';
-      staffWithLicenses[`education_${n}_state`] = ed.state || '';
-      staffWithLicenses[`education_${n}_zip`] = ed.zip || '';
-      staffWithLicenses[`education_${n}_program_director`] = ed.program_director || '';
-      staffWithLicenses[`education_${n}_current_program_director`] = ed.current_program_director || '';
-      staffWithLicenses[`education_${n}_start_date`] = ed.start_date || '';
-      staffWithLicenses[`education_${n}_end_date`] = ed.end_date || '';
-      staffWithLicenses[`education_${n}_completed`] = ed.completed ? 'Yes' : 'No';
-    });
-
-    // Same flattening for hospital privileges — most recent first, up to
-    // 8 entries as hospital_privilege_1-8_* (extended from 3 to support
-    // forms like the LHL234's Attachment D (which asks for 5 additional
-    // current hospital affiliations beyond the base 3) and Attachment E
-    // (6 more previous hospital affiliations) — extended to 14 total so
-    // both attachments get their own non-overlapping slot range.
-    const { data: privilegeEntries } = await sb.from('staff_hospital_privileges')
-      .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
-    (privilegeEntries || []).slice(0, 14).forEach((p, i) => {
-      const n = i + 1;
-      staffWithLicenses[`hospital_privilege_${n}_name`] = p.hospital_name || '';
-      staffWithLicenses[`hospital_privilege_${n}_address`] = p.address || '';
-      staffWithLicenses[`hospital_privilege_${n}_city`] = p.city || '';
-      staffWithLicenses[`hospital_privilege_${n}_state`] = p.state || '';
-      staffWithLicenses[`hospital_privilege_${n}_zip`] = p.zip || '';
-      staffWithLicenses[`hospital_privilege_${n}_type`] = p.privilege_type || '';
-      staffWithLicenses[`hospital_privilege_${n}_start_date`] = p.start_date || '';
-      staffWithLicenses[`hospital_privilege_${n}_end_date`] = p.end_date || '';
-    });
-
-    // Same flattening for malpractice claims — most recent first, up to
-    // 2 entries as malpractice_claim_1/2_*, matching this form's own
-    // repeat count for claim fields.
-    const { data: claimEntries } = await sb.from('staff_malpractice_claims')
-      .select('*').eq('staff_id', staffId).order('date_filed', { ascending: false });
-    (claimEntries || []).slice(0, 2).forEach((c, i) => {
-      const n = i + 1;
-      staffWithLicenses[`malpractice_claim_${n}_status`] = c.claim_status || '';
-      staffWithLicenses[`malpractice_claim_${n}_date_filed`] = c.date_filed || '';
-      staffWithLicenses[`malpractice_claim_${n}_date_closed`] = c.date_closed || '';
-      staffWithLicenses[`malpractice_claim_${n}_description`] = c.description || '';
-    });
-
-    // Same flattening for employment history — most recent first, up to
-    // 11 entries as employment_1-11_* (extended from 4 to support forms
-    // like the LHL234's Attachment C, which asks for 7 additional previous
-    // employers beyond the base 4).
-    const { data: employmentEntries } = await sb.from('staff_employment_history')
-      .select('*').eq('staff_id', staffId).order('start_date', { ascending: false });
-    (employmentEntries || []).slice(0, 11).forEach((emp, i) => {
-      const n = i + 1;
-      staffWithLicenses[`employment_${n}_employer_name`] = emp.employer_name || '';
-      staffWithLicenses[`employment_${n}_position_title`] = emp.position_title || '';
-      staffWithLicenses[`employment_${n}_address`] = emp.address || '';
-      staffWithLicenses[`employment_${n}_city`] = emp.city || '';
-      staffWithLicenses[`employment_${n}_state`] = emp.state || '';
-      staffWithLicenses[`employment_${n}_zip`] = emp.zip || '';
-      staffWithLicenses[`employment_${n}_start_date`] = emp.start_date || '';
-      staffWithLicenses[`employment_${n}_end_date`] = emp.is_current ? 'Present' : (emp.end_date || '');
-      staffWithLicenses[`employment_${n}_is_current`] = emp.is_current ? 'Yes' : 'No';
-      staffWithLicenses[`employment_${n}_supervisor_name`] = emp.supervisor_name || '';
-      staffWithLicenses[`employment_${n}_supervisor_phone`] = emp.supervisor_phone || '';
-      staffWithLicenses[`employment_${n}_reason_for_leaving`] = emp.reason_for_leaving || '';
-    });
-    // Gap explanations are their own separate sequence, not tied 1:1 to a
-    // specific employer slot above — this form (and most others) lists
-    // them as standalone "Gap Dates / Explanation" rows at the end of
-    // Work History, so only entries that actually have one get pulled in,
-    // in the same most-recent-first order.
-    (employmentEntries || [])
-      .filter(emp => emp.gap_explanation)
-      .slice(0, 2)
-      .forEach((emp, i) => {
-        const n = i + 1;
-        staffWithLicenses[`employment_gap_${n}_dates`] = emp.end_date ? `Since ${fmtDate(emp.end_date)}` : '';
-        staffWithLicenses[`employment_gap_${n}_explanation`] = emp.gap_explanation || '';
-      });
-
-    const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
-    if (dlErr) throw dlErr;
-    const bytes = await fileBlob.arrayBuffer();
-
-    const { PDFDocument } = PDFLib;
-    const pdfDoc = await PDFDocument.load(bytes);
-    const form = pdfDoc.getForm();
-
-    const skipped = [];
-    for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
-      const value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
-      try {
-        form.getTextField(pdfFieldName).setText(String(value || ''));
-      } catch (fieldErr) {
-        skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF — skip, don't fail the whole generation
-      }
-    }
-
-    const filledBytes = await pdfDoc.save();
-    const blob = new Blob([filledBytes], { type: 'application/pdf' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -10907,6 +10966,55 @@ async function generateFilledForm(templateId) {
       : `✓ Filled form generated for ${staff.full_name}`);
   } catch (e) {
     toast('Could not generate form: ' + e.message, true);
+  }
+}
+
+// Fills every checked template for one staff member and bundles them into
+// a single zip — same fill logic as generating one at a time, just run
+// once for staff/company data instead of re-fetching it per form.
+async function generateBatchFilledForms() {
+  const typedName = document.getElementById('credBatchStaffSearch')?.value?.trim();
+  if (!typedName) { toast('Search and select a staff member first', true); return; }
+  const staff = staffList.find(s => s.full_name.toLowerCase() === typedName.toLowerCase());
+  if (!staff) { toast('No staff member matches that name — pick one from the search suggestions', true); return; }
+
+  const checked = Array.from(document.querySelectorAll('.credTemplateCheckbox:checked')).map(el => el.value);
+  if (!checked.length) { toast('Check at least one form template first', true); return; }
+
+  const btn = document.getElementById('credBatchGenerateBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Generating…'; }
+
+  try {
+    const { data: templates, error: tmplErr } = await sb.from('credentialing_templates').select('*').in('id', checked);
+    if (tmplErr) throw tmplErr;
+
+    const { companyWithLocations, staffWithLicenses } = await buildCredDataForStaff(staff.id, staff);
+
+    const zip = new JSZip();
+    let totalSkipped = 0;
+    for (const tmpl of templates) {
+      const { blob, skipped } = await fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses);
+      totalSkipped += skipped.length;
+      zip.file(`${tmpl.name.replace(/[^a-z0-9]/gi,'_')}.pdf`, blob);
+    }
+
+    const zipBlob = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Credentialing_Forms_${staff.full_name.replace(/[^a-z0-9]/gi,'_')}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    toast(totalSkipped
+      ? `✓ ${templates.length} form(s) zipped — ${totalSkipped} mapped field(s) across all forms no longer matched and were skipped`
+      : `✓ ${templates.length} form(s) generated and zipped for ${staff.full_name}`);
+  } catch (e) {
+    toast('Could not generate forms: ' + e.message, true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '📦 Generate selected as zip'; }
   }
 }
 
