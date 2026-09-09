@@ -37,6 +37,7 @@
     <span id="hdrUser"></span>
     <span id="hdrRole"></span>
     <button id="hdrMyCreds" onclick="toggleMyCredsView()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;display:none;">My Credentials</button>
+    <button onclick="showReportIssueModal()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;">🆘 Report an issue</button>
     <button id="hdrLogout" onclick="logout()">Sign out</button>
   </div>
 </header>
@@ -1643,6 +1644,16 @@
         </div>
       </div>
 
+      <!-- Support requests — user-submitted, not app-caught errors, so this
+           sits alongside the Bug Log rather than merging with it: this is
+           "a person noticed something," that one is "the app itself caught
+           an error." -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🆘 Support requests</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Submitted by users via "Report an issue" in the header, from any company.</p>
+        <div id="supportRequestsList"></div>
+      </div>
+
       <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🐛 Bug log</h2>
@@ -2049,6 +2060,54 @@ async function initSession(user) {
     document.getElementById('loginBtn').disabled = false;
     document.getElementById('loginBtn').textContent = 'Sign in';
   }
+}
+
+// Any user — regular staff included, not just admins — can flag a problem
+// directly from wherever they are in the app. Lands in a plain table
+// (company_id, who, what tab they were on, their message) reviewable from
+// Selko Admin, same "someone will actually see this" spirit as the Bug Log,
+// but for things a user noticed rather than an error the app itself caught.
+function showReportIssueModal() {
+  const existing = document.getElementById('reportIssueModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'reportIssueModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Report an issue</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Describe what happened — what you were trying to do, and what went wrong instead. This goes straight to Selko's team.</p>
+      <textarea id="reportIssueText" placeholder="What's going on?" style="width:100%;min-height:110px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitIssueReport()" style="flex:1;justify-content:center;">Submit</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('reportIssueModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.getElementById('reportIssueText').focus();
+}
+
+async function submitIssueReport() {
+  const message = document.getElementById('reportIssueText')?.value?.trim();
+  if (!message) { toast('Describe what happened first', true); return; }
+
+  const activeTabBtn = document.querySelector('.tab.active');
+  const currentTab = activeTabBtn ? activeTabBtn.textContent.trim() : 'unknown';
+
+  const { error } = await sb.from('support_requests').insert({
+    company_id: currentCompany?.id || null,
+    profile_id: currentProfile?.id || null,
+    reporter_name: currentProfile?.full_name || 'Unknown',
+    reporter_role: currentProfile?.role || (currentProfile?.is_super_admin ? 'super_admin' : ''),
+    current_tab: currentTab,
+    message,
+  });
+  if (error) { toast('Could not submit: ' + error.message, true); return; }
+
+  document.getElementById('reportIssueModal')?.remove();
+  toast('✓ Thanks — this has been sent to Selko\'s team');
 }
 
 async function logout() {
@@ -12047,6 +12106,47 @@ async function loadBugLog() {
   </tr>`).join('');
 }
 
+async function loadSupportRequests() {
+  const container = document.getElementById('supportRequestsList');
+  if (!container) return;
+
+  const { data, error } = await sb.from('support_requests')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(100);
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.3);">No support requests submitted.</div>';
+    return;
+  }
+
+  const companyIds = [...new Set(data.map(r => r.company_id).filter(Boolean))];
+  let companyNames = {};
+  if (companyIds.length) {
+    const { data: comps } = await sb.from('companies').select('id, name').in('id', companyIds);
+    (comps || []).forEach(c => { companyNames[c.id] = c.name; });
+  }
+
+  container.innerHTML = data.map(r => `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;gap:10px;${r.resolved ? 'opacity:.45;' : ''}">
+      <div style="flex:1;">
+        <div style="font-size:11px;color:rgba(255,255,255,.5);margin-bottom:4px;">
+          ${new Date(r.created_at).toLocaleString()} — <strong>${r.reporter_name || 'Unknown'}</strong> (${r.reporter_role || '—'}) at <strong>${companyNames[r.company_id] || '—'}</strong>, on "${r.current_tab || 'unknown'}" tab
+        </div>
+        <div style="font-size:13px;color:#fff;white-space:pre-wrap;">${r.message}</div>
+      </div>
+      ${r.resolved
+        ? `<span class="badge badge-ok" style="white-space:nowrap;">✓ Resolved</span>`
+        : `<button class="btn btn-sm btn-ghost" onclick="markSupportRequestResolved('${r.id}')" style="white-space:nowrap;color:#fff;border-color:rgba(255,255,255,.2);">Mark resolved</button>`}
+    </div>`).join('');
+}
+
+async function markSupportRequestResolved(id) {
+  const { error } = await sb.from('support_requests').update({ resolved: true }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  await loadSupportRequests();
+}
+
 // Formats whatever's currently loaded (respecting the app/type filters
 // already applied) into a clean block ready to paste straight into a new
 // Claude conversation — no manual retyping of error details needed to get
@@ -12128,6 +12228,7 @@ async function clearBugLog() {
 
   toast(`✓ Cleared ${count} log entr${count === 1 ? 'y' : 'ies'}${appFilter ? ' for ' + scopeLabel : ' across all apps'}`);
   await loadBugLog();
+  await loadSupportRequests();
 }
 
 // ══ SUPER ADMIN ══
@@ -12413,6 +12514,7 @@ async function clearSidebarMemo() {
 
 async function loadSuperAdmin() {
   await loadBugLog();
+  await loadSupportRequests();
   await loadDocTypeCategories();
   await loadStorageUsage();
   await loadPartnerRecommendationsAdmin();
