@@ -306,6 +306,7 @@
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button class="tab active" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
         <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')">✓ Verified <span id="verifiedCount"></span></button>
+        <button class="tab" id="docViewToggle-noFile" onclick="setDocViewMode('noFile')" style="background:var(--gold);border-color:var(--gold);color:#1c1917;">⚠ Verified, no file <span id="noFileCount"></span></button>
         <button class="tab" id="docViewToggle-all" onclick="setDocViewMode('all')">All</button>
       </div>
       <div class="filter-bar">
@@ -3514,12 +3515,12 @@ async function loadAdminFilters() {
     '<option value="OTHER">No discipline assigned</option>';
 }
 
-let _docViewMode = 'needs'; // 'needs' | 'verified' | 'all' — defaults to what actually needs action
+let _docViewMode = 'needs'; // 'needs' | 'verified' | 'noFile' | 'all' — defaults to what actually needs action
 
 function setDocViewMode(mode) {
   _docViewMode = mode;
-  document.getElementById('fVerified').value = mode === 'needs' ? '0' : mode === 'verified' ? '1' : '';
-  ['needs', 'verified', 'all'].forEach(m => {
+  document.getElementById('fVerified').value = (mode === 'needs') ? '0' : (mode === 'verified' || mode === 'noFile') ? '1' : '';
+  ['needs', 'verified', 'noFile', 'all'].forEach(m => {
     const btn = document.getElementById('docViewToggle-' + m);
     if (!btn) return;
     const active = m === mode;
@@ -3527,6 +3528,9 @@ function setDocViewMode(mode) {
     if (m === 'needs') {
       btn.style.background = active ? 'var(--danger)' : '';
       btn.style.borderColor = active ? 'var(--danger)' : '';
+    } else if (m === 'noFile') {
+      btn.style.background = active ? 'var(--gold)' : '';
+      btn.style.borderColor = active ? 'var(--gold)' : '';
     } else {
       btn.style.background = '';
       btn.style.borderColor = '';
@@ -3546,10 +3550,22 @@ async function updateDocViewCounts() {
     .eq('company_id', currentCompany.id)
     .eq('archived', false)
     .eq('verified', true);
+  // Scrubber for correcting mistakes — a document marked verified with no
+  // actual file attached (e.g. verified before the file finished uploading,
+  // or a manual record created without ever attaching proof).
+  const { count: noFileCountNum } = await sb.from('credtrack_documents')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', currentCompany.id)
+    .eq('archived', false)
+    .eq('verified', true)
+    .is('file_url', null)
+    .is('file_url_2', null);
   const needsEl = document.getElementById('needsVerifCount');
   const verifEl = document.getElementById('verifiedCount');
+  const noFileEl = document.getElementById('noFileCount');
   if (needsEl) needsEl.textContent = needsCount ? `(${needsCount})` : '';
   if (verifEl) verifEl.textContent = verifiedCountNum ? `(${verifiedCountNum})` : '';
+  if (noFileEl) noFileEl.textContent = noFileCountNum ? `(${noFileCountNum})` : '';
 }
 
 async function loadAdminDocs() {
@@ -3568,6 +3584,7 @@ async function loadAdminDocs() {
   if (type) q = q.eq('document_type_id', type);
   if (verified === '1') q = q.eq('verified', true);
   if (verified === '0') q = q.eq('verified', false);
+  if (_docViewMode === 'noFile') q = q.is('file_url', null).is('file_url_2', null);
   if (archived === 'active')   q = q.eq('archived', false);
   if (archived === 'archived') q = q.eq('archived', true);
   // 'all' applies no archive filter
@@ -3591,7 +3608,7 @@ async function loadAdminDocs() {
     const name     = r.credtrack_staff?.full_name || '—';
     const typeName = r.document_types?.name || r.label;
     const verHtml  = r.verified
-      ? '<span class="badge badge-verified">✓ Verified</span>'
+      ? (isOffice ? '<span class="badge badge-verified">✓ Verified</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}','${(r.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}','${(r.document_types?.name || r.label || '').replace(/'/g,"\\'")}')" title="Click to unverify — for correcting a mistake, not routine use">✓ Verified</span>`)
       : (isOffice ? '<span class="badge badge-none">Pending</span>' : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`);
     const fileHtml = [
       r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:12px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
@@ -3729,6 +3746,20 @@ async function verifyDoc(id) {
   }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Document verified');
+  await loadAdminDocs();
+}
+
+// For correcting a mistake (verified without an actual file attached, or
+// verified in error) — not a routine action, so it's confirmed and clears
+// verified_by/verified_at along with the flag itself, since neither is
+// meaningful once a document is no longer considered verified.
+async function unverifyDoc(id, staffName, typeName) {
+  if (!confirm(`Unverify "${typeName}" for ${staffName}?\n\nThis is for correcting a mistake — e.g. marked verified without an actual file on file. The document will show as unverified/pending again.`)) return;
+  const { error } = await sb.from('credtrack_documents').update({
+    verified: false, verified_by: null, verified_at: null
+  }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Document unverified');
   await loadAdminDocs();
 }
 
