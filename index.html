@@ -3949,7 +3949,8 @@ async function deleteDoc(id, filePath) {
     if (filePath) {
       await sb.storage.from(STORAGE_BUCKET).remove([filePath]);
     }
-    await sb.from('credtrack_documents').delete().eq('id', id);
+    const { error } = await sb.from('credtrack_documents').delete().eq('id', id);
+    if (error) throw error; // the actual file may already be gone from storage above — surfacing this rather than claiming success prevents a dangling row that looks deleted but isn't
     toast('Document deleted');
     await loadAdminDocs();
     if (docRow?.staff_id) await checkStaffCompliance(docRow.staff_id);
@@ -9137,8 +9138,13 @@ async function duplicateDocTypeToCustomize(id) {
     // The override was only ever a stand-in for not having a real custom
     // copy — now that they have one, it's redundant (the hidden global row
     // is never evaluated for compliance again for this company anyway).
+    // A failure here is genuinely low-stakes (the leftover override row is
+    // harmless, not incorrect) — logged rather than surfaced to the user,
+    // since interrupting a successful duplicate over a harmless cleanup
+    // step failing would be worse than just leaving the redundant row.
     if (overridesMap.hasOwnProperty(id)) {
-      await sb.from('company_document_type_overrides').delete().eq('company_id', currentCompany.id).eq('document_type_id', id);
+      const { error: cleanupErr } = await sb.from('company_document_type_overrides').delete().eq('company_id', currentCompany.id).eq('document_type_id', id);
+      if (cleanupErr) console.warn('Could not clean up redundant override row:', cleanupErr.message);
     }
 
     toast(`✓ "${t.name}" duplicated — the original is now hidden, and your own copy is fully editable below`);
