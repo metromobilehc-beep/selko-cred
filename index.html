@@ -6259,6 +6259,9 @@ async function confirmCsvImport() {
   const toImport = _csvImportRows.filter(r => r.willImport);
   if (!toImport.length) return;
 
+  const limitMsg = await checkStaffLimitBlock(currentCompany.id, toImport.length);
+  if (limitMsg) { toast(limitMsg, true); return; }
+
   const rows = toImport.map(r => ({
     company_id: currentCompany.id,
     full_name: r.name,
@@ -6299,6 +6302,23 @@ function hideAddStaff() {
   window._pendingAddStaffCvData = null; // covers Cancel, and is a safety net for the save path too
 }
 
+// Pro plan caps at 50 active staff — Enterprise is unlimited above that,
+// Standard has no limit at all (this only ever applies to Pro
+// specifically). additionalCount lets a bulk import check "would adding
+// N more people push us over" in one call, rather than checking one at a
+// time. Returns null if adding is fine, or a message to show if blocked.
+async function checkStaffLimitBlock(companyId, additionalCount = 1) {
+  if (currentCompany.plan !== 'pro') return null; // only Pro has this cap
+  const { count } = await sb.from('credtrack_staff')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId)
+    .eq('active', true);
+  if ((count || 0) + additionalCount > 50) {
+    return `The Pro plan is limited to 50 active staff members (currently at ${count}). Upgrade to Enterprise for unlimited staff — contact Selko to upgrade.`;
+  }
+  return null;
+}
+
 async function saveNewStaff() {
   const name  = document.getElementById('nsName').value.trim();
   const email = document.getElementById('nsEmail').value.trim();
@@ -6308,6 +6328,10 @@ async function saveNewStaff() {
   const err   = document.getElementById('nsErr');
   err.style.display = 'none';
   if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
+
+  const limitMsg = await checkStaffLimitBlock(currentCompany.id);
+  if (limitMsg) { err.textContent = limitMsg; err.style.display = 'block'; return; }
+
   try {
     const { data: created, error } = await sb.from('credtrack_staff').insert({
       company_id: currentCompany.id,
