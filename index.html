@@ -6138,8 +6138,13 @@ async function deleteStaff(id, fullName) {
 
     // These two tables use NO ACTION (not CASCADE), so they must be cleared
     // explicitly first or the staff delete below will be silently blocked.
-    await sb.from('staff_payer_networks').delete().eq('staff_id', id);
-    await sb.from('credtrack_staff_agencies').delete().eq('staff_id', id);
+    // A failure here would surface anyway as a confusing FK-constraint
+    // error on the credtrack_staff delete below — checked explicitly here
+    // instead, so the actual failing table is clear.
+    const { error: pnErr } = await sb.from('staff_payer_networks').delete().eq('staff_id', id);
+    if (pnErr) throw new Error(`Could not clear payer network records first: ${pnErr.message}`);
+    const { error: agErr } = await sb.from('credtrack_staff_agencies').delete().eq('staff_id', id);
+    if (agErr) throw new Error(`Could not clear agency assignment records first: ${agErr.message}`);
 
     const { error } = await sb.from('credtrack_staff').delete().eq('id', id);
     if (error) throw error;
@@ -13617,7 +13622,8 @@ async function purgeCompanyPermanently(id, name) {
         console.warn('delete-staff-auth failed for', p.email, authErr);
       }
     }
-    await sb.from('profiles').delete().eq('company_id', id);
+    const { error: profilesDelErr } = await sb.from('profiles').delete().eq('company_id', id);
+    if (profilesDelErr) throw new Error(`Purge stopped before deleting the company itself — profiles cleanup failed: ${profilesDelErr.message}`);
 
     // Finally, the company itself
     const { error } = await sb.from('companies').delete().eq('id', id);
