@@ -1932,17 +1932,27 @@ async function forgotPassword() {
   if (!email) return;
 
   alertEl.className = 'alert alert-success';
-  alertEl.textContent = 'Sending reset link…';
+  alertEl.textContent = 'Sending…';
   alertEl.style.display = 'block';
 
+  // Calls a dedicated Edge Function rather than sb.auth.resetPasswordForEmail
+  // — that built-in method sends via Supabase's own single, project-wide
+  // email template, which is branded "Metro" for every company regardless
+  // of who's resetting (a holdover from before this became multi-tenant),
+  // and relies on a clickable link — the same unreliable-delivery issue
+  // (spam filters, link-scanning security software) that the admin-
+  // triggered reset flow was already rebuilt to avoid. This sets a fresh
+  // temp password directly and emails it from Selko via Resend instead,
+  // matching that same already-working, already-reliable pattern.
   try {
-    const { error } = await sb.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: 'https://cred.selko360.com/'
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/forgot-password-selko', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim() }),
     });
-    if (error) throw error;
-    // Don't reveal whether the email exists — same message either way
+    const result = await res.json();
     alertEl.className = 'alert alert-success';
-    alertEl.textContent = 'If an account exists for that email, a password reset link has been sent.';
+    alertEl.textContent = result.message || 'If an account exists for that email, a new temporary password has been sent.';
   } catch(e) {
     alertEl.className = 'alert alert-error';
     alertEl.textContent = 'Something went wrong: ' + e.message;
