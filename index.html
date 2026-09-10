@@ -109,7 +109,7 @@ window.selkoSharedAuthStorage = {
     <span id="hdrUser"></span>
     <span id="hdrRole"></span>
     <button id="hdrMyCreds" onclick="toggleMyCredsView()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;display:none;">My Credentials</button>
-    <button onclick="showReportIssueModal()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;">🆘 Report an issue</button>
+    <button id="hdrReportIssueBtn" onclick="showReportIssueModal()" style="display:none;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:12px;cursor:pointer;">🆘 Report an issue</button>
     <button id="hdrLogout" onclick="logout()">Sign out</button>
   </div>
 </header>
@@ -2358,7 +2358,7 @@ async function logout() {
   await sb.auth.signOut();
   currentProfile = null; currentCompany = null;
   _superProfile = null; _superCompany = null;
-  ['hdrUser','hdrRole','hdrLogout'].forEach(id => document.getElementById(id).style.display = 'none');
+  ['hdrUser','hdrRole','hdrLogout','hdrReportIssueBtn'].forEach(id => document.getElementById(id).style.display = 'none');
   // Explicitly hide every privilege-gated element on logout — previously
   // this only ever got SHOWN when conditions were met, never explicitly
   // hidden otherwise, so a prior session's visible super-admin tab could
@@ -2442,6 +2442,7 @@ async function toggleMyCredsView() {
     showScreen('adminScreen');
     btn.textContent = 'My Credentials';
     document.getElementById('hdrSearchWrap').style.display = 'block';
+  document.getElementById('hdrReportIssueBtn').style.display = 'inline-flex';
     // Admin screen data was already loaded on initial login; just re-show it.
     switchTab(document.querySelector('.tab.active')?.id?.replace('tab-', '') || 'docs');
   }
@@ -3288,6 +3289,7 @@ async function initAdmin() {
   await loadAdminDocs();
   await loadOverview();
   document.getElementById('hdrSearchWrap').style.display = 'block';
+  document.getElementById('hdrReportIssueBtn').style.display = 'inline-flex';
   updateProFeatureButtons();
   loadSidebarMemo(); // fire-and-forget — sidebar widget, not tied to any specific tab
   await getHiddenPanels(); // populates _hiddenPanelsCache before anything that gates on it renders
