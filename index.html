@@ -132,6 +132,9 @@ window.selkoSharedAuthStorage = {
     <p style="margin-top:14px;text-align:center;">
       <a href="#" onclick="forgotPassword(); return false;" style="font-size:13px;color:var(--teal);text-decoration:none;">Forgot password?</a>
     </p>
+    <p style="margin-top:6px;text-align:center;">
+      <a href="#" onclick="showLoginIssueModal(); return false;" style="font-size:13px;color:var(--teal);text-decoration:none;">🆘 Can't log in? Report an issue</a>
+    </p>
     <p style="margin-top:10px;font-size:12px;color:var(--gray-400);text-align:center;">Contact your administrator if you need access.</p>
   </div>
 </div>
@@ -2156,6 +2159,61 @@ async function initSession(user) {
 // (company_id, who, what tab they were on, their message) reviewable from
 // Selko Admin, same "someone will actually see this" spirit as the Bug Log,
 // but for things a user noticed rather than an error the app itself caught.
+// Pre-login version — for the exact situation that prompted this: someone
+// (like Juan, hitting repeated "invalid login credentials") stuck on the
+// login screen with no way to flag it at all, since the main "Report an
+// issue" button only ever lives in the logged-in app header. No
+// currentProfile/currentCompany exist yet here, so this captures whatever
+// email was typed into the login form instead — the best context
+// available for who's actually having trouble. No screenshot option
+// (a picture of just the login screen isn't especially useful), and
+// submits with profile_id left null, matching the separate anonymous-
+// insert policy built specifically for this case.
+function showLoginIssueModal() {
+  const existing = document.getElementById('loginIssueModal');
+  if (existing) existing.remove();
+
+  const prefillEmail = document.getElementById('loginEmail')?.value?.trim() || '';
+
+  const modal = document.createElement('div');
+  modal.id = 'loginIssueModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Can't log in?</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Describe what's happening — this goes straight to Selko's team, even without a working login.</p>
+      <label class="field-label">Your email</label>
+      <input type="text" id="loginIssueEmail" value="${prefillEmail.replace(/"/g,'&quot;')}" placeholder="you@company.com" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
+      <textarea id="loginIssueText" placeholder="What's going on?" style="width:100%;min-height:100px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitLoginIssueReport()" style="flex:1;justify-content:center;">Submit</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('loginIssueModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.getElementById('loginIssueText').focus();
+}
+
+async function submitLoginIssueReport() {
+  const email = document.getElementById('loginIssueEmail')?.value?.trim();
+  const message = document.getElementById('loginIssueText')?.value?.trim();
+  if (!message) { toast('Describe what happened first', true); return; }
+
+  const { error } = await sb.from('support_requests').insert({
+    company_id: null, // unknown — no session to look this up from yet
+    profile_id: null, // matches the anonymous-insert policy specifically built for this case
+    reporter_name: email || 'Unknown (not logged in)',
+    reporter_role: 'not logged in',
+    current_tab: 'Login screen',
+    message,
+  });
+  if (error) { toast('Could not submit: ' + error.message, true); return; }
+
+  document.getElementById('loginIssueModal')?.remove();
+  toast('✓ Thanks — this has been sent to Selko\'s team');
+}
+
 async function showReportIssueModal() {
   const existing = document.getElementById('reportIssueModal');
   if (existing) existing.remove();
@@ -2203,6 +2261,17 @@ async function showReportIssueModal() {
 async function submitIssueReport() {
   const message = document.getElementById('reportIssueText')?.value?.trim();
   if (!message) { toast('Describe what happened first', true); return; }
+
+  // The RLS policy on support_requests requires profile_id to exactly
+  // match the caller's own session (auth.uid()) — if currentProfile isn't
+  // actually loaded for some reason, the insert below would silently send
+  // profile_id: null, which can never match and always fails, surfacing
+  // as a confusing raw "row-level security policy" database error instead
+  // of a clear explanation. Checked explicitly here instead.
+  if (!currentProfile?.id) {
+    toast('You need to be logged in to submit this — please refresh and try again', true);
+    return;
+  }
 
   const activeTabBtn = document.querySelector('.tab.active');
   const currentTab = activeTabBtn ? activeTabBtn.textContent.trim() : 'unknown';
