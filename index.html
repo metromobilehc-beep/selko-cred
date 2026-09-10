@@ -13571,20 +13571,35 @@ async function purgeCompanyPermanently(id, name) {
     // Grab emails first so we can clean up their actual logins, not just the profile rows
     const { data: profilesToDelete } = await sb.from('profiles').select('email').eq('company_id', id);
 
-    // Delete every child table that references this company, in dependency order.
-    // staff_payer_networks and credtrack_staff_agencies use NO ACTION (not CASCADE)
-    // on their staff_id FK, so they must be cleared before credtrack_staff.
-    await sb.from('compliance_completions').delete().eq('company_id', id);
-    await sb.from('compliance_staff').delete().eq('company_id', id);
-    await sb.from('credtrack_documents').delete().eq('company_id', id);
-    await sb.from('staff_payer_networks').delete().eq('company_id', id);
-    await sb.from('credtrack_staff_agencies').delete().eq('company_id', id);
-    await sb.from('agency_partner_users').delete().eq('company_id', id);
-    await sb.from('credtrack_staff').delete().eq('company_id', id);
-    await sb.from('credtrack_agencies').delete().eq('company_id', id);
-    await sb.from('payers').delete().eq('company_id', id);
-    await sb.from('document_types').delete().eq('company_id', id);
-    await sb.from('compliance_modules').delete().eq('company_id', id);
+    // Delete every child table that references this company, in dependency
+    // order. staff_payer_networks and credtrack_staff_agencies use NO ACTION
+    // (not CASCADE) on their staff_id FK, so they must be cleared before
+    // credtrack_staff. Every step below now checks for and throws on error —
+    // previously none of these 11 did, only the final companies.delete() at
+    // the end of this function did. That meant a silent failure partway
+    // through (an RLS block, a constraint violation) would let the cascade
+    // continue anyway and still delete the company itself — leaving orphaned
+    // child records referencing a company_id that no longer exists, with no
+    // indication anything had gone wrong. A failed, partial purge that stops
+    // and reports exactly where it stopped is far safer than one that
+    // silently "succeeds" while leaving orphans behind.
+    const purgeSteps = [
+      ['compliance_completions', () => sb.from('compliance_completions').delete().eq('company_id', id)],
+      ['compliance_staff', () => sb.from('compliance_staff').delete().eq('company_id', id)],
+      ['credtrack_documents', () => sb.from('credtrack_documents').delete().eq('company_id', id)],
+      ['staff_payer_networks', () => sb.from('staff_payer_networks').delete().eq('company_id', id)],
+      ['credtrack_staff_agencies', () => sb.from('credtrack_staff_agencies').delete().eq('company_id', id)],
+      ['agency_partner_users', () => sb.from('agency_partner_users').delete().eq('company_id', id)],
+      ['credtrack_staff', () => sb.from('credtrack_staff').delete().eq('company_id', id)],
+      ['credtrack_agencies', () => sb.from('credtrack_agencies').delete().eq('company_id', id)],
+      ['payers', () => sb.from('payers').delete().eq('company_id', id)],
+      ['document_types', () => sb.from('document_types').delete().eq('company_id', id)],
+      ['compliance_modules', () => sb.from('compliance_modules').delete().eq('company_id', id)],
+    ];
+    for (const [tableName, runDelete] of purgeSteps) {
+      const { error: stepErr } = await runDelete();
+      if (stepErr) throw new Error(`Purge stopped at "${tableName}" — nothing after this point was touched: ${stepErr.message}`);
+    }
 
     // Delete the actual auth logins (not just the profiles rows), best-effort —
     // a failure here shouldn't block the rest of the cleanup
