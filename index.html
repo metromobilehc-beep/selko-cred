@@ -14,6 +14,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -2077,18 +2078,40 @@ async function initSession(user) {
 // (company_id, who, what tab they were on, their message) reviewable from
 // Selko Admin, same "someone will actually see this" spirit as the Bug Log,
 // but for things a user noticed rather than an error the app itself caught.
-function showReportIssueModal() {
+async function showReportIssueModal() {
   const existing = document.getElementById('reportIssueModal');
   if (existing) existing.remove();
+
+  // Captured before the modal itself is added to the page, so the
+  // screenshot shows the actual screen the user was looking at when
+  // something went wrong — not this dialog covering it up.
+  window._reportIssueScreenshotDataUrl = null;
+  let screenshotDataUrl = null;
+  try {
+    const canvas = await html2canvas(document.body, { logging: false, useCORS: true, scale: 0.5 });
+    screenshotDataUrl = canvas.toDataURL('image/jpeg', 0.7);
+    window._reportIssueScreenshotDataUrl = screenshotDataUrl;
+  } catch (e) {
+    console.warn('Screenshot capture failed, continuing without one:', e.message);
+  }
 
   const modal = document.createElement('div');
   modal.id = 'reportIssueModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Report an issue</div>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Describe what happened — what you were trying to do, and what went wrong instead. This goes straight to Selko's team.</p>
       <textarea id="reportIssueText" placeholder="What's going on?" style="width:100%;min-height:110px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box;"></textarea>
+      ${screenshotDataUrl ? `
+      <div id="reportIssueScreenshotPreview" style="margin-bottom:14px;">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:8px;cursor:pointer;">
+          <input type="checkbox" id="reportIssueIncludeScreenshot" checked onchange="document.getElementById('reportIssueScreenshotImg').style.opacity = this.checked ? '1' : '.25'" />
+          Include a screenshot of what I'm currently seeing
+        </label>
+        <img id="reportIssueScreenshotImg" src="${screenshotDataUrl}" style="width:100%;border-radius:6px;border:1px solid rgba(255,255,255,.15);" />
+        <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:6px;">Uncheck if this shows anything you don't want included (e.g. someone else's personal information on screen).</p>
+      </div>` : ''}
       <div style="display:flex;gap:8px;">
         <button class="btn btn-teal" onclick="submitIssueReport()" style="flex:1;justify-content:center;">Submit</button>
         <button class="btn btn-ghost" onclick="document.getElementById('reportIssueModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
@@ -2106,6 +2129,27 @@ async function submitIssueReport() {
   const activeTabBtn = document.querySelector('.tab.active');
   const currentTab = activeTabBtn ? activeTabBtn.textContent.trim() : 'unknown';
 
+  const includeScreenshot = document.getElementById('reportIssueIncludeScreenshot')?.checked;
+  let screenshotPath = null;
+  if (includeScreenshot && window._reportIssueScreenshotDataUrl) {
+    try {
+      // Data URL -> Blob, uploaded to its own bucket rather than inlined
+      // into the database row — keeps support_requests itself small and
+      // fast to load/list, same reasoning as storing document files in
+      // Storage rather than as bytes in a table.
+      const blob = await (await fetch(window._reportIssueScreenshotDataUrl)).blob();
+      const path = `${currentCompany?.id || 'unknown'}/${Date.now()}_screenshot.jpg`;
+      const { error: uploadErr } = await sb.storage.from('support-screenshots').upload(path, blob, { contentType: 'image/jpeg' });
+      if (uploadErr) {
+        console.warn('Screenshot upload failed, submitting report without it:', uploadErr.message);
+      } else {
+        screenshotPath = path;
+      }
+    } catch (e) {
+      console.warn('Screenshot upload failed, submitting report without it:', e.message);
+    }
+  }
+
   const { error } = await sb.from('support_requests').insert({
     company_id: currentCompany?.id || null,
     profile_id: currentProfile?.id || null,
@@ -2113,9 +2157,11 @@ async function submitIssueReport() {
     reporter_role: currentProfile?.role || (currentProfile?.is_super_admin ? 'super_admin' : ''),
     current_tab: currentTab,
     message,
+    screenshot_path: screenshotPath,
   });
   if (error) { toast('Could not submit: ' + error.message, true); return; }
 
+  window._reportIssueScreenshotDataUrl = null;
   document.getElementById('reportIssueModal')?.remove();
   toast('✓ Thanks — this has been sent to Selko\'s team');
 }
@@ -12155,11 +12201,18 @@ async function loadSupportRequests() {
           ${new Date(r.created_at).toLocaleString()} — <strong>${r.reporter_name || 'Unknown'}</strong> (${r.reporter_role || '—'}) at <strong>${companyNames[r.company_id] || '—'}</strong>, on "${r.current_tab || 'unknown'}" tab
         </div>
         <div style="font-size:13px;color:#fff;white-space:pre-wrap;">${r.message}</div>
+        ${r.screenshot_path ? `<button class="btn btn-sm btn-ghost" onclick="viewSupportScreenshot('${r.screenshot_path}')" style="margin-top:8px;color:#fff;border-color:rgba(255,255,255,.2);">📷 View screenshot</button>` : ''}
       </div>
       ${r.resolved
         ? `<span class="badge badge-ok" style="white-space:nowrap;">✓ Resolved</span>`
         : `<button class="btn btn-sm btn-ghost" onclick="markSupportRequestResolved('${r.id}')" style="white-space:nowrap;color:#fff;border-color:rgba(255,255,255,.2);">Mark resolved</button>`}
     </div>`).join('');
+}
+
+async function viewSupportScreenshot(path) {
+  const { data, error } = await sb.storage.from('support-screenshots').createSignedUrl(path, 300); // 5-minute link, not a permanently public one
+  if (error) { toast('Could not load screenshot: ' + error.message, true); return; }
+  window.open(data.signedUrl, '_blank');
 }
 
 async function markSupportRequestResolved(id) {
