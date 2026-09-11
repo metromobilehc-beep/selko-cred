@@ -1837,7 +1837,21 @@ async function runOigExclusionCheck() {
     const { data, error } = await sb.functions.invoke('check-oig-exclusions', {
       body: { company_id: companyId }
     });
-    if (error) throw error;
+    if (error) {
+      // supabase-js only puts a generic "non-2xx status code" message on
+      // the error itself — the actual reason is in the function's own
+      // response body, reachable via error.context (a Response object).
+      let detail = error.message;
+      if (error.context && typeof error.context.json === 'function') {
+        try {
+          const body = await error.context.json();
+          if (body && body.error) detail = body.error;
+        } catch (parseErr) {
+          // response wasn't JSON — fall back to the generic message above
+        }
+      }
+      throw new Error(detail);
+    }
 
     const { error: insErr } = await sb.from('oig_exclusion_checks').insert({
       company_id: companyId,
