@@ -1739,6 +1739,29 @@ window.selkoSharedAuthStorage = {
         <div id="supportRequestsList"></div>
       </div>
 
+      <!-- OIG LEIE exclusion check — manual trigger for now. Downloads the
+           real, official OIG exclusion list and checks active staff by
+           NPI and name. Scoped per-company via the selector, or leave
+           blank to check every company at once. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🚫 OIG Exclusion Check</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checks active staff against the official OIG List of Excluded Individuals/Entities (LEIE), downloaded live from oig.hhs.gov. Manual check for now — not yet scheduled monthly.</p>
+        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+          <select class="inline-select" id="oigCompanyFilter">
+            <option value="">All companies</option>
+          </select>
+          <button class="btn btn-sm btn-teal" id="oigRunCheckBtn" onclick="runOigExclusionCheck()">Run check</button>
+          <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
+        </div>
+        <div id="oigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th></tr></thead>
+            <tbody id="oigHistoryTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>🐛 Bug log</h2>
@@ -1784,6 +1807,93 @@ window.selkoSharedAuthStorage = {
     <!-- closes remaining unbalanced wrapper, confirmed via tag-count script -->
 
 <script>
+
+// OIG LEIE exclusion check — manual trigger. Calls the check-oig-exclusions
+// Edge Function, which downloads the official LEIE list and checks active
+// staff by NPI and name, then saves the results to oig_exclusion_checks
+// for a permanent, reviewable log.
+async function populateOigCompanyFilter() {
+  const sel = document.getElementById('oigCompanyFilter');
+  if (!sel || sel.dataset.loaded) return;
+  const { data } = await sb.from('companies').select('id, name').order('name');
+  (data || []).forEach(c => {
+    const opt = document.createElement('option');
+    opt.value = c.id;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+  sel.dataset.loaded = '1';
+}
+
+async function runOigExclusionCheck() {
+  const btn = document.getElementById('oigRunCheckBtn');
+  const statusEl = document.getElementById('oigCheckStatus');
+  const companyId = document.getElementById('oigCompanyFilter').value || null;
+
+  btn.disabled = true;
+  statusEl.textContent = 'Downloading the OIG exclusion list and checking staff — this can take a few seconds…';
+
+  try {
+    const { data, error } = await sb.functions.invoke('check-oig-exclusions', {
+      body: { company_id: companyId }
+    });
+    if (error) throw error;
+
+    const { error: insErr } = await sb.from('oig_exclusion_checks').insert({
+      company_id: companyId,
+      checked_by: currentProfile ? currentProfile.id : null,
+      staff_checked_count: data.checked,
+      matches: data.matches,
+      match_count: data.matches.length,
+      leie_source: data.leie_source
+    });
+    if (insErr) throw insErr;
+
+    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.`;
+    if (data.matches.length) {
+      toast(`⚠ ${data.matches.length} potential OIG exclusion match(es) found — review below`, true);
+    } else {
+      toast('OIG check complete — no matches found');
+    }
+    await loadOigExclusionHistory();
+  } catch (err) {
+    statusEl.textContent = '';
+    toast(`OIG check failed: ${err.message || err}`, true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadOigExclusionHistory() {
+  const tbody = document.getElementById('oigHistoryTbody');
+  if (!tbody) return;
+  const companyId = document.getElementById('oigCompanyFilter').value || null;
+
+  let query = sb.from('oig_exclusion_checks')
+    .select('checked_at, staff_checked_count, match_count, companies(name), profiles(full_name)')
+    .order('checked_at', { ascending: false })
+    .limit(25);
+  if (companyId) query = query.eq('company_id', companyId);
+
+  const { data, error } = await query;
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    return;
+  }
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${new Date(r.checked_at).toLocaleString()}</td>
+      <td>${r.companies ? r.companies.name : 'All companies'}</td>
+      <td>${r.staff_checked_count}</td>
+      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
+      <td>${r.profiles ? r.profiles.full_name : '—'}</td>
+    </tr>
+  `).join('');
+}
 
 function toggleDocsMoreMenu() {
   const menu = document.getElementById('docsMoreMenu');
@@ -12853,6 +12963,8 @@ async function clearSidebarMemo() {
 async function loadSuperAdmin() {
   await loadBugLog();
   await loadSupportRequests();
+  await populateOigCompanyFilter();
+  await loadOigExclusionHistory();
   await loadDocTypeCategories();
   await loadStorageUsage();
   await loadPartnerRecommendationsAdmin();
