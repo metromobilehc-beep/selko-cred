@@ -12939,7 +12939,10 @@ async function loadSupportRequests() {
         ${r.screenshot_path ? `<button class="btn btn-sm btn-ghost" onclick="viewSupportScreenshot('${r.screenshot_path}')" style="margin-top:8px;color:#fff;border-color:rgba(255,255,255,.2);">📷 View screenshot</button>` : ''}
       </div>
       ${r.resolved
-        ? `<span class="badge badge-ok" style="white-space:nowrap;">✓ Resolved</span>`
+        ? `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
+             <span class="badge badge-ok" style="white-space:nowrap;">✓ Resolved</span>
+             <button class="btn btn-sm btn-ghost" onclick="deleteSupportRequest('${r.id}')" style="white-space:nowrap;color:#f87171;border-color:rgba(248,113,113,.3);font-size:11px;">🗑 Delete</button>
+           </div>`
         : `<button class="btn btn-sm btn-ghost" onclick="markSupportRequestResolved('${r.id}')" style="white-space:nowrap;color:#fff;border-color:rgba(255,255,255,.2);">Mark resolved</button>`}
     </div>`).join('');
 }
@@ -12953,6 +12956,19 @@ async function viewSupportScreenshot(path) {
 async function markSupportRequestResolved(id) {
   const { error } = await sb.from('support_requests').update({ resolved: true }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
+  await loadSupportRequests();
+}
+
+// Only reachable once a request is already marked resolved — deliberately
+// not offered on open requests, so nothing gets deleted before it's
+// actually been dealt with. This is a real, permanent delete (not a
+// soft-delete/archive), so it confirms first, matching the same pattern
+// used elsewhere for irreversible actions.
+async function deleteSupportRequest(id) {
+  if (!confirm('Permanently delete this resolved support request? This cannot be undone.')) return;
+  const { error } = await sb.from('support_requests').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Support request deleted');
   await loadSupportRequests();
 }
 
