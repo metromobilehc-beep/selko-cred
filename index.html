@@ -1096,6 +1096,13 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
+        <!-- Credentialing form templates — upload a payer's fillable PDF
+             once, map its fields to Cred data, then generate a filled copy
+             for any staff member in one click from then on. This is the
+             "Full" credentialing tier — a company on "Basic" gets the org
+             profile, accreditations, and per-staff CAQH/DEA above, but not
+             this, since template generation is the more advanced feature. -->
+        <div class="dark-panel" id="credTemplatesPanel" data-default-open="true">
           <h2>Credentialing form templates</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application once, map its fields to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
           <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="loadCredentialingTemplates()" />
@@ -1617,8 +1624,17 @@ window.selkoSharedAuthStorage = {
           <div id="coErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
         </div>
 
+        <!-- Company search — filters the already-loaded list client-side,
+             matches on name or slug. No extra query needed since the full
+             company list is already in memory from loadSuperAdmin(). -->
+        <div style="margin-top:16px;margin-bottom:10px;">
+          <input type="text" id="companySearchInput" placeholder="🔍 Search companies by name..."
+            oninput="filterCompanyCards(this.value)"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:10px 14px;font-size:14px;" />
+        </div>
+
         <!-- Company cards -->
-        <div id="companyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px;margin-top:16px;"></div>
+        <div id="companyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;"></div>
       </div>
 
       <!-- Cross-company invite -->
@@ -1906,12 +1922,6 @@ async function runOigExclusionCheck() {
   }
 }
 
-// Company-scoped version — always checks the logged-in admin's own
-// company only (no "all companies" option, unlike the Selko Admin
-// version), and emails the company's own admin contact(s) with the
-// result every time, whether or not anything was found. A "checked
-// today, all clear" email is the point — it's how an admin who never
-// opens this tab still knows the check is genuinely running.
 async function runMyCompanyOigCheck() {
   const btn = document.getElementById('myOigRunCheckBtn');
   const statusEl = document.getElementById('myOigCheckStatus');
@@ -9583,140 +9593,6 @@ async function toggleDocTypeVisibilityForCompany(typeId, companyId, nowVisible) 
   }
 }
 
-// Per-company panel visibility — lets a company's whole set of
-// healthcare-specific sections be hidden at once (or any other
-// combination), so the same layout can be reused for a different industry
-// vertical (e.g. mortgage/real estate document collection) without
-// needing separate code paths per industry.
-async function showManagePanelVisibility(companyId, companyName) {
-  const existing = document.getElementById('panelVisibilityModal');
-  if (existing) existing.remove();
-
-  const { data: hiddenRows } = await sb.from('company_hidden_panels').select('panel_key').eq('company_id', companyId);
-  const hiddenSet = new Set((hiddenRows || []).map(h => h.panel_key));
-
-  const modal = document.createElement('div');
-  modal.id = 'panelVisibilityModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Panel visibility — ${companyName}</div>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checked = this panel shows for this company. Unchecked = hidden entirely — useful for reusing the same layout in a different industry (e.g. hide everything healthcare-specific for a mortgage or real estate client).</p>
-      <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-sm btn-ghost" onclick="bulkSetPanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}',false)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Hide all</button>
-        <button class="btn btn-sm btn-ghost" onclick="bulkSetPanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}',true)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Show all</button>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:2px;">
-        ${TOGGLEABLE_PANELS.map(p => `
-          <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;font-size:13px;color:#fff;cursor:pointer;">
-            <input type="checkbox" data-panel-key="${p.key}" ${hiddenSet.has(p.key) ? '' : 'checked'} onchange="togglePanelVisibilityForCompany('${companyId}','${p.key}',this.checked)" />
-            ${p.label}
-          </label>`).join('')}
-      </div>
-      <button class="btn btn-ghost" onclick="document.getElementById('panelVisibilityModal').remove()" style="width:100%;justify-content:center;margin-top:16px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-// Customizable Credentialing-tab teaser — same wording that shows in the
-// sidebar tab and the locked-state panel, editable per company so a
-// non-clinical vertical can tease something relevant to them instead of
-// always seeing hardcoded healthcare wording ("clinician," "CAQH ID/DEA
-// number"). Leaving both fields blank falls back to the original
-// healthcare-specific text, so existing clients are unaffected.
-function showEditCredTeaserModal(companyId, companyName, currentLabel, currentDesc, currentDiscLabel, currentStaffLabel) {
-  const existing = document.getElementById('credTeaserModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'credTeaserModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Customize terminology — ${companyName}</div>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Leave any field blank to keep the original healthcare wording — nothing changes for existing clients unless set here.</p>
-
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;margin-top:6px;">Staff wording</div>
-      <label class="inline-label">"Discipline" field label</label>
-      <input class="inline-input" type="text" id="credDiscLabelInput" value="${currentDiscLabel || ''}" placeholder="Discipline" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
-      <label class="inline-label">"Clinician" staff-type label</label>
-      <input class="inline-input" type="text" id="credStaffLabelInput" value="${currentStaffLabel || ''}" placeholder="Clinician" style="width:100%;box-sizing:border-box;margin-bottom:14px;" />
-
-      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Credentialing tab teaser</div>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">Shown in the sidebar tab and the locked-state panel when Credentialing isn't enabled for this company.</p>
-      <label class="inline-label">Tab label</label>
-      <input class="inline-input" type="text" id="credTeaserLabelInput" value="${currentLabel || ''}" placeholder="Credentialing" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
-      <label class="inline-label">Locked-panel description</label>
-      <textarea id="credTeaserDescInput" placeholder="Payer-credentialing-level detail on top of basic document compliance..." style="width:100%;min-height:90px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:14px;box-sizing:border-box;">${currentDesc || ''}</textarea>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="saveCredTeaser('${companyId}')" style="flex:1;justify-content:center;">Save</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('credTeaserModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function saveCredTeaser(companyId) {
-  const label = document.getElementById('credTeaserLabelInput').value.trim();
-  const desc = document.getElementById('credTeaserDescInput').value.trim();
-  const discLabel = document.getElementById('credDiscLabelInput').value.trim();
-  const staffLabel = document.getElementById('credStaffLabelInput').value.trim();
-  const { error } = await sb.from('companies').update({
-    credentialing_teaser_label: label || null,
-    credentialing_teaser_description: desc || null,
-    discipline_label: discLabel || null,
-    staff_type_label: staffLabel || null,
-  }).eq('id', companyId);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  document.getElementById('credTeaserModal')?.remove();
-  toast('✓ Terminology saved');
-  if (currentCompany && currentCompany.id === companyId) {
-    currentCompany.credentialing_teaser_label = label || null;
-    currentCompany.credentialing_teaser_description = desc || null;
-    currentCompany.discipline_label = discLabel || null;
-    currentCompany.staff_type_label = staffLabel || null;
-    updateModuleTabVisibility(currentCompany, currentProfile);
-  }
-  await loadSuperAdmin();
-}
-
-async function bulkSetPanelVisibility(companyId, companyName, showAll) {
-  // Clean slate first, then re-populate as needed — avoids unique-
-  // constraint conflicts with whatever's already hidden, and keeps the
-  // logic simple: no rows means everything's visible (existing behavior),
-  // so "Show all" just needs the delete with nothing to insert after.
-  const { error: delErr } = await sb.from('company_hidden_panels').delete().eq('company_id', companyId);
-  if (delErr) { toast('Error: ' + delErr.message, true); return; }
-
-  if (!showAll) {
-    const rows = TOGGLEABLE_PANELS.map(p => ({ company_id: companyId, panel_key: p.key }));
-    const { error: insErr } = await sb.from('company_hidden_panels').insert(rows);
-    if (insErr) { toast('Error: ' + insErr.message, true); return; }
-  }
-
-  if (currentCompany && currentCompany.id === companyId) _hiddenPanelsCache = null;
-  toast(showAll ? '✓ All panels now visible' : '✓ All panels hidden');
-  await showManagePanelVisibility(companyId, companyName); // re-render so every checkbox reflects the new state
-}
-
-async function togglePanelVisibilityForCompany(companyId, panelKey, nowVisible) {
-  if (nowVisible) {
-    const { error } = await sb.from('company_hidden_panels')
-      .delete().eq('company_id', companyId).eq('panel_key', panelKey);
-    if (error) { toast('Error: ' + error.message, true); return; }
-  } else {
-    const { error } = await sb.from('company_hidden_panels')
-      .insert({ company_id: companyId, panel_key: panelKey });
-    if (error) { toast('Error: ' + error.message, true); return; }
-  }
-  // If the company being edited is the one currently being viewed (e.g.
-  // via View as Admin), invalidate the cache so the change is reflected
-  // immediately without needing a full page reload.
-  if (currentCompany && currentCompany.id === companyId) _hiddenPanelsCache = null;
-}
-
 async function toggleDocTypeHidden(id, currentlyHidden) {
   if (currentlyHidden) {
     const { error } = await sb.from('company_hidden_document_types')
@@ -13211,10 +13087,18 @@ async function loadSuperAdmin() {
     o.value = c.id; o.textContent = c.name; invComp.appendChild(o);
   });
 
-  // Company cards
+  // Company cards — compact by default; full details/actions live in
+  // showCompanyManageModal(), opened via the single "Manage" button.
+  // Stored in a global lookup so the modal can read a company's full
+  // record by id without re-serializing every field into an onclick
+  // string (which is how the old, full-detail cards worked, and how
+  // this file's Customize modal — since removed — used to as well).
   const cards = document.getElementById('companyCards');
+  window._companiesById = {};
+  (companies || []).forEach(c => { window._companiesById[c.id] = c; });
+
   if (!companies?.length) {
-    cards.innerHTML = '<div class="empty-state"><div class="empty-icon">🏢</div>No companies yet.</div>';
+    cards.innerHTML = '<div class="empty-state"><div class="empty-icon">\ud83c\udfe2</div>No companies yet.</div>';
     return;
   }
 
@@ -13222,79 +13106,99 @@ async function loadSuperAdmin() {
     const staff = staffCounts[c.id] || 0;
     const docs  = docCounts[c.id]   || 0;
     const planColor = c.plan === 'enterprise' ? '#fbbf24' : c.plan === 'pro' ? '#34d399' : 'rgba(255,255,255,.5)';
-    return `<div class="company-card">
-      <div class="company-card-head">
-        <div>
-          <div class="company-card-name">${c.name}</div>
-          <div class="company-card-slug">${c.slug}</div>
+    const statusDot = c.deleted_at ? '#ef4444' : (c.active ? '#34d399' : '#71717a');
+    const statusLabel = c.deleted_at
+      ? `Deleted \u2014 purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d`
+      : (c.active ? 'Active' : 'Inactive');
+    return `<div class="company-card" data-company-name="${c.name.toLowerCase()}" data-company-slug="${(c.slug || '').toLowerCase()}" style="padding:12px 14px;">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+        <div style="min-width:0;">
+          <div class="company-card-name" style="font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusDot};margin-right:6px;" title="${statusLabel}"></span>${c.name}
+          </div>
+          <div class="company-card-slug" style="font-size:11px;">${c.slug}</div>
         </div>
-        <span style="color:${planColor};font-size:11px;font-weight:700;text-transform:uppercase;">${c.plan}</span>
+        <span style="color:${planColor};font-size:10px;font-weight:700;text-transform:uppercase;white-space:nowrap;">${c.plan}</span>
       </div>
 
-      <div class="company-card-body">
-        <div class="company-card-stat">
-          <div class="company-card-stat-num">${staff}</div>
-          <div class="company-card-stat-label">Staff members</div>
-        </div>
-        <div class="company-card-stat">
-          <div class="company-card-stat-num">${docs}</div>
-          <div class="company-card-stat-label">Documents</div>
-        </div>
+      <div style="display:flex;gap:14px;margin:8px 0;font-size:12px;color:rgba(255,255,255,.6);">
+        <span>${staff} staff</span>
+        <span>${docs} docs</span>
       </div>
 
-      <div class="company-card-flags">
-        <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '✓' : '✕'}</span>
-        <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '✓' : '✕'}</span>
-        <span class="flag-pill ${c.has_credentialing_addon ? 'flag-on' : 'flag-off'}">Credentialing ${c.has_credentialing_addon ? '✓' : '✕'}</span>
-        <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
-        ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">🗑 Deleted — purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
-      </div>
-
-      <div class="company-card-actions">
-        ${c.deleted_at ? `
-          <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">↩ Restore</button>
-          <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${c.name.replace(/'/g,"\\'")}')">⚠ Purge now</button>
-        ` : `
-          <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>
-          <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
-          <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}','${c.name.replace(/'/g,"\\'")}','${((c.admin_emails||[])[0]||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">✉ Resend invite</button>
-          <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}','${c.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">⚙ Subscription Settings</button>
-          <button class="btn btn-sm btn-ghost" onclick="showCustomizeModal('${c.id}','${c.name.replace(/'/g,"\\'")}','${(c.credentialing_teaser_label||'').replace(/'/g,"\\'")}','${(c.credentialing_teaser_description||'').replace(/'/g,"\\'")}','${(c.discipline_label||'').replace(/'/g,"\\'")}','${(c.staff_type_label||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🎨 Customize</button>
-          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">↻ Reset Demo Data</button>` : ''}
-          ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">🔑 Set Demo Password</button>` : ''}
-          <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${c.name.replace(/'/g,"\\'")}')">Delete</button>
-        `}
-      </div>
+      <button class="btn btn-sm btn-ghost" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);" onclick="showCompanyManageModal('${c.id}')">\u2699 Manage</button>
     </div>`;
   }).join('');
 }
 
+// Filters the already-rendered company cards purely client-side, by
+// name or slug — no extra query, since everything's already loaded.
+function filterCompanyCards(query) {
+  const q = query.trim().toLowerCase();
+  document.querySelectorAll('#companyCards .company-card').forEach(card => {
+    const name = card.getAttribute('data-company-name') || '';
+    const slug = card.getAttribute('data-company-slug') || '';
+    card.style.display = (!q || name.includes(q) || slug.includes(q)) ? '' : 'none';
+  });
+}
+
+// The "pop-out" for a single company's full details and every action
+// that used to live directly on its (much larger) card. Reads from the
+// window._companiesById lookup populated in loadSuperAdmin(), rather
+// than needing a fresh query or re-threading every field through the
+// button's onclick string.
+function showCompanyManageModal(companyId) {
+  const c = window._companiesById[companyId];
+  if (!c) { toast('Could not find that company \u2014 try refreshing.', true); return; }
+
+  const escName = c.name.replace(/'/g, "\\'");
+  const firstAdminEmail = ((c.admin_emails || [])[0] || '').replace(/'/g, "\\'");
+
+  const actionsHtml = c.deleted_at ? `
+    <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${escName}')">\u21a9 Restore</button>
+    <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${escName}')">\u26a0 Purge now</button>
+  ` : `
+    <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${escName}')">View as Admin</button>
+    <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
+    <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}','${escName}','${firstAdminEmail}')" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2709 Resend invite</button>
+    <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}','${escName}')" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2699 Subscription Settings</button>
+    ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">\u21bb Reset Demo Data</button>` : ''}
+    ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">\ud83d\udd11 Set Demo Password</button>` : ''}
+    <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${escName}')">Delete</button>
+  `;
+
+  const flagsHtml = `
+    <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '\u2713' : '\u2715'}</span>
+    <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '\u2713' : '\u2715'}</span>
+    <span class="flag-pill ${c.has_credentialing_addon ? 'flag-on' : 'flag-off'}">Credentialing ${c.has_credentialing_addon ? '\u2713' : '\u2715'}</span>
+    <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
+    ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">\ud83d\uddd1 Deleted \u2014 purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
+  `;
+
+  const existing = document.getElementById('companyManageModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'companyManageModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:flex;align-items:center;justify-content:center;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:12px;padding:24px;max-width:480px;width:90%;max-height:85vh;overflow-y:auto;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
+        <h2 style="margin:0;font-size:18px;">${c.name}</h2>
+        <button onclick="document.getElementById('companyManageModal').remove()" style="background:none;border:none;color:rgba(255,255,255,.5);font-size:20px;cursor:pointer;">\u2715</button>
+      </div>
+      <div style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">${c.slug}</div>
+      <div class="company-card-flags" style="margin-bottom:16px;">${flagsHtml}</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">${actionsHtml}</div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+
 // ══ DEMO COMPANY SEEDING ══
 // Fictional staff and credentials for the sales demo company (slug: 'demo').
 // None of this is real Metro staff data — safe to show prospects.
-// Master list of toggleable panels — the single source of truth for both
-// the "Manage panel visibility" checklist below and every gating check
-// elsewhere in the app. Adding a new hideable panel means adding one entry
-// here plus one gating check at that panel's location — nothing else
-// needs to change. Built to support expanding into non-healthcare
-// verticals (e.g. mortgage/real estate document collection) without
-// having to strip out healthcare-specific sections in code — a company
-// can just have them hidden instead.
-const TOGGLEABLE_PANELS = [
-  { key: 'credentialing_teaser', label: 'Credentialing tab (hides it completely, including the upgrade-teaser view)' },
-  { key: 'credentialing_module_option', label: 'Credentialing module option (removes "Credentialing only"/"Both" from the Module dropdown in Subscription Settings — only "Document tracking only" remains selectable)' },
-  { key: 'health_care_network', label: 'Health Care Network (tab + Settings panels)' },
-  { key: 'caqh', label: 'CAQH section (Full Profile)' },
-  { key: 'dea', label: 'DEA & Controlled Substances section (Full Profile)' },
-  { key: 'board_cert', label: 'Board certification section (Full Profile)' },
-  { key: 'hospital_privileges', label: 'Hospital Privileges tab' },
-  { key: 'malpractice', label: 'Malpractice claims/insurance fields' },
-  { key: 'npi_lookup', label: 'NPI lookup feature' },
-  { key: 'licensing_board_lookup', label: 'State licensing board lookup feature' },
-  { key: 'education', label: 'Education/Training tab' },
-  { key: 'employment_history', label: 'Employment History tab' },
-  { key: 'additional_licenses', label: 'Additional Licenses tab' },
-];
 
 let _hiddenPanelsCache = null;
 async function getHiddenPanels() {
@@ -14064,107 +13968,6 @@ async function applyModalCredTierChange(companyId, companyName, value) {
 async function applyModalPlanChange(companyId, companyName, value) {
   await setCompanyPlan(companyId, value);
   await showSubscriptionSettingsModal(companyId, companyName);
-}
-
-// Consolidates the two customization buttons (panel visibility, terminology)
-// that used to sit directly on each company's card — just a menu pointing
-// into the two existing modals, nothing new about how either works.
-function showCustomizeModal(companyId, companyName, teaserLabel, teaserDesc, discLabel, staffLabel) {
-  const existing = document.getElementById('customizeModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'customizeModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Customize — ${companyName}</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        <button class="btn btn-sm btn-teal" onclick="document.getElementById('customizeModal').remove();showIndustryPresetModal('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="justify-content:flex-start;">🏭 Apply industry preset</button>
-        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('customizeModal').remove();showManagePanelVisibility('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage panel visibility</button>
-        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('customizeModal').remove();showEditCredTeaserModal('${companyId}','${companyName.replace(/'/g,"\\'")}','${(teaserLabel||'').replace(/'/g,"\\'")}','${(teaserDesc||'').replace(/'/g,"\\'")}','${(discLabel||'').replace(/'/g,"\\'")}','${(staffLabel||'').replace(/'/g,"\\'")}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">✎ Customize terminology</button>
-      </div>
-      <button class="btn btn-ghost" onclick="document.getElementById('customizeModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-// Industry presets — a single "apply everything at once" action, rather
-// than needing to separately toggle every panel and type every label for
-// each new vertical. Add a new industry here (key + panels to hide +
-// terminology) and it's immediately available with no other code changes.
-const INDUSTRY_PRESETS = {
-  healthcare: {
-    label: 'Healthcare (default)',
-    hidePanels: false, // "Show all" — every panel visible, standard behavior
-    discipline_label: null,
-    staff_type_label: null,
-  },
-  title_insurance: {
-    label: 'Title Insurance',
-    hidePanels: true, // "Hide all" — every healthcare-specific panel gone, including the Credentialing tab teaser
-    discipline_label: 'Role',
-    staff_type_label: 'Title Agent',
-  },
-};
-
-function showIndustryPresetModal(companyId, companyName) {
-  const existing = document.getElementById('industryPresetModal');
-  if (existing) existing.remove();
-
-  const modal = document.createElement('div');
-  modal.id = 'industryPresetModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Apply industry preset — ${companyName}</div>
-      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Applies panel visibility and terminology together in one step. You can still fine-tune either individually afterward — this just sets sensible defaults for a whole industry at once.</p>
-      <div style="display:flex;flex-direction:column;gap:8px;">
-        ${Object.entries(INDUSTRY_PRESETS).map(([key, p]) => `
-          <button class="btn btn-sm btn-ghost" onclick="applyIndustryPreset('${companyId}','${companyName.replace(/'/g,"\\'")}','${key}')" style="justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">${p.label}</button>
-        `).join('')}
-      </div>
-      <button class="btn btn-ghost" onclick="document.getElementById('industryPresetModal').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
-    </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function applyIndustryPreset(companyId, companyName, presetKey) {
-  const preset = INDUSTRY_PRESETS[presetKey];
-  if (!preset) return;
-  if (!confirm(`Apply the "${preset.label}" preset to ${companyName}? This will set panel visibility and terminology together — you can still adjust either individually afterward.`)) return;
-
-  // Panel visibility — reuses the exact same bulk logic as the "Hide
-  // all"/"Show all" buttons in Manage panel visibility.
-  const { error: delErr } = await sb.from('company_hidden_panels').delete().eq('company_id', companyId);
-  if (delErr) { toast('Error: ' + delErr.message, true); return; }
-  if (preset.hidePanels) {
-    const rows = TOGGLEABLE_PANELS.map(p => ({ company_id: companyId, panel_key: p.key }));
-    const { error: insErr } = await sb.from('company_hidden_panels').insert(rows);
-    if (insErr) { toast('Error: ' + insErr.message, true); return; }
-  }
-
-  // Terminology
-  const { error: termErr } = await sb.from('companies').update({
-    discipline_label: preset.discipline_label,
-    staff_type_label: preset.staff_type_label,
-  }).eq('id', companyId);
-  if (termErr) { toast('Error: ' + termErr.message, true); return; }
-
-  if (currentCompany && currentCompany.id === companyId) {
-    _hiddenPanelsCache = null;
-    currentCompany.discipline_label = preset.discipline_label;
-    currentCompany.staff_type_label = preset.staff_type_label;
-    await getHiddenPanels();
-    updateModuleTabVisibility(currentCompany, currentProfile);
-    if (document.getElementById('caqhExemptSection')) loadDisciplinesPanel();
-  }
-
-  document.getElementById('industryPresetModal')?.remove();
-  toast(`✓ "${preset.label}" preset applied`);
-  await loadSuperAdmin();
 }
 
 async function softDeleteCompany(id, name) {
