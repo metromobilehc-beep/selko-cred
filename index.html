@@ -114,6 +114,17 @@ window.selkoSharedAuthStorage = {
   </div>
 </header>
 
+<!-- Update-available banner — hidden by default, shown by
+     checkForAppUpdate() below when the live, deployed file has changed
+     since this tab loaded it. Deliberately a dismissible prompt, not an
+     automatic reload — forcing a refresh mid-task (someone half-way
+     through filling out a form) would be worse than just asking. -->
+<div id="appUpdateBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;z-index:2000;background:#0d9488;color:#fff;padding:12px 20px;align-items:center;justify-content:center;gap:16px;box-shadow:0 -4px 16px rgba(0,0,0,.2);">
+  <span style="font-size:13px;font-weight:600;">↻ A newer version of Selko Cred is available.</span>
+  <button onclick="window.location.reload()" style="background:#fff;color:#0d9488;border:none;padding:6px 16px;border-radius:6px;font-size:13px;font-weight:700;cursor:pointer;">Refresh now</button>
+  <button onclick="document.getElementById('appUpdateBanner').style.display='none';" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:6px 16px;border-radius:6px;font-size:13px;cursor:pointer;">Later</button>
+</div>
+
 <!-- LOGIN -->
 <div id="loginScreen" class="screen active">
   <div class="login-card">
@@ -2171,6 +2182,34 @@ function initCollapsiblePanels() {
 initCollapsiblePanels();
 
 // ══ CONFIG ══
+// Build marker — a fresh value baked in every time this file is deployed
+// (deliberately just "now" at generation time, not tied to any specific
+// feature). Used purely to detect "the live, deployed file has changed
+// since this tab loaded it" — see checkForAppUpdate() below.
+const APP_BUILD_VERSION = '2026-09-13T20:45:00Z';
+
+// Periodically (and whenever this tab regains focus) fetches the live,
+// currently-deployed index.html and checks whether its own build marker
+// differs from the one this tab actually loaded with. A mismatch means
+// a new version has been deployed since — shows the dismissible banner
+// rather than reloading automatically.
+async function checkForAppUpdate() {
+  try {
+    const res = await fetch(window.location.href, { cache: 'no-store' });
+    const html = await res.text();
+    const match = html.match(/APP_BUILD_VERSION\s*=\s*'([^']+)'/);
+    if (match && match[1] !== APP_BUILD_VERSION) {
+      document.getElementById('appUpdateBanner').style.display = 'flex';
+    }
+  } catch (e) {
+    // A failed check (offline, network hiccup) just means we try again
+    // next interval — never worth surfacing to the user as an error.
+  }
+}
+
+setInterval(checkForAppUpdate, 5 * 60 * 1000); // every 5 minutes
+window.addEventListener('focus', checkForAppUpdate);
+
 const SUPABASE_URL      = 'https://zxserlkhwkfoqiepurdr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
 const STORAGE_BUCKET    = 'compliance-documents';
