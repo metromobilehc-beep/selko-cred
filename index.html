@@ -5279,6 +5279,48 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
     </div>`;
 }
 
+// The 5 items a specific provider can individually be marked exempt
+// from — keys match what each "missing X" check below actually looks
+// for, so toggling one directly controls that check for this person.
+const EXEMPT_CHECK_OPTIONS = [
+  { key: 'npi', label: 'NPI' },
+  { key: 'caqh', label: 'CAQH ID' },
+  { key: 'address', label: 'Address' },
+  { key: 'phone', label: 'Phone' },
+  { key: 'employment_history', label: 'Employment history' },
+];
+
+function populateExemptChecksList(s) {
+  const container = document.getElementById('fpExemptChecksList');
+  if (!container) return;
+  const exempt = s.exempt_from_checks || [];
+  container.innerHTML = EXEMPT_CHECK_OPTIONS.map(opt => {
+    const isExempt = exempt.includes(opt.key);
+    return `<button type="button" onclick="toggleExemptCheck('${s.id}', '${opt.key}', ${!isExempt})"
+      style="display:flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;cursor:pointer;font-weight:600;
+      background:${isExempt ? 'var(--teal)' : 'transparent'};color:${isExempt ? '#fff' : 'rgba(255,255,255,.6)'};
+      border:1px solid ${isExempt ? 'var(--teal)' : 'rgba(255,255,255,.2)'};">
+      ${isExempt ? '✓ ' : ''}${opt.label}
+    </button>`;
+  }).join('');
+}
+
+async function toggleExemptCheck(staffId, checkKey, makeExempt) {
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+  const current = s.exempt_from_checks || [];
+  const updated = makeExempt
+    ? [...new Set([...current, checkKey])]
+    : current.filter(k => k !== checkKey);
+
+  const { error } = await sb.from('credtrack_staff').update({ exempt_from_checks: updated }).eq('id', staffId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  s.exempt_from_checks = updated;
+  populateExemptChecksList(s);
+  toast(makeExempt ? `Exempted from ${checkKey.replace('_', ' ')}` : `No longer exempt from ${checkKey.replace('_', ' ')}`);
+}
+
 function showFullProfileSheet(staffId) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -5422,6 +5464,17 @@ function showFullProfileSheet(staffId) {
         ${(currentCompany.has_credtrack && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
         ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>` : ''}
         ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
+      </div>
+
+      <!-- Per-provider check exemptions -- a company-wide "PTA is exempt
+           from CAQH" setting (elsewhere in Settings) still applies to
+           everyone in that discipline, but this covers the individual
+           exception: a specific person who genuinely doesn't need one of
+           these items for their own particular situation, regardless of
+           what's typical for their discipline. -->
+      <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:12px;margin-bottom:16px;">
+        <label class="inline-label">Exempt this person from (not required for them specifically)</label>
+        <div id="fpExemptChecksList" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px;"></div>
       </div>
 
 
@@ -5651,6 +5704,7 @@ function showFullProfileSheet(staffId) {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  populateExemptChecksList(s);
 
   // Re-check the DEA/physician sections' visibility live if discipline
   // changes while the sheet is open, rather than requiring a full reopen.
@@ -12356,7 +12410,7 @@ async function loadCredentialingOverviewStats() {
   document.getElementById('ovCredProviderCount').textContent = activeProviders.length;
 
   const caqhExemptDisciplines = getCaqhExemptDisciplines();
-  const missingCaqh = activeProviders.filter(s => !s.caqh_id && !caqhExemptDisciplines.includes(s.discipline));
+  const missingCaqh = activeProviders.filter(s => !s.caqh_id && !caqhExemptDisciplines.includes(s.discipline) && !(s.exempt_from_checks || []).includes('caqh'));
   document.getElementById('ovCredMissingCaqh').textContent = missingCaqh.length;
 
   const withDays = (dateStr) => dateStr ? Math.ceil((new Date(dateStr) - new Date()) / 86400000) : null;
@@ -12389,10 +12443,10 @@ async function loadCredentialingOverviewStats() {
     : { data: [] };
   const staffWithEmployment = new Set((empRows || []).map(r => r.staff_id));
 
-  const missingNpi = activeProviders.filter(s => !s.npi_number);
-  const missingAddress = activeProviders.filter(s => !s.address);
-  const missingPhone = activeProviders.filter(s => !s.phone);
-  const missingEmployment = activeProviders.filter(s => !staffWithEmployment.has(s.id));
+  const missingNpi = activeProviders.filter(s => !s.npi_number && !(s.exempt_from_checks || []).includes('npi'));
+  const missingAddress = activeProviders.filter(s => !s.address && !(s.exempt_from_checks || []).includes('address'));
+  const missingPhone = activeProviders.filter(s => !s.phone && !(s.exempt_from_checks || []).includes('phone'));
+  const missingEmployment = activeProviders.filter(s => !staffWithEmployment.has(s.id) && !(s.exempt_from_checks || []).includes('employment_history'));
 
   // One consolidated stat — a provider missing any of these counts once,
   // not once per missing field, so this reads as "how many people need
