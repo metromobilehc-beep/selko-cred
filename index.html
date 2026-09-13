@@ -619,12 +619,14 @@ window.selkoSharedAuthStorage = {
             <button class="btn btn-sm btn-ghost" id="staffMoreBtn" onclick="toggleStaffMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Import/Export</button>
             <div id="staffMoreMenu" style="display:none;position:absolute;top:36px;left:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:200px;z-index:20;padding:4px;">
               <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('csvImportInput').click()">📁 Import staff (Excel/CSV)</button>
+              <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('payrollScreenshotInput').click()">📷 Import from screenshot</button>
               <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('addStaffCvInput').click()">📄 Import from CV</button>
               <button class="btn-more-item" onclick="closeStaffMoreMenu();downloadCsvTemplate()">⬇ Download Excel template</button>
               <button class="btn-more-item" onclick="closeStaffMoreMenu();exportStaffRosterPDF()">⬇ Export PDF</button>
             </div>
           </div>
           <input type="file" id="csvImportInput" accept=".csv,.xlsx,.xls" style="display:none;" onchange="handleCsvFileSelected(this)" />
+          <input type="file" id="payrollScreenshotInput" accept=".jpg,.jpeg,.png,.pdf" style="display:none;" onchange="handlePayrollScreenshotSelected(this)" />
           <input type="file" id="addStaffCvInput" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleAddStaffCvFile(this)" />
           <span id="addStaffCvStatus" style="font-size:12px;color:rgba(255,255,255,.4);align-self:center;"></span>
         </div>
@@ -5773,6 +5775,121 @@ async function handleAddStaffCvFile(input) {
     statusEl.textContent = '';
     toast('Import failed: ' + e.message, true);
   }
+}
+
+// Bulk staff import from a screenshot/export of an external payroll or
+// staff system -- genuinely different from the single-person CV scan
+// above: this expects many rows in one image and returns an array, so
+// the result is shown as an editable review table (nothing is created
+// automatically) rather than pre-filling a single "Add staff" form.
+async function handlePayrollScreenshotSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  toast('Reading screenshot with AI — this takes a few seconds…');
+
+  try {
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    let mediaType = file.type || 'image/jpeg';
+    if (!file.type && file.name.toLowerCase().endsWith('.pdf')) mediaType = 'application/pdf';
+
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/scan-payroll-staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ fileBase64: base64, mediaType }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    input.value = '';
+    if (!result.staff.length) { toast('Could not find any staff rows in that image — try a clearer screenshot', true); return; }
+
+    showPayrollImportReviewModal(result.staff);
+  } catch (e) {
+    toast('Screenshot scan failed: ' + e.message, true);
+  }
+}
+
+function showPayrollImportReviewModal(staffRows) {
+  const existing = document.getElementById('payrollImportModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'payrollImportModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:720px;max-height:85vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Review before importing</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:14px;">AI-extracted from your screenshot — double-check names/emails/phones before importing. Uncheck anyone you don't want added.</div>
+      <div style="overflow-y:auto;flex:1;">
+        <table style="width:100%;border-collapse:collapse;">
+          <thead><tr style="text-align:left;font-size:11px;color:rgba(255,255,255,.5);">
+            <th style="padding:6px;"></th><th style="padding:6px;">Name</th><th style="padding:6px;">Email</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Title</th>
+          </tr></thead>
+          <tbody>
+            ${staffRows.map((r, i) => `
+              <tr>
+                <td style="padding:6px;"><input type="checkbox" class="payrollImportCheck" data-idx="${i}" checked /></td>
+                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="full_name" data-idx="${i}" value="${(r.full_name || '').replace(/"/g,'&quot;')}" /></td>
+                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="email" data-idx="${i}" value="${(r.email || '').replace(/"/g,'&quot;')}" /></td>
+                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="phone" data-idx="${i}" value="${(r.phone || '').replace(/"/g,'&quot;')}" /></td>
+                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="job_title" data-idx="${i}" value="${(r.job_title || '').replace(/"/g,'&quot;')}" /></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      <div id="payrollImportErr" style="color:#f87171;font-size:12px;margin-top:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn btn-sm btn-teal" onclick="confirmPayrollImport()">Import checked rows</button>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('payrollImportModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  window._payrollImportRows = staffRows;
+}
+
+async function confirmPayrollImport() {
+  const errEl = document.getElementById('payrollImportErr');
+  errEl.style.display = 'none';
+
+  const checks = document.querySelectorAll('.payrollImportCheck:checked');
+  const toImport = [];
+  checks.forEach(cb => {
+    const idx = cb.getAttribute('data-idx');
+    const row = {};
+    document.querySelectorAll(`[data-idx="${idx}"][data-field]`).forEach(inp => {
+      row[inp.getAttribute('data-field')] = inp.value.trim() || null;
+    });
+    if (row.full_name) toImport.push(row);
+  });
+
+  if (!toImport.length) { errEl.textContent = 'No rows checked (or all missing a name) — nothing to import.'; errEl.style.display = 'block'; return; }
+
+  const { error } = await sb.from('credtrack_staff').insert(
+    toImport.map(r => ({
+      company_id: currentCompany.id,
+      full_name: r.full_name,
+      email: r.email,
+      phone: r.phone,
+      job_title: r.job_title,
+      staff_type: 'clinician',
+      active: true,
+    }))
+  );
+  if (error) { errEl.textContent = 'Import failed: ' + error.message; errEl.style.display = 'block'; return; }
+
+  document.getElementById('payrollImportModal').remove();
+  toast(`✓ Imported ${toImport.length} staff member(s)`);
+  await loadStaffTable();
 }
 
 async function handleCvImportFile(staffId, staffName) {
