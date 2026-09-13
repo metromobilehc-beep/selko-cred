@@ -2188,18 +2188,36 @@ initCollapsiblePanels();
 // since this tab loaded it" — see checkForAppUpdate() below.
 const APP_BUILD_VERSION = '2026-09-13T20:45:00Z';
 
+// Tracks genuine user activity (not just tab focus) so an update can
+// auto-apply itself once someone's actually stepped away, rather than
+// relying on them remembering to click "Refresh" — the real problem
+// this exists to solve: people running stale code for days because a
+// dismissible banner is easy to click past and forget.
+let _lastUserActivityAt = Date.now();
+['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(evt =>
+  window.addEventListener(evt, () => { _lastUserActivityAt = Date.now(); }, { passive: true })
+);
+
+let _updateIsPending = false;
+const IDLE_AUTO_REFRESH_MS = 3 * 60 * 1000; // 3 minutes of no activity
+
 // Periodically (and whenever this tab regains focus) fetches the live,
 // currently-deployed index.html and checks whether its own build marker
 // differs from the one this tab actually loaded with. A mismatch means
-// a new version has been deployed since — shows the dismissible banner
-// rather than reloading automatically.
+// a new version has been deployed since. Shows the dismissible banner
+// immediately either way, but if the tab is (or becomes) idle for more
+// than a few minutes while an update is pending, it refreshes on its
+// own — no active work is ever interrupted, but a stale tab left open
+// unattended won't stay stale indefinitely either.
 async function checkForAppUpdate() {
   try {
     const res = await fetch(window.location.href, { cache: 'no-store' });
     const html = await res.text();
     const match = html.match(/APP_BUILD_VERSION\s*=\s*'([^']+)'/);
     if (match && match[1] !== APP_BUILD_VERSION) {
+      _updateIsPending = true;
       document.getElementById('appUpdateBanner').style.display = 'flex';
+      maybeAutoRefreshIfIdle();
     }
   } catch (e) {
     // A failed check (offline, network hiccup) just means we try again
@@ -2207,7 +2225,20 @@ async function checkForAppUpdate() {
   }
 }
 
+function maybeAutoRefreshIfIdle() {
+  if (!_updateIsPending) return;
+  const idleFor = Date.now() - _lastUserActivityAt;
+  if (idleFor >= IDLE_AUTO_REFRESH_MS) {
+    window.location.reload();
+  }
+}
+
 setInterval(checkForAppUpdate, 5 * 60 * 1000); // every 5 minutes
+// Once an update is known to be pending, also re-check idle time on its
+// own faster cadence — no reason to wait another 5 minutes just to
+// notice someone's now been idle long enough.
+setInterval(maybeAutoRefreshIfIdle, 30 * 1000);
+
 window.addEventListener('focus', checkForAppUpdate);
 
 const SUPABASE_URL      = 'https://zxserlkhwkfoqiepurdr.supabase.co';
