@@ -6061,6 +6061,17 @@ function showCvImportReview(staffId, staffName, extracted) {
       </div>
     </label>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">Nothing found.</div>';
 
+  const empRows = (extracted.employment_history || []).map((e, i) => `
+    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+      <input type="checkbox" class="cvEmpCheck" data-idx="${i}" checked style="margin-top:3px;" />
+      <div style="font-size:12px;color:#fff;">
+        <strong>${e.employer_name || 'Employer'}</strong>${e.position_title ? ' — ' + e.position_title : ''}<br>
+        <span style="color:rgba(255,255,255,.5);">${e.address || ''} · ${e.start_date || '?'} – ${e.is_current ? 'Present' : (e.end_date || '?')}</span>
+        ${e.supervisor_name ? `<br><span style="color:rgba(255,255,255,.5);">Supervisor: ${e.supervisor_name}${e.supervisor_phone ? ' · ' + e.supervisor_phone : ''}</span>` : ''}
+        ${e.gap_explanation ? `<br><span style="color:rgba(255,255,255,.5);">Gap noted: ${e.gap_explanation}</span>` : ''}
+      </div>
+    </label>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.3);padding:8px 0;">Nothing found.</div>';
+
   const hasSpecialtyInfo = extracted.primary_specialty || extracted.secondary_specialty || extracted.board_certified !== null;
   const specialtyRow = hasSpecialtyInfo ? `
     <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
@@ -6082,9 +6093,10 @@ function showCvImportReview(staffId, staffName, extracted) {
       ${extracted.education.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Education &amp; Training</div>${eduRows}` : ''}
       ${extracted.additional_licenses.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Additional Licenses</div>${licRows}` : ''}
       ${extracted.hospital_privileges.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
+      ${(extracted.employment_history || []).length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Employment History</div>${empRows}` : ''}
       ${hasSpecialtyInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Specialty &amp; Board Info</div>${specialtyRow}` : ''}
 
-      ${!hasCompanyInfo && !hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !hasSpecialtyInfo
+      ${!hasCompanyInfo && !hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.employment_history || []).length && !hasSpecialtyInfo
         ? '<div style="font-size:13px;color:rgba(255,255,255,.4);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:12px;margin-top:12px;display:none;"></div>
@@ -6185,6 +6197,29 @@ async function saveCvImportSelections(staffId) {
     if (privToSave.length) {
       const { error } = await sb.from('staff_hospital_privileges').insert(
         privToSave.map(p => ({ staff_id: staffId, hospital_name: p.hospital_name, address: p.address, privilege_type: p.privilege_type, start_date: p.start_date, end_date: p.end_date }))
+      );
+      if (error) throw error;
+    }
+
+    const empToSave = [...document.querySelectorAll('.cvEmpCheck:checked')].map(el => (extracted.employment_history || [])[el.dataset.idx]);
+    if (empToSave.length) {
+      const { error } = await sb.from('staff_employment_history').insert(
+        empToSave.map(e => ({
+          staff_id: staffId,
+          employer_name: e.employer_name,
+          position_title: e.position_title,
+          address: e.address,
+          city: e.city,
+          state: e.state,
+          zip: e.zip,
+          start_date: e.start_date,
+          end_date: e.is_current ? null : e.end_date,
+          is_current: !!e.is_current,
+          supervisor_name: e.supervisor_name,
+          supervisor_phone: e.supervisor_phone,
+          reason_for_leaving: e.reason_for_leaving,
+          gap_explanation: e.gap_explanation,
+        }))
       );
       if (error) throw error;
     }
@@ -14345,6 +14380,7 @@ async function softDeleteCompany(id, name) {
     if (error) throw error;
 
     toast(`${name} deleted — permanently purged in 30 days unless restored`);
+    document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
   } catch(e) {
     toast('Delete failed: ' + e.message, true);
@@ -14364,6 +14400,7 @@ async function restoreCompany(id, name) {
     if (error) throw error;
 
     toast(`${name} restored`);
+    document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
   } catch(e) {
     toast('Restore failed: ' + e.message, true);
@@ -14483,6 +14520,7 @@ async function purgeCompanyPermanently(id, name) {
     if (error) throw error;
 
     toast(name + ' permanently purged');
+    document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
   } catch(e) {
     toast('Purge failed: ' + e.message, true);
