@@ -14300,6 +14300,18 @@ async function purgeCompanyPermanently(id, name) {
     // Grab emails first so we can clean up their actual logins, not just the profile rows
     const { data: profilesToDelete } = await sb.from('profiles').select('email').eq('company_id', id);
 
+    // Staff ids are needed up front: several tables added since this
+    // function was first written only have a staff_id column (no
+    // company_id at all) — staff_additional_licenses, staff_education_
+    // training, staff_employment_history, staff_hospital_privileges,
+    // staff_malpractice_claims, credential_reminder_log, credentialing_
+    // files/notes, credtrack_access_log, credtrack_audit_log,
+    // sensitive_field_access_log. Every one of those must be cleared by
+    // staff_id, scoped to this company's staff, before credtrack_staff
+    // itself can be deleted — otherwise its own foreign key blocks it.
+    const { data: staffToDelete } = await sb.from('credtrack_staff').select('id').eq('company_id', id);
+    const staffIds = (staffToDelete || []).map(s => s.id);
+
     // Delete every child table that references this company, in dependency
     // order. staff_payer_networks and credtrack_staff_agencies use NO ACTION
     // (not CASCADE) on their staff_id FK, so they must be cleared before
@@ -14319,6 +14331,22 @@ async function purgeCompanyPermanently(id, name) {
       ['staff_payer_networks', () => sb.from('staff_payer_networks').delete().eq('company_id', id)],
       ['credtrack_staff_agencies', () => sb.from('credtrack_staff_agencies').delete().eq('company_id', id)],
       ['agency_partner_users', () => sb.from('agency_partner_users').delete().eq('company_id', id)],
+      // staff_id-only tables — only run if this company actually has staff,
+      // since an empty .in('staff_id', []) is rejected by PostgREST rather
+      // than just matching zero rows.
+      ...(staffIds.length ? [
+        ['credential_reminder_log', () => sb.from('credential_reminder_log').delete().in('staff_id', staffIds)],
+        ['credentialing_files', () => sb.from('credentialing_files').delete().in('staff_id', staffIds)],
+        ['credentialing_notes', () => sb.from('credentialing_notes').delete().in('staff_id', staffIds)],
+        ['credtrack_access_log', () => sb.from('credtrack_access_log').delete().in('staff_id', staffIds)],
+        ['credtrack_audit_log', () => sb.from('credtrack_audit_log').delete().in('staff_id', staffIds)],
+        ['sensitive_field_access_log', () => sb.from('sensitive_field_access_log').delete().in('staff_id', staffIds)],
+        ['staff_additional_licenses', () => sb.from('staff_additional_licenses').delete().in('staff_id', staffIds)],
+        ['staff_education_training', () => sb.from('staff_education_training').delete().in('staff_id', staffIds)],
+        ['staff_employment_history', () => sb.from('staff_employment_history').delete().in('staff_id', staffIds)],
+        ['staff_hospital_privileges', () => sb.from('staff_hospital_privileges').delete().in('staff_id', staffIds)],
+        ['staff_malpractice_claims', () => sb.from('staff_malpractice_claims').delete().in('staff_id', staffIds)],
+      ] : []),
       ['credtrack_staff', () => sb.from('credtrack_staff').delete().eq('company_id', id)],
       ['credtrack_agencies', () => sb.from('credtrack_agencies').delete().eq('company_id', id)],
       ['payers', () => sb.from('payers').delete().eq('company_id', id)],
