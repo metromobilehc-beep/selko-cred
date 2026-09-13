@@ -1076,13 +1076,26 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
-        <!-- Credentialing form templates — upload a payer's fillable PDF
-             once, map its fields to Cred data, then generate a filled copy
-             for any staff member in one click from then on. This is the
-             "Full" credentialing tier — a company on "Basic" gets the org
-             profile, accreditations, and per-staff CAQH/DEA above, but not
-             this, since template generation is the more advanced feature. -->
-        <div class="dark-panel" id="credTemplatesPanel" data-default-open="true">
+        <!-- OIG LEIE exclusion check — company-scoped self-service version
+             of the same check available in Selko Admin. Every run emails
+             the company's admins, whether or not anything was found —
+             a "checked today, all clear" email is itself the point, so
+             admins have confidence this is actually running rather than
+             wondering whether silence means "nothing wrong" or "not
+             running at all." -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>🚫 OIG Exclusion Check</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checks your active staff (who have an NPI on file) against the official OIG List of Excluded Individuals/Entities, downloaded live from oig.hhs.gov. Every run emails your admin contact(s) with the result, whether or not anything is found.</p>
+          <button class="btn btn-sm btn-teal" id="myOigRunCheckBtn" onclick="runMyCompanyOigCheck()">Run check now</button>
+          <div id="myOigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin:10px 0;"></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th></tr></thead>
+              <tbody id="myOigHistoryTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
           <h2>Credentialing form templates</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application once, map its fields to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
           <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="loadCredentialingTemplates()" />
@@ -1891,6 +1904,137 @@ async function runOigExclusionCheck() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// Company-scoped version — always checks the logged-in admin's own
+// company only (no "all companies" option, unlike the Selko Admin
+// version), and emails the company's own admin contact(s) with the
+// result every time, whether or not anything was found. A "checked
+// today, all clear" email is the point — it's how an admin who never
+// opens this tab still knows the check is genuinely running.
+async function runMyCompanyOigCheck() {
+  const btn = document.getElementById('myOigRunCheckBtn');
+  const statusEl = document.getElementById('myOigCheckStatus');
+  const companyId = currentCompany.id;
+
+  btn.disabled = true;
+  statusEl.textContent = 'Downloading the OIG exclusion list and checking staff — this can take a few seconds…';
+
+  try {
+    const { data, error } = await sb.functions.invoke('check-oig-exclusions', {
+      body: { company_id: companyId }
+    });
+    if (error) {
+      let detail = error.message;
+      if (error.context && typeof error.context.json === 'function') {
+        try {
+          const body = await error.context.json();
+          if (body && body.error) detail = body.error;
+        } catch (parseErr) {
+          // response wasn't JSON — fall back to the generic message above
+        }
+      }
+      throw new Error(detail);
+    }
+
+    const { data: inserted, error: insErr } = await sb.from('oig_exclusion_checks').insert({
+      company_id: companyId,
+      checked_by: currentProfile ? currentProfile.id : null,
+      staff_checked_count: data.checked,
+      matches: data.matches,
+      match_count: data.matches.length,
+      leie_source: data.leie_source
+    }).select().single();
+    if (insErr) throw insErr;
+
+    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.`;
+    if (data.matches.length) {
+      toast(`⚠ ${data.matches.length} potential OIG exclusion match(es) found — review below`, true);
+    } else {
+      toast('OIG check complete — no matches found');
+    }
+
+    await emailOigCheckResult(inserted, data);
+    await loadMyOigHistory();
+  } catch (err) {
+    statusEl.textContent = '';
+    let displayMessage;
+    if (err instanceof Error && err.message) {
+      displayMessage = err.message;
+    } else if (err && typeof err === 'object') {
+      displayMessage = err.message || err.details || err.hint || err.error_description || JSON.stringify(err);
+    } else {
+      displayMessage = String(err);
+    }
+    toast(`OIG check failed: ${displayMessage}`, true);
+    console.error('OIG check failed — full error object:', err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Emails whichever admin address(es) the company has on file. Failure to
+// send is logged but never blocks the check itself from completing or
+// showing its result on screen — a bounced/misconfigured email address
+// shouldn't make the actual compliance check look like it failed.
+async function emailOigCheckResult(checkRow, data) {
+  const recipients = (currentCompany?.admin_emails || []).filter(Boolean);
+  if (!recipients.length) return;
+
+  const generatedAt = new Date(checkRow.checked_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
+  const summary = data.matches.length
+    ? `⚠ ${data.matches.length} potential match(es) found — review in Selko Cred under Credentialing.`
+    : `✓ All clear — no matches found.`;
+  const messageBody = `OIG exclusion check completed for ${currentCompany?.name || 'your company'}.\n\n` +
+    `Run at: ${generatedAt}\n` +
+    `Staff checked: ${checkRow.staff_checked_count}\n` +
+    `Result: ${summary}\n\n` +
+    `Source: ${checkRow.leie_source || 'oig.hhs.gov'}`;
+
+  try {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+    for (const to of recipients) {
+      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
+        to_email: to,
+        to_name: to,
+        subject_line: 'OIG Exclusion Check — ' + (currentCompany?.name || 'Selko Cred'),
+        message_body: messageBody,
+        tool_url: CRED_TOOL_URL,
+        company_name: currentCompany?.name || 'Selko Cred'
+      });
+    }
+    await sb.from('oig_exclusion_checks').update({ emailed_at: new Date().toISOString() }).eq('id', checkRow.id);
+  } catch (e) {
+    console.error('OIG check email failed to send:', e);
+  }
+}
+
+async function loadMyOigHistory() {
+  const tbody = document.getElementById('myOigHistoryTbody');
+  if (!tbody) return;
+
+  const { data, error } = await sb.from('oig_exclusion_checks')
+    .select('checked_at, staff_checked_count, match_count, emailed_at')
+    .eq('company_id', currentCompany.id)
+    .order('checked_at', { ascending: false })
+    .limit(25);
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    return;
+  }
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${new Date(r.checked_at).toLocaleString()}</td>
+      <td>${r.staff_checked_count}</td>
+      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
+      <td>${r.emailed_at ? '✓' : '—'}</td>
+    </tr>
+  `).join('');
 }
 
 async function loadOigExclusionHistory() {
@@ -10498,6 +10642,8 @@ async function loadCredentialingTab() {
   const isFullCredentialing = currentCompany.credentialing_tier !== 'basic';
   document.getElementById('credTemplatesPanel').style.display = isFullCredentialing ? 'block' : 'none';
   document.getElementById('credTemplatesLock').style.display  = isFullCredentialing ? 'none' : 'block';
+
+  await loadMyOigHistory();
 
   const c = currentCompany;
   document.getElementById('setTaxId').value  = c.tax_id || '';
