@@ -10175,6 +10175,8 @@ async function loadAgencyAssignmentsTable() {
       <td>${countByAgency[a.id] || 0} of ${staffList.filter(s => s.active).length} active staff</td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-teal" onclick="showAgencyAssignmentModal('${a.id}','${a.name.replace(/'/g,"\\'")}')">Edit assignments</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffExcel('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📊 Excel</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffPDF('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 PDF</button>
       </div></td>
     </tr>`).join('');
 }
@@ -10243,6 +10245,75 @@ function setAllAgencyStaffChecks(checked) {
   document.querySelectorAll('.agencyStaffRow').forEach(row => {
     if (row.style.display !== 'none') row.querySelector('.agencyStaffCheck').checked = checked;
   });
+}
+
+// Pulls the agency's assigned staff (already loaded in staffList) and
+// exports the fields agency partners actually ask for — name,
+// discipline, license number/state/expiration, NPI. Requested often
+// enough by agency partners that this replaces a manually-maintained
+// Word document with something generated fresh from real data every
+// time, scoped to exactly the staff that agency is assigned to see.
+async function getAgencyStaffForExport(agencyId) {
+  const { data: assignments } = await sb.from('credtrack_staff_agencies')
+    .select('staff_id').eq('agency_id', agencyId).eq('company_id', currentCompany.id);
+  const assignedIds = new Set((assignments || []).map(a => a.staff_id));
+  return staffList
+    .filter(s => assignedIds.has(s.id) && s.active)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+}
+
+async function exportAgencyStaffExcel(agencyId, agencyName) {
+  const staff = await getAgencyStaffForExport(agencyId);
+  if (!staff.length) { toast('No active staff assigned to this agency yet', true); return; }
+
+  const rows = [
+    ['Name', 'Discipline', 'License Number', 'License State', 'License Expiration', 'NPI'],
+    ...staff.map(s => [
+      s.full_name, s.discipline || '', s.license_number || '',
+      s.license_state || '', s.license_expiration_date || '', s.npi_number || '',
+    ]),
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Staff List');
+  XLSX.writeFile(wb, `${agencyName.replace(/[^a-z0-9]/gi,'_')}_StaffList_${new Date().toISOString().slice(0,10)}.xlsx`);
+  toast('Staff list exported');
+}
+
+async function exportAgencyStaffPDF(agencyId, agencyName) {
+  const staff = await getAgencyStaffForExport(agencyId);
+  if (!staff.length) { toast('No active staff assigned to this agency yet', true); return; }
+
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const NAVY = [15, 31, 46], TEAL = [13, 148, 136];
+
+  doc.setFillColor(...NAVY);
+  doc.rect(0, 0, pageWidth, 50, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text(`${currentCompany.name} — ${agencyName}`, 24, 24);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9);
+  doc.text(`Staff List · Generated ${new Date().toLocaleDateString()} · Selko Cred`, 24, 40);
+
+  const body = staff.map(s => [
+    s.full_name, s.discipline || '—', s.license_number || '—',
+    s.license_state || '—', s.license_expiration_date || '—', s.npi_number || '—',
+  ]);
+
+  doc.autoTable({
+    startY: 72,
+    head: [['Name', 'Discipline', 'License #', 'State', 'Expires', 'NPI']],
+    body,
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
+    headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
+  });
+
+  doc.save(`${agencyName.replace(/[^a-z0-9]/gi,'_')}_StaffList_${new Date().toISOString().slice(0,10)}.pdf`);
+  toast('Staff list exported');
 }
 
 async function saveAgencyAssignments(agencyId) {
