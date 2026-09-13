@@ -1088,6 +1088,15 @@ window.selkoSharedAuthStorage = {
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checks your active staff (who have an NPI on file) against the official OIG List of Excluded Individuals/Entities, downloaded live from oig.hhs.gov. Every run emails your admin contact(s) with the result, whether or not anything is found.</p>
           <button class="btn btn-sm btn-teal" id="myOigRunCheckBtn" onclick="runMyCompanyOigCheck()">Run check now</button>
           <div id="myOigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin:10px 0;"></div>
+
+          <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
+            <label class="inline-label">Preferred day for the automatic monthly check</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="inline-select" id="oigPreferredDaySelect" style="max-width:120px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option></select>
+              <button class="btn btn-sm btn-teal" onclick="saveOigPreferredDay()">Save</button>
+            </div>
+            <p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;">The system runs an automatic check every day and only actually checks/emails your company on this day each month — capped at 28 so it always falls on a real date, even in February.</p>
+          </div>
           <div class="tbl-wrap">
             <table>
               <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th></tr></thead>
@@ -1920,6 +1929,14 @@ async function runOigExclusionCheck() {
   } finally {
     btn.disabled = false;
   }
+}
+
+async function saveOigPreferredDay() {
+  const day = parseInt(document.getElementById('oigPreferredDaySelect').value, 10);
+  const { error } = await sb.from('companies').update({ oig_check_preferred_day: day }).eq('id', currentCompany.id);
+  if (error) { toast('Could not save: ' + error.message, true); return; }
+  currentCompany.oig_check_preferred_day = day;
+  toast(`Preferred check day saved — day ${day} of each month.`);
 }
 
 async function runMyCompanyOigCheck() {
@@ -10519,6 +10536,7 @@ async function loadCredentialingTab() {
   document.getElementById('credTemplatesPanel').style.display = isFullCredentialing ? 'block' : 'none';
   document.getElementById('credTemplatesLock').style.display  = isFullCredentialing ? 'none' : 'block';
 
+  document.getElementById('oigPreferredDaySelect').value = currentCompany.oig_check_preferred_day || 1;
   await loadMyOigHistory();
 
   const c = currentCompany;
