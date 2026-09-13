@@ -2216,7 +2216,8 @@ async function checkForAppUpdate() {
     const match = html.match(/APP_BUILD_VERSION\s*=\s*'([^']+)'/);
     if (match && match[1] !== APP_BUILD_VERSION) {
       _updateIsPending = true;
-      document.getElementById('appUpdateBanner').style.display = 'flex';
+      const banner = document.getElementById('appUpdateBanner');
+      if (banner) banner.style.display = 'flex';
       maybeAutoRefreshIfIdle();
     }
   } catch (e) {
@@ -13481,7 +13482,10 @@ async function loadSuperAdmin() {
         <span>${docs} docs</span>
       </div>
 
-      <button class="btn btn-sm btn-ghost" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);" onclick="showCompanyManageModal('${c.id}')">\u2699 Manage</button>
+      <div style="display:flex;gap:6px;">
+        ${!c.deleted_at ? `<button class="btn btn-sm btn-gold" style="flex:1;justify-content:center;" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>` : ''}
+        <button class="btn btn-sm btn-ghost" style="${c.deleted_at ? 'width:100%;' : 'flex:1;'}justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);" onclick="showCompanyManageModal('${c.id}')">\u2699 Manage</button>
+      </div>
     </div>`;
   }).join('');
 }
@@ -13513,7 +13517,6 @@ function showCompanyManageModal(companyId) {
     <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${escName}')">\u21a9 Restore</button>
     <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${escName}')">\u26a0 Purge now</button>
   ` : `
-    <button class="btn btn-sm btn-gold" onclick="viewAsAdmin('${c.id}','${escName}')">View as Admin</button>
     <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
     <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}','${escName}','${firstAdminEmail}')" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2709 Resend invite</button>
     <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}','${escName}')" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2699 Subscription Settings</button>
