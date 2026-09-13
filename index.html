@@ -7182,10 +7182,19 @@ function showNpiResultsModal(staffId, fullName, results) {
 }
 
 async function applyNpiResult(staffId, npi) {
-  const { error } = await sb.from('credtrack_staff').update({ npi_number: npi }).eq('id', staffId);
+  // Clicking a confirmed match from the official CMS registry is itself
+  // the verification act — recording who confirmed it and when, not
+  // just the number, completes what this lookup flow was already meant
+  // to do (npi_verified/_by/_at existed but were never actually set here).
+  const { error } = await sb.from('credtrack_staff').update({
+    npi_number: npi,
+    npi_verified: true,
+    npi_verified_by: currentProfile?.full_name || currentProfile?.id || null,
+    npi_verified_at: new Date().toISOString(),
+  }).eq('id', staffId);
   document.getElementById('npiResultsModal')?.remove();
   if (error) { toast('Error saving NPI: ' + error.message, true); return; }
-  toast(`✓ NPI ${npi} saved`);
+  toast(`✓ NPI ${npi} saved and marked verified`);
   await loadStaffTable();
 }
 
