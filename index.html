@@ -1112,7 +1112,7 @@ window.selkoSharedAuthStorage = {
           </div>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th></tr></thead>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Details</th></tr></thead>
               <tbody id="myOigHistoryTbody"></tbody>
             </table>
           </div>
@@ -1814,7 +1814,7 @@ window.selkoSharedAuthStorage = {
         <div id="oigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th></tr></thead>
+            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Details</th></tr></thead>
             <tbody id="oigHistoryTbody"></tbody>
           </table>
         </div>
@@ -1915,6 +1915,7 @@ async function runOigExclusionCheck() {
       company_id: companyId,
       checked_by: currentProfile ? currentProfile.id : null,
       staff_checked_count: data.checked,
+      checked_staff: data.checked_staff || null,
       matches: data.matches,
       match_count: data.matches.length,
       leie_source: data.leie_source
@@ -1982,6 +1983,7 @@ async function runMyCompanyOigCheck() {
       company_id: companyId,
       checked_by: currentProfile ? currentProfile.id : null,
       staff_checked_count: data.checked,
+      checked_staff: data.checked_staff || null,
       matches: data.matches,
       match_count: data.matches.length,
       leie_source: data.leie_source
@@ -2055,41 +2057,11 @@ async function loadMyOigHistory() {
   if (!tbody) return;
 
   const { data, error } = await sb.from('oig_exclusion_checks')
-    .select('checked_at, staff_checked_count, match_count, emailed_at')
+    .select('id, checked_at, staff_checked_count, match_count, emailed_at')
     .eq('company_id', currentCompany.id)
     .order('checked_at', { ascending: false })
     .limit(25);
 
-  if (error) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
-    return;
-  }
-  if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td>${new Date(r.checked_at).toLocaleString()}</td>
-      <td>${r.staff_checked_count}</td>
-      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
-      <td>${r.emailed_at ? '✓' : '—'}</td>
-    </tr>
-  `).join('');
-}
-
-async function loadOigExclusionHistory() {
-  const tbody = document.getElementById('oigHistoryTbody');
-  if (!tbody) return;
-  const companyId = document.getElementById('oigCompanyFilter').value || null;
-
-  let query = sb.from('oig_exclusion_checks')
-    .select('checked_at, staff_checked_count, match_count, companies(name), profiles(full_name)')
-    .order('checked_at', { ascending: false })
-    .limit(25);
-  if (companyId) query = query.eq('company_id', companyId);
-
-  const { data, error } = await query;
   if (error) {
     tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
     return;
@@ -2101,12 +2073,106 @@ async function loadOigExclusionHistory() {
   tbody.innerHTML = data.map(r => `
     <tr>
       <td>${new Date(r.checked_at).toLocaleString()}</td>
+      <td>${r.staff_checked_count}</td>
+      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
+      <td>${r.emailed_at ? '✓' : '—'}</td>
+      <td><button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button></td>
+    </tr>
+  `).join('');
+}
+
+async function loadOigExclusionHistory() {
+  const tbody = document.getElementById('oigHistoryTbody');
+  if (!tbody) return;
+  const companyId = document.getElementById('oigCompanyFilter').value || null;
+
+  let query = sb.from('oig_exclusion_checks')
+    .select('id, checked_at, staff_checked_count, match_count, companies(name), profiles(full_name)')
+    .order('checked_at', { ascending: false })
+    .limit(25);
+  if (companyId) query = query.eq('company_id', companyId);
+
+  const { data, error } = await query;
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    return;
+  }
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${new Date(r.checked_at).toLocaleString()}</td>
       <td>${r.companies ? r.companies.name : 'All companies'}</td>
       <td>${r.staff_checked_count}</td>
       <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
       <td>${r.profiles ? r.profiles.full_name : '—'}</td>
+      <td><button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button></td>
     </tr>
   `).join('');
+}
+
+// Details pop-out for a single OIG check — shows exactly which staff
+// were scanned (name + NPI) and whether each one came back clear or
+// as a potential match. Styled as the same centered card pattern used
+// by showFullProfileSheet, since that's the established "pop-out"
+// look elsewhere in the app. checked_staff is only populated for
+// checks run after this feature was added — older rows show a note
+// explaining the per-staff list wasn't captured at the time.
+async function showOigCheckDetails(checkId) {
+  const existing = document.getElementById('oigDetailsModal');
+  if (existing) existing.remove();
+
+  const { data: row, error } = await sb.from('oig_exclusion_checks')
+    .select('checked_at, staff_checked_count, match_count, matches, checked_staff, leie_source, companies(name)')
+    .eq('id', checkId)
+    .single();
+
+  if (error || !row) {
+    toast('Could not load check details' + (error ? ': ' + error.message : ''), true);
+    return;
+  }
+
+  const matchedIds = new Set((row.matches || []).map(m => m.staff_id));
+  const staffList = row.checked_staff || [];
+  const staffRowsHtml = staffList.length
+    ? staffList
+        .slice()
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+        .map(s => {
+          const isMatch = matchedIds.has(s.id);
+          return `<tr>
+            <td>${s.full_name || '—'}</td>
+            <td>${s.npi || '—'}</td>
+            <td style="${isMatch ? 'color:#f87171;font-weight:700;' : 'color:#4ade80;'}">${isMatch ? '⚠ Potential match' : '✓ Clear'}</td>
+          </tr>`;
+        }).join('')
+    : `<tr><td colspan="3" style="color:rgba(255,255,255,.4);">This check ran before per-staff detail was captured — only the summary counts are available for it.</td></tr>`;
+
+  const modal = document.createElement('div');
+  modal.id = 'oigDetailsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1600;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 70vw, 800px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;">
+        <div>
+          <div style="color:#fff;font-size:18px;font-weight:700;">OIG Check Details</div>
+          <div style="color:rgba(255,255,255,.4);font-size:12px;">${row.companies ? row.companies.name : (currentCompany?.name || 'Your company')} — ${new Date(row.checked_at).toLocaleString()}</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('oigDetailsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 28px;">
+        <p style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:14px;">Checked ${row.staff_checked_count} staff member(s) against the OIG exclusion list downloaded from ${row.leie_source || 'oig.hhs.gov'}. ${row.match_count} potential match(es) found.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Staff</th><th>NPI</th><th>Result</th></tr></thead>
+            <tbody>${staffRowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
 }
 
 function toggleDocsMoreMenu() {
