@@ -11776,6 +11776,7 @@ async function processTemplateFile(name, file, err) {
 
     _pendingTemplateFile = file;
     _pendingTemplateFieldNames = fieldNames;
+    await loadFieldMappingMemory(); // fresh learned-mapping data before guessing
     showTemplateFieldMappingModal(name, fieldNames);
   } catch (e) {
     err.textContent = 'Could not read this PDF: ' + e.message;
@@ -11783,28 +11784,29 @@ async function processTemplateFile(name, file, err) {
   }
 }
 
+// Shared normalization used both by the static regex guesses below AND
+// by the learned-mapping memory (see recordFieldMappingMemory /
+// memoryGuess) — keeping this in one place guarantees a field seen at
+// save time and the same field seen later on a different template
+// normalize identically, so memory lookups actually hit.
+function normalizeFieldName(fieldName) {
+  // Strip a leading page-number prefix ("p3_", "p12_", etc.) that
+  // Acrobat's "Prepare Form" auto-detect adds automatically — it's not
+  // part of the field's actual label. Then convert underscores to
+  // spaces, EXCEPT a trailing "_2"/"_3"/etc. (Acrobat's own suffix for
+  // the 2nd, 3rd... occurrence of a repeated field), which several
+  // guesses rely on to distinguish license/education entry #1 from #2.
+  const stripped = fieldName.replace(/^p\d+_/i, '');
+  return stripped.replace(/_(?!\d+$)/g, ' ').toLowerCase().trim();
+}
+
 function guessDefaultMapping(fieldName) {
   // Best-effort auto-suggestion so mapping a 20-field form isn't 20 manual
   // dropdown picks — admin can still override any of these before saving.
-  //
-  // Two normalizations happen before any pattern is tested, because the
-  // guesses below were written assuming clean, space-separated field
-  // labels (like a hand-typed CAQH form) and silently failed on ANY PDF
-  // that doesn't follow that convention — which turned out to be most
-  // PDFs exported from Acrobat's "Prepare Form" auto-detect, including
-  // Oklahoma's ODH Form 606:
-  //   1. Strip a leading page-number prefix ("p3_", "p12_", etc.) that
-  //      Acrobat adds automatically — every anchored pattern below
-  //      (the ones using ^...$) can never match a name still carrying
-  //      that prefix, since it's not part of the label at all.
-  //   2. Convert underscores to spaces, EXCEPT a trailing "_2"/"_3"/etc.
-  //      (Acrobat's own suffix for the 2nd, 3rd... occurrence of a
-  //      repeated field on the form) — several guesses below rely on
-  //      that exact "_2"/"_3" suffix to distinguish license/education
-  //      entry #1 from #2 from #3, so it has to survive the cleanup
-  //      that everything else needs.
-  const stripped = fieldName.replace(/^p\d+_/i, '');
-  const n = stripped.replace(/_(?!\d+$)/g, ' ').toLowerCase().trim();
+  // This is the LAST-RESORT layer — memoryGuess() (learned from real
+  // admin corrections) is checked first; this static list only fires
+  // when nothing's ever been mapped for anything like this field name.
+  const n = normalizeFieldName(fieldName);
   const guesses = [
     // Personal name fields — split Last/First/Middle is a different
     // convention than the combined "Provider name" pattern further
@@ -11895,6 +11897,99 @@ function guessDefaultMapping(fieldName) {
   return '';
 }
 
+// ══ FIELD MAPPING MEMORY ══
+// Learns from every mapping an admin actually confirms (whether that
+// mapping was guessed correctly, corrected, or picked with no guess at
+// all) and reuses it on future templates — platform-wide, since a
+// field named "npid_formerly_upin" means the same thing no matter
+// which company's admin uploaded the PDF. This is the layer that gets
+// better over time; guessDefaultMapping above is only the fallback
+// for a field name nothing has ever taught the system yet.
+let _fieldMappingMemory = [];
+
+async function loadFieldMappingMemory() {
+  const { data, error } = await sb.from('credentialing_field_mapping_memory')
+    .select('normalized_field_name, data_source_key, use_count');
+  if (!error && data) _fieldMappingMemory = data;
+}
+
+// A small, deliberately generic stopword list — common connector words
+// that appear in form labels ("of", "the", "for"...) but carry no
+// identifying signal, so they'd otherwise dilute the word-overlap
+// score between two genuinely-related field names.
+const _FIELD_NAME_STOPWORDS = new Set(['of','the','and','or','is','you','your','a','an','to','for','this','that','if','yes','no','are','do','does']);
+
+function _fieldNameWordSet(normalized) {
+  return new Set(normalized.split(/\s+/).filter(w => w && !_FIELD_NAME_STOPWORDS.has(w)));
+}
+
+function _wordOverlapScore(setA, setB) {
+  if (!setA.size || !setB.size) return 0;
+  let intersection = 0;
+  for (const w of setA) if (setB.has(w)) intersection++;
+  const union = new Set([...setA, ...setB]).size;
+  return intersection / union; // Jaccard similarity
+}
+
+function memoryGuess(normalizedName) {
+  if (!_fieldMappingMemory.length) return '';
+
+  // Exact match first — a field name that's been mapped before, verbatim.
+  // Highest confidence; when the same normalized name has been mapped to
+  // more than one data source across different templates, go with
+  // whichever has actually been confirmed most often.
+  const exact = _fieldMappingMemory.filter(m => m.normalized_field_name === normalizedName);
+  if (exact.length) {
+    exact.sort((a, b) => b.use_count - a.use_count);
+    return exact[0].data_source_key;
+  }
+
+  // Fuzzy fallback — word-overlap similarity against every remembered
+  // field name, so slightly-differently-worded fields ("Individual NPI
+  // Number" vs. a previously-learned "Individual NPI") still benefit
+  // from what's already been confirmed elsewhere, not just an exact
+  // repeat of the same PDF. Threshold is deliberately conservative
+  // (0.6) — a wrong fuzzy guess an admin doesn't notice to correct is
+  // worse than an honest blank.
+  const targetWords = _fieldNameWordSet(normalizedName);
+  let best = null, bestScore = 0;
+  for (const m of _fieldMappingMemory) {
+    const score = _wordOverlapScore(targetWords, _fieldNameWordSet(m.normalized_field_name));
+    if (score > bestScore || (score === bestScore && best && m.use_count > best.use_count)) {
+      bestScore = score;
+      best = m;
+    }
+  }
+  return (best && bestScore >= 0.6) ? best.data_source_key : '';
+}
+
+// The single entry point the mapping modal actually calls: learned
+// memory first, static regex heuristics as the last-resort fallback.
+function bestGuess(fieldName) {
+  const normalized = normalizeFieldName(fieldName);
+  return memoryGuess(normalized) || guessDefaultMapping(fieldName);
+}
+
+// Fire-and-forget from the admin's point of view — recorded AFTER the
+// template itself has already saved successfully, so a hiccup here
+// never blocks or rolls back the actual save. Every field the admin
+// left mapped (whether guessed or manually chosen) is one more data
+// point for memoryGuess() the next time anything like it shows up.
+async function recordFieldMappingMemory(mapping) {
+  for (const [fieldName, dataSourceKey] of Object.entries(mapping)) {
+    if (!dataSourceKey) continue;
+    try {
+      await sb.rpc('record_field_mapping_memory', {
+        p_normalized_field_name: normalizeFieldName(fieldName),
+        p_data_source_key: dataSourceKey,
+      });
+    } catch (e) {
+      console.error('Could not record field mapping memory (non-fatal):', e);
+    }
+  }
+  await loadFieldMappingMemory(); // refresh cache so this session benefits immediately too
+}
+
 function showTemplateFieldMappingModal(name, fieldNames) {
   const existing = document.getElementById('templateMappingModal');
   if (existing) existing.remove();
@@ -11904,7 +11999,6 @@ function showTemplateFieldMappingModal(name, fieldNames) {
   ).join('');
 
   const rows = fieldNames.map(fn => {
-    const guess = guessDefaultMapping(fn);
     return `
     <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <span style="flex:1;color:#fff;font-size:13px;">${fn}</span>
@@ -11931,9 +12025,10 @@ function showTemplateFieldMappingModal(name, fieldNames) {
     </div>`;
   document.body.appendChild(modal);
 
-  // Apply the guessed defaults now that the selects exist in the DOM
+  // Apply the guessed defaults now that the selects exist in the DOM —
+  // learned memory first, static heuristics as fallback (see bestGuess).
   modal.querySelectorAll('select[data-field-name]').forEach(sel => {
-    const guess = guessDefaultMapping(sel.dataset.fieldName);
+    const guess = bestGuess(sel.dataset.fieldName);
     if (guess) sel.value = guess;
   });
 }
@@ -11973,6 +12068,7 @@ async function saveTemplateMapping(name) {
     toast(`✓ Template "${name}" saved`);
     _credTemplatesCache = null; // new template added — force a fresh fetch
     await loadCredentialingTemplates();
+    recordFieldMappingMemory(mapping); // learn from this mapping for next time — never blocks the save above, runs after
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
     errEl.style.display = 'block';
