@@ -388,6 +388,11 @@ window.selkoSharedAuthStorage = {
 
 
     <div id="tabDocs" style="display:none;">
+      <div style="display:flex;gap:8px;margin-bottom:14px;">
+        <button class="tab active" id="docsSubTab-active" onclick="setDocsSubView('active')" style="background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;">📄 Active documents</button>
+        <button class="tab" id="docsSubTab-missing" onclick="setDocsSubView('missing')" style="background:transparent;border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7);">❗ Missing documents</button>
+      </div>
+      <div id="docsActiveSection">
       <div class="dark-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
         <h2 style="margin-bottom:0;">All staff documents</h2>
@@ -420,11 +425,11 @@ window.selkoSharedAuthStorage = {
         <div style="position:relative;display:inline-block;">
           <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Downloads</button>
           <div id="docsMoreMenu" style="display:none;position:absolute;top:36px;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:180px;z-index:20;padding:4px;">
-            <button class="btn-more-item" id="bulkDownloadBtn" onclick="closeDocsMoreMenu();showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
+            <button class="btn-more-item" id="bulkDownloadBtn" onclick="closeDocsMoreMenu();showBulkDownloadPicker()" style="display:none;">⬇ Download files…</button>
             <button class="btn-more-item" onclick="closeDocsMoreMenu();exportCsv()">⬇ Export CSV</button>
             <button class="btn-more-item" id="exportProExcelBtn" onclick="closeDocsMoreMenu();exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
             <button class="btn-more-item" id="exportProPdfBtn" onclick="closeDocsMoreMenu();exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
-            <button class="btn-more-item" onclick="closeDocsMoreMenu();showAuditPacketPicker()">🗂 Audit packet (per staff)</button>
+            <button class="btn-more-item" onclick="closeDocsMoreMenu();showAuditPacketPicker()">🗂 Audit packet (single staff member)</button>
           </div>
         </div>
       </div>
@@ -550,7 +555,9 @@ window.selkoSharedAuthStorage = {
         </table>
       </div>
       </div>
+      </div>
 
+      <div id="docsMissingSection" style="display:none;">
       <div class="dark-panel" id="missingDocsPanel" style="display:none;" data-default-open="true">
         <h2>Missing documents by staff member</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one tracked document — required or optional — sorted by the most outstanding first. This reflects what applies to their specific discipline. Filter below to focus on just required items, just optional ones, or a specific document type.</p>
@@ -572,6 +579,7 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" id="missingDocsProLock">
         <h2>Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
         <p style="font-size:13px;color:rgba(255,255,255,.5);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
+      </div>
       </div>
     </div>
 
@@ -4359,6 +4367,35 @@ async function loadAdminFilters() {
 }
 
 let _docViewMode = 'all'; // 'needs' | 'verified' | 'noFile' | 'all' — defaults to showing everything, so nothing looks "missing" that's actually just filtered out
+
+// Sub-tab within the Documents tab: "Active documents" (the full table
+// of every tracked document and its status) vs. "Missing documents"
+// (the gap report — staff who don't have a required/optional document
+// type on file at all, which the status filters above can never show
+// since they only describe records that already exist). These were
+// already two separate, fully-built sections stacked on the same
+// page — this just adds a toggle between them instead of requiring a
+// scroll past the whole staff table to find the missing-docs report.
+function setDocsSubView(view) {
+  const activeBtn = document.getElementById('docsSubTab-active');
+  const missingBtn = document.getElementById('docsSubTab-missing');
+  const activeSection = document.getElementById('docsActiveSection');
+  const missingSection = document.getElementById('docsMissingSection');
+
+  const isActive = view === 'active';
+  activeSection.style.display = isActive ? 'block' : 'none';
+  missingSection.style.display = isActive ? 'none' : 'block';
+
+  activeBtn.style.background = isActive ? 'var(--teal)' : 'transparent';
+  activeBtn.style.borderColor = isActive ? 'var(--teal)' : 'rgba(255,255,255,.2)';
+  activeBtn.style.color = isActive ? '#fff' : 'rgba(255,255,255,.7)';
+  activeBtn.style.fontWeight = isActive ? '700' : '500';
+
+  missingBtn.style.background = !isActive ? 'var(--teal)' : 'transparent';
+  missingBtn.style.borderColor = !isActive ? 'var(--teal)' : 'rgba(255,255,255,.2)';
+  missingBtn.style.color = !isActive ? '#fff' : 'rgba(255,255,255,.7)';
+  missingBtn.style.fontWeight = !isActive ? '700' : '500';
+}
 
 function setDocViewMode(mode) {
   _docViewMode = mode;
