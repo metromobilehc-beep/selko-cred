@@ -397,10 +397,10 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <button class="tab active" id="docViewToggle-all" onclick="setDocViewMode('all')">All</button>
-        <button class="tab" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
-        <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')">✓ Verified <span id="verifiedCount"></span></button>
-        <button class="tab" id="docViewToggle-noFile" onclick="setDocViewMode('noFile')" style="background:var(--gold);border-color:var(--gold);color:#1c1917;">⚠ Verified, no file <span id="noFileCount"></span></button>
+        <button class="tab active" id="docViewToggle-all" onclick="setDocViewMode('all')" style="background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;">All</button>
+        <button class="tab" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:transparent;border-color:var(--danger);color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
+        <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')" style="background:transparent;border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7);">✓ Verified <span id="verifiedCount"></span></button>
+        <button class="tab" id="docViewToggle-noFile" onclick="setDocViewMode('noFile')" style="background:transparent;border-color:var(--gold);color:var(--gold);">⚠ Verified, no file <span id="noFileCount"></span></button>
       </div>
       <div class="filter-bar">
         <select class="filter-sel" id="fEmp"      onchange="loadAdminDocs()"><option value="">All staff</option></select>
@@ -4228,16 +4228,25 @@ function setDocViewMode(mode) {
     if (!btn) return;
     const active = m === mode;
     btn.classList.toggle('active', active);
+    // Every button gets an explicit, clearly different look for its
+    // active vs. inactive state — not just the .active class alone,
+    // since the shared .tab styling elsewhere didn't give these four
+    // filter buttons enough visual distinction to tell at a glance
+    // which one was actually selected.
     if (m === 'needs') {
-      btn.style.background = active ? 'var(--danger)' : '';
-      btn.style.borderColor = active ? 'var(--danger)' : '';
+      btn.style.background = active ? 'var(--danger)' : 'transparent';
+      btn.style.borderColor = 'var(--danger)';
+      btn.style.color = active ? '#fff' : 'var(--danger)';
     } else if (m === 'noFile') {
-      btn.style.background = active ? 'var(--gold)' : '';
-      btn.style.borderColor = active ? 'var(--gold)' : '';
+      btn.style.background = active ? 'var(--gold)' : 'transparent';
+      btn.style.borderColor = 'var(--gold)';
+      btn.style.color = active ? '#1c1917' : 'var(--gold)';
     } else {
-      btn.style.background = '';
-      btn.style.borderColor = '';
+      btn.style.background = active ? 'var(--teal)' : 'transparent';
+      btn.style.borderColor = active ? 'var(--teal)' : 'rgba(255,255,255,.2)';
+      btn.style.color = active ? '#fff' : 'rgba(255,255,255,.7)';
     }
+    btn.style.fontWeight = active ? '700' : '500';
   });
   loadAdminDocs();
 }
