@@ -397,10 +397,10 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
-        <button class="tab active" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
+        <button class="tab active" id="docViewToggle-all" onclick="setDocViewMode('all')">All</button>
+        <button class="tab" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
         <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')">✓ Verified <span id="verifiedCount"></span></button>
         <button class="tab" id="docViewToggle-noFile" onclick="setDocViewMode('noFile')" style="background:var(--gold);border-color:var(--gold);color:#1c1917;">⚠ Verified, no file <span id="noFileCount"></span></button>
-        <button class="tab" id="docViewToggle-all" onclick="setDocViewMode('all')">All</button>
       </div>
       <div class="filter-bar">
         <select class="filter-sel" id="fEmp"      onchange="loadAdminDocs()"><option value="">All staff</option></select>
@@ -4218,7 +4218,7 @@ async function loadAdminFilters() {
     '<option value="OTHER">No discipline assigned</option>';
 }
 
-let _docViewMode = 'needs'; // 'needs' | 'verified' | 'noFile' | 'all' — defaults to what actually needs action
+let _docViewMode = 'all'; // 'needs' | 'verified' | 'noFile' | 'all' — defaults to showing everything, so nothing looks "missing" that's actually just filtered out
 
 function setDocViewMode(mode) {
   _docViewMode = mode;
