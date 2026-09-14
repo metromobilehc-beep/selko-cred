@@ -11786,8 +11786,39 @@ async function processTemplateFile(name, file, err) {
 function guessDefaultMapping(fieldName) {
   // Best-effort auto-suggestion so mapping a 20-field form isn't 20 manual
   // dropdown picks — admin can still override any of these before saving.
-  const n = fieldName.toLowerCase();
+  //
+  // Two normalizations happen before any pattern is tested, because the
+  // guesses below were written assuming clean, space-separated field
+  // labels (like a hand-typed CAQH form) and silently failed on ANY PDF
+  // that doesn't follow that convention — which turned out to be most
+  // PDFs exported from Acrobat's "Prepare Form" auto-detect, including
+  // Oklahoma's ODH Form 606:
+  //   1. Strip a leading page-number prefix ("p3_", "p12_", etc.) that
+  //      Acrobat adds automatically — every anchored pattern below
+  //      (the ones using ^...$) can never match a name still carrying
+  //      that prefix, since it's not part of the label at all.
+  //   2. Convert underscores to spaces, EXCEPT a trailing "_2"/"_3"/etc.
+  //      (Acrobat's own suffix for the 2nd, 3rd... occurrence of a
+  //      repeated field on the form) — several guesses below rely on
+  //      that exact "_2"/"_3" suffix to distinguish license/education
+  //      entry #1 from #2 from #3, so it has to survive the cleanup
+  //      that everything else needs.
+  const stripped = fieldName.replace(/^p\d+_/i, '');
+  const n = stripped.replace(/_(?!\d+$)/g, ' ').toLowerCase().trim();
   const guesses = [
+    // Personal name fields — split Last/First/Middle is a different
+    // convention than the combined "Provider name" pattern further
+    // down, common on state/hospital applications rather than payer
+    // enrollment forms.
+    [/^last$/, 'staff.last_name'],
+    [/^first$/, 'staff.first_name'],
+    [/^middle$/, 'staff.middle_name'],
+    [/date.*of.*birth/, 'staff.date_of_birth'],
+    // "NPID (formerly UPIN)" and similar older/alternate labels for the
+    // same individual NPI concept — the existing "individual.*npi"
+    // guess further down only catches forms that literally spell out
+    // "Individual NPI", missing this common alternate phrasing.
+    [/npid|\bupin\b/, 'staff.npi_number'],
     [/legal.*business.*name/, 'company.legal_business_name'],
     [/group.*practice.*name|practice.*name|directory/, 'company.provider_directory_name'],
     [/^tin$|tax.*id/, 'company.tax_id'],
