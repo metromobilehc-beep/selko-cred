@@ -387,6 +387,7 @@ window.selkoSharedAuthStorage = {
     </div>
 
 
+    <div id="tabDocsAnchor"></div>
     <div id="tabDocs" style="display:none;">
       <div class="dark-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
@@ -415,7 +416,7 @@ window.selkoSharedAuthStorage = {
           <option value="archived">Archived (expired 3+ months)</option>
           <option value="all">All (active + archived)</option>
         </select>
-        <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Add credential</button>
+        <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Upload document</button>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
         <div style="position:relative;display:inline-block;">
           <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Downloads</button>
@@ -427,6 +428,7 @@ window.selkoSharedAuthStorage = {
             <button class="btn-more-item" onclick="closeDocsMoreMenu();showAuditPacketPicker()">🗂 Audit packet (per staff)</button>
           </div>
         </div>
+        <button class="btn btn-sm btn-ghost" id="docsExpandBtn" onclick="toggleDocsExpandedView()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:auto;">⛶ Expand view</button>
       </div>
 
       <!-- Admin upload form -->
@@ -2107,6 +2109,35 @@ async function loadOigExclusionHistory() {
       <td>${r.profiles ? r.profiles.full_name : '—'}</td>
     </tr>
   `).join('');
+}
+
+// "Expand view" — moves the actual tabDocs element (filters, table, all
+// of it) into a larger full-screen overlay, then moves it right back to
+// its original spot on close. Deliberately not a separate rendering
+// path or a copy of the same content — reparenting the real element
+// means there's only ever one set of filters/table to keep in sync,
+// never two views that could drift apart.
+let _docsExpandedOpen = false;
+function toggleDocsExpandedView() {
+  const tabDocs = document.getElementById('tabDocs');
+  const anchor = document.getElementById('tabDocsAnchor');
+  const btn = document.getElementById('docsExpandBtn');
+
+  if (!_docsExpandedOpen) {
+    const overlay = document.createElement('div');
+    overlay.id = 'docsExpandedOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1500;overflow-y:auto;padding:24px;';
+    overlay.innerHTML = '<div style="max-width:1400px;margin:0 auto;"><button class="btn btn-sm btn-ghost" onclick="toggleDocsExpandedView()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-bottom:16px;">✕ Close expanded view</button><div id="docsExpandedContent"></div></div>';
+    document.body.appendChild(overlay);
+    document.getElementById('docsExpandedContent').appendChild(tabDocs);
+    tabDocs.style.display = 'block';
+    btn.textContent = '⛶ Expand view'; // stays available on the anchor row for consistency, though the overlay's own Close button is the primary way out
+    _docsExpandedOpen = true;
+  } else {
+    anchor.parentNode.insertBefore(tabDocs, anchor.nextSibling);
+    document.getElementById('docsExpandedOverlay')?.remove();
+    _docsExpandedOpen = false;
+  }
 }
 
 function toggleDocsMoreMenu() {
