@@ -1111,8 +1111,15 @@ window.selkoSharedAuthStorage = {
             <p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;">The system runs an automatic check every day and only actually checks/emails your company on this day each month — capped at 28 so it always falls on a real date, even in February.</p>
           </div>
           <div class="tbl-wrap">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
+                <option value="active">Active checks</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
             <table>
-              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Details</th></tr></thead>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
               <tbody id="myOigHistoryTbody"></tbody>
             </table>
           </div>
@@ -1808,13 +1815,18 @@ window.selkoSharedAuthStorage = {
           <select class="inline-select" id="oigCompanyFilter">
             <option value="">All companies</option>
           </select>
+          <select class="inline-select" id="oigArchiveFilter" onchange="loadOigExclusionHistory()" style="max-width:160px;">
+            <option value="active">Active checks</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
           <button class="btn btn-sm btn-teal" id="oigRunCheckBtn" onclick="runOigExclusionCheck()">Run check</button>
           <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
         </div>
         <div id="oigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Details</th></tr></thead>
+            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Actions</th></tr></thead>
             <tbody id="oigHistoryTbody"></tbody>
           </table>
         </div>
@@ -1883,6 +1895,26 @@ async function populateOigCompanyFilter() {
   sel.dataset.loaded = '1';
 }
 
+// Turns any thrown value (Error, Postgrest error object, raw object from
+// an Edge Function's JSON body, or a plain string) into a real string,
+// so error toasts never show the literal text "[object Object]" — which
+// happens whenever an object gets coerced by a template literal or by
+// `new Error(someObject)` (the Error constructor silently stringifies
+// via toString(), producing exactly that text as the .message).
+function extractErrorMessage(x) {
+  if (typeof x === 'string') return x;
+  if (x instanceof Error) {
+    return (x.message && x.message !== '[object Object]') ? x.message : JSON.stringify(x, Object.getOwnPropertyNames(x));
+  }
+  if (x && typeof x === 'object') {
+    const candidate = x.message || x.details || x.hint || x.error_description || x.error;
+    if (typeof candidate === 'string' && candidate) return candidate;
+    if (candidate && typeof candidate === 'object') return extractErrorMessage(candidate);
+    try { return JSON.stringify(x); } catch { return String(x); }
+  }
+  return String(x);
+}
+
 async function runOigExclusionCheck() {
   const btn = document.getElementById('oigRunCheckBtn');
   const statusEl = document.getElementById('oigCheckStatus');
@@ -1903,12 +1935,12 @@ async function runOigExclusionCheck() {
       if (error.context && typeof error.context.json === 'function') {
         try {
           const body = await error.context.json();
-          if (body && body.error) detail = body.error;
+          if (body && body.error) detail = extractErrorMessage(body.error);
         } catch (parseErr) {
           // response wasn't JSON — fall back to the generic message above
         }
       }
-      throw new Error(detail);
+      throw new Error(extractErrorMessage(detail));
     }
 
     const { error: insErr } = await sb.from('oig_exclusion_checks').insert({
@@ -1931,14 +1963,7 @@ async function runOigExclusionCheck() {
     await loadOigExclusionHistory();
   } catch (err) {
     statusEl.textContent = '';
-    let displayMessage;
-    if (err instanceof Error && err.message) {
-      displayMessage = err.message;
-    } else if (err && typeof err === 'object') {
-      displayMessage = err.message || err.details || err.hint || err.error_description || JSON.stringify(err);
-    } else {
-      displayMessage = String(err);
-    }
+    const displayMessage = extractErrorMessage(err);
     toast(`OIG check failed: ${displayMessage}`, true);
     console.error('OIG check failed — full error object:', err);
   } finally {
@@ -1971,12 +1996,12 @@ async function runMyCompanyOigCheck() {
       if (error.context && typeof error.context.json === 'function') {
         try {
           const body = await error.context.json();
-          if (body && body.error) detail = body.error;
+          if (body && body.error) detail = extractErrorMessage(body.error);
         } catch (parseErr) {
           // response wasn't JSON — fall back to the generic message above
         }
       }
-      throw new Error(detail);
+      throw new Error(extractErrorMessage(detail));
     }
 
     const { data: inserted, error: insErr } = await sb.from('oig_exclusion_checks').insert({
@@ -2001,14 +2026,7 @@ async function runMyCompanyOigCheck() {
     await loadMyOigHistory();
   } catch (err) {
     statusEl.textContent = '';
-    let displayMessage;
-    if (err instanceof Error && err.message) {
-      displayMessage = err.message;
-    } else if (err && typeof err === 'object') {
-      displayMessage = err.message || err.details || err.hint || err.error_description || JSON.stringify(err);
-    } else {
-      displayMessage = String(err);
-    }
+    const displayMessage = extractErrorMessage(err);
     toast(`OIG check failed: ${displayMessage}`, true);
     console.error('OIG check failed — full error object:', err);
   } finally {
@@ -2055,19 +2073,24 @@ async function emailOigCheckResult(checkRow, data) {
 async function loadMyOigHistory() {
   const tbody = document.getElementById('myOigHistoryTbody');
   if (!tbody) return;
+  const archiveFilter = document.getElementById('myOigArchiveFilter')?.value || 'active';
 
-  const { data, error } = await sb.from('oig_exclusion_checks')
-    .select('id, checked_at, staff_checked_count, match_count, emailed_at')
+  let query = sb.from('oig_exclusion_checks')
+    .select('id, checked_at, staff_checked_count, match_count, emailed_at, archived')
     .eq('company_id', currentCompany.id)
     .order('checked_at', { ascending: false })
     .limit(25);
+  if (archiveFilter === 'active') query = query.eq('archived', false);
+  else if (archiveFilter === 'archived') query = query.eq('archived', true);
+
+  const { data, error } = await query;
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
     return;
   }
   if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="color:rgba(255,255,255,.4);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
     return;
   }
   tbody.innerHTML = data.map(r => `
@@ -2076,7 +2099,11 @@ async function loadMyOigHistory() {
       <td>${r.staff_checked_count}</td>
       <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
       <td>${r.emailed_at ? '✓' : '—'}</td>
-      <td><button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleOigCheckArchived('${r.id}', ${!r.archived}, 'self')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteOigCheck('${r.id}', 'self')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:12px;">Delete</button>
+      </td>
     </tr>
   `).join('');
 }
@@ -2085,20 +2112,23 @@ async function loadOigExclusionHistory() {
   const tbody = document.getElementById('oigHistoryTbody');
   if (!tbody) return;
   const companyId = document.getElementById('oigCompanyFilter').value || null;
+  const archiveFilter = document.getElementById('oigArchiveFilter')?.value || 'active';
 
   let query = sb.from('oig_exclusion_checks')
-    .select('id, checked_at, staff_checked_count, match_count, companies(name), profiles(full_name)')
+    .select('id, checked_at, staff_checked_count, match_count, companies(name), profiles(full_name), archived')
     .order('checked_at', { ascending: false })
     .limit(25);
   if (companyId) query = query.eq('company_id', companyId);
+  if (archiveFilter === 'active') query = query.eq('archived', false);
+  else if (archiveFilter === 'archived') query = query.eq('archived', true);
 
   const { data, error } = await query;
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
     return;
   }
   if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.4);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
     return;
   }
   tbody.innerHTML = data.map(r => `
@@ -2108,9 +2138,33 @@ async function loadOigExclusionHistory() {
       <td>${r.staff_checked_count}</td>
       <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
       <td>${r.profiles ? r.profiles.full_name : '—'}</td>
-      <td><button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button></td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleOigCheckArchived('${r.id}', ${!r.archived}, 'admin')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteOigCheck('${r.id}', 'admin')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:12px;">Delete</button>
+      </td>
     </tr>
   `).join('');
+}
+
+// Archive is a soft-hide — the row and its full checked_staff/matches
+// detail stay in the database, just filtered out of the default
+// "Active checks" view. Delete is permanent, meant for cleaning up
+// test runs (e.g. checks fired while debugging) rather than routine
+// housekeeping — hence the confirm prompt.
+async function toggleOigCheckArchived(checkId, archived, ctx) {
+  const { error } = await sb.from('oig_exclusion_checks').update({ archived }).eq('id', checkId);
+  if (error) { toast('Could not update: ' + extractErrorMessage(error), true); return; }
+  toast(archived ? 'Check archived' : 'Check restored');
+  if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
+}
+
+async function deleteOigCheck(checkId, ctx) {
+  if (!confirm('Permanently delete this OIG check record? This cannot be undone.')) return;
+  const { error } = await sb.from('oig_exclusion_checks').delete().eq('id', checkId);
+  if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
+  toast('Check deleted');
+  if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
 }
 
 // Details pop-out for a single OIG check — shows exactly which staff
