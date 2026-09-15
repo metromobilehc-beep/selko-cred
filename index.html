@@ -11766,7 +11766,15 @@ async function processTemplateFile(name, file, err) {
     const { PDFDocument } = PDFLib;
     const pdfDoc = await PDFDocument.load(bytes);
     const form = pdfDoc.getForm();
-    const fieldNames = form.getFields().map(f => f.getName());
+    // Capture whether each field is a checkbox (duck-typed via .check(),
+    // rather than trusting a constructor name that can vary across
+    // pdf-lib builds) — the mapping modal needs this to offer "always
+    // checked/unchecked" instead of a text-value option, and the fill
+    // step needs it to call the right pdf-lib API for the field.
+    const fieldNames = form.getFields().map(f => ({
+      name: f.getName(),
+      isCheckbox: typeof f.check === 'function',
+    }));
 
     if (!fieldNames.length) {
       err.textContent = 'This PDF has no fillable form fields — it looks like a static/scanned document, not a fillable form. Only fillable PDFs (with real form fields) can be auto-filled this way.';
@@ -11990,7 +11998,7 @@ async function recordFieldMappingMemory(mapping) {
   await loadFieldMappingMemory(); // refresh cache so this session benefits immediately too
 }
 
-function showTemplateFieldMappingModal(name, fieldNames) {
+function showTemplateFieldMappingModal(name, fieldInfos) {
   const existing = document.getElementById('templateMappingModal');
   if (existing) existing.remove();
 
@@ -11998,14 +12006,29 @@ function showTemplateFieldMappingModal(name, fieldNames) {
     `<optgroup label="${g.group}">${g.options.map(([val, label]) => `<option value="${val}">${label}</option>`).join('')}</optgroup>`
   ).join('');
 
-  const rows = fieldNames.map(fn => {
+  // Fixed-value sentinels — reserved marker strings, never real data-source
+  // paths (which are always plain "staff.foo"/"company.bar" identifiers),
+  // so they're always safely distinguishable in the stored field_mapping.
+  // These exist for fields that should be the SAME on every generated copy
+  // regardless of which staff member it's for — e.g. "You are a new
+  // enrollee in Medicare" on a template scoped to exactly that scenario —
+  // as opposed to the data-source options above, which look up a live,
+  // per-person value at generation time.
+  const rows = fieldInfos.map(fi => {
+    const fn = fi.name;
+    const fixedOptionsHtml = fi.isCheckbox
+      ? `<option value="__FIXED_CHECKED__">— Always checked (fixed for this template) —</option>
+         <option value="__FIXED_UNCHECKED__">— Always unchecked (fixed for this template) —</option>`
+      : `<option value="__FIXED_TEXT__">— Fixed text (same every time) —</option>`;
     return `
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="flex:1;color:#fff;font-size:13px;">${fn}</span>
-      <select class="inline-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
+    <div class="template-mapping-row" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="flex:1;min-width:140px;color:#fff;font-size:13px;">${fn}${fi.isCheckbox ? ' <span style="color:rgba(255,255,255,.35);font-size:11px;">(checkbox)</span>' : ''}</span>
+      <select class="inline-select template-mapping-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
         <option value="">— Leave blank / fill manually —</option>
+        ${fixedOptionsHtml}
         ${optionsHtml}
       </select>
+      ${fi.isCheckbox ? '' : `<input type="text" class="inline-input template-fixed-text-input" data-field-name="${fn.replace(/"/g,'&quot;')}" placeholder="Text to always use" style="width:200px;display:none;" />`}
     </div>`;
   }).join('');
 
@@ -12013,9 +12036,9 @@ function showTemplateFieldMappingModal(name, fieldNames) {
   modal.id = 'templateMappingModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:82vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:620px;max-height:82vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldNames.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving. Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
       <div id="templateMappingRows">${rows}</div>
       <div id="templateSaveErr" style="color:#f87171;font-size:12px;margin:10px 0;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
@@ -12025,8 +12048,19 @@ function showTemplateFieldMappingModal(name, fieldNames) {
     </div>`;
   document.body.appendChild(modal);
 
+  // Show/hide the companion "fixed text" input as its select changes.
+  modal.querySelectorAll('select.template-mapping-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const row = sel.closest('.template-mapping-row');
+      const textInput = row?.querySelector('.template-fixed-text-input');
+      if (textInput) textInput.style.display = sel.value === '__FIXED_TEXT__' ? 'block' : 'none';
+    });
+  });
+
   // Apply the guessed defaults now that the selects exist in the DOM —
   // learned memory first, static heuristics as fallback (see bestGuess).
+  // Fixed-value options are never guessed — they're a deliberate manual
+  // choice per template, not something to infer from a field's name.
   modal.querySelectorAll('select[data-field-name]').forEach(sel => {
     const guess = bestGuess(sel.dataset.fieldName);
     if (guess) sel.value = guess;
@@ -12040,7 +12074,19 @@ async function saveTemplateMapping(name) {
 
   const mapping = {};
   document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
-    if (sel.value) mapping[sel.dataset.fieldName] = sel.value;
+    if (!sel.value) return;
+    if (sel.value === '__FIXED_TEXT__') {
+      // Store the admin's typed literal alongside the sentinel so
+      // fillCredTemplate knows both "this is fixed" and what to fill in —
+      // an empty typed value is treated the same as leaving the field
+      // unmapped, since "always blank" isn't meaningfully different from
+      // just not mapping it.
+      const row = sel.closest('.template-mapping-row');
+      const literal = row?.querySelector('.template-fixed-text-input')?.value?.trim() || '';
+      if (literal) mapping[sel.dataset.fieldName] = `__FIXED_TEXT__:${literal}`;
+    } else {
+      mapping[sel.dataset.fieldName] = sel.value;
+    }
   });
 
   try {
@@ -12068,7 +12114,16 @@ async function saveTemplateMapping(name) {
     toast(`✓ Template "${name}" saved`);
     _credTemplatesCache = null; // new template added — force a fresh fetch
     await loadCredentialingTemplates();
-    recordFieldMappingMemory(mapping); // learn from this mapping for next time — never blocks the save above, runs after
+    // Fixed-value mappings (__FIXED_CHECKED__/__FIXED_UNCHECKED__/__FIXED_TEXT__)
+    // are specific to what THIS template's scenario calls for — e.g. "new
+    // enrollee" only makes sense for a template scoped to new enrollees —
+    // not a generalizable "this field name usually means X" fact, so they're
+    // excluded from the shared learning system rather than polluting future
+    // guesses on unrelated templates.
+    const learnableMapping = Object.fromEntries(
+      Object.entries(mapping).filter(([, v]) => !v.startsWith('__FIXED_'))
+    );
+    recordFieldMappingMemory(learnableMapping); // never blocks the save above, runs after
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
     errEl.style.display = 'block';
@@ -12244,11 +12299,32 @@ async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
 
   const skipped = [];
   for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
-    const value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
     try {
-      form.getTextField(pdfFieldName).setText(String(value || ''));
+      if (sourcePath === '__FIXED_CHECKED__') {
+        form.getCheckBox(pdfFieldName).check();
+      } else if (sourcePath === '__FIXED_UNCHECKED__') {
+        form.getCheckBox(pdfFieldName).uncheck();
+      } else if (sourcePath.startsWith('__FIXED_TEXT__:')) {
+        form.getTextField(pdfFieldName).setText(sourcePath.slice('__FIXED_TEXT__:'.length));
+      } else {
+        // Normal data-source mapping — resolve the live value, then fill
+        // whichever kind of field this actually is. Checkboxes need
+        // check()/uncheck() (calling setText on a checkbox throws in
+        // pdf-lib), so a boolean-shaped value ("Yes"/"No", from
+        // resolveCredDataSource's boolean handling) drives a checkbox the
+        // same way it would drive text on a form that spells out Yes/No
+        // instead of using a checkbox control.
+        const value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
+        const field = form.getField(pdfFieldName);
+        if (typeof field.check === 'function') {
+          const truthy = typeof value === 'string' && ['yes', 'true'].includes(value.trim().toLowerCase());
+          if (truthy) field.check(); else field.uncheck();
+        } else {
+          form.getTextField(pdfFieldName).setText(String(value || ''));
+        }
+      }
     } catch (fieldErr) {
-      skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF — skip, don't fail the whole generation
+      skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF (or isn't the type expected) — skip, don't fail the whole generation
     }
   }
 
