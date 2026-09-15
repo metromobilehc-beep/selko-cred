@@ -14396,7 +14396,18 @@ async function saveSetDemoPassword(companyId) {
   if (!password || password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
 
   try {
-    const { data: { session } } = await sb.auth.getSession();
+    let { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) {
+      // A stored session can go stale (e.g. the tab's been open a long
+      // while) without the client surfacing it — try one silent refresh
+      // before giving up, rather than crashing straight into
+      // "Cannot read properties of null (reading 'access_token')".
+      const { data: refreshed } = await sb.auth.refreshSession();
+      session = refreshed?.session;
+    }
+    if (!session?.access_token) {
+      throw new Error('Your session has expired — refresh the page and sign in again, then retry setting the demo password.');
+    }
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
