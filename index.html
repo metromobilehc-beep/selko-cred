@@ -387,8 +387,12 @@ window.selkoSharedAuthStorage = {
     </div>
 
 
-    <div id="tabDocsAnchor"></div>
     <div id="tabDocs" style="display:none;">
+      <div style="background:var(--navy2);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;display:inline-flex;gap:8px;margin-bottom:14px;">
+        <button class="tab active" id="docsSubTab-active" onclick="setDocsSubView('active')" style="background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;">📄 Active documents</button>
+        <button class="tab" id="docsSubTab-missing" onclick="setDocsSubView('missing')" style="background:transparent;border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7);">❗ Missing documents</button>
+      </div>
+      <div id="docsActiveSection">
       <div class="dark-panel">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
         <h2 style="margin-bottom:0;">All staff documents</h2>
@@ -417,18 +421,17 @@ window.selkoSharedAuthStorage = {
           <option value="all">All (active + archived)</option>
         </select>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Upload document</button>
-        <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Custom doc type</button>
+        <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Add document type</button>
         <div style="position:relative;display:inline-block;">
           <button class="btn btn-sm btn-ghost" id="docsMoreBtn" onclick="toggleDocsMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Downloads</button>
           <div id="docsMoreMenu" style="display:none;position:absolute;top:36px;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:180px;z-index:20;padding:4px;">
-            <button class="btn-more-item" id="bulkDownloadBtn" onclick="closeDocsMoreMenu();showBulkDownloadPicker()" style="display:none;">⬇ Download all files</button>
+            <button class="btn-more-item" id="bulkDownloadBtn" onclick="closeDocsMoreMenu();showBulkDownloadPicker()" style="display:none;">⬇ Download files…</button>
             <button class="btn-more-item" onclick="closeDocsMoreMenu();exportCsv()">⬇ Export CSV</button>
             <button class="btn-more-item" id="exportProExcelBtn" onclick="closeDocsMoreMenu();exportProReportExcel()" style="display:none;">⬇ Export Excel</button>
             <button class="btn-more-item" id="exportProPdfBtn" onclick="closeDocsMoreMenu();exportProReportPDF()" style="display:none;">⬇ Export PDF</button>
-            <button class="btn-more-item" onclick="closeDocsMoreMenu();showAuditPacketPicker()">🗂 Audit packet (per staff)</button>
+            <button class="btn-more-item" onclick="closeDocsMoreMenu();showAuditPacketPicker()">🗂 Audit packet (single staff member)</button>
           </div>
         </div>
-        <button class="btn btn-sm btn-ghost" id="docsExpandBtn" onclick="toggleDocsExpandedView()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:auto;">⛶ Expand view</button>
       </div>
 
       <!-- Admin upload form -->
@@ -552,7 +555,9 @@ window.selkoSharedAuthStorage = {
         </table>
       </div>
       </div>
+      </div>
 
+      <div id="docsMissingSection" style="display:none;">
       <div class="dark-panel" id="missingDocsPanel" style="display:none;" data-default-open="true">
         <h2>Missing documents by staff member</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Everyone who's missing at least one tracked document — required or optional — sorted by the most outstanding first. This reflects what applies to their specific discipline. Filter below to focus on just required items, just optional ones, or a specific document type.</p>
@@ -574,6 +579,7 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" id="missingDocsProLock">
         <h2>Missing documents by staff member <span style="font-size:10px;color:var(--gold);margin-left:6px;">PRO</span></h2>
         <p style="font-size:13px;color:rgba(255,255,255,.5);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
+      </div>
       </div>
     </div>
 
@@ -1113,8 +1119,15 @@ window.selkoSharedAuthStorage = {
             <p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:6px;">The system runs an automatic check every day and only actually checks/emails your company on this day each month — capped at 28 so it always falls on a real date, even in February.</p>
           </div>
           <div class="tbl-wrap">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
+                <option value="active">Active checks</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
             <table>
-              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th></tr></thead>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
               <tbody id="myOigHistoryTbody"></tbody>
             </table>
           </div>
@@ -1810,13 +1823,18 @@ window.selkoSharedAuthStorage = {
           <select class="inline-select" id="oigCompanyFilter">
             <option value="">All companies</option>
           </select>
+          <select class="inline-select" id="oigArchiveFilter" onchange="loadOigExclusionHistory()" style="max-width:160px;">
+            <option value="active">Active checks</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
           <button class="btn btn-sm btn-teal" id="oigRunCheckBtn" onclick="runOigExclusionCheck()">Run check</button>
           <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
         </div>
         <div id="oigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:10px;"></div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th></tr></thead>
+            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Actions</th></tr></thead>
             <tbody id="oigHistoryTbody"></tbody>
           </table>
         </div>
@@ -1885,6 +1903,26 @@ async function populateOigCompanyFilter() {
   sel.dataset.loaded = '1';
 }
 
+// Turns any thrown value (Error, Postgrest error object, raw object from
+// an Edge Function's JSON body, or a plain string) into a real string,
+// so error toasts never show the literal text "[object Object]" — which
+// happens whenever an object gets coerced by a template literal or by
+// `new Error(someObject)` (the Error constructor silently stringifies
+// via toString(), producing exactly that text as the .message).
+function extractErrorMessage(x) {
+  if (typeof x === 'string') return x;
+  if (x instanceof Error) {
+    return (x.message && x.message !== '[object Object]') ? x.message : JSON.stringify(x, Object.getOwnPropertyNames(x));
+  }
+  if (x && typeof x === 'object') {
+    const candidate = x.message || x.details || x.hint || x.error_description || x.error;
+    if (typeof candidate === 'string' && candidate) return candidate;
+    if (candidate && typeof candidate === 'object') return extractErrorMessage(candidate);
+    try { return JSON.stringify(x); } catch { return String(x); }
+  }
+  return String(x);
+}
+
 async function runOigExclusionCheck() {
   const btn = document.getElementById('oigRunCheckBtn');
   const statusEl = document.getElementById('oigCheckStatus');
@@ -1905,18 +1943,19 @@ async function runOigExclusionCheck() {
       if (error.context && typeof error.context.json === 'function') {
         try {
           const body = await error.context.json();
-          if (body && body.error) detail = body.error;
+          if (body && body.error) detail = extractErrorMessage(body.error);
         } catch (parseErr) {
           // response wasn't JSON — fall back to the generic message above
         }
       }
-      throw new Error(detail);
+      throw new Error(extractErrorMessage(detail));
     }
 
     const { error: insErr } = await sb.from('oig_exclusion_checks').insert({
       company_id: companyId,
       checked_by: currentProfile ? currentProfile.id : null,
       staff_checked_count: data.checked,
+      checked_staff: data.checked_staff || null,
       matches: data.matches,
       match_count: data.matches.length,
       leie_source: data.leie_source
@@ -1932,14 +1971,7 @@ async function runOigExclusionCheck() {
     await loadOigExclusionHistory();
   } catch (err) {
     statusEl.textContent = '';
-    let displayMessage;
-    if (err instanceof Error && err.message) {
-      displayMessage = err.message;
-    } else if (err && typeof err === 'object') {
-      displayMessage = err.message || err.details || err.hint || err.error_description || JSON.stringify(err);
-    } else {
-      displayMessage = String(err);
-    }
+    const displayMessage = extractErrorMessage(err);
     toast(`OIG check failed: ${displayMessage}`, true);
     console.error('OIG check failed — full error object:', err);
   } finally {
@@ -1972,18 +2004,19 @@ async function runMyCompanyOigCheck() {
       if (error.context && typeof error.context.json === 'function') {
         try {
           const body = await error.context.json();
-          if (body && body.error) detail = body.error;
+          if (body && body.error) detail = extractErrorMessage(body.error);
         } catch (parseErr) {
           // response wasn't JSON — fall back to the generic message above
         }
       }
-      throw new Error(detail);
+      throw new Error(extractErrorMessage(detail));
     }
 
     const { data: inserted, error: insErr } = await sb.from('oig_exclusion_checks').insert({
       company_id: companyId,
       checked_by: currentProfile ? currentProfile.id : null,
       staff_checked_count: data.checked,
+      checked_staff: data.checked_staff || null,
       matches: data.matches,
       match_count: data.matches.length,
       leie_source: data.leie_source
@@ -2001,14 +2034,7 @@ async function runMyCompanyOigCheck() {
     await loadMyOigHistory();
   } catch (err) {
     statusEl.textContent = '';
-    let displayMessage;
-    if (err instanceof Error && err.message) {
-      displayMessage = err.message;
-    } else if (err && typeof err === 'object') {
-      displayMessage = err.message || err.details || err.hint || err.error_description || JSON.stringify(err);
-    } else {
-      displayMessage = String(err);
-    }
+    const displayMessage = extractErrorMessage(err);
     toast(`OIG check failed: ${displayMessage}`, true);
     console.error('OIG check failed — full error object:', err);
   } finally {
@@ -2055,19 +2081,24 @@ async function emailOigCheckResult(checkRow, data) {
 async function loadMyOigHistory() {
   const tbody = document.getElementById('myOigHistoryTbody');
   if (!tbody) return;
+  const archiveFilter = document.getElementById('myOigArchiveFilter')?.value || 'active';
 
-  const { data, error } = await sb.from('oig_exclusion_checks')
-    .select('checked_at, staff_checked_count, match_count, emailed_at')
+  let query = sb.from('oig_exclusion_checks')
+    .select('id, checked_at, staff_checked_count, match_count, emailed_at, archived')
     .eq('company_id', currentCompany.id)
     .order('checked_at', { ascending: false })
     .limit(25);
+  if (archiveFilter === 'active') query = query.eq('archived', false);
+  else if (archiveFilter === 'archived') query = query.eq('archived', true);
+
+  const { data, error } = await query;
 
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
     return;
   }
   if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="4" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="color:rgba(255,255,255,.4);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
     return;
   }
   tbody.innerHTML = data.map(r => `
@@ -2076,6 +2107,11 @@ async function loadMyOigHistory() {
       <td>${r.staff_checked_count}</td>
       <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
       <td>${r.emailed_at ? '✓' : '—'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleOigCheckArchived('${r.id}', ${!r.archived}, 'self')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteOigCheck('${r.id}', 'self')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:12px;">Delete</button>
+      </td>
     </tr>
   `).join('');
 }
@@ -2084,20 +2120,23 @@ async function loadOigExclusionHistory() {
   const tbody = document.getElementById('oigHistoryTbody');
   if (!tbody) return;
   const companyId = document.getElementById('oigCompanyFilter').value || null;
+  const archiveFilter = document.getElementById('oigArchiveFilter')?.value || 'active';
 
   let query = sb.from('oig_exclusion_checks')
-    .select('checked_at, staff_checked_count, match_count, companies(name), profiles(full_name)')
+    .select('id, checked_at, staff_checked_count, match_count, companies(name), profiles(full_name), archived')
     .order('checked_at', { ascending: false })
     .limit(25);
   if (companyId) query = query.eq('company_id', companyId);
+  if (archiveFilter === 'active') query = query.eq('archived', false);
+  else if (archiveFilter === 'archived') query = query.eq('archived', true);
 
   const { data, error } = await query;
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
     return;
   }
   if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:rgba(255,255,255,.4);">No checks run yet.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.4);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
     return;
   }
   tbody.innerHTML = data.map(r => `
@@ -2107,37 +2146,115 @@ async function loadOigExclusionHistory() {
       <td>${r.staff_checked_count}</td>
       <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
       <td>${r.profiles ? r.profiles.full_name : '—'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleOigCheckArchived('${r.id}', ${!r.archived}, 'admin')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteOigCheck('${r.id}', 'admin')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:12px;">Delete</button>
+      </td>
     </tr>
   `).join('');
 }
 
-// "Expand view" — moves the actual tabDocs element (filters, table, all
-// of it) into a larger full-screen overlay, then moves it right back to
-// its original spot on close. Deliberately not a separate rendering
-// path or a copy of the same content — reparenting the real element
-// means there's only ever one set of filters/table to keep in sync,
-// never two views that could drift apart.
-let _docsExpandedOpen = false;
-function toggleDocsExpandedView() {
-  const tabDocs = document.getElementById('tabDocs');
-  const anchor = document.getElementById('tabDocsAnchor');
-  const btn = document.getElementById('docsExpandBtn');
+// Archive is a soft-hide — the row and its full checked_staff/matches
+// detail stay in the database, just filtered out of the default
+// "Active checks" view. Delete is permanent, meant for cleaning up
+// test runs (e.g. checks fired while debugging) rather than routine
+// housekeeping — hence the confirm prompt.
+async function toggleOigCheckArchived(checkId, archived, ctx) {
+  const { error } = await sb.from('oig_exclusion_checks').update({ archived }).eq('id', checkId);
+  if (error) { toast('Could not update: ' + extractErrorMessage(error), true); return; }
+  toast(archived ? 'Check archived' : 'Check restored');
+  if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
+}
 
-  if (!_docsExpandedOpen) {
-    const overlay = document.createElement('div');
-    overlay.id = 'docsExpandedOverlay';
-    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:1500;overflow-y:auto;padding:24px;';
-    overlay.innerHTML = '<div style="max-width:1400px;margin:0 auto;"><button class="btn btn-sm btn-ghost" onclick="toggleDocsExpandedView()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-bottom:16px;">✕ Close expanded view</button><div id="docsExpandedContent"></div></div>';
-    document.body.appendChild(overlay);
-    document.getElementById('docsExpandedContent').appendChild(tabDocs);
-    tabDocs.style.display = 'block';
-    btn.textContent = '⛶ Expand view'; // stays available on the anchor row for consistency, though the overlay's own Close button is the primary way out
-    _docsExpandedOpen = true;
-  } else {
-    anchor.parentNode.insertBefore(tabDocs, anchor.nextSibling);
-    document.getElementById('docsExpandedOverlay')?.remove();
-    _docsExpandedOpen = false;
+async function deleteOigCheck(checkId, ctx) {
+  if (!confirm('Permanently delete this OIG check record? This cannot be undone.')) return;
+  const { error } = await sb.from('oig_exclusion_checks').delete().eq('id', checkId);
+  if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
+  toast('Check deleted');
+  if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
+}
+
+// Details pop-out for a single OIG check — shows exactly which staff
+// were scanned (name + NPI) and whether each one came back clear or
+// as a potential match. Styled as the same centered card pattern used
+// by showFullProfileSheet, since that's the established "pop-out"
+// look elsewhere in the app. checked_staff is only populated for
+// checks run after this feature was added — older rows show a note
+// explaining the per-staff list wasn't captured at the time.
+async function showOigCheckDetails(checkId) {
+  const existing = document.getElementById('oigDetailsModal');
+  if (existing) existing.remove();
+
+  const { data: row, error } = await sb.from('oig_exclusion_checks')
+    .select('checked_at, staff_checked_count, match_count, matches, checked_staff, leie_source, companies(name)')
+    .eq('id', checkId)
+    .single();
+
+  if (error || !row) {
+    toast('Could not load check details' + (error ? ': ' + error.message : ''), true);
+    return;
   }
+
+  // Index matches by staff_id so each row can show its own confidence
+  // level, not just a flat yes/no — a match's matchType/confidence only
+  // exists on checks run after the state-corroboration fix, so older
+  // checks fall back to a generic "Potential match" label.
+  const matchesById = new Map((row.matches || []).map(m => [m.staff_id, m]));
+  const confidenceLabel = {
+    high: '⚠ Match (NPI-confirmed)',
+    medium: '⚠ Match (name + license state align)',
+    low: '⚠ Possible match — name only, verify manually',
+  };
+  const confidenceColor = { high: '#f87171', medium: '#fb923c', low: '#facc15' };
+  const staffList = row.checked_staff || [];
+  const staffRowsHtml = staffList.length
+    ? staffList
+        .slice()
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+        .map(s => {
+          const match = matchesById.get(s.id);
+          if (!match) {
+            return `<tr>
+              <td>${s.full_name || '—'}</td>
+              <td>${s.npi || '—'}</td>
+              <td style="color:#4ade80;">✓ Clear</td>
+            </tr>`;
+          }
+          const label = match.confidence ? confidenceLabel[match.confidence] : '⚠ Potential match';
+          const color = match.confidence ? confidenceColor[match.confidence] : '#f87171';
+          return `<tr>
+            <td>${s.full_name || '—'}</td>
+            <td>${s.npi || '—'}</td>
+            <td style="color:${color};font-weight:700;" title="${match.detail || ''}">${label}</td>
+          </tr>`;
+        }).join('')
+    : `<tr><td colspan="3" style="color:rgba(255,255,255,.4);">This check ran before per-staff detail was captured — only the summary counts are available for it.</td></tr>`;
+
+  const modal = document.createElement('div');
+  modal.id = 'oigDetailsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1600;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 70vw, 800px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;">
+        <div>
+          <div style="color:#fff;font-size:18px;font-weight:700;">OIG Check Details</div>
+          <div style="color:rgba(255,255,255,.4);font-size:12px;">${row.companies ? row.companies.name : (currentCompany?.name || 'Your company')} — ${new Date(row.checked_at).toLocaleString()}</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('oigDetailsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 28px;">
+        <p style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:6px;">Checked ${row.staff_checked_count} staff member(s) against the OIG exclusion list downloaded from ${row.leie_source || 'oig.hhs.gov'}. ${row.match_count} potential match(es) found.</p>
+        ${row.match_count > 0 ? `<p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:14px;">NPI-confirmed matches are reliable — NPIs are unique. Name-only matches are NOT verified against anything else and can easily be coincidental for common names; treat "verify manually" results as a starting point for manual review, not a confirmed exclusion.</p>` : ''}
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Staff</th><th>NPI</th><th>Result</th></tr></thead>
+            <tbody>${staffRowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
 }
 
 function toggleDocsMoreMenu() {
@@ -4258,6 +4375,35 @@ async function loadAdminFilters() {
 }
 
 let _docViewMode = 'all'; // 'needs' | 'verified' | 'noFile' | 'all' — defaults to showing everything, so nothing looks "missing" that's actually just filtered out
+
+// Sub-tab within the Documents tab: "Active documents" (the full table
+// of every tracked document and its status) vs. "Missing documents"
+// (the gap report — staff who don't have a required/optional document
+// type on file at all, which the status filters above can never show
+// since they only describe records that already exist). These were
+// already two separate, fully-built sections stacked on the same
+// page — this just adds a toggle between them instead of requiring a
+// scroll past the whole staff table to find the missing-docs report.
+function setDocsSubView(view) {
+  const activeBtn = document.getElementById('docsSubTab-active');
+  const missingBtn = document.getElementById('docsSubTab-missing');
+  const activeSection = document.getElementById('docsActiveSection');
+  const missingSection = document.getElementById('docsMissingSection');
+
+  const isActive = view === 'active';
+  activeSection.style.display = isActive ? 'block' : 'none';
+  missingSection.style.display = isActive ? 'none' : 'block';
+
+  activeBtn.style.background = isActive ? 'var(--teal)' : 'transparent';
+  activeBtn.style.borderColor = isActive ? 'var(--teal)' : 'rgba(255,255,255,.2)';
+  activeBtn.style.color = isActive ? '#fff' : 'rgba(255,255,255,.7)';
+  activeBtn.style.fontWeight = isActive ? '700' : '500';
+
+  missingBtn.style.background = !isActive ? 'var(--teal)' : 'transparent';
+  missingBtn.style.borderColor = !isActive ? 'var(--teal)' : 'rgba(255,255,255,.2)';
+  missingBtn.style.color = !isActive ? '#fff' : 'rgba(255,255,255,.7)';
+  missingBtn.style.fontWeight = !isActive ? '700' : '500';
+}
 
 function setDocViewMode(mode) {
   _docViewMode = mode;
@@ -7922,7 +8068,7 @@ async function exportAccessLogCsv() {
   });
 
   const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\uFEFF' + csv); // BOM — see exportCsv() for why
   a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_AccessLog_${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
   toast(`Exported ${data.length} access log entries`);
@@ -11628,7 +11774,15 @@ async function processTemplateFile(name, file, err) {
     const { PDFDocument } = PDFLib;
     const pdfDoc = await PDFDocument.load(bytes);
     const form = pdfDoc.getForm();
-    const fieldNames = form.getFields().map(f => f.getName());
+    // Capture whether each field is a checkbox (duck-typed via .check(),
+    // rather than trusting a constructor name that can vary across
+    // pdf-lib builds) — the mapping modal needs this to offer "always
+    // checked/unchecked" instead of a text-value option, and the fill
+    // step needs it to call the right pdf-lib API for the field.
+    const fieldNames = form.getFields().map(f => ({
+      name: f.getName(),
+      isCheckbox: typeof f.check === 'function',
+    }));
 
     if (!fieldNames.length) {
       err.textContent = 'This PDF has no fillable form fields — it looks like a static/scanned document, not a fillable form. Only fillable PDFs (with real form fields) can be auto-filled this way.';
@@ -11638,6 +11792,7 @@ async function processTemplateFile(name, file, err) {
 
     _pendingTemplateFile = file;
     _pendingTemplateFieldNames = fieldNames;
+    await loadFieldMappingMemory(); // fresh learned-mapping data before guessing
     showTemplateFieldMappingModal(name, fieldNames);
   } catch (e) {
     err.textContent = 'Could not read this PDF: ' + e.message;
@@ -11645,11 +11800,43 @@ async function processTemplateFile(name, file, err) {
   }
 }
 
+// Shared normalization used both by the static regex guesses below AND
+// by the learned-mapping memory (see recordFieldMappingMemory /
+// memoryGuess) — keeping this in one place guarantees a field seen at
+// save time and the same field seen later on a different template
+// normalize identically, so memory lookups actually hit.
+function normalizeFieldName(fieldName) {
+  // Strip a leading page-number prefix ("p3_", "p12_", etc.) that
+  // Acrobat's "Prepare Form" auto-detect adds automatically — it's not
+  // part of the field's actual label. Then convert underscores to
+  // spaces, EXCEPT a trailing "_2"/"_3"/etc. (Acrobat's own suffix for
+  // the 2nd, 3rd... occurrence of a repeated field), which several
+  // guesses rely on to distinguish license/education entry #1 from #2.
+  const stripped = fieldName.replace(/^p\d+_/i, '');
+  return stripped.replace(/_(?!\d+$)/g, ' ').toLowerCase().trim();
+}
+
 function guessDefaultMapping(fieldName) {
   // Best-effort auto-suggestion so mapping a 20-field form isn't 20 manual
   // dropdown picks — admin can still override any of these before saving.
-  const n = fieldName.toLowerCase();
+  // This is the LAST-RESORT layer — memoryGuess() (learned from real
+  // admin corrections) is checked first; this static list only fires
+  // when nothing's ever been mapped for anything like this field name.
+  const n = normalizeFieldName(fieldName);
   const guesses = [
+    // Personal name fields — split Last/First/Middle is a different
+    // convention than the combined "Provider name" pattern further
+    // down, common on state/hospital applications rather than payer
+    // enrollment forms.
+    [/^last$/, 'staff.last_name'],
+    [/^first$/, 'staff.first_name'],
+    [/^middle$/, 'staff.middle_name'],
+    [/date.*of.*birth/, 'staff.date_of_birth'],
+    // "NPID (formerly UPIN)" and similar older/alternate labels for the
+    // same individual NPI concept — the existing "individual.*npi"
+    // guess further down only catches forms that literally spell out
+    // "Individual NPI", missing this common alternate phrasing.
+    [/npid|\bupin\b/, 'staff.npi_number'],
     [/legal.*business.*name/, 'company.legal_business_name'],
     [/group.*practice.*name|practice.*name|directory/, 'company.provider_directory_name'],
     [/^tin$|tax.*id/, 'company.tax_id'],
@@ -11726,7 +11913,100 @@ function guessDefaultMapping(fieldName) {
   return '';
 }
 
-function showTemplateFieldMappingModal(name, fieldNames) {
+// ══ FIELD MAPPING MEMORY ══
+// Learns from every mapping an admin actually confirms (whether that
+// mapping was guessed correctly, corrected, or picked with no guess at
+// all) and reuses it on future templates — platform-wide, since a
+// field named "npid_formerly_upin" means the same thing no matter
+// which company's admin uploaded the PDF. This is the layer that gets
+// better over time; guessDefaultMapping above is only the fallback
+// for a field name nothing has ever taught the system yet.
+let _fieldMappingMemory = [];
+
+async function loadFieldMappingMemory() {
+  const { data, error } = await sb.from('credentialing_field_mapping_memory')
+    .select('normalized_field_name, data_source_key, use_count');
+  if (!error && data) _fieldMappingMemory = data;
+}
+
+// A small, deliberately generic stopword list — common connector words
+// that appear in form labels ("of", "the", "for"...) but carry no
+// identifying signal, so they'd otherwise dilute the word-overlap
+// score between two genuinely-related field names.
+const _FIELD_NAME_STOPWORDS = new Set(['of','the','and','or','is','you','your','a','an','to','for','this','that','if','yes','no','are','do','does']);
+
+function _fieldNameWordSet(normalized) {
+  return new Set(normalized.split(/\s+/).filter(w => w && !_FIELD_NAME_STOPWORDS.has(w)));
+}
+
+function _wordOverlapScore(setA, setB) {
+  if (!setA.size || !setB.size) return 0;
+  let intersection = 0;
+  for (const w of setA) if (setB.has(w)) intersection++;
+  const union = new Set([...setA, ...setB]).size;
+  return intersection / union; // Jaccard similarity
+}
+
+function memoryGuess(normalizedName) {
+  if (!_fieldMappingMemory.length) return '';
+
+  // Exact match first — a field name that's been mapped before, verbatim.
+  // Highest confidence; when the same normalized name has been mapped to
+  // more than one data source across different templates, go with
+  // whichever has actually been confirmed most often.
+  const exact = _fieldMappingMemory.filter(m => m.normalized_field_name === normalizedName);
+  if (exact.length) {
+    exact.sort((a, b) => b.use_count - a.use_count);
+    return exact[0].data_source_key;
+  }
+
+  // Fuzzy fallback — word-overlap similarity against every remembered
+  // field name, so slightly-differently-worded fields ("Individual NPI
+  // Number" vs. a previously-learned "Individual NPI") still benefit
+  // from what's already been confirmed elsewhere, not just an exact
+  // repeat of the same PDF. Threshold is deliberately conservative
+  // (0.6) — a wrong fuzzy guess an admin doesn't notice to correct is
+  // worse than an honest blank.
+  const targetWords = _fieldNameWordSet(normalizedName);
+  let best = null, bestScore = 0;
+  for (const m of _fieldMappingMemory) {
+    const score = _wordOverlapScore(targetWords, _fieldNameWordSet(m.normalized_field_name));
+    if (score > bestScore || (score === bestScore && best && m.use_count > best.use_count)) {
+      bestScore = score;
+      best = m;
+    }
+  }
+  return (best && bestScore >= 0.6) ? best.data_source_key : '';
+}
+
+// The single entry point the mapping modal actually calls: learned
+// memory first, static regex heuristics as the last-resort fallback.
+function bestGuess(fieldName) {
+  const normalized = normalizeFieldName(fieldName);
+  return memoryGuess(normalized) || guessDefaultMapping(fieldName);
+}
+
+// Fire-and-forget from the admin's point of view — recorded AFTER the
+// template itself has already saved successfully, so a hiccup here
+// never blocks or rolls back the actual save. Every field the admin
+// left mapped (whether guessed or manually chosen) is one more data
+// point for memoryGuess() the next time anything like it shows up.
+async function recordFieldMappingMemory(mapping) {
+  for (const [fieldName, dataSourceKey] of Object.entries(mapping)) {
+    if (!dataSourceKey) continue;
+    try {
+      await sb.rpc('record_field_mapping_memory', {
+        p_normalized_field_name: normalizeFieldName(fieldName),
+        p_data_source_key: dataSourceKey,
+      });
+    } catch (e) {
+      console.error('Could not record field mapping memory (non-fatal):', e);
+    }
+  }
+  await loadFieldMappingMemory(); // refresh cache so this session benefits immediately too
+}
+
+function showTemplateFieldMappingModal(name, fieldInfos) {
   const existing = document.getElementById('templateMappingModal');
   if (existing) existing.remove();
 
@@ -11734,15 +12014,29 @@ function showTemplateFieldMappingModal(name, fieldNames) {
     `<optgroup label="${g.group}">${g.options.map(([val, label]) => `<option value="${val}">${label}</option>`).join('')}</optgroup>`
   ).join('');
 
-  const rows = fieldNames.map(fn => {
-    const guess = guessDefaultMapping(fn);
+  // Fixed-value sentinels — reserved marker strings, never real data-source
+  // paths (which are always plain "staff.foo"/"company.bar" identifiers),
+  // so they're always safely distinguishable in the stored field_mapping.
+  // These exist for fields that should be the SAME on every generated copy
+  // regardless of which staff member it's for — e.g. "You are a new
+  // enrollee in Medicare" on a template scoped to exactly that scenario —
+  // as opposed to the data-source options above, which look up a live,
+  // per-person value at generation time.
+  const rows = fieldInfos.map(fi => {
+    const fn = fi.name;
+    const fixedOptionsHtml = fi.isCheckbox
+      ? `<option value="__FIXED_CHECKED__">— Always checked (fixed for this template) —</option>
+         <option value="__FIXED_UNCHECKED__">— Always unchecked (fixed for this template) —</option>`
+      : `<option value="__FIXED_TEXT__">— Fixed text (same every time) —</option>`;
     return `
-    <div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="flex:1;color:#fff;font-size:13px;">${fn}</span>
-      <select class="inline-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
+    <div class="template-mapping-row" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="flex:1;min-width:140px;color:#fff;font-size:13px;">${fn}${fi.isCheckbox ? ' <span style="color:rgba(255,255,255,.35);font-size:11px;">(checkbox)</span>' : ''}</span>
+      <select class="inline-select template-mapping-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
         <option value="">— Leave blank / fill manually —</option>
+        ${fixedOptionsHtml}
         ${optionsHtml}
       </select>
+      ${fi.isCheckbox ? '' : `<input type="text" class="inline-input template-fixed-text-input" data-field-name="${fn.replace(/"/g,'&quot;')}" placeholder="Text to always use" style="width:200px;display:none;" />`}
     </div>`;
   }).join('');
 
@@ -11750,9 +12044,9 @@ function showTemplateFieldMappingModal(name, fieldNames) {
   modal.id = 'templateMappingModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:82vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:620px;max-height:82vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldNames.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving. Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
       <div id="templateMappingRows">${rows}</div>
       <div id="templateSaveErr" style="color:#f87171;font-size:12px;margin:10px 0;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
@@ -11762,9 +12056,21 @@ function showTemplateFieldMappingModal(name, fieldNames) {
     </div>`;
   document.body.appendChild(modal);
 
-  // Apply the guessed defaults now that the selects exist in the DOM
+  // Show/hide the companion "fixed text" input as its select changes.
+  modal.querySelectorAll('select.template-mapping-select').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const row = sel.closest('.template-mapping-row');
+      const textInput = row?.querySelector('.template-fixed-text-input');
+      if (textInput) textInput.style.display = sel.value === '__FIXED_TEXT__' ? 'block' : 'none';
+    });
+  });
+
+  // Apply the guessed defaults now that the selects exist in the DOM —
+  // learned memory first, static heuristics as fallback (see bestGuess).
+  // Fixed-value options are never guessed — they're a deliberate manual
+  // choice per template, not something to infer from a field's name.
   modal.querySelectorAll('select[data-field-name]').forEach(sel => {
-    const guess = guessDefaultMapping(sel.dataset.fieldName);
+    const guess = bestGuess(sel.dataset.fieldName);
     if (guess) sel.value = guess;
   });
 }
@@ -11776,7 +12082,19 @@ async function saveTemplateMapping(name) {
 
   const mapping = {};
   document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
-    if (sel.value) mapping[sel.dataset.fieldName] = sel.value;
+    if (!sel.value) return;
+    if (sel.value === '__FIXED_TEXT__') {
+      // Store the admin's typed literal alongside the sentinel so
+      // fillCredTemplate knows both "this is fixed" and what to fill in —
+      // an empty typed value is treated the same as leaving the field
+      // unmapped, since "always blank" isn't meaningfully different from
+      // just not mapping it.
+      const row = sel.closest('.template-mapping-row');
+      const literal = row?.querySelector('.template-fixed-text-input')?.value?.trim() || '';
+      if (literal) mapping[sel.dataset.fieldName] = `__FIXED_TEXT__:${literal}`;
+    } else {
+      mapping[sel.dataset.fieldName] = sel.value;
+    }
   });
 
   try {
@@ -11804,6 +12122,16 @@ async function saveTemplateMapping(name) {
     toast(`✓ Template "${name}" saved`);
     _credTemplatesCache = null; // new template added — force a fresh fetch
     await loadCredentialingTemplates();
+    // Fixed-value mappings (__FIXED_CHECKED__/__FIXED_UNCHECKED__/__FIXED_TEXT__)
+    // are specific to what THIS template's scenario calls for — e.g. "new
+    // enrollee" only makes sense for a template scoped to new enrollees —
+    // not a generalizable "this field name usually means X" fact, so they're
+    // excluded from the shared learning system rather than polluting future
+    // guesses on unrelated templates.
+    const learnableMapping = Object.fromEntries(
+      Object.entries(mapping).filter(([, v]) => !v.startsWith('__FIXED_'))
+    );
+    recordFieldMappingMemory(learnableMapping); // never blocks the save above, runs after
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
     errEl.style.display = 'block';
@@ -11979,11 +12307,32 @@ async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
 
   const skipped = [];
   for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
-    const value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
     try {
-      form.getTextField(pdfFieldName).setText(String(value || ''));
+      if (sourcePath === '__FIXED_CHECKED__') {
+        form.getCheckBox(pdfFieldName).check();
+      } else if (sourcePath === '__FIXED_UNCHECKED__') {
+        form.getCheckBox(pdfFieldName).uncheck();
+      } else if (sourcePath.startsWith('__FIXED_TEXT__:')) {
+        form.getTextField(pdfFieldName).setText(sourcePath.slice('__FIXED_TEXT__:'.length));
+      } else {
+        // Normal data-source mapping — resolve the live value, then fill
+        // whichever kind of field this actually is. Checkboxes need
+        // check()/uncheck() (calling setText on a checkbox throws in
+        // pdf-lib), so a boolean-shaped value ("Yes"/"No", from
+        // resolveCredDataSource's boolean handling) drives a checkbox the
+        // same way it would drive text on a form that spells out Yes/No
+        // instead of using a checkbox control.
+        const value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
+        const field = form.getField(pdfFieldName);
+        if (typeof field.check === 'function') {
+          const truthy = typeof value === 'string' && ['yes', 'true'].includes(value.trim().toLowerCase());
+          if (truthy) field.check(); else field.uncheck();
+        } else {
+          form.getTextField(pdfFieldName).setText(String(value || ''));
+        }
+      }
     } catch (fieldErr) {
-      skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF — skip, don't fail the whole generation
+      skipped.push(pdfFieldName); // field name in the mapping no longer matches the PDF (or isn't the type expected) — skip, don't fail the whole generation
     }
   }
 
@@ -14055,7 +14404,18 @@ async function saveSetDemoPassword(companyId) {
   if (!password || password.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; errEl.style.display = 'block'; return; }
 
   try {
-    const { data: { session } } = await sb.auth.getSession();
+    let { data: { session } } = await sb.auth.getSession();
+    if (!session?.access_token) {
+      // A stored session can go stale (e.g. the tab's been open a long
+      // while) without the client surfacing it — try one silent refresh
+      // before giving up, rather than crashing straight into
+      // "Cannot read properties of null (reading 'access_token')".
+      const { data: refreshed } = await sb.auth.refreshSession();
+      session = refreshed?.session;
+    }
+    if (!session?.access_token) {
+      throw new Error('Your session has expired — refresh the page and sign in again, then retry setting the demo password.');
+    }
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
@@ -15062,7 +15422,13 @@ function exportCsv() {
     if (cells.length) csv += cells.join(',') + '\n';
   });
   const a = document.createElement('a');
-  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+  // Leading \uFEFF is a UTF-8 byte-order mark. Without it, Excel ignores
+  // the charset=utf-8 hint on the data URI and opens the file using the
+  // system's default codepage (Windows-1252 on most US machines), which
+  // mangles multi-byte UTF-8 characters like — and ✓ into garbled
+  // sequences (e.g. "â€"", "âœ""). The BOM tells Excel specifically to
+  // decode as UTF-8, so those characters render correctly.
+  a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\uFEFF' + csv);
   a.download = `selko-cred-${new Date().toISOString().slice(0,10)}.csv`;
   a.click();
 }
