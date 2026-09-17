@@ -5725,6 +5725,12 @@ function showFullProfileSheet(staffId) {
         ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
       </div>
 
+      <label class="inline-label" style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};">State licensing board lookup</label>
+      <div style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};position:relative;margin-bottom:16px;">
+        <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 200)" />
+        <div id="fpStateBoardSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
+      </div>
+
       <!-- Per-provider check exemptions -- a company-wide "PTA is exempt
            from CAQH" setting (elsewhere in Settings) still applies to
            everyone in that discipline, but this covers the individual
@@ -5906,12 +5912,6 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
       ${(!prescribes && deaModuleActive) ? `<p style="font-size:11px;color:rgba(255,255,255,.35);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>` : ''}
-
-      <label class="inline-label" style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};">State licensing board lookup</label>
-      <div style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};position:relative;margin-bottom:14px;">
-        <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 200)" />
-        <div id="fpStateBoardSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
-      </div>
 
       <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Documents on file</div>
       <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
