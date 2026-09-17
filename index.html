@@ -2439,14 +2439,6 @@ function updateSortIcons() {
     el.textContent = k === _staffSortKey ? (_staffSortDir === 'asc' ? '▲' : '▼') : '';
   });
 }
-let boardConfig    = {}; // keyed by state_code, e.g. boardConfig['OK']
-
-async function loadBoardConfig() {
-  const { data } = await sb.from('license_board_config').select('*');
-  boardConfig = {};
-  (data || []).forEach(row => { boardConfig[row.state_code] = row; });
-}
-
 const LICENSE_TYPE_LABELS = {
   PT:   'Physical Therapist',
   PTA:  'Physical Therapist Assistant',
@@ -2679,7 +2671,6 @@ async function initSession(user) {
     }
 
     await loadDocTypes();
-    await loadBoardConfig();
 
     if (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin) {
       showScreen('adminScreen');
@@ -5729,7 +5720,7 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
-        ${(currentCompany.has_credtrack && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
+        ${((currentCompany.has_credtrack || currentCompany.has_credentialing_addon) && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
         ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>` : ''}
         ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
       </div>
@@ -6871,57 +6862,21 @@ function verifyLicense(staffId) {
   const s = staffList.find(x => x.id === staffId);
   if (!s) return;
 
-  const stateCode = s.license_state || 'OK';
-  const config = boardConfig[stateCode];
+  // Scroll to and pre-fill the real "State licensing board lookup" search
+  // box (handleStateBoardSearch, backed by state_licensing_board_reference)
+  // instead of auto-matching a single board by state alone — that's
+  // exactly the wrong-specialty-matching bug this button used to have via
+  // the old license_board_config table, which never got retired when the
+  // search box itself was redesigned to be manual/discipline-aware. One
+  // real data source, one correct flow, admin still picks the right entry.
+  const searchInput = document.getElementById('fpStateBoardSearch');
+  if (!searchInput) return;
 
-  let text = '';
-  let fieldHint = '';
-  let url = '';
-
-  if (config) {
-    // We have a verified board link/behavior for this state
-    if (s.license_number) {
-      text = s.license_number;
-      fieldHint = config.license_unique_by_num
-        ? 'License Number field'
-        : `License Number field${s.license_type ? ` — then set Profession to ${LICENSE_TYPE_LABELS[s.license_type] || s.license_type}` : ` — ${config.field_guidance || ''}`}`;
-    } else {
-      const nameOnly = s.full_name.split(',')[0].trim();
-      const parts = nameOnly.split(' ');
-      text = parts[parts.length - 1];
-      fieldHint = 'Last Name field';
-    }
-    url = config.lookup_url;
-  } else {
-    // No curated config yet for this state — fall back to a search
-    // that at least points toward the right board, rather than doing nothing.
-    text = s.license_number || s.full_name.split(',')[0].trim();
-    fieldHint = `no saved board link for ${stateCode} yet — opening a search instead`;
-    url = `https://www.google.com/search?q=${encodeURIComponent(stateCode + ' physical therapy license verification board lookup')}`;
-  }
-
-  let copied = false;
-  try {
-    const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.position = 'fixed';
-    ta.style.left = '-9999px';
-    document.body.appendChild(ta);
-    ta.focus();
-    ta.select();
-    copied = document.execCommand('copy');
-    document.body.removeChild(ta);
-  } catch (err) {
-    copied = false;
-  }
-
-  if (copied) {
-    toast(`Copied "${text}" — paste into the ${fieldHint}`);
-  } else {
-    prompt(`Clipboard copy failed — copy this manually (paste into ${fieldHint}):`, text);
-  }
-
-  window.open(url, '_blank', 'noopener,noreferrer');
+  const stateGuess = s.license_state || '';
+  searchInput.value = stateGuess;
+  searchInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  searchInput.focus();
+  if (stateGuess) handleStateBoardSearch(searchInput);
 }
 
 function attachVerificationProof(staffId) {
