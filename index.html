@@ -13215,14 +13215,26 @@ function renderOvCredAttentionList() {
   }
 
   list.innerHTML = filtered.map(item => {
-    const worstBadge = item.issues.some(i => i.urgent)
-      ? { style: 'background:rgba(239,68,68,.15);color:#ef4444;', label: item.issues.find(i => i.urgent).label }
-      : { style: 'background:rgba(245,158,11,.15);color:#f59e0b;', label: item.issues[0].label };
-    const extra = item.issues.length > 1 ? ` +${item.issues.length - 1} more` : '';
-    const allIssuesTooltip = item.issues.map(i => i.label).join(', ');
-    return `<div class="ov-attention-row" style="cursor:pointer;" onclick="showFullProfileSheet('${item.staff.id}')" title="${allIssuesTooltip}">
-      <span>${item.staff.full_name}${extra}</span>
-      <span class="ov-days-badge" style="${worstBadge.style}">${worstBadge.label}</span>
+    const urgentIssue = item.issues.find(i => i.urgent);
+    const worstIssue = urgentIssue || item.issues[0];
+    const worstStyle = urgentIssue
+      ? 'background:rgba(239,68,68,.15);color:#ef4444;'
+      : 'background:rgba(245,158,11,.15);color:#f59e0b;';
+    // Every issue gets its own visible badge now, not just the worst one
+    // plus a bare "+N more" whose only detail lived in a native browser
+    // title tooltip — invisible on touch devices and easy to miss even
+    // on desktop, since nothing signals there's anything to hover.
+    // Filtering by object identity (not by label text) so two issues
+    // that happen to share the same label — e.g. two separate expiring
+    // licenses — never accidentally get collapsed into one.
+    const otherIssues = item.issues.filter(i => i !== worstIssue);
+    const otherBadges = otherIssues.map(i =>
+      `<span class="ov-days-badge" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.55);">${i.label}</span>`
+    ).join('');
+    return `<div class="ov-attention-row" style="cursor:pointer;display:flex;align-items:center;gap:6px;flex-wrap:wrap;" onclick="showFullProfileSheet('${item.staff.id}')">
+      <span>${item.staff.full_name}</span>
+      <span class="ov-days-badge" style="${worstStyle}">${worstIssue.label}</span>
+      ${otherBadges}
     </div>`;
   }).join('');
 }
