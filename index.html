@@ -10599,8 +10599,8 @@ async function loadAgencyAssignmentsTable() {
       <td>${countByAgency[a.id] || 0} of ${staffList.filter(s => s.active).length} active staff</td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-teal" onclick="showAgencyAssignmentModal('${a.id}','${a.name.replace(/'/g,"\\'")}')">Edit assignments</button>
-        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffExcel('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📊 Excel</button>
-        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffPDF('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 PDF</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffExcel('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📊 Staff list (Excel)</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffPDF('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 Staff list (PDF)</button>
       </div></td>
     </tr>`).join('');
 }
