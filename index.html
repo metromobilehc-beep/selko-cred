@@ -1237,7 +1237,7 @@ window.selkoSharedAuthStorage = {
               <select class="inline-select" id="billingCredTier" onchange="updateBundleHint()">
                 <option value="">— None —</option>
                 <option value="cred_basic">Basic</option>
-                <option value="cred_full">Full</option>
+                <option value="cred_full">Pro</option>
               </select>
             </div>
           </div>
@@ -9510,7 +9510,7 @@ async function loadBillingStatus() {
 
   const docLabel = currentCompany.plan === 'enterprise' ? 'Enterprise' : (currentCompany.plan === 'pro' ? 'Pro' : (currentCompany.plan === 'standard' ? 'Standard' : 'None'));
   const credLabel = currentCompany.has_credentialing_addon
-    ? (currentCompany.credentialing_tier === 'full' ? 'Full' : 'Basic')
+    ? (currentCompany.credentialing_tier === 'full' ? 'Pro' : 'Basic')
     : 'None';
 
   const statusNote = sub?.status === 'past_due'
@@ -9519,7 +9519,13 @@ async function loadBillingStatus() {
       ? ' — <span style="color:rgba(255,255,255,.4);">cancelled</span>'
       : '';
 
-  el.innerHTML = `Current plan: <strong>Document tracking — ${docLabel}</strong>, <strong>Credentialing — ${credLabel}</strong>${statusNote}`;
+  // Credentialing now includes document tracking automatically, so a
+  // credentialing customer sees one line, not two confusing ones — the
+  // separate "Document tracking — X" line is only shown for someone
+  // who bought document tracking on its own, without Credentialing.
+  el.innerHTML = currentCompany.has_credentialing_addon
+    ? `Current plan: <strong>Credentialing — ${credLabel}</strong> <span style="color:rgba(255,255,255,.5);">(includes document tracking)</span>${statusNote}`
+    : `Current plan: <strong>Document tracking — ${docLabel}</strong>${statusNote}`;
 
   // Same "Credentialing module option" toggle as Selko Admin's
   // Subscription Settings — if a company shouldn't be offered
@@ -14688,9 +14694,19 @@ async function setCompanyModules(id, mode) {
 }
 
 async function setCredentialingTier(id, tier) {
-  const { error } = await sb.from('companies').update({ credentialing_tier: tier }).eq('id', id);
+  // Credentialing now automatically includes document tracking at the
+  // matching level (Basic → Standard, Pro → Pro) rather than requiring
+  // a separate Document Tracking purchase — this is the app-side half
+  // of that pricing change; the Stripe webhook that sets these same
+  // fields from an actual subscription event needs the equivalent
+  // update wherever that lives (not in this file).
+  const { error } = await sb.from('companies').update({
+    credentialing_tier: tier,
+    has_credtrack: true,
+    plan: tier === 'basic' ? 'standard' : 'pro',
+  }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
-  toast(`✓ Credentialing set to: ${tier === 'basic' ? 'Basic' : 'Full'}`);
+  toast(`✓ Credentialing set to: ${tier === 'basic' ? 'Basic' : 'Pro'} (document tracking included automatically)`);
   await loadSuperAdmin();
 
   const sel = document.getElementById(`credTierSelect_${id}`);
@@ -14762,7 +14778,7 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <label class="inline-label">Credentialing tier</label>
       <select class="inline-select" id="modalCredTierSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalCredTierChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
         <option value="basic" ${c.credentialing_tier === 'basic' ? 'selected' : ''}>Basic</option>
-        <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Full</option>
+        <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Pro</option>
       </select>` : ''}
 
       <label class="inline-label">Plan</label>
