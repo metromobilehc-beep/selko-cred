@@ -240,6 +240,24 @@
   .inline-label  { font-size: 11px; font-weight: 600; color: var(--teal-l); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
   .inline-input  { width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: 'IBM Plex Sans', inherit; transition: border-color .15s, background .15s; }
   .inline-input:focus { outline: none; border-color: var(--teal); background: rgba(255,255,255,.1); }
+
+  /* Chrome (and other WebKit browsers) force their own light background
+     and dark text onto autofilled inputs — a phone/address/zip field
+     that gets flagged for autofill becomes unreadable the moment it's
+     focused or filled, since neither the rules above nor a plain
+     `background` override can touch WebKit's internal autofill layer.
+     The only reliable override is an absurdly large inset box-shadow
+     (paints over the autofill background WebKit applies) paired with
+     -webkit-text-fill-color (the actual property WebKit reads for
+     autofilled text color, instead of the normal `color` property). */
+  .inline-input:-webkit-autofill,
+  .inline-input:-webkit-autofill:hover,
+  .inline-input:-webkit-autofill:focus {
+    -webkit-text-fill-color: #fff;
+    -webkit-box-shadow: 0 0 0px 1000px rgba(23,35,51,1) inset;
+    box-shadow: 0 0 0px 1000px rgba(23,35,51,1) inset;
+    transition: background-color 5000s ease-in-out 0s;
+  }
   .inline-select { width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: inherit; cursor: pointer; }
   .inline-select option { background: var(--navy2); }
   .inline-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
