@@ -5651,6 +5651,14 @@ function showFullProfileSheet(staffId) {
           <input class="inline-input" type="text" id="fpMiddleName" value="${s.middle_name || ''}" />
         </div>
         <div>
+          <div class="inline-label">First name <span style="font-weight:400;text-transform:none;color:rgba(255,255,255,.35);">(for payer forms — separate from the combined name used everywhere else)</span></div>
+          <input class="inline-input" type="text" id="fpFirstName" value="${s.first_name || ''}" />
+        </div>
+        <div>
+          <div class="inline-label">Last name</div>
+          <input class="inline-input" type="text" id="fpLastName" value="${s.last_name || ''}" />
+        </div>
+        <div>
           <label class="inline-label">Date of birth</label>
           <input class="inline-input" type="date" id="fpDob" value="${s.date_of_birth || ''}" />
         </div>
@@ -6483,6 +6491,8 @@ async function saveFullProfileSheet(staffId) {
     discipline: document.getElementById('fpDiscipline').value || null,
     staff_type: newStaffType,
     middle_name: document.getElementById('fpMiddleName').value.trim() || null,
+    first_name: document.getElementById('fpFirstName').value.trim() || null,
+    last_name: document.getElementById('fpLastName').value.trim() || null,
     date_of_birth: document.getElementById('fpDob').value || null,
     gender: document.getElementById('fpGender').value || null,
     phone: document.getElementById('fpPhone').value.trim() || null,
@@ -6882,6 +6892,13 @@ function verifyLicense(staffId) {
 function attachVerificationProof(staffId) {
   const s = staffList.find(x => x.id === staffId);
   if (!s) return;
+
+  // Close the Full Profile sheet first — it's a separate overlay on top
+  // of the whole page, so switching the background tab underneath it
+  // (below) does nothing to it on its own. Without this, the sheet was
+  // staying open while the Documents tab's own upload form opened
+  // behind/around it, producing two overlapping UI surfaces at once.
+  document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
 
   // Make sure we're on the Documents tab where the upload form lives
   switchTab('docs');
@@ -11563,6 +11580,8 @@ const CRED_DATA_SOURCES = [
     ['staff.state_cds_expiration_date', 'State CDS/CSR expiration'],
     ['staff.email', 'Email'],
     ['staff.job_title', 'Job title'],
+    ['staff.first_name', 'First name'],
+    ['staff.last_name', 'Last name'],
     ['staff.middle_name', 'Middle name'],
     ['staff.date_of_birth', 'Date of birth'],
     ['staff.gender', 'Gender'],
@@ -12140,15 +12159,23 @@ async function buildCredDataForStaff(staffId, staff) {
     .select('*').eq('staff_id', staffId).order('original_date_of_issue', { ascending: false });
   const staffWithLicenses = { ...staff };
 
-  // full_name is consistently stored as "First [Middle] Last, Credential"
-  // throughout the app (same format the license-verification/state-board
-  // lookup feature already parses this exact way) — split here rather
-  // than adding new database columns, since most credentialing forms ask
-  // for these as genuinely separate fields, not one combined name.
-  const nameOnly = (staff.full_name || '').split(',')[0].trim();
-  const nameParts = nameOnly.split(' ').filter(Boolean);
-  staffWithLicenses.last_name = nameParts.length ? nameParts[nameParts.length - 1] : '';
-  staffWithLicenses.first_name = nameParts.length ? nameParts[0] : '';
+  // Prefer the real, separately-entered first_name/last_name (set on
+  // the Full Profile sheet) since they're authoritative — no guessing
+  // required. Fall back to splitting full_name only for staff who
+  // haven't had these fields filled in yet, so existing payer-form
+  // generation doesn't regress for anyone mid-migration. The old split
+  // silently dropped compound surnames (e.g. "Maria Garcia Lopez, PT"
+  // became first="Maria", last="Lopez" — "Garcia" vanished); the
+  // fallback is kept only as a stopgap, not because it's correct.
+  if (staff.first_name || staff.last_name) {
+    staffWithLicenses.first_name = staff.first_name || '';
+    staffWithLicenses.last_name = staff.last_name || '';
+  } else {
+    const nameOnly = (staff.full_name || '').split(',')[0].trim();
+    const nameParts = nameOnly.split(' ').filter(Boolean);
+    staffWithLicenses.last_name = nameParts.length ? nameParts[nameParts.length - 1] : '';
+    staffWithLicenses.first_name = nameParts.length ? nameParts[0] : '';
+  }
 
   (extraLicenses || []).slice(0, 3).forEach((lic, i) => {
     const n = i + 1;
