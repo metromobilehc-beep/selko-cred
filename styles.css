@@ -238,8 +238,15 @@
   /* INLINE FORM */
   .inline-form { background: rgba(255,255,255,.05); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; display: none; }
   .inline-label  { font-size: 11px; font-weight: 600; color: var(--teal-l); display: block; margin-bottom: 4px; text-transform: uppercase; letter-spacing: .05em; }
-  .inline-input  { width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: 'IBM Plex Sans', inherit; transition: border-color .15s, background .15s; }
-  .inline-input:focus { outline: none; border-color: var(--teal); background: rgba(255,255,255,.1); }
+  /* input.inline-input (not just .inline-input) — a plain class selector
+     loses to the input[type=text] rule above, which is more specific
+     because it combines an element type with an attribute selector.
+     Tying the specificity here and relying on source order (this rule
+     comes later in the file) is what actually makes white text win on
+     dark-panel inputs, instead of falling back to gray-800 body text
+     color meant for the light-background forms. */
+  input.inline-input  { width: 100%; padding: 7px 10px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.07); color: #fff; font-size: 13px; font-family: 'IBM Plex Sans', inherit; transition: border-color .15s, background .15s; }
+  input.inline-input:focus { outline: none; border-color: var(--teal); background: rgba(255,255,255,.1); }
 
   /* Chrome (and other WebKit browsers) force their own light background
      and dark text onto autofilled inputs — a phone/address/zip field
