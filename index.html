@@ -2508,6 +2508,35 @@ function toast(msg, isErr) {
   if (isErr) logError('toast', msg);
 }
 
+// Shown once after any credentialing form/roster is generated. A toast
+// alone used to be the only feedback — it disappears in 3.5 seconds,
+// which isn't enough time to read actual guidance, and gave no sense of
+// what to actually DO with the file that just downloaded. This is
+// deliberately generic rather than payer-specific (Selko doesn't know
+// how any given payer wants paperwork submitted), but "check before you
+// send it, and submit it the way this payer normally accepts things" is
+// genuinely useful to someone doing this for the first time.
+function showGenerationGuidance(fileLabel) {
+  const existing = document.getElementById('genGuidanceModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'genGuidanceModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2,#172333);border-radius:10px;padding:24px;max-width:420px;width:100%;">
+      <h3 style="color:#fff;font-size:15px;margin-bottom:10px;">✓ ${fileLabel} downloaded</h3>
+      <ul style="color:rgba(255,255,255,.7);font-size:13px;line-height:1.7;padding-left:18px;margin-bottom:16px;">
+        <li>Review every field before sending it — auto-fill can look confident even when something's wrong.</li>
+        <li>Submit it the way this payer normally accepts credentialing paperwork — mail, fax, a portal upload, or email, depending on the payer. Check the form itself or your contract if you're not sure which.</li>
+      </ul>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn btn-sm btn-teal" onclick="document.getElementById('genGuidanceModal').remove()">Got it</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
 async function logError(errorType, message, context) {
   try {
     await sb.from('error_logs').insert({
@@ -11864,7 +11893,14 @@ async function processTemplateFile(name, file, err) {
     }));
 
     if (!fieldNames.length) {
-      err.textContent = 'This PDF has no fillable form fields — it looks like a static/scanned document, not a fillable form. Only fillable PDFs (with real form fields) can be auto-filled this way.';
+      // Previously a dead end here — the error correctly explained why it
+      // failed but gave no next step, leaving someone with a scanned/flat
+      // PDF with nowhere to go. Now gives two real options instead.
+      err.innerHTML = `This PDF has no fillable form fields — it looks like a static or scanned document, not a fillable form. Only PDFs with real form fields can be auto-filled this way.
+        <br><br>
+        <strong>What to do instead:</strong>
+        <br>• Ask the payer if they have a fillable version of this same form — many payers have both, and only send the flat one by default.
+        <br>• If not, you can still keep this PDF on file for reference — upload it under <strong>Credentialing Files</strong> above instead of trying to auto-fill it.`;
       err.style.display = 'block';
       return;
     }
@@ -12474,6 +12510,7 @@ async function generateFilledForm(templateId) {
     toast(skipped.length
       ? `Generated — ${skipped.length} mapped field(s) no longer matched the PDF and were skipped`
       : `✓ Filled form generated for ${staff.full_name}`);
+    showGenerationGuidance('Filled form');
   } catch (e) {
     toast('Could not generate form: ' + e.message, true);
   }
@@ -12553,6 +12590,7 @@ async function generateRosterFilledForm(templateId) {
     toast(skipped.length
       ? `Generated — ${skipped.length} mapped column(s) no longer matched the sheet and were skipped`
       : `✓ Roster generated for ${rowsData.length} staff member(s)`);
+    showGenerationGuidance('Roster');
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
     errEl.style.display = 'block';
@@ -12668,6 +12706,7 @@ async function generateBatchFilledForms() {
     toast(totalSkipped
       ? `✓ ${templates.length} form(s) zipped — ${totalSkipped} mapped field(s) across all forms no longer matched and were skipped`
       : `✓ ${templates.length} form(s) generated and zipped for ${staff.full_name}`);
+    showGenerationGuidance('Forms');
   } catch (e) {
     toast('Could not generate forms: ' + e.message, true);
   } finally {
