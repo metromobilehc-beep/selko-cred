@@ -87,6 +87,15 @@ window.selkoSharedAuthStorage = {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script>
+  // pdf-lib only manipulates PDFs (reads/writes form fields) — it has no
+  // rendering capability at all. pdf.js is Mozilla's actual PDF renderer,
+  // needed specifically so the field-mapping modal can show the real
+  // page instead of a bare list of field names. Requires a separate
+  // worker script matching the exact same version.
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+</script>
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -11908,11 +11917,66 @@ async function processTemplateFile(name, file, err) {
     _pendingTemplateFile = file;
     _pendingTemplateFieldNames = fieldNames;
     await loadFieldMappingMemory(); // fresh learned-mapping data before guessing
-    showTemplateFieldMappingModal(name, fieldNames);
+
+    // Position data is genuinely optional here — if pdf.js can't parse this
+    // particular PDF for some reason, the modal still works exactly as it
+    // always has (a plain list, no visual page). Never let a rendering
+    // failure block the actual mapping workflow, which has worked fine
+    // without this for as long as this feature has existed.
+    let fieldPositions = {};
+    try {
+      fieldPositions = await extractFieldPositions(bytes);
+    } catch (posErr) {
+      console.error('Could not extract field positions for visual preview:', posErr);
+    }
+
+    showTemplateFieldMappingModal(name, fieldNames, bytes, fieldPositions);
   } catch (e) {
     err.textContent = 'Could not read this PDF: ' + e.message;
     err.style.display = 'block';
   }
+}
+
+// Uses pdf.js's own documented annotation API — getAnnotations() with
+// .fieldName and .rect, plus viewport.convertToViewportRectangle() for
+// correct PDF-point-to-pixel conversion (handles rotation automatically,
+// which a hand-rolled coordinate flip would not) — rather than reaching
+// into pdf-lib's lower-level widget/page-reference internals, which
+// aren't really meant for this and are easy to get subtly wrong. This
+// runs pdf.js over the same bytes purely for position data; pdf-lib
+// remains what actually reads the field list and later fills the form.
+async function extractFieldPositions(bytes) {
+  const positions = {}; // fieldName -> { pageIndex, rectPct: {left, top, width, height} } as % of page size
+  const doc = await pdfjsLib.getDocument({ data: bytes.slice(0) }).promise;
+  for (let pageIndex = 0; pageIndex < doc.numPages; pageIndex++) {
+    const page = await doc.getPage(pageIndex + 1); // pdf.js pages are 1-indexed
+    const viewport = page.getViewport({ scale: 1 });
+    const annotations = await page.getAnnotations();
+    for (const annot of annotations) {
+      if (!annot.fieldName || !annot.rect) continue;
+      const [x1, y1, x2, y2] = viewport.convertToViewportRectangle(annot.rect);
+      // convertToViewportRectangle doesn't guarantee (x1,y1) is the
+      // top-left corner — a rotated page can flip which corner comes
+      // first — so derive left/top/width/height from min/max rather
+      // than assuming an order.
+      const left = Math.min(x1, x2), top = Math.min(y1, y2);
+      const width = Math.abs(x2 - x1), height = Math.abs(y2 - y1);
+      // Stored as a PERCENTAGE of the page's own size at scale 1, not
+      // absolute pixels — the modal can render pages at whatever size
+      // fits the panel, and a percentage overlay stays correctly
+      // positioned regardless of the actual rendered canvas size.
+      positions[annot.fieldName] = {
+        pageIndex,
+        rectPct: {
+          left: (left / viewport.width) * 100,
+          top: (top / viewport.height) * 100,
+          width: (width / viewport.width) * 100,
+          height: (height / viewport.height) * 100,
+        },
+      };
+    }
+  }
+  return positions;
 }
 
 // Shared normalization used both by the static regex guesses below AND
@@ -12121,9 +12185,10 @@ async function recordFieldMappingMemory(mapping) {
   await loadFieldMappingMemory(); // refresh cache so this session benefits immediately too
 }
 
-function showTemplateFieldMappingModal(name, fieldInfos) {
+function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPositions) {
   const existing = document.getElementById('templateMappingModal');
   if (existing) existing.remove();
+  const hasPreview = !!(pdfBytes && fieldPositions);
 
   const optionsHtml = CRED_DATA_SOURCES.map(g =>
     `<optgroup label="${g.group}">${g.options.map(([val, label]) => `<option value="${val}">${label}</option>`).join('')}</optgroup>`
@@ -12143,8 +12208,15 @@ function showTemplateFieldMappingModal(name, fieldInfos) {
       ? `<option value="__FIXED_CHECKED__">— Always checked (fixed for this template) —</option>
          <option value="__FIXED_UNCHECKED__">— Always unchecked (fixed for this template) —</option>`
       : `<option value="__FIXED_TEXT__">— Fixed text (same every time) —</option>`;
+    // The small 📍 locate button only appears when this field's position
+    // was actually found (not every field necessarily has one — a rare
+    // pdf.js/pdf-lib field-name mismatch, or a field with no visible
+    // widget) — clicking it scrolls the preview panel to that field and
+    // briefly highlights its box, the reverse of clicking a box.
+    const hasPosition = hasPreview && fieldPositions[fn];
     return `
     <div class="template-mapping-row" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      ${hasPosition ? `<button type="button" class="btn-locate-field" onclick="locateFieldOnPreview('${fn.replace(/'/g,"\\'")}')" title="Show where this field is on the page" style="background:none;border:1px solid rgba(255,255,255,.2);border-radius:6px;color:var(--teal-l);font-size:12px;padding:2px 7px;cursor:pointer;flex-shrink:0;">📍</button>` : '<span style="width:26px;flex-shrink:0;"></span>'}
       <span style="flex:1;min-width:140px;color:#fff;font-size:13px;">${fn}${fi.isCheckbox ? ' <span style="color:rgba(255,255,255,.35);font-size:11px;">(checkbox)</span>' : ''}</span>
       <select class="inline-select template-mapping-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
         <option value="">— Leave blank / fill manually —</option>
@@ -12159,11 +12231,20 @@ function showTemplateFieldMappingModal(name, fieldInfos) {
   modal.id = 'templateMappingModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:620px;max-height:82vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:${hasPreview ? '1100px' : '620px'};max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving. Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
-      <div id="templateMappingRows">${rows}</div>
-      <div id="templateSaveErr" style="color:#f87171;font-size:12px;margin:10px 0;display:none;"></div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.${hasPreview ? ' Click 📍 next to a field to see exactly where it sits on the page.' : ''} Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
+      <div style="display:flex;gap:20px;flex:1;min-height:0;overflow:hidden;">
+        ${hasPreview ? `
+        <div id="templatePreviewPanel" style="width:420px;flex-shrink:0;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(0,0,0,.2);">
+          <div id="templatePreviewLoading" style="padding:40px;text-align:center;color:rgba(255,255,255,.4);font-size:13px;">Rendering pages…</div>
+          <div id="templatePreviewPages" style="display:none;"></div>
+        </div>` : ''}
+        <div style="flex:1;overflow-y:auto;min-width:0;">
+          <div id="templateMappingRows">${rows}</div>
+          <div id="templateSaveErr" style="color:#f87171;font-size:12px;margin:10px 0;display:none;"></div>
+        </div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn btn-teal" onclick="saveTemplateMapping('${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save template</button>
         <button class="btn btn-ghost" onclick="document.getElementById('templateMappingModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
@@ -12188,6 +12269,89 @@ function showTemplateFieldMappingModal(name, fieldInfos) {
     const guess = bestGuess(sel.dataset.fieldName);
     if (guess) sel.value = guess;
   });
+
+  if (hasPreview) renderTemplatePreviewPages(pdfBytes, fieldPositions);
+}
+
+// Renders every page of the uploaded PDF into the left-hand preview
+// panel, with a semi-transparent box over each field at its real
+// position — pages render sequentially (not in parallel) since pdf.js
+// rendering is genuinely CPU-heavy per page, and a 20-page payer form
+// (not unusual — Texas Standardized runs 20 pages) rendering all at once
+// would visibly stall the tab.
+async function renderTemplatePreviewPages(pdfBytes, fieldPositions) {
+  const container = document.getElementById('templatePreviewPages');
+  const loadingEl = document.getElementById('templatePreviewLoading');
+  if (!container) return; // modal was closed before this finished
+
+  // Group field positions by page, so each page only has to look up its
+  // own overlays once instead of scanning the whole map per page.
+  const byPage = {};
+  for (const [fieldName, pos] of Object.entries(fieldPositions)) {
+    (byPage[pos.pageIndex] ||= []).push({ fieldName, ...pos.rectPct });
+  }
+
+  try {
+    const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
+    const renderWidth = 380; // fits the 420px panel with room for its own scrollbar
+    for (let pageIndex = 0; pageIndex < doc.numPages; pageIndex++) {
+      if (!document.getElementById('templatePreviewPages')) return; // modal closed mid-render
+      const page = await doc.getPage(pageIndex + 1);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const scale = renderWidth / baseViewport.width;
+      const viewport = page.getViewport({ scale });
+
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+      const pageWrap = document.createElement('div');
+      pageWrap.id = `templatePreviewPage_${pageIndex}`;
+      pageWrap.style.cssText = 'position:relative;margin:10px;border:1px solid rgba(255,255,255,.15);';
+      pageWrap.appendChild(canvas);
+
+      (byPage[pageIndex] || []).forEach(box => {
+        const overlay = document.createElement('div');
+        overlay.className = 'template-field-overlay';
+        overlay.dataset.fieldName = box.fieldName;
+        overlay.title = box.fieldName;
+        overlay.style.cssText = `position:absolute;left:${box.left}%;top:${box.top}%;width:${box.width}%;height:${box.height}%;background:rgba(20,184,166,.25);border:1.5px solid var(--teal-l,#14b8a6);border-radius:2px;cursor:pointer;transition:background .15s;`;
+        overlay.addEventListener('click', () => highlightMappingRow(box.fieldName));
+        overlay.addEventListener('mouseenter', () => overlay.style.background = 'rgba(20,184,166,.45)');
+        overlay.addEventListener('mouseleave', () => overlay.style.background = 'rgba(20,184,166,.25)');
+        pageWrap.appendChild(overlay);
+      });
+
+      container.appendChild(pageWrap);
+    }
+    loadingEl.style.display = 'none';
+    container.style.display = 'block';
+  } catch (e) {
+    loadingEl.textContent = 'Could not render a page preview for this PDF — mapping still works normally below, just without the visual.';
+    console.error('Preview render failed:', e);
+  }
+}
+
+// Clicking a box on the page scrolls to and briefly highlights its row
+// in the mapping list on the right.
+function highlightMappingRow(fieldName) {
+  const row = document.querySelector(`.template-mapping-row[data-field-name="${CSS.escape(fieldName)}"]`);
+  if (!row) return;
+  row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  row.style.background = 'rgba(20,184,166,.18)';
+  setTimeout(() => { row.style.background = ''; }, 1400);
+}
+
+// The reverse direction — clicking 📍 next to a mapping row scrolls the
+// preview panel to that field's page and briefly highlights its box.
+function locateFieldOnPreview(fieldName) {
+  const overlay = document.querySelector(`.template-field-overlay[data-field-name="${CSS.escape(fieldName)}"]`);
+  if (!overlay) return;
+  overlay.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const original = overlay.style.background;
+  overlay.style.background = 'rgba(245,158,11,.55)'; // gold flash, distinct from the box's own hover teal
+  setTimeout(() => { overlay.style.background = original; }, 1400);
 }
 
 async function saveTemplateMapping(name) {
