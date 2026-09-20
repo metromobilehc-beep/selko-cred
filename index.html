@@ -1153,6 +1153,8 @@ window.selkoSharedAuthStorage = {
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application, or a bulk roster spreadsheet, map its fields once to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
           <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="loadCredentialingTemplates()" />
           <div id="credTemplatesList" style="margin-bottom:14px;"></div>
+          <button class="btn btn-sm btn-ghost" id="toggleAddTemplateBtn" onclick="toggleAddTemplateSection()" style="color:#fff;border-color:rgba(255,255,255,.2);">+ Add a new template</button>
+          <div id="addTemplateSection" style="display:none;margin-top:14px;">
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
             <div style="display:flex;flex-direction:column;gap:4px;">
               <label style="font-size:11px;color:rgba(255,255,255,.5);">Template name</label>
@@ -1195,6 +1197,7 @@ window.selkoSharedAuthStorage = {
             <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:6px;">Not sure which row has the headers? Open the file yourself first and count — most payer rosters bury the real header row under several rows of instructions, same as Curative's.</p>
           </div>
           <div id="templateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+          </div>
         </div>
 
         <div class="dark-panel" id="credTemplatesLock" style="display:none;">
@@ -11695,6 +11698,11 @@ async function loadCredentialingTemplates() {
   const previouslyChecked = new Set(
     Array.from(document.querySelectorAll('.credTemplateCheckbox:checked')).map(el => el.value)
   );
+  // Same idea for which groups were already expanded — re-rendering on
+  // every search keystroke shouldn't collapse a group someone just opened.
+  const previouslyExpanded = new Set(
+    Array.from(document.querySelectorAll('.template-group[data-expanded="true"]')).map(el => el.dataset.groupKey)
+  );
 
   // Only re-fetch from the database the first time (or after an
   // upload/delete resets the cache) — typing in the search box just
@@ -11723,6 +11731,54 @@ async function loadCredentialingTemplates() {
     return;
   }
 
+  // Groups templates like "Texas Standard LHL234" + "LHL234A".."LHL234G"
+  // under one collapsible entry — these aren't separate payer forms,
+  // they're one form's main body plus its lettered attachments, uploaded
+  // as separate PDFs. Deliberately narrow: only strips a single trailing
+  // capital letter directly after a digit ("LHL234A" -> "LHL234"), so an
+  // unrelated template that happens to end in a capital letter (rare, but
+  // e.g. "Cigna Form B" as someone's own naming choice) isn't
+  // accidentally folded into a group it has nothing to do with.
+  function groupKeyFor(name) {
+    const m = name.match(/^(.*\d)[A-Z]$/);
+    return m ? m[1] : name;
+  }
+  const groups = {};
+  data.forEach(t => {
+    const key = groupKeyFor(t.name);
+    (groups[key] ||= []).push(t);
+  });
+
+  const renderRow = (t, compact) => `
+    <div class="template-row" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;${compact ? 'padding-left:20px;' : ''}">
+      <input type="checkbox" class="credTemplateCheckbox" value="${t.id}" ${previouslyChecked.has(t.id) ? 'checked' : ''} />
+      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.template_type === 'roster' ? ' <span style="font-size:10px;color:var(--teal-l);">ROSTER</span>' : ''}</span>
+      <span id="genControls_${t.id}">
+        ${t.template_type === 'roster'
+          ? `<button class="btn btn-sm btn-teal" onclick="showRosterGenerateModal('${t.id}')">👥 Generate roster</button>`
+          : `<button class="btn btn-sm btn-teal" onclick="revealGenerateInput('${t.id}')">📄 Generate</button>`}
+      </span>
+      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+    </div>`;
+
+  const groupKeys = Object.keys(groups);
+  const bodyHtml = groupKeys.map(key => {
+    const members = groups[key];
+    if (members.length === 1) return renderRow(members[0], false);
+
+    const isExpanded = previouslyExpanded.has(key);
+    return `
+    <div class="template-group" data-group-key="${key.replace(/"/g,'&quot;')}" data-expanded="${isExpanded}">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onclick="toggleTemplateGroup('${key.replace(/'/g,"\\'")}')">
+        <span class="template-group-chevron" style="color:rgba(255,255,255,.4);font-size:11px;transition:transform .15s;transform:rotate(${isExpanded ? '90' : '0'}deg);">▶</span>
+        <span style="flex:1;color:#fff;font-size:13px;font-weight:600;">${key} <span style="font-weight:400;color:rgba(255,255,255,.4);font-size:12px;">(${members.length} parts — main form + attachments)</span></span>
+      </div>
+      <div class="template-group-body" style="display:${isExpanded ? 'block' : 'none'};">
+        ${members.map(t => renderRow(t, true)).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
   container.innerHTML = `
     <datalist id="credGenStaffList">
       ${staffList.map(s => `<option data-id="${s.id}" value="${s.full_name.replace(/"/g,'&quot;')}"></option>`).join('')}
@@ -11732,18 +11788,42 @@ async function loadCredentialingTemplates() {
       <input type="text" class="inline-input" id="credBatchStaffSearch" list="credGenStaffList" placeholder="Search staff for batch..." style="max-width:200px;" value="${(document.getElementById('credBatchStaffSearch')?.value || '').replace(/"/g,'&quot;')}" />
       <button class="btn btn-sm btn-gold" id="credBatchGenerateBtn" onclick="generateBatchFilledForms()">📦 Generate selected as zip</button>
     </div>
-    ` + data.map(t => `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
-      <input type="checkbox" class="credTemplateCheckbox" value="${t.id}" ${previouslyChecked.has(t.id) ? 'checked' : ''} />
-      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.template_type === 'roster' ? ' <span style="font-size:10px;color:var(--teal-l);">ROSTER</span>' : ''}</span>
-      ${t.template_type === 'roster' ? `
-        <button class="btn btn-sm btn-teal" onclick="showRosterGenerateModal('${t.id}')">👥 Select staff &amp; generate roster</button>
-      ` : `
-        <input type="text" class="inline-input" id="genStaffFor_${t.id}" list="credGenStaffList" placeholder="Type to search staff..." style="max-width:200px;" />
-        <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${t.id}')">📄 Generate filled copy</button>
-      `}
-      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
-    </div>`).join('');
+    ` + bodyHtml;
+}
+
+// Swaps a template row's single "Generate" button for the actual
+// staff-search input + confirm button, only when someone actually wants
+// to generate — previously this input sat visible on every single row,
+// all the time, which is most of why a list of many templates felt so
+// wide and heavy. Nothing about generation itself changed, just when
+// the input appears.
+function revealGenerateInput(templateId) {
+  const el = document.getElementById(`genControls_${templateId}`);
+  if (!el) return;
+  el.innerHTML = `
+    <input type="text" class="inline-input" id="genStaffFor_${templateId}" list="credGenStaffList" placeholder="Type to search staff..." style="max-width:200px;" autofocus />
+    <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${templateId}')">Generate filled copy</button>`;
+  document.getElementById(`genStaffFor_${templateId}`)?.focus();
+}
+
+function toggleTemplateGroup(key) {
+  const group = document.querySelector(`.template-group[data-group-key="${CSS.escape(key)}"]`);
+  if (!group) return;
+  const expanded = group.dataset.expanded === 'true';
+  group.dataset.expanded = String(!expanded);
+  group.querySelector('.template-group-body').style.display = expanded ? 'none' : 'block';
+  group.querySelector('.template-group-chevron').style.transform = expanded ? 'rotate(0deg)' : 'rotate(90deg)';
+}
+
+// Hidden by default now — the upload/map flows only need to be visible
+// while actually adding something new, not permanently taking space
+// under a list that's supposed to be the fast, common-case view.
+function toggleAddTemplateSection() {
+  const section = document.getElementById('addTemplateSection');
+  const btn = document.getElementById('toggleAddTemplateBtn');
+  const isHidden = section.style.display === 'none';
+  section.style.display = isHidden ? 'block' : 'none';
+  btn.textContent = isHidden ? '− Hide' : '+ Add a new template';
 }
 
 let _pendingTemplateFile = null;
