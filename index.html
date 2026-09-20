@@ -1142,6 +1142,20 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
+        <!-- Guides & Resources — process reference material, not staff/
+             company data entry. Content lives in CRED_GUIDES (a plain JS
+             array) rather than being hand-written per guide here, so
+             adding the next one (revalidation, 855B, etc.) is just
+             appending an entry, not building new markup. Admin-facing
+             only, deliberately — this is Juan/office-staff reference
+             material for a process they run on a provider's behalf,
+             not something a clinician needs self-service access to. -->
+        <div class="dark-panel" id="credGuidesPanel" data-default-open="false">
+          <h2>📚 Guides &amp; resources</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Reference material for the parts of provider enrollment that happen outside Selko Cred entirely — like Medicare's own PECOS system.</p>
+          <div id="credGuidesList"></div>
+        </div>
+
         <!-- Credentialing form templates — upload a payer's fillable PDF
              once, map its fields to Cred data, then generate a filled copy
              for any staff member in one click from then on. This is the
@@ -11217,7 +11231,105 @@ async function loadCredentialingTab() {
   await loadCompanyLocationsPanel();
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
+  renderCredGuides(); // reference material — available at every tier, not gated like template generation is
   if (isFullCredentialing) await loadCredentialingTemplates();
+}
+
+// ══ GUIDES & RESOURCES — admin-facing reference material ══
+// Plain data + a render function, not hand-written markup per guide —
+// adding the next one (revalidation, 855B, etc.) means appending to
+// this array, nothing else. Content lives here rather than in a
+// database table since it's the same for every company (not
+// company-specific data) and changes rarely enough that a code
+// deploy to update it is a completely reasonable tradeoff for not
+// needing a whole separate content-management system for a handful
+// of reference guides.
+const CRED_GUIDES = [
+  {
+    title: 'Enrolling a new provider in Medicare via PECOS (CMS-855I)',
+    subtitle: 'For PT / OT / SLP first-time individual enrollment — reflects PECOS 2.0',
+    html: `
+      <p><em>Reflects PECOS 2.0, the current CMS system as of 2026. If you're working from an older internal checklist, check it against this — the process changed in real ways, not just cosmetically (see the 855R callout below).</em></p>
+
+      <h4>What actually changed that an old checklist might not know about</h4>
+      <ul>
+        <li><strong>The CMS-855R (reassignment of benefits) form was discontinued on October 31, 2023.</strong> Reassignment is now reported inside the 855I itself. If a checklist tells you to also file an 855R, that step is not just unnecessary — submitting a retired form is one of the more common ways an application gets bounced back, resetting the entire processing clock.</li>
+        <li><strong>PECOS 2.0 replaced the legacy system.</strong> Instead of a flat, one-size-fits-all form, it now asks screening questions up front and dynamically builds only the sections that actually apply — meaningfully shorter for a straightforward individual enrollment than the old flow was.</li>
+        <li><strong>Multi-factor authentication is now required for every PECOS login</strong>, tied to a separate CMS system (Identity &amp; Access Management, "I&amp;A") that has to be set up before you can even reach PECOS.</li>
+      </ul>
+
+      <h4>Before you start</h4>
+      <p><strong>1. Set up (or confirm) the provider's I&amp;A account.</strong> PECOS no longer has its own separate login — access goes through CMS's Identity &amp; Access Management system first, with MFA required.</p>
+      <p><strong>2. Decide who's actually filing this.</strong> If you're completing this on the provider's behalf rather than the provider logging in themselves, the provider needs to grant you a "surrogate" role in I&amp;A first. Confirm this is set up before starting data entry, not after hitting a wall partway through.</p>
+      <p><strong>3. Have these ready before you open the application:</strong></p>
+      <ul>
+        <li>Individual NPI (Type 1) — confirmed current in NPPES. <strong>NPPES and PECOS do not sync automatically</strong> — updating one does not update the other.</li>
+        <li>State license number, state, and issue/expiration dates</li>
+        <li>DEA number, if applicable to this discipline</li>
+        <li>Every practice location where this provider will actually render services — full address, phone, and the group's Tax ID at that location</li>
+        <li>SSN or ITIN</li>
+        <li>Current malpractice insurance information</li>
+        <li>If reassigning benefits to a group: the group's own PECOS enrollment must already be active, plus their legal business name and Tax ID exactly as filed</li>
+      </ul>
+
+      <h4>Filing the 855I itself</h4>
+      <ol>
+        <li>Log into PECOS 2.0 through I&amp;A.</li>
+        <li>Answer the initial screening questions — select <strong>individual practitioner, initial enrollment</strong> for a genuinely new provider.</li>
+        <li>Complete each generated section — identifying information, practice location(s), and, if applicable, the reassignment of benefits section (this is where the retired 855R's job now lives).</li>
+        <li><strong>Double-check every address against how it's filed elsewhere</strong>, especially the IRS record for the practice's Tax ID. A mismatch as small as "Suite 204" vs. "Ste 204" — same physical location, different formatting — has been enough to trigger an automatic hold under PECOS 2.0's stricter real-time validation.</li>
+        <li>Sign electronically (the Authorized Official or the provider, depending on who has that role).</li>
+        <li>Submit.</li>
+      </ol>
+
+      <h4>What to know while you wait</h4>
+      <ul>
+        <li><strong>Typical processing time for a clean electronic application: roughly 30–60 days.</strong> Paper submissions run slower (60–90 days) with no real advantage.</li>
+        <li><strong>Billing effective date</strong> is generally the later of the filing date or the date the provider actually met every requirement. Claims before that date are denied outright, with only a limited retroactive window (about 30 days for most physicians) — don't schedule this as an afterthought once someone's already seeing patients.</li>
+        <li><strong>No application fee applies here.</strong> The $750 CMS enrollment fee applies to institutional providers and DMEPOS suppliers — physicians and non-physician practitioners (PT, OT, SLP included) filing an 855I are explicitly exempt.</li>
+      </ul>
+
+      <h4>Most common reasons applications get returned, in order</h4>
+      <ol>
+        <li>Wrong form selected</li>
+        <li>NPI data mismatches (usually NPPES and PECOS drifting apart after an update in only one)</li>
+        <li>Incomplete or inconsistent practice location information</li>
+        <li>Missing or improperly executed signatures</li>
+        <li>Incorrect I&amp;A role setup</li>
+      </ol>
+
+      <h4>After approval</h4>
+      <p>The provider receives a PTAN (Provider Transaction Access Number) — separate from the NPI, and what actually gets billed against.</p>
+      <p><strong>Revalidation is required every 5 years.</strong> Missing that deadline deactivates billing privileges, and reinstatement typically costs another 60–90 days of lost billing — worth a standing reminder well before the 5-year mark.</p>
+
+      <p style="color:rgba(255,255,255,.4);font-size:12px;margin-top:16px;"><em>Reflects CMS's own published enrollment guidance as of 2026. Edge cases — a prior Medicare sanction, an unusual practice arrangement, multi-state licensure — aren't covered here and are worth a direct call to the relevant Medicare Administrative Contractor (MAC) rather than guessing from a general guide.</em></p>
+    `,
+  },
+];
+
+function renderCredGuides() {
+  const container = document.getElementById('credGuidesList');
+  if (!container) return;
+  container.innerHTML = CRED_GUIDES.map((g, i) => `
+    <div class="cred-guide" style="border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="display:flex;align-items:center;gap:8px;padding:10px 0;cursor:pointer;" onclick="toggleCredGuide(${i})">
+        <span class="cred-guide-chevron-${i}" style="color:rgba(255,255,255,.4);font-size:11px;transition:transform .15s;">▶</span>
+        <div style="flex:1;">
+          <div style="color:#fff;font-size:13px;font-weight:600;">${g.title}</div>
+          <div style="color:rgba(255,255,255,.4);font-size:12px;">${g.subtitle}</div>
+        </div>
+      </div>
+      <div id="credGuideBody_${i}" style="display:none;padding:4px 4px 16px 20px;color:rgba(255,255,255,.75);font-size:13px;line-height:1.6;">${g.html}</div>
+    </div>`).join('');
+}
+
+function toggleCredGuide(i) {
+  const body = document.getElementById(`credGuideBody_${i}`);
+  const chevron = document.querySelector(`.cred-guide-chevron-${i}`);
+  if (!body) return;
+  const isOpen = body.style.display === 'block';
+  body.style.display = isOpen ? 'none' : 'block';
+  if (chevron) chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(90deg)';
 }
 
 // ══ CREDENTIALING FORM TEMPLATES — auto-fill payer applications ══
