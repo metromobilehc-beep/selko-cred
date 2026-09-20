@@ -12483,45 +12483,93 @@ async function renderTemplatePreviewPages(pdfBytes, fieldPositions) {
     (byPage[pos.pageIndex] ||= []).push({ fieldName, ...pos.rectPct });
   }
 
+  // Reveal the container immediately and fill it in page by page, rather
+  // than waiting for every page to finish before showing anything. A
+  // real 26-page government form (tested directly against the actual
+  // CMS-855I) took long enough that a static "Rendering pages…" message
+  // with zero progress looked indistinguishable from a frozen tab, even
+  // though it was genuinely still working — this makes the actual
+  // progress visible instead of hidden until everything's done.
+  container.style.display = 'block';
+  loadingEl.style.display = 'block';
+
+  let doc;
   try {
-    const doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
-    const renderWidth = 380; // fits the 420px panel with room for its own scrollbar
-    for (let pageIndex = 0; pageIndex < doc.numPages; pageIndex++) {
-      if (!document.getElementById('templatePreviewPages')) return; // modal closed mid-render
-      const page = await doc.getPage(pageIndex + 1);
-      const baseViewport = page.getViewport({ scale: 1 });
-      const scale = renderWidth / baseViewport.width;
-      const viewport = page.getViewport({ scale });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-
-      const pageWrap = document.createElement('div');
-      pageWrap.id = `templatePreviewPage_${pageIndex}`;
-      pageWrap.style.cssText = 'position:relative;margin:10px;border:1px solid rgba(255,255,255,.15);';
-      pageWrap.appendChild(canvas);
-
-      (byPage[pageIndex] || []).forEach(box => {
-        const overlay = document.createElement('div');
-        overlay.className = 'template-field-overlay';
-        overlay.dataset.fieldName = box.fieldName;
-        overlay.title = box.fieldName;
-        overlay.style.cssText = `position:absolute;left:${box.left}%;top:${box.top}%;width:${box.width}%;height:${box.height}%;background:rgba(20,184,166,.25);border:1.5px solid var(--teal-l,#14b8a6);border-radius:2px;cursor:pointer;transition:background .15s;`;
-        overlay.addEventListener('click', () => highlightMappingRow(box.fieldName));
-        overlay.addEventListener('mouseenter', () => overlay.style.background = 'rgba(20,184,166,.45)');
-        overlay.addEventListener('mouseleave', () => overlay.style.background = 'rgba(20,184,166,.25)');
-        pageWrap.appendChild(overlay);
-      });
-
-      container.appendChild(pageWrap);
-    }
-    loadingEl.style.display = 'none';
-    container.style.display = 'block';
+    doc = await pdfjsLib.getDocument({ data: pdfBytes.slice(0) }).promise;
   } catch (e) {
     loadingEl.textContent = 'Could not render a page preview for this PDF — mapping still works normally below, just without the visual.';
-    console.error('Preview render failed:', e);
+    console.error('Preview document load failed:', e);
+    return;
+  }
+
+  const renderWidth = 380; // fits the 420px panel with room for its own scrollbar
+  let renderedCount = 0;
+  let failedCount = 0;
+
+  // A single page can genuinely hang rather than error — pdf.js has no
+  // built-in timeout of its own, and an unresolved promise doesn't throw,
+  // so a try/catch alone never catches this. Racing each page's real work
+  // against a timeout is what actually lets the rest of the document keep
+  // going instead of the whole preview stalling forever on one bad page.
+  const withTimeout = (promise, ms) => Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('page render timed out')), ms)),
+  ]);
+
+  for (let pageIndex = 0; pageIndex < doc.numPages; pageIndex++) {
+    if (!document.getElementById('templatePreviewPages')) return; // modal closed mid-render
+    loadingEl.textContent = `Rendering page ${pageIndex + 1} of ${doc.numPages}…`;
+
+    try {
+      await withTimeout((async () => {
+        const page = await doc.getPage(pageIndex + 1);
+        const baseViewport = page.getViewport({ scale: 1 });
+        const scale = renderWidth / baseViewport.width;
+        const viewport = page.getViewport({ scale });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+
+        const pageWrap = document.createElement('div');
+        pageWrap.id = `templatePreviewPage_${pageIndex}`;
+        pageWrap.style.cssText = 'position:relative;margin:10px;border:1px solid rgba(255,255,255,.15);';
+        pageWrap.appendChild(canvas);
+
+        (byPage[pageIndex] || []).forEach(box => {
+          const overlay = document.createElement('div');
+          overlay.className = 'template-field-overlay';
+          overlay.dataset.fieldName = box.fieldName;
+          overlay.title = box.fieldName;
+          overlay.style.cssText = `position:absolute;left:${box.left}%;top:${box.top}%;width:${box.width}%;height:${box.height}%;background:rgba(20,184,166,.25);border:1.5px solid var(--teal-l,#14b8a6);border-radius:2px;cursor:pointer;transition:background .15s;`;
+          overlay.addEventListener('click', () => highlightMappingRow(box.fieldName));
+          overlay.addEventListener('mouseenter', () => overlay.style.background = 'rgba(20,184,166,.45)');
+          overlay.addEventListener('mouseleave', () => overlay.style.background = 'rgba(20,184,166,.25)');
+          pageWrap.appendChild(overlay);
+        });
+
+        container.appendChild(pageWrap);
+      })(), 8000);
+      renderedCount++;
+    } catch (e) {
+      // Skip this one page and keep going — a single unrenderable page
+      // (or one that times out) shouldn't cost the other 25. The field
+      // mapping list on the right is unaffected either way; this only
+      // means that specific page's fields won't have a 📍/box to click.
+      failedCount++;
+      console.error(`Preview render failed on page ${pageIndex + 1}:`, e);
+      const failWrap = document.createElement('div');
+      failWrap.style.cssText = 'margin:10px;padding:16px;border:1px dashed rgba(255,255,255,.2);border-radius:6px;color:rgba(255,255,255,.4);font-size:12px;text-align:center;';
+      failWrap.textContent = `Page ${pageIndex + 1} couldn't be rendered — its fields are still listed on the right, just without a preview box.`;
+      container.appendChild(failWrap);
+    }
+  }
+
+  loadingEl.style.display = 'none';
+  if (failedCount && renderedCount === 0) {
+    loadingEl.textContent = 'Could not render a page preview for this PDF — mapping still works normally below, just without the visual.';
+    loadingEl.style.display = 'block';
   }
 }
 
