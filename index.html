@@ -1141,7 +1141,7 @@ window.selkoSharedAuthStorage = {
              this, since template generation is the more advanced feature. -->
         <div class="dark-panel" id="credTemplatesPanel" data-default-open="true">
           <h2>Credentialing form templates</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application once, map its fields to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application, or a bulk roster spreadsheet, map its fields once to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
           <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="loadCredentialingTemplates()" />
           <div id="credTemplatesList" style="margin-bottom:14px;"></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
@@ -1161,6 +1161,29 @@ window.selkoSharedAuthStorage = {
               <input class="inline-input" type="url" id="newTemplateUrl" placeholder="https://payer.com/credentialing-form.pdf" />
             </div>
             <button class="btn btn-sm btn-gold" id="fetchTemplateUrlBtn" onclick="startTemplateUploadFromUrl()">🔗 Fetch &amp; map fields</button>
+          </div>
+          <div style="border-top:1px solid rgba(255,255,255,.08);margin-top:14px;padding-top:14px;">
+            <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:10px;">— or — upload a payer's <strong style="color:rgba(255,255,255,.6);">roster spreadsheet</strong> (one row per provider, like Curative's provider roster) instead of a single-provider PDF.</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:11px;color:rgba(255,255,255,.5);">Template name</label>
+                <input class="inline-input" type="text" id="newRosterName" placeholder="e.g. Curative Provider Roster" style="width:220px;" />
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:11px;color:rgba(255,255,255,.5);">Sheet name</label>
+                <input class="inline-input" type="text" id="newRosterSheetName" placeholder="e.g. Additions and Changes" style="width:180px;" />
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:11px;color:rgba(255,255,255,.5);">Header row #</label>
+                <input class="inline-input" type="number" id="newRosterHeaderRow" placeholder="e.g. 17" min="1" style="width:100px;" />
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:11px;color:rgba(255,255,255,.5);">Excel file</label>
+                <input type="file" id="newRosterFile" accept=".xlsx,.xls" style="color:#fff;font-size:12px;" />
+              </div>
+              <button class="btn btn-sm btn-teal" onclick="startRosterTemplateUpload()">+ Read columns &amp; map</button>
+            </div>
+            <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:6px;">Not sure which row has the headers? Open the file yourself first and count — most payer rosters bury the real header row under several rows of instructions, same as Curative's.</p>
           </div>
           <div id="templateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
         </div>
@@ -11674,9 +11697,13 @@ async function loadCredentialingTemplates() {
     ` + data.map(t => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
       <input type="checkbox" class="credTemplateCheckbox" value="${t.id}" ${previouslyChecked.has(t.id) ? 'checked' : ''} />
-      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}</span>
-      <input type="text" class="inline-input" id="genStaffFor_${t.id}" list="credGenStaffList" placeholder="Type to search staff..." style="max-width:200px;" />
-      <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${t.id}')">📄 Generate filled copy</button>
+      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.template_type === 'roster' ? ' <span style="font-size:10px;color:var(--teal-l);">ROSTER</span>' : ''}</span>
+      ${t.template_type === 'roster' ? `
+        <button class="btn btn-sm btn-teal" onclick="showRosterGenerateModal('${t.id}')">👥 Select staff &amp; generate roster</button>
+      ` : `
+        <input type="text" class="inline-input" id="genStaffFor_${t.id}" list="credGenStaffList" placeholder="Type to search staff..." style="max-width:200px;" />
+        <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${t.id}')">📄 Generate filled copy</button>
+      `}
       ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
     </div>`).join('');
 }
@@ -11745,6 +11772,78 @@ async function startTemplateUploadFromUrl() {
   } finally {
     btn.disabled = false;
     btn.textContent = '🔗 Fetch & map fields';
+  }
+}
+
+// ── ROSTER TEMPLATES ──
+// A payer roster (e.g. Curative's Provider Roster) is one spreadsheet
+// with one row per provider, instead of one PDF per provider. Deliberately
+// reuses as much of the PDF-template machinery as possible: the same
+// mapping modal (showTemplateFieldMappingModal), the same data-source
+// resolver (resolveCredDataSource), the same credentialing_templates
+// table — just a different upload/extraction step (spreadsheet column
+// headers instead of PDF form fields) and a different generation step
+// (write N rows into a copy of the template instead of filling one PDF).
+let _pendingRosterSheetName = null;
+let _pendingRosterHeaderRow = null;
+
+async function startRosterTemplateUpload() {
+  const name = document.getElementById('newRosterName').value.trim();
+  const sheetName = document.getElementById('newRosterSheetName').value.trim();
+  const headerRow = parseInt(document.getElementById('newRosterHeaderRow').value, 10);
+  const fileInput = document.getElementById('newRosterFile');
+  const err = document.getElementById('templateUploadErr');
+  err.style.display = 'none';
+
+  if (!name) { err.textContent = 'Enter a template name first.'; err.style.display = 'block'; return; }
+  if (!sheetName) { err.textContent = 'Enter the sheet name the provider rows live on.'; err.style.display = 'block'; return; }
+  if (!headerRow || headerRow < 1) { err.textContent = 'Enter the header row number (count it yourself in the file — most payer rosters bury it under instructions).'; err.style.display = 'block'; return; }
+  const file = fileInput.files[0];
+  if (!file) { err.textContent = 'Choose an Excel file first.'; err.style.display = 'block'; return; }
+
+  try {
+    const bytes = await file.arrayBuffer();
+    const wb = XLSX.read(bytes, { type: 'array' });
+    if (!wb.SheetNames.includes(sheetName)) {
+      err.textContent = `No sheet named "${sheetName}" in this file. Sheets found: ${wb.SheetNames.join(', ')}`;
+      err.style.display = 'block';
+      return;
+    }
+    const sheet = wb.Sheets[sheetName];
+    // header:1 gives raw row arrays instead of assuming row 1 is the
+    // header (sheet_to_json's default) — necessary here since the real
+    // header row is rarely row 1 on a payer's own roster template.
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+    const headerRowValues = rows[headerRow - 1]; // headerRow is 1-indexed, matching what a human would count
+    if (!headerRowValues || !headerRowValues.some(v => String(v).trim())) {
+      err.textContent = `Row ${headerRow} on "${sheetName}" looks empty. Double-check the row number.`;
+      err.style.display = 'block';
+      return;
+    }
+
+    // Same {name, isCheckbox} shape the PDF mapping modal already expects
+    // — a spreadsheet column is never a checkbox, so always false, but
+    // keeping the shape identical is what lets the same modal render
+    // both kinds of template without any changes to it at all.
+    const fieldNames = headerRowValues
+      .map((v, i) => ({ name: String(v).trim(), colIndex: i, isCheckbox: false }))
+      .filter(f => f.name);
+
+    if (!fieldNames.length) {
+      err.textContent = `No column headers found in row ${headerRow} of "${sheetName}".`;
+      err.style.display = 'block';
+      return;
+    }
+
+    _pendingTemplateFile = file;
+    _pendingTemplateFieldNames = fieldNames;
+    _pendingRosterSheetName = sheetName;
+    _pendingRosterHeaderRow = headerRow;
+    await loadFieldMappingMemory();
+    showTemplateFieldMappingModal(name, fieldNames);
+  } catch (e) {
+    err.textContent = 'Could not read this Excel file: ' + e.message;
+    err.style.display = 'block';
   }
 }
 
@@ -12060,6 +12159,8 @@ async function saveTemplateMapping(name) {
   errEl.style.display = 'none';
   if (!_pendingTemplateFile) { errEl.textContent = 'File missing — please re-select it and try again.'; errEl.style.display = 'block'; return; }
 
+  const isRoster = !!_pendingRosterSheetName;
+
   const mapping = {};
   document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
     if (!sel.value) return;
@@ -12079,26 +12180,41 @@ async function saveTemplateMapping(name) {
 
   try {
     const path = `${currentCompany.id}/${Date.now()}_${_pendingTemplateFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
-    const { error: uploadErr } = await sb.storage.from('credentialing-templates').upload(path, _pendingTemplateFile, { contentType: 'application/pdf' });
+    const contentType = isRoster
+      ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      : 'application/pdf';
+    const { error: uploadErr } = await sb.storage.from('credentialing-templates').upload(path, _pendingTemplateFile, { contentType });
     if (uploadErr) throw uploadErr;
 
     // Only a super admin (uploading outside a company's own session) makes
     // this a Selko-provided template usable by every company — a regular
     // company admin's upload stays scoped to their own company only.
     const isGlobal = currentProfile.is_super_admin && !_superProfile;
-    const { error: insertErr } = await sb.from('credentialing_templates').insert({
+    const insertPayload = {
       company_id: isGlobal ? null : currentCompany.id,
       name,
       storage_path: path,
       field_mapping: mapping,
-    });
+    };
+    if (isRoster) {
+      insertPayload.template_type = 'roster';
+      insertPayload.roster_sheet_name = _pendingRosterSheetName;
+      insertPayload.roster_header_row = _pendingRosterHeaderRow;
+    }
+    const { error: insertErr } = await sb.from('credentialing_templates').insert(insertPayload);
     if (insertErr) throw insertErr;
 
     document.getElementById('templateMappingModal')?.remove();
     document.getElementById('newTemplateName').value = '';
     document.getElementById('newTemplateFile').value = '';
+    document.getElementById('newRosterName').value = '';
+    document.getElementById('newRosterSheetName').value = '';
+    document.getElementById('newRosterHeaderRow').value = '';
+    document.getElementById('newRosterFile').value = '';
     _pendingTemplateFile = null;
     _pendingTemplateFieldNames = [];
+    _pendingRosterSheetName = null;
+    _pendingRosterHeaderRow = null;
     toast(`✓ Template "${name}" saved`);
     _credTemplatesCache = null; // new template added — force a fresh fetch
     await loadCredentialingTemplates();
@@ -12361,6 +12477,153 @@ async function generateFilledForm(templateId) {
   } catch (e) {
     toast('Could not generate form: ' + e.message, true);
   }
+}
+
+// ── ROSTER GENERATION ──
+// A roster produces ONE spreadsheet with every selected staff member as
+// a row, instead of one PDF per person — so this needs a real
+// multi-select UI, not the single-name search box the PDF flow uses.
+function showRosterGenerateModal(templateId) {
+  const tmpl = _credTemplatesCache?.find(t => t.id === templateId);
+  if (!tmpl) { toast('Template not found', true); return; }
+
+  const activeStaff = staffList.filter(s => s.active !== false);
+  const rows = activeStaff.map(s => `
+    <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+      <input type="checkbox" class="rosterStaffCheckbox" value="${s.id}" checked />
+      <span style="color:#fff;font-size:13px;">${s.full_name}</span>
+    </label>`).join('');
+
+  const modal = document.createElement('div');
+  modal.id = 'rosterGenerateModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2,#172333);border-radius:10px;padding:24px;max-width:480px;width:100%;max-height:80vh;display:flex;flex-direction:column;">
+      <h3 style="color:#fff;font-size:16px;margin-bottom:4px;">Generate: ${tmpl.name}</h3>
+      <p style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:14px;">All active staff are checked by default — uncheck anyone who shouldn't be on this roster.</p>
+      <div style="display:flex;gap:8px;margin-bottom:10px;">
+        <button class="btn btn-sm btn-ghost" onclick="document.querySelectorAll('.rosterStaffCheckbox').forEach(c=>c.checked=true)">Select all</button>
+        <button class="btn btn-sm btn-ghost" onclick="document.querySelectorAll('.rosterStaffCheckbox').forEach(c=>c.checked=false)">Select none</button>
+      </div>
+      <div style="overflow-y:auto;flex:1;border-top:1px solid rgba(255,255,255,.1);margin-bottom:14px;">${rows || '<p style="color:rgba(255,255,255,.4);font-size:12px;padding:10px 0;">No active staff found.</p>'}</div>
+      <div id="rosterGenerateErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('rosterGenerateModal').remove()">Cancel</button>
+        <button class="btn btn-sm btn-teal" onclick="generateRosterFilledForm('${templateId}')">Generate roster</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function generateRosterFilledForm(templateId) {
+  const errEl = document.getElementById('rosterGenerateErr');
+  errEl.style.display = 'none';
+  const staffIds = Array.from(document.querySelectorAll('.rosterStaffCheckbox:checked')).map(c => c.value);
+  if (!staffIds.length) { errEl.textContent = 'Select at least one staff member.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const { data: tmpl, error: tmplErr } = await sb.from('credentialing_templates').select('*').eq('id', templateId).maybeSingle();
+    if (tmplErr) throw tmplErr;
+    if (!tmpl) throw new Error('Template not found');
+
+    // Resolve every selected staff member's data up front, same shape
+    // buildCredDataForStaff already produces for the single-PDF flow —
+    // one company/locations lookup is shared across everyone since it
+    // doesn't vary per staff member.
+    const rowsData = [];
+    for (const staffId of staffIds) {
+      const staff = staffList.find(s => s.id === staffId);
+      if (!staff) continue;
+      const { companyWithLocations, staffWithLicenses } = await buildCredDataForStaff(staffId, staff);
+      rowsData.push({ staff, companyWithLocations, staffWithLicenses });
+    }
+
+    const { blob, skipped } = await fillCredRosterTemplate(tmpl, rowsData);
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tmpl.name.replace(/[^a-z0-9]/gi,'_')}_${new Date().toISOString().slice(0,10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    document.getElementById('rosterGenerateModal')?.remove();
+    toast(skipped.length
+      ? `Generated — ${skipped.length} mapped column(s) no longer matched the sheet and were skipped`
+      : `✓ Roster generated for ${rowsData.length} staff member(s)`);
+  } catch (e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+// Writes one row per staff member into a fresh copy of the original
+// roster file, directly below its real header row — everything else in
+// the workbook (instructions sheet, other tabs, formatting) is untouched.
+// Uses ExcelJS rather than the plain xlsx library specifically because
+// ExcelJS can load an existing file and edit it in place; the plain xlsx
+// library is better suited to building a sheet from nothing, which would
+// mean losing the payer's original instructions/formatting entirely.
+async function fillCredRosterTemplate(tmpl, rowsData) {
+  const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
+  if (dlErr) throw dlErr;
+  const bytes = await fileBlob.arrayBuffer();
+
+  const wb = new ExcelJS.Workbook();
+  await wb.xlsx.load(bytes);
+  const sheet = wb.getWorksheet(tmpl.roster_sheet_name);
+  if (!sheet) throw new Error(`Sheet "${tmpl.roster_sheet_name}" not found in this template — it may have been renamed since this template was set up.`);
+
+  const headerRow = sheet.getRow(tmpl.roster_header_row);
+  // Re-derive each mapped column's position fresh from the live header
+  // row rather than storing it separately — field_mapping is keyed by
+  // header text either way, so this is the one source of truth for
+  // "where does this column actually live," and stays correct even if
+  // someone re-uploads a payer's updated version of the same template.
+  const colIndexByHeader = {};
+  headerRow.eachCell((cell, colNumber) => {
+    const text = String(cell.value || '').trim();
+    if (text) colIndexByHeader[text] = colNumber;
+  });
+
+  const skipped = [];
+  let nextRowNum = tmpl.roster_header_row + 1;
+  // Don't overwrite existing example/sample rows already sitting under
+  // the header — advance past any row that already has content in its
+  // first mapped column before writing the first real one.
+  const firstMappedCol = Object.values(colIndexByHeader)[0];
+  if (firstMappedCol) {
+    while (sheet.getRow(nextRowNum).getCell(firstMappedCol).value) nextRowNum++;
+  }
+
+  for (const { staff, companyWithLocations, staffWithLicenses } of rowsData) {
+    const row = sheet.getRow(nextRowNum);
+    for (const [header, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
+      const colIndex = colIndexByHeader[header];
+      if (!colIndex) { if (!skipped.includes(header)) skipped.push(header); continue; }
+      let value;
+      if (sourcePath.startsWith('__FIXED_TEXT__:')) {
+        value = sourcePath.slice('__FIXED_TEXT__:'.length);
+      } else if (sourcePath === '__FIXED_CHECKED__' || sourcePath === '__FIXED_UNCHECKED__') {
+        // Checkboxes don't translate to a spreadsheet cell the way they
+        // do a PDF form field — treated as plain Yes/No text instead.
+        value = sourcePath === '__FIXED_CHECKED__' ? 'Yes' : 'No';
+      } else {
+        value = resolveCredDataSource(sourcePath, companyWithLocations, staffWithLicenses);
+      }
+      row.getCell(colIndex).value = value || '';
+    }
+    row.commit();
+    nextRowNum++;
+  }
+
+  const buf = await wb.xlsx.writeBuffer();
+  return {
+    blob: new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }),
+    skipped,
+  };
 }
 
 // Fills every checked template for one staff member and bundles them into
