@@ -11892,15 +11892,85 @@ async function loadCredentialingTemplates() {
   }).join('');
 
   container.innerHTML = `
-    <datalist id="credGenStaffList">
-      ${staffList.map(s => `<option data-id="${s.id}" value="${s.full_name.replace(/"/g,'&quot;')}"></option>`).join('')}
-    </datalist>
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:6px;flex-wrap:wrap;background:rgba(255,255,255,.03);border-radius:6px;padding:8px;">
       <span style="font-size:12px;color:rgba(255,255,255,.5);">Check multiple forms below to fill them all at once:</span>
-      <input type="text" class="inline-input" id="credBatchStaffSearch" list="credGenStaffList" placeholder="Search staff for batch..." style="max-width:200px;" value="${(document.getElementById('credBatchStaffSearch')?.value || '').replace(/"/g,'&quot;')}" />
+      <input type="text" class="inline-input" id="credBatchStaffSearch" placeholder="Search staff for batch..." style="max-width:200px;" value="${(document.getElementById('credBatchStaffSearch')?.value || '').replace(/"/g,'&quot;')}" />
       <button class="btn btn-sm btn-gold" id="credBatchGenerateBtn" onclick="generateBatchFilledForms()">📦 Generate selected as zip</button>
     </div>
     ` + bodyHtml;
+  initStaffAutocomplete(document.getElementById('credBatchStaffSearch'));
+}
+
+// Reusable staff-name autocomplete — replaces the plain <input list="...">
+// + native <datalist> combo that was here before. Two real problems with
+// that setup, not just cosmetic: the browser's own dropdown UI looks
+// inconsistent with everything else in the app (that's the visual "this
+// looks strange" complaint), and worse, "Generate" only worked by
+// re-matching the typed text against every staff member's exact full
+// name — so typing a perfectly reasonable "Evan Flanagan" failed outright
+// against a record actually stored as "Evan Flanagan, DPT". This version
+// captures the actual staff ID the moment someone clicks a suggestion, so
+// generation looks the person up by ID, not by re-parsing text — clicking
+// a suggestion can never mismatch, and typing the exact full name still
+// works as a fallback for muscle memory.
+function initStaffAutocomplete(input) {
+  if (!input || input.dataset.autocompleteInit) return;
+  input.dataset.autocompleteInit = 'true';
+  input.dataset.selectedStaffId = '';
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'position:relative;display:inline-block;';
+  input.parentNode.insertBefore(wrapper, input);
+  wrapper.appendChild(input);
+
+  const dropdown = document.createElement('div');
+  dropdown.style.cssText = 'display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2,#172333);border:1px solid rgba(255,255,255,.15);border-radius:6px;max-height:220px;overflow-y:auto;z-index:200;margin-top:3px;box-shadow:0 8px 20px rgba(0,0,0,.35);';
+  wrapper.appendChild(dropdown);
+
+  function renderSuggestions(query) {
+    const q = query.trim().toLowerCase();
+    input.dataset.selectedStaffId = ''; // any edit invalidates a prior selection
+    if (!q) { dropdown.style.display = 'none'; return; }
+    const matches = staffList.filter(s => s.full_name.toLowerCase().includes(q)).slice(0, 8);
+    if (!matches.length) {
+      dropdown.innerHTML = `<div style="padding:8px 10px;color:rgba(255,255,255,.4);font-size:12px;">No staff match "${query}"</div>`;
+      dropdown.style.display = 'block';
+      return;
+    }
+    dropdown.innerHTML = matches.map(s =>
+      `<div class="staff-ac-item" data-staff-id="${s.id}" style="padding:8px 10px;cursor:pointer;color:#fff;font-size:13px;">${s.full_name}</div>`
+    ).join('');
+    dropdown.style.display = 'block';
+    dropdown.querySelectorAll('.staff-ac-item').forEach(item => {
+      item.addEventListener('mouseenter', () => item.style.background = 'rgba(255,255,255,.08)');
+      item.addEventListener('mouseleave', () => item.style.background = '');
+      // mousedown, not click — fires before the input's blur, so the
+      // dropdown-close-on-blur handler below doesn't swallow this first.
+      item.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        input.value = item.textContent;
+        input.dataset.selectedStaffId = item.dataset.staffId;
+        dropdown.style.display = 'none';
+      });
+    });
+  }
+
+  input.addEventListener('input', () => renderSuggestions(input.value));
+  input.addEventListener('focus', () => { if (input.value) renderSuggestions(input.value); });
+  input.addEventListener('blur', () => setTimeout(() => { dropdown.style.display = 'none'; }, 150));
+}
+
+// Resolves an autocomplete input to an actual staff record — prefers the ID
+// captured on click (always correct, no matching involved), falling back
+// to an exact full-name match only for someone who typed the whole name
+// and hit Generate directly without clicking a suggestion first.
+function resolveStaffFromInput(inputEl) {
+  if (!inputEl) return null;
+  const selectedId = inputEl.dataset.selectedStaffId;
+  if (selectedId) return staffList.find(s => s.id === selectedId) || null;
+  const typed = inputEl.value?.trim().toLowerCase();
+  if (!typed) return null;
+  return staffList.find(s => s.full_name.toLowerCase() === typed) || null;
 }
 
 // Swaps a template row's single "Generate" button for the actual
@@ -11913,9 +11983,11 @@ function revealGenerateInput(templateId) {
   const el = document.getElementById(`genControls_${templateId}`);
   if (!el) return;
   el.innerHTML = `
-    <input type="text" class="inline-input" id="genStaffFor_${templateId}" list="credGenStaffList" placeholder="Type to search staff..." style="max-width:200px;" autofocus />
+    <input type="text" class="inline-input" id="genStaffFor_${templateId}" placeholder="Type to search staff..." style="max-width:200px;" autofocus />
     <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${templateId}')">Generate filled copy</button>`;
-  document.getElementById(`genStaffFor_${templateId}`)?.focus();
+  const inputEl = document.getElementById(`genStaffFor_${templateId}`);
+  initStaffAutocomplete(inputEl);
+  inputEl?.focus();
 }
 
 function toggleTemplateGroup(key) {
@@ -12885,12 +12957,9 @@ async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
 }
 
 async function generateFilledForm(templateId) {
-  const typedName = document.getElementById(`genStaffFor_${templateId}`)?.value?.trim();
-  if (!typedName) { toast('Search and select a staff member first', true); return; }
-  // Datalist inputs only match by displayed text, not a separate value —
-  // so the typed name (expected to exactly match one selected from the
-  // list) is resolved back to the actual staff record here.
-  const staff = staffList.find(s => s.full_name.toLowerCase() === typedName.toLowerCase());
+  const inputEl = document.getElementById(`genStaffFor_${templateId}`);
+  if (!inputEl?.value?.trim()) { toast('Search and select a staff member first', true); return; }
+  const staff = resolveStaffFromInput(inputEl);
   if (!staff) { toast('No staff member matches that name — pick one from the search suggestions', true); return; }
   const staffId = staff.id;
 
@@ -13072,9 +13141,9 @@ async function fillCredRosterTemplate(tmpl, rowsData) {
 // a single zip — same fill logic as generating one at a time, just run
 // once for staff/company data instead of re-fetching it per form.
 async function generateBatchFilledForms() {
-  const typedName = document.getElementById('credBatchStaffSearch')?.value?.trim();
-  if (!typedName) { toast('Search and select a staff member first', true); return; }
-  const staff = staffList.find(s => s.full_name.toLowerCase() === typedName.toLowerCase());
+  const inputEl = document.getElementById('credBatchStaffSearch');
+  if (!inputEl?.value?.trim()) { toast('Search and select a staff member first', true); return; }
+  const staff = resolveStaffFromInput(inputEl);
   if (!staff) { toast('No staff member matches that name — pick one from the search suggestions', true); return; }
 
   const checked = Array.from(document.querySelectorAll('.credTemplateCheckbox:checked')).map(el => el.value);
