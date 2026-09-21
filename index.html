@@ -4,6 +4,13 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Selko Cred — Credential Manager</title>
+<!-- PWA — makes the app installable (Android home screen, Windows via
+     Microsoft Store, iOS "Add to Home Screen") without changing anything
+     about how the app itself works. theme-color tints the Android status
+     bar / browser chrome to match the brand teal. -->
+<link rel="manifest" href="/manifest.json" />
+<meta name="theme-color" content="#0d9488" />
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 <script>
@@ -16331,6 +16338,20 @@ function showSetNewPasswordForm() {
     if (alertEl) { showAlert(alertEl, 'Your session could not be restored. Please sign in again.'); }
   }
 })();
+</script>
+<script>
+  // Registers the minimal, no-caching service worker from earlier —
+  // required for the browser to consider this app installable at all.
+  // Feature-detected since older browsers (and some in-app webviews)
+  // don't support service workers; registration simply doesn't run
+  // there rather than throwing.
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/service-worker.js').catch((e) => {
+        console.error('Service worker registration failed:', e);
+      });
+    });
+  }
 </script>
 <div id="toast"></div>
 </body>
