@@ -14210,27 +14210,52 @@ function renderOvCredAttentionList() {
     return;
   }
 
-  list.innerHTML = filtered.map(item => {
-    const urgentIssue = item.issues.find(i => i.urgent);
-    const worstIssue = urgentIssue || item.issues[0];
-    const worstStyle = urgentIssue
-      ? 'background:rgba(239,68,68,.15);color:#ef4444;'
-      : 'background:rgba(245,158,11,.15);color:#f59e0b;';
-    // Every issue gets its own visible badge now, not just the worst one
-    // plus a bare "+N more" whose only detail lived in a native browser
-    // title tooltip — invisible on touch devices and easy to miss even
-    // on desktop, since nothing signals there's anything to hover.
-    // Filtering by object identity (not by label text) so two issues
-    // that happen to share the same label — e.g. two separate expiring
-    // licenses — never accidentally get collapsed into one.
-    const otherIssues = item.issues.filter(i => i !== worstIssue);
-    const otherBadges = otherIssues.map(i =>
-      `<span class="ov-days-badge" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.55);">${i.label}</span>`
+  // Fixed, always-present columns for the five most common checks —
+  // every row reserves the same grid slot for each, whether or not that
+  // person actually has the issue, so the same issue type always lands
+  // at the same horizontal position on every row. Previously these were
+  // flex-wrapped badges packed left in whatever order a person's issues
+  // happened to come in — "Missing NPI" landed at a different x-position
+  // per row depending on name length and which badges came before it,
+  // so there was no way to scan a column and see who's missing what.
+  const STATIC_COLUMNS = [
+    { key: 'Missing CAQH ID', short: 'CAQH ID' },
+    { key: 'Missing NPI', short: 'NPI' },
+    { key: 'Missing address', short: 'Address' },
+    { key: 'Missing phone', short: 'Phone' },
+    { key: 'No employment history on file', short: 'Employment Hx' },
+  ];
+  const gridCols = `160px repeat(${STATIC_COLUMNS.length}, 1fr)`;
+
+  const headerHtml = `
+    <div style="display:grid;grid-template-columns:${gridCols};gap:6px;padding:0 8px 6px;">
+      <span></span>
+      ${STATIC_COLUMNS.map(c => `<span style="font-size:10px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.03em;">${c.short}</span>`).join('')}
+    </div>`;
+
+  list.innerHTML = headerHtml + filtered.map(item => {
+    const staticCells = STATIC_COLUMNS.map(col => {
+      const has = item.issues.some(i => i.label === col.key);
+      return has
+        ? `<span class="ov-days-badge" style="background:rgba(245,158,11,.15);color:#f59e0b;justify-self:start;">${col.short}</span>`
+        : `<span style="color:rgba(255,255,255,.15);font-size:12px;">—</span>`;
+    }).join('');
+
+    // Anything not one of the five fixed checks is a dynamic, time-based
+    // issue (expiring/expired CAQH, license, DEA) — these carry their
+    // own day-count text and can't sit in a fixed column, so they still
+    // render as trailing badges below the fixed row, most urgent first.
+    const dynamicIssues = item.issues
+      .filter(i => !STATIC_COLUMNS.some(c => c.key === i.label))
+      .sort((a, b) => (b.urgent ? 1 : 0) - (a.urgent ? 1 : 0));
+    const dynamicBadgesHtml = dynamicIssues.map(i =>
+      `<span class="ov-days-badge" style="${i.urgent ? 'background:rgba(239,68,68,.15);color:#ef4444;' : 'background:rgba(245,158,11,.15);color:#f59e0b;'}">${i.label}</span>`
     ).join('');
-    return `<div class="ov-attention-row" style="cursor:pointer;display:flex;align-items:center;gap:6px;flex-wrap:wrap;" onclick="showFullProfileSheet('${item.staff.id}')">
-      <span>${item.staff.full_name}</span>
-      <span class="ov-days-badge" style="${worstStyle}">${worstIssue.label}</span>
-      ${otherBadges}
+
+    return `<div class="ov-attention-row" style="cursor:pointer;display:grid;grid-template-columns:${gridCols};gap:6px;align-items:center;padding:8px;border-radius:6px;" onclick="showFullProfileSheet('${item.staff.id}')" onmouseenter="this.style.background='rgba(255,255,255,.04)'" onmouseleave="this.style.background=''">
+      <span style="color:#fff;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${item.staff.full_name}</span>
+      ${staticCells}
+      ${dynamicBadgesHtml ? `<div style="grid-column:1 / -1;display:flex;gap:6px;flex-wrap:wrap;margin-top:2px;">${dynamicBadgesHtml}</div>` : ''}
     </div>`;
   }).join('');
 }
