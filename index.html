@@ -1172,7 +1172,12 @@ window.selkoSharedAuthStorage = {
         <div class="dark-panel" id="credTemplatesPanel" data-default-open="true">
           <h2>Credentialing form templates</h2>
           <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Upload a payer's fillable PDF application, or a bulk roster spreadsheet, map its fields once to your organization/staff data, and generate a filled copy for anyone in seconds — no retyping the same info onto every form.</p>
-          <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="width:100%;box-sizing:border-box;margin-bottom:10px;" oninput="loadCredentialingTemplates()" />
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input type="text" class="inline-input" id="credTemplateSearch" placeholder="🔍 Search form templates..." style="flex:1;box-sizing:border-box;" oninput="loadCredentialingTemplates()" />
+            <select class="inline-select" id="credTemplateCategoryFilter" style="width:auto;" onchange="loadCredentialingTemplates()">
+              <option value="">All categories</option>
+            </select>
+          </div>
           <div id="credTemplatesList" style="margin-bottom:14px;"></div>
           <button class="btn btn-sm btn-ghost" id="toggleAddTemplateBtn" onclick="toggleAddTemplateSection()" style="color:#fff;border-color:rgba(255,255,255,.2);">+ Add a new template</button>
           <div id="addTemplateSection" style="display:none;margin-top:14px;">
@@ -1843,6 +1848,21 @@ window.selkoSharedAuthStorage = {
         <div style="display:flex;gap:8px;">
           <input class="inline-input" type="text" id="newCategoryName" placeholder="e.g. HR Documents" style="max-width:240px;" />
           <button class="btn btn-sm btn-teal" onclick="addDocTypeCategory()">+ Add category</button>
+        </div>
+      </div>
+
+      <!-- Credentialing template categories — same shared-label pattern as
+           Document type categories above, but for payer/state groupings
+           (Optum, Texas, Oklahoma New-Hire, etc.) so Juan's growing pile
+           of forms can be filtered/grouped by whichever bucket makes
+           sense, rather than staying one flat searchable list forever. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Credentialing template categories</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Shared across every company — lets a credentialing form template be tagged by payer, state, or any other grouping you want (e.g. "Optum", "Texas", "Oklahoma New-Hire"). Adding one here makes it available to file a template under, immediately.</p>
+        <div id="credTemplateCategoriesListSuper" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newCredTemplateCategoryName" placeholder="e.g. Optum" style="max-width:240px;" />
+          <button class="btn btn-sm btn-teal" onclick="addCredTemplateCategory()">+ Add category</button>
         </div>
       </div>
 
@@ -11894,10 +11914,37 @@ function resolveCredDataSource(path, company, staff) {
   return val || '';
 }
 
+async function updateCredTemplateCategory(id, category) {
+  const { error } = await sb.from('credentialing_templates').update({ category: category || null }).eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  // Update the in-memory cache directly rather than a full re-fetch —
+  // same reasoning as everywhere else this cache is used: keeps the
+  // template list fast even as more get added.
+  const t = _credTemplatesCache?.find(t => t.id === id);
+  if (t) t.category = category || null;
+  toast(category ? `Moved to ${category}` : 'Category cleared');
+  await loadCredentialingTemplates();
+}
+
 let _credTemplatesCache = null;
 async function loadCredentialingTemplates() {
   const container = document.getElementById('credTemplatesList');
   const searchTerm = document.getElementById('credTemplateSearch')?.value?.trim().toLowerCase() || '';
+  const categoryFilter = document.getElementById('credTemplateCategoryFilter')?.value || '';
+
+  // Populated once (or after a category is added/removed via Super
+  // Admin) rather than every render — same lazy-cache approach as the
+  // templates themselves below.
+  if (!_credTemplateCategoriesCache.length) {
+    const { data: cats } = await sb.from('credentialing_template_categories').select('*').order('sort_order');
+    _credTemplateCategoriesCache = cats || [];
+  }
+  const filterSel = document.getElementById('credTemplateCategoryFilter');
+  if (filterSel && filterSel.options.length <= 1 && _credTemplateCategoriesCache.length) {
+    filterSel.innerHTML = '<option value="">All categories</option>' +
+      _credTemplateCategoriesCache.map(c => `<option value="${c.name}">${c.name}</option>`).join('');
+    filterSel.value = categoryFilter; // preserve selection across re-renders
+  }
 
   // Checked boxes would otherwise be lost every time the search filter
   // re-renders the list (e.g. typing to narrow down before finishing a
@@ -11929,12 +11976,13 @@ async function loadCredentialingTemplates() {
     return;
   }
 
-  const data = searchTerm
+  let data = searchTerm
     ? _credTemplatesCache.filter(t => t.name.toLowerCase().includes(searchTerm))
     : _credTemplatesCache;
+  if (categoryFilter) data = data.filter(t => t.category === categoryFilter);
 
   if (!data.length) {
-    container.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,.4);">No templates match "${searchTerm}".</div>`;
+    container.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,.4);">No templates match${searchTerm ? ` "${searchTerm}"` : ''}${categoryFilter ? ` in "${categoryFilter}"` : ''}.</div>`;
     return;
   }
 
@@ -11956,10 +12004,17 @@ async function loadCredentialingTemplates() {
     (groups[key] ||= []).push(t);
   });
 
+  const categoryOptionsHtml = ['<option value="">— No category —</option>']
+    .concat(_credTemplateCategoriesCache.map(c => `<option value="${c.name}">${c.name}</option>`))
+    .join('');
+
   const renderRow = (t, compact) => `
     <div class="template-row" style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;${compact ? 'padding-left:20px;' : ''}">
       <input type="checkbox" class="credTemplateCheckbox" value="${t.id}" ${previouslyChecked.has(t.id) ? 'checked' : ''} />
       <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.template_type === 'roster' ? ' <span style="font-size:10px;color:var(--teal-l);">ROSTER</span>' : ''}</span>
+      <select class="filter-sel" style="font-size:11px;padding:3px 5px;width:auto;" onchange="updateCredTemplateCategory('${t.id}', this.value)" title="File this template under a category (payer, state, etc.)">
+        ${categoryOptionsHtml.replace(`value="${t.category || ''}"`, `value="${t.category || ''}" selected`)}
+      </select>
       <span id="genControls_${t.id}">
         ${t.template_type === 'roster'
           ? `<button class="btn btn-sm btn-teal" onclick="showRosterGenerateModal('${t.id}')">👥 Generate roster</button>`
@@ -14566,6 +14621,58 @@ async function deleteDocTypeCategory(id, name) {
   await loadDocTypeCategories();
 }
 
+// Same pattern as document type categories above, pointed at credentialing
+// form templates instead — Optum/Texas/Oklahoma New-Hire-style groupings
+// rather than document-type section headers.
+let _credTemplateCategoriesCache = [];
+
+async function loadCredTemplateCategories() {
+  const { data, error } = await sb.from('credentialing_template_categories').select('*').order('sort_order');
+  const container = document.getElementById('credTemplateCategoriesListSuper');
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  _credTemplateCategoriesCache = data || [];
+
+  if (!_credTemplateCategoriesCache.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No categories yet — add one below.</div>';
+    return;
+  }
+  container.innerHTML = _credTemplateCategoriesCache.map(c => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="flex:1;color:#fff;font-size:13px;">${c.name}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteCredTemplateCategory(${c.id},'${c.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
+    </div>`).join('');
+}
+
+async function addCredTemplateCategory() {
+  const input = document.getElementById('newCredTemplateCategoryName');
+  const name = input.value.trim();
+  if (!name) { toast('Enter a category name first.', true); return; }
+
+  const nextSort = _credTemplateCategoriesCache.length
+    ? Math.max(..._credTemplateCategoriesCache.map(c => c.sort_order || 0)) + 1
+    : 0;
+
+  const { error } = await sb.from('credentialing_template_categories').insert({ name, sort_order: nextSort });
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  input.value = '';
+  toast(`✓ "${name}" added — any template can now be filed under it`);
+  await loadCredTemplateCategories();
+}
+
+async function deleteCredTemplateCategory(id, name) {
+  const { count } = await sb.from('credentialing_templates').select('id', { count: 'exact', head: true }).eq('category', name);
+  if (count && count > 0) {
+    toast(`Can't delete "${name}" — ${count} template${count !== 1 ? 's are' : ' is'} still filed under it. Move them to a different category first.`, true);
+    return;
+  }
+  if (!confirm(`Delete the "${name}" category?`)) return;
+  const { error } = await sb.from('credentialing_template_categories').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`Deleted "${name}"`);
+  await loadCredTemplateCategories();
+}
+
 function formatBytes(bytes) {
   if (!bytes) return '0 MB';
   const mb = bytes / (1024 * 1024);
@@ -14803,7 +14910,7 @@ async function loadSuperAdmin() {
   await populateOigCompanyFilter();
   await loadOigExclusionHistory();
   await loadDocTypeCategories();
-  await loadStorageUsage();
+  await loadCredTemplateCategories();
   await loadPartnerRecommendationsAdmin();
   await loadPlatformDocTypes();
   await loadDeletionReview();
