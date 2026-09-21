@@ -12319,7 +12319,7 @@ async function processTemplateFile(name, file, err) {
   try {
     const bytes = await file.arrayBuffer();
     const { PDFDocument } = PDFLib;
-    const pdfDoc = await PDFDocument.load(bytes);
+    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
     const form = pdfDoc.getForm();
     // Capture whether each field is a checkbox (duck-typed via .check(),
     // rather than trusting a constructor name that can vary across
@@ -13106,7 +13106,7 @@ async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
   const bytes = await fileBlob.arrayBuffer();
 
   const { PDFDocument } = PDFLib;
-  const pdfDoc = await PDFDocument.load(bytes);
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const form = pdfDoc.getForm();
 
   const skipped = [];
