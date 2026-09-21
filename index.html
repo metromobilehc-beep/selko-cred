@@ -6029,6 +6029,12 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Background Check Intake Info</div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">One-off fields some state new-hire background-check packets ask for (e.g. Oklahoma's OK-SCREEN) — not used anywhere else in Cred.</p>
+        <button class="btn btn-sm btn-ghost" onclick="showIntakeExtrasModal('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit intake info</button>
+      </div>
+
       <div style="display:${showCaqh ? 'block' : 'none'};font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">CAQH ProView Login</div>
       <div style="display:${showCaqh ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Username, password, and security question answers — encrypted together, same protection as the SSN above. This never automates logging into CAQH on anyone's behalf; the link below just opens their real site so you can sign in and paste the password in yourself.</p>
@@ -6708,6 +6714,74 @@ async function submitEnterSsn(staffId) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   }
+}
+
+// Same modal/upsert pattern used throughout Cred for per-staff side
+// tables (CAQH, additional licenses, etc.) — one row per staff member,
+// nothing here is sensitive enough to need the SSN's encrypted/
+// justification-logged treatment, just its own table since these
+// fields don't belong on credtrack_staff itself (see the migration
+// notes for why).
+function showIntakeExtrasModal(staffId) {
+  const existing = document.getElementById('intakeExtrasModal');
+  if (existing) existing.remove();
+
+  sb.from('credtrack_staff_intake_extras').select('*').eq('staff_id', staffId).maybeSingle()
+    .then(({ data }) => {
+      const v = data || {};
+      const field = (id, label, value) => `
+        <label style="font-size:11px;color:rgba(255,255,255,.5);">${label}</label>
+        <input class="inline-input" type="text" id="${id}" value="${(value || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />`;
+
+      const modal = document.createElement('div');
+      modal.id = 'intakeExtrasModal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+      modal.innerHTML = `
+        <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+          <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Background Check Intake Info</div>
+          ${field('intakeMaidenName', 'Maiden name / previously used name', v.maiden_name)}
+          ${field('intakeOtherAliases', 'Other aliases used', v.other_aliases)}
+          ${field('intakeBirthState', 'State of birth', v.birth_state)}
+          ${field('intakeBirthCountry', 'Country of birth', v.birth_country)}
+          ${field('intakeRace', 'Race', v.race)}
+          ${field('intakeHeight', 'Height', v.height)}
+          ${field('intakeWeight', 'Weight', v.weight)}
+          ${field('intakeHairColor', 'Hair color', v.hair_color)}
+          ${field('intakeEyeColor', 'Eye color', v.eye_color)}
+          <div id="intakeExtrasErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-teal" onclick="saveIntakeExtras('${staffId}')" style="flex:1;justify-content:center;">Save</button>
+            <button class="btn btn-ghost" onclick="document.getElementById('intakeExtrasModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+    });
+}
+
+async function saveIntakeExtras(staffId) {
+  const errEl = document.getElementById('intakeExtrasErr');
+  errEl.style.display = 'none';
+  const payload = {
+    staff_id: staffId,
+    company_id: currentCompany.id,
+    maiden_name: document.getElementById('intakeMaidenName').value.trim(),
+    other_aliases: document.getElementById('intakeOtherAliases').value.trim(),
+    birth_state: document.getElementById('intakeBirthState').value.trim(),
+    birth_country: document.getElementById('intakeBirthCountry').value.trim(),
+    race: document.getElementById('intakeRace').value.trim(),
+    height: document.getElementById('intakeHeight').value.trim(),
+    weight: document.getElementById('intakeWeight').value.trim(),
+    hair_color: document.getElementById('intakeHairColor').value.trim(),
+    eye_color: document.getElementById('intakeEyeColor').value.trim(),
+    updated_at: new Date().toISOString(),
+    updated_by: currentProfile.id,
+  };
+  const { error } = await sb.from('credtrack_staff_intake_extras')
+    .upsert(payload, { onConflict: 'staff_id' });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+  document.getElementById('intakeExtrasModal')?.remove();
+  toast('✓ Intake info saved');
 }
 
 function showRevealSsnPrompt(staffId) {
@@ -11346,6 +11420,20 @@ function toggleCredGuide(i) {
 // look up each mapped value, write it into the matching form field, done —
 // no fragile pixel-coordinate placement, since we're writing by field name.
 const CRED_DATA_SOURCES = [
+  // Deliberately no staff.ssn entry anywhere in this list, and never
+  // should be — SSN is only ever surfaced through showRevealSsnPrompt(),
+  // never as an auto-fill value written into a generated PDF.
+  { group: 'Background Check Intake (state-specific — e.g. OK-SCREEN)', options: [
+    ['staff.intake_maiden_name', 'Maiden name / previously used name'],
+    ['staff.intake_other_aliases', 'Other aliases used'],
+    ['staff.intake_birth_state', 'State of birth'],
+    ['staff.intake_birth_country', 'Country of birth'],
+    ['staff.intake_race', 'Race'],
+    ['staff.intake_height', 'Height'],
+    ['staff.intake_weight', 'Weight'],
+    ['staff.intake_hair_color', 'Hair color'],
+    ['staff.intake_eye_color', 'Eye color'],
+  ]},
   { group: 'Organization', options: [
     ['company.name', 'Company name (display)'],
     ['company.legal_business_name', 'Legal business name'],
@@ -11989,12 +12077,28 @@ function resolveStaffFromInput(inputEl) {
 function revealGenerateInput(templateId) {
   const el = document.getElementById(`genControls_${templateId}`);
   if (!el) return;
+  const tmpl = _credTemplatesCache?.find(t => t.id === templateId);
   el.innerHTML = `
     <input type="text" class="inline-input" id="genStaffFor_${templateId}" placeholder="Type to search staff..." style="max-width:200px;" autofocus />
+    ${tmpl?.requires_ssn_entry
+      ? `<button class="btn btn-sm btn-ghost" onclick="revealSsnForGenerate('${templateId}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="This form asks for an SSN — view it here to type into the generated PDF yourself">🔒 View SSN</button>`
+      : ''}
     <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${templateId}')">Generate filled copy</button>`;
   const inputEl = document.getElementById(`genStaffFor_${templateId}`);
   initStaffAutocomplete(inputEl);
   inputEl?.focus();
+}
+
+// New helper — resolves whichever staff member is currently selected in
+// this template's generate row, then opens the existing, unmodified SSN
+// reveal-with-justification modal (same encrypted store, same permanent
+// access log used everywhere else SSN is viewed). Deliberately reuses
+// showRevealSsnPrompt() as-is rather than building a second reveal path.
+function revealSsnForGenerate(templateId) {
+  const inputEl = document.getElementById(`genStaffFor_${templateId}`);
+  const staff = resolveStaffFromInput(inputEl);
+  if (!staff) { toast('Search and select a staff member first', true); return; }
+  showRevealSsnPrompt(staff.id);
 }
 
 function toggleTemplateGroup(key) {
@@ -12505,6 +12609,10 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:${hasPreview ? '1100px' : '620px'};max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
       <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.${hasPreview ? ' Click 📍 next to a field to see exactly where it sits on the page.' : ''} Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:14px;cursor:pointer;">
+        <input type="checkbox" id="templateRequiresSsnEntry" />
+        This form asks for a Social Security Number — show a "View SSN to fill in manually" shortcut when generating (SSN is never auto-filled, regardless of this setting)
+      </label>
       <div style="display:flex;gap:20px;flex:1;min-height:0;overflow:hidden;">
         ${hasPreview ? `
         <div id="templatePreviewPanel" style="width:420px;flex-shrink:0;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(0,0,0,.2);">
@@ -12714,6 +12822,7 @@ async function saveTemplateMapping(name) {
       name,
       storage_path: path,
       field_mapping: mapping,
+      requires_ssn_entry: document.getElementById('templateRequiresSsnEntry')?.checked || false,
     };
     if (isRoster) {
       insertPayload.template_type = 'roster';
@@ -12910,6 +13019,23 @@ async function buildCredDataForStaff(staffId, staff) {
       staffWithLicenses[`employment_gap_${n}_dates`] = emp.end_date ? `Since ${fmtDate(emp.end_date)}` : '';
       staffWithLicenses[`employment_gap_${n}_explanation`] = emp.gap_explanation || '';
     });
+
+  // One-off state-intake fields (race, height, weight, etc.) — see
+  // credtrack_staff_intake_extras. A staff member with no row here just
+  // resolves these fields to '', same as any other blank field.
+  const { data: intakeExtras } = await sb.from('credtrack_staff_intake_extras')
+    .select('*').eq('staff_id', staffId).maybeSingle();
+  if (intakeExtras) {
+    staffWithLicenses.intake_maiden_name   = intakeExtras.maiden_name || '';
+    staffWithLicenses.intake_other_aliases = intakeExtras.other_aliases || '';
+    staffWithLicenses.intake_birth_state   = intakeExtras.birth_state || '';
+    staffWithLicenses.intake_birth_country = intakeExtras.birth_country || '';
+    staffWithLicenses.intake_race          = intakeExtras.race || '';
+    staffWithLicenses.intake_height        = intakeExtras.height || '';
+    staffWithLicenses.intake_weight        = intakeExtras.weight || '';
+    staffWithLicenses.intake_hair_color    = intakeExtras.hair_color || '';
+    staffWithLicenses.intake_eye_color     = intakeExtras.eye_color || '';
+  }
 
   return { companyWithLocations, staffWithLicenses };
 }
