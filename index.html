@@ -1261,6 +1261,7 @@ window.selkoSharedAuthStorage = {
           <h2>Employees</h2>
           <div style="display:flex;gap:8px;margin-bottom:10px;">
             <input type="text" class="inline-input" id="hrEmployeeSearch" placeholder="🔍 Search employees..." style="flex:1;box-sizing:border-box;" oninput="loadHrEmployees()" />
+            <button class="btn btn-sm btn-ghost" onclick="showImportHrFromStaffModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">↓ Import from staff list</button>
             <button class="btn btn-sm btn-teal" onclick="showAddHrEmployeeModal()">+ Add employee</button>
           </div>
           <div id="hrEmployeeList"></div>
@@ -1908,6 +1909,28 @@ window.selkoSharedAuthStorage = {
           <input class="inline-input" type="text" id="newCredTemplateCategoryName" placeholder="e.g. Optum" style="max-width:240px;" />
           <button class="btn btn-sm btn-teal" onclick="addCredTemplateCategory()">+ Add category</button>
         </div>
+      </div>
+
+      <!-- Global HR form templates (I-9, W-4, background check authorization,
+           etc.) — Selko-provided, usable by every company with the HR
+           add-on, same as how credentialing templates work when uploaded
+           from here rather than from inside a specific company. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Global HR form templates</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Uploaded here, these are available to every company on the HR add-on — I-9, W-4, background check authorization, or anything else worth offering as a standard form rather than leaving every company to upload their own.</p>
+        <div id="superHrTemplatesList" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Form name</label>
+            <input class="inline-input" type="text" id="newSuperHrTemplateName" placeholder="e.g. Form I-9" style="width:240px;" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.5);">Fillable PDF</label>
+            <input type="file" id="newSuperHrTemplateFile" accept="application/pdf" style="color:#fff;font-size:12px;" />
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="startSuperHrTemplateUpload()">+ Upload &amp; map fields</button>
+        </div>
+        <div id="superHrTemplateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
 
       <!-- Platform document types (tier + global/custom management) -->
@@ -12656,6 +12679,7 @@ async function saveHrTemplateMapping(name) {
     toast(`✓ "${name}" saved`);
     _hrTemplatesCache = null;
     await loadHrTemplates();
+    await loadSuperHrTemplates(); // no-op if that panel isn't on screen right now (checks for its own container)
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
     errEl.style.display = 'block';
@@ -12671,6 +12695,7 @@ async function deleteHrTemplate(id, name) {
   toast(`Deleted "${name}"`);
   _hrTemplatesCache = null;
   await loadHrTemplates();
+  await loadSuperHrTemplates();
 }
 
 async function loadHrTemplates() {
@@ -12695,6 +12720,54 @@ async function loadHrTemplates() {
       <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.is_standalone_disclosure ? ' <span style="font-size:10px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
       <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
     </div>`).join('');
+}
+
+// ══ Selko Admin — global HR templates. Shares _hrTemplatesCache with the
+// per-company HR tab rather than keeping a second cache, so uploading one
+// from either place invalidates and refreshes both without extra
+// bookkeeping. Only the render filters differ: this view shows
+// company_id === null rows exclusively, since that's the whole point of
+// managing them from here rather than from inside one company's own tab.
+async function loadSuperHrTemplates() {
+  const container = document.getElementById('superHrTemplatesList');
+  if (!container) return;
+
+  if (!_hrTemplatesCache) {
+    const { data, error } = await sb.from('hr_templates').select('*').order('name');
+    if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+    _hrTemplatesCache = data || [];
+  }
+
+  const globalOnly = _hrTemplatesCache.filter(t => !t.company_id);
+  if (!globalOnly.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No global HR templates yet — upload one below.</div>';
+    return;
+  }
+
+  container.innerHTML = globalOnly.map(t => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.is_standalone_disclosure ? ' <span style="font-size:10px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
+    </div>`).join('');
+}
+
+async function startSuperHrTemplateUpload() {
+  const name = document.getElementById('newSuperHrTemplateName').value.trim();
+  const fileInput = document.getElementById('newSuperHrTemplateFile');
+  const err = document.getElementById('superHrTemplateUploadErr');
+  err.style.display = 'none';
+
+  if (!name) { err.textContent = 'Enter a form name first.'; err.style.display = 'block'; return; }
+  const file = fileInput.files[0];
+  if (!file) { err.textContent = 'Choose a PDF file first.'; err.style.display = 'block'; return; }
+  if (!currentProfile.is_super_admin) { err.textContent = 'Only super admins can add global templates.'; err.style.display = 'block'; return; }
+  if (_superProfile) { err.textContent = 'Exit "view as" mode first — templates uploaded while viewing as a company are scoped to that company, not global.'; err.style.display = 'block'; return; }
+
+  // Reuses the exact same parse/map/save pipeline as the per-company tab —
+  // saveHrTemplateMapping already saves as company_id: null (global)
+  // whenever a super admin isn't impersonating a company, which is
+  // guaranteed true here by the check just above.
+  await processHrTemplateFile(name, file, err);
 }
 
 async function fillHrTemplate(tmpl, company, employee) {
@@ -12810,7 +12883,7 @@ async function loadHrEmployees() {
 
   container.innerHTML = filtered.map(e => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onclick="showHrEmployeeSheet('${e.id}')">
-      <span style="flex:1;color:#fff;font-size:13px;">${e.full_name}${e.active === false ? ' <span style="font-size:10px;color:rgba(255,255,255,.35);">INACTIVE</span>' : ''}</span>
+      <span style="flex:1;color:#fff;font-size:13px;">${e.full_name}${e.active === false ? ' <span style="font-size:10px;color:rgba(255,255,255,.35);">INACTIVE</span>' : ''}${e.credtrack_staff_id ? ' <span style="font-size:10px;color:var(--teal-l);" title="Imported from the staff list — linked to their credentialing record">🔗</span>' : ''}</span>
       <span style="font-size:12px;color:rgba(255,255,255,.4);">${e.position || ''}</span>
       <span style="font-size:11px;color:${e.has_ssn_on_file ? 'rgba(255,255,255,.3)' : '#f59e0b'};">${e.has_ssn_on_file ? 'SSN on file' : 'No SSN on file'}</span>
     </div>`).join('');
@@ -12882,6 +12955,83 @@ async function saveHrEmployee(employeeId) {
   _hrEmployeesCache = null;
   await loadHrEmployees();
   if (employeeId) await showHrEmployeeSheet(employeeId);
+}
+
+// ══ Import from staff list — most credentialed clinicians also need an
+// HR record (I-9/W-4/background check apply to everyone hired, not just
+// non-clinical staff), so re-typing name/address/phone/email that's
+// already sitting in credtrack_staff would just be the same retyping
+// problem this whole module exists to eliminate. credtrack_staff_id
+// stays on the created hr_employees row as the link — the two records
+// remain genuinely separate (different table, different storage,
+// different RLS) even though they share this one pointer.
+async function showImportHrFromStaffModal() {
+  await loadStaffList();
+  const { data: existingLinks } = await sb.from('hr_employees')
+    .select('credtrack_staff_id').eq('company_id', currentCompany.id).not('credtrack_staff_id', 'is', null);
+  const alreadyImported = new Set((existingLinks || []).map(r => r.credtrack_staff_id));
+
+  const candidates = staffList.filter(s => s.active !== false && !alreadyImported.has(s.id));
+
+  const existing = document.getElementById('hrImportStaffModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'hrImportStaffModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+
+  const rowsHtml = candidates.length
+    ? candidates.map(s => `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+        <input type="checkbox" class="hrImportStaffCheckbox" value="${s.id}" checked />
+        <span style="color:#fff;font-size:13px;">${s.full_name}</span>
+        <span style="color:rgba(255,255,255,.35);font-size:11px;margin-left:auto;">${s.discipline || ''}</span>
+      </label>`).join('')
+    : `<div style="font-size:12px;color:rgba(255,255,255,.4);padding:12px 0;">${staffList.length ? 'Every active staff member already has an HR record.' : 'No active staff members found in Credentialing.'}</div>`;
+
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:80vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Import from staff list</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:12px;">Creates an HR record for each person checked, carrying over name, address, phone, and email — nothing else about their credentialing record is touched. Position/hire date/SSN still need to be filled in afterward.</p>
+      <div style="flex:1;overflow-y:auto;margin-bottom:14px;">${rowsHtml}</div>
+      <div id="hrImportErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="importSelectedHrFromStaff()" style="flex:1;justify-content:center;" ${candidates.length ? '' : 'disabled'}>Import selected</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('hrImportStaffModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function importSelectedHrFromStaff() {
+  const errEl = document.getElementById('hrImportErr');
+  errEl.style.display = 'none';
+  const checkedIds = Array.from(document.querySelectorAll('.hrImportStaffCheckbox:checked')).map(el => el.value);
+  if (!checkedIds.length) { errEl.textContent = 'Check at least one person first.'; errEl.style.display = 'block'; return; }
+
+  const rows = checkedIds.map(id => {
+    const s = staffList.find(x => x.id === id);
+    return {
+      company_id: currentCompany.id,
+      credtrack_staff_id: s.id,
+      full_name: s.full_name,
+      position: s.discipline || null,
+      address: s.address || null,
+      phone: s.phone || null,
+      email: s.email || null,
+      date_of_birth: s.date_of_birth || null,
+      created_by: currentProfile.id,
+    };
+  });
+
+  const { error } = await sb.from('hr_employees').insert(rows);
+  if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
+
+  document.getElementById('hrImportStaffModal')?.remove();
+  toast(`✓ Imported ${rows.length} employee${rows.length !== 1 ? 's' : ''} from the staff list`);
+  _hrEmployeesCache = null;
+  await loadHrEmployees();
 }
 
 async function showHrEmployeeSheet(employeeId) {
@@ -15666,6 +15816,7 @@ async function loadSuperAdmin() {
   await loadOigExclusionHistory();
   await loadDocTypeCategories();
   await loadCredTemplateCategories();
+  await loadSuperHrTemplates();
   await loadPartnerRecommendationsAdmin();
   await loadPlatformDocTypes();
   await loadDeletionReview();
