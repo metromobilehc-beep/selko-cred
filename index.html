@@ -1422,6 +1422,10 @@ window.selkoSharedAuthStorage = {
             <label class="inline-label">Expiry warning — second reminder (days)</label>
             <input class="inline-input" type="number" id="setWarn2" value="7" min="1" max="90" />
           </div>
+          <div>
+            <label class="inline-label">Task digest — remind every (days)</label>
+            <input class="inline-input" type="number" id="setTaskDigestInterval" value="7" min="1" max="90" />
+          </div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;">
           <input type="checkbox" id="setShowPartnerRecs" checked />
@@ -9985,6 +9989,7 @@ async function loadSettings() {
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
+  document.getElementById('setTaskDigestInterval').value = c.custom_vars?.taskDigestIntervalDays || 7;
   document.getElementById('setShowPartnerRecs').checked = c.show_partner_recommendations !== false;
 
   // Lock company name editing for non-super-admins
@@ -14800,6 +14805,7 @@ async function saveCompanySettings() {
   const adminEmail = document.getElementById('setAdminEmail').value.trim();
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
+  const taskDigestIntervalDays = parseInt(document.getElementById('setTaskDigestInterval').value) || 7;
   // Two save buttons write here now (Settings tab, and the Credentialing
   // tab's org profile fields) — both status elements always exist in the
   // DOM regardless of which tab is hidden, so update whichever one is
@@ -14811,7 +14817,7 @@ async function saveCompanySettings() {
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
   const updates = {
     admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
-    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2 },
+    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays },
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
