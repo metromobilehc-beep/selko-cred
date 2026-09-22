@@ -13122,7 +13122,10 @@ async function showHrEmployeeSheet(employeeId) {
       </div>
       <div id="remindersFor_hr_employee_${employeeId}" style="margin-bottom:16px;">Loading…</div>
 
-      <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeSheetModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-top:4px;">
+        <button class="btn btn-sm btn-danger" onclick="deleteHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;">🗑 Delete employee</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeSheetModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
@@ -13132,6 +13135,40 @@ async function showHrEmployeeSheet(employeeId) {
 // ══ HR SSN modals — same encrypted/justification-logged pattern as
 // credentialing's SSN, pointed at hr_employee_ssn via the encrypt-hr-ssn-ts
 // / reveal-hr-ssn-ts Edge Functions instead of the staff-scoped ones.
+// Deleting an HR employee is genuinely independent of any linked
+// credentialing record — if this employee was imported from the staff
+// list (credtrack_staff_id set), that credentialing record is entirely
+// untouched; only the HR-side record, and everything scoped to it, goes
+// away. hr_employee_ssn, hr_documents, and staff_reminders all cascade
+// automatically via their own ON DELETE CASCADE to hr_employees — the
+// one thing that does NOT cascade is the actual files in the
+// hr-documents storage bucket, so those are removed explicitly first,
+// same gap the company purge/offboarding work had to handle.
+async function deleteHrEmployee(employeeId, employeeName) {
+  if (!confirm(`Delete ${employeeName}'s HR record?\n\nThis permanently removes their SSN, generated/uploaded documents, and reminders from the system. If they're also a credentialed staff member, that record is untouched — this only removes the HR side.\n\nThis cannot be undone. Type their name to confirm.`)) return;
+  const confirmName = prompt(`Type "${employeeName}" to confirm:`);
+  if (confirmName !== employeeName) { toast('Name did not match — delete cancelled'); return; }
+
+  try {
+    const { data: docs } = await sb.from('hr_documents').select('storage_path').eq('employee_id', employeeId);
+    const paths = (docs || []).map(d => d.storage_path).filter(Boolean);
+    if (paths.length) {
+      const { error: storageErr } = await sb.storage.from('hr-documents').remove(paths);
+      if (storageErr) console.error('Could not remove one or more HR document files (continuing with record deletion):', storageErr);
+    }
+
+    const { error } = await sb.from('hr_employees').delete().eq('id', employeeId);
+    if (error) throw error;
+
+    document.getElementById('hrEmployeeSheetModal')?.remove();
+    toast(`✓ ${employeeName}'s HR record deleted`);
+    _hrEmployeesCache = null;
+    await loadHrEmployees();
+  } catch (e) {
+    toast('Delete failed: ' + e.message, true);
+  }
+}
+
 function showEnterHrSsnForm(employeeId) {
   const existing = document.getElementById('hrSsnEnterModal');
   if (existing) existing.remove();
