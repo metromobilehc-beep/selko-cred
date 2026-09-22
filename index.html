@@ -7779,7 +7779,7 @@ async function applyNpiResult(staffId, npi) {
 async function sendMissingDocsChecklist(staffId, fullName) {
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/send-missing-document-reminders', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/send-staff-checklist-ts', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
