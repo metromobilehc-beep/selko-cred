@@ -12288,16 +12288,29 @@ function resolveStaffFromInput(inputEl) {
 // all the time, which is most of why a list of many templates felt so
 // wide and heavy. Nothing about generation itself changed, just when
 // the input appears.
+// A template whose field_mapping never references a staff.* source is a
+// pure business form (a W-9 is the first real case — EIN, legal name,
+// entity type, signed by the authorized signatory, none of which varies
+// per person) rather than a per-provider one. Forcing an admin to pick
+// an arbitrary staff member just to generate a company-level document
+// makes no sense, so these skip the staff picker entirely.
+function credTemplateRequiresStaff(tmpl) {
+  return Object.values(tmpl?.field_mapping || {}).some(v => typeof v === 'string' && v.startsWith('staff.'));
+}
+
 function revealGenerateInput(templateId) {
   const el = document.getElementById(`genControls_${templateId}`);
   if (!el) return;
   const tmpl = _credTemplatesCache?.find(t => t.id === templateId);
-  el.innerHTML = `
+  const requiresStaff = credTemplateRequiresStaff(tmpl);
+  el.innerHTML = requiresStaff ? `
     <input type="text" class="inline-input" id="genStaffFor_${templateId}" placeholder="Type to search staff..." style="max-width:200px;" autofocus />
     ${tmpl?.requires_ssn_entry
       ? `<button class="btn btn-sm btn-ghost" onclick="revealSsnForGenerate('${templateId}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="This form asks for an SSN — view it here to type into the generated PDF yourself">🔒 View SSN</button>`
       : ''}
-    <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${templateId}')">Generate filled copy</button>`;
+    <button class="btn btn-sm btn-teal" onclick="generateFilledForm('${templateId}')">Generate filled copy</button>` : `
+    <span style="font-size:11px;color:rgba(255,255,255,.4);">Business form — no staff member needed</span>
+    <button class="btn btn-sm btn-teal" onclick="generateCompanyOnlyForm('${templateId}')">Generate filled copy</button>`;
   const inputEl = document.getElementById(`genStaffFor_${templateId}`);
   initStaffAutocomplete(inputEl);
   inputEl?.focus();
@@ -13808,11 +13821,13 @@ async function deleteCredentialingTemplate(id, name) {
 // Gathers everything needed to fill any credentialing form for one staff
 // member — split out from the per-template fill step so a batch/zip
 // generation only has to do this once per person, not once per form.
-async function buildCredDataForStaff(staffId, staff) {
-  // Flatten the ordered locations list (Primary first, then by sort
-  // order) onto the company object as location_1/2/3_* fields, matching
-  // how real payer forms structure this — the generic resolver below
-  // doesn't need to know locations are a separate table at all.
+// Split out from buildCredDataForStaff so a company-only template (no
+// staff.* fields mapped at all — a W-9 is the first real case, but any
+// pure business form fits the same shape) can build just this half
+// without also running the staff-scoped license/employment queries
+// that follow, which a template with no staff to run them for doesn't
+// need and shouldn't pay the cost of.
+async function buildCredCompanyData() {
   const locations = await getOrderedCompanyLocations(currentCompany.id);
   const companyWithLocations = { ...currentCompany };
   locations.slice(0, 3).forEach((loc, i) => {
@@ -13826,6 +13841,15 @@ async function buildCredDataForStaff(staffId, staff) {
     companyWithLocations[`location_${n}_county`] = loc.county || '';
     companyWithLocations[`location_${n}_phone`] = loc.phone || '';
   });
+  return companyWithLocations;
+}
+
+async function buildCredDataForStaff(staffId, staff) {
+  // Flatten the ordered locations list (Primary first, then by sort
+  // order) onto the company object as location_1/2/3_* fields, matching
+  // how real payer forms structure this — the generic resolver below
+  // doesn't need to know locations are a separate table at all.
+  const companyWithLocations = await buildCredCompanyData();
 
   // Same flattening approach for additional licenses — a physician with
   // licenses in multiple states maps onto additional_license_1/2/3_*
@@ -14048,6 +14072,37 @@ async function generateFilledForm(templateId) {
     toast(skipped.length
       ? `Generated — ${skipped.length} mapped field(s) no longer matched the PDF and were skipped`
       : `✓ Filled form generated for ${staff.full_name}`);
+    showGenerationGuidance('Filled form');
+  } catch (e) {
+    toast('Could not generate form: ' + e.message, true);
+  }
+}
+
+// For a business form (W-9, etc.) with no staff.* fields mapped —
+// builds just the company half of buildCredDataForStaff's data (no
+// staff-scoped license/employment queries to run, since there's no
+// staff involved) and fills directly.
+async function generateCompanyOnlyForm(templateId) {
+  try {
+    const { data: tmpl, error: tmplErr } = await sb.from('credentialing_templates').select('*').eq('id', templateId).maybeSingle();
+    if (tmplErr) throw tmplErr;
+    if (!tmpl) throw new Error('Template not found');
+
+    const companyWithLocations = await buildCredCompanyData();
+    const { blob, skipped } = await fillCredTemplate(tmpl, companyWithLocations, {});
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tmpl.name.replace(/[^a-z0-9]/gi,'_')}_${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    toast(skipped.length
+      ? `Generated — ${skipped.length} mapped field(s) no longer matched the PDF and were skipped`
+      : `✓ Filled form generated`);
     showGenerationGuidance('Filled form');
   } catch (e) {
     toast('Could not generate form: ' + e.message, true);
