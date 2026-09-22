@@ -13122,6 +13122,7 @@ async function markHrDocumentAcknowledged(docId, employeeId) {
   toast('✓ Marked acknowledged');
   await showHrEmployeeSheet(employeeId);
 }
+// Shared normalization used both by the static regex guesses below AND
 // by the learned-mapping memory (see recordFieldMappingMemory /
 // memoryGuess) — keeping this in one place guarantees a field seen at
 // save time and the same field seen later on a different template
