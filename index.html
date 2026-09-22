@@ -6105,6 +6105,12 @@ function showFullProfileSheet(staffId) {
         <div id="fpDocsSummary" style="font-size:12px;color:rgba(255,255,255,.3);">Loading...</div>
       </div>
 
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;margin-top:16px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">Reminders</div>
+        <button class="btn btn-sm btn-ghost" onclick="showAddReminderModal('staff','${staffId}','${s.full_name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">+ Add reminder</button>
+      </div>
+      <div id="remindersFor_staff_${staffId}" style="margin-bottom:10px;">Loading…</div>
+
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
@@ -6169,6 +6175,7 @@ function showFullProfileSheet(staffId) {
 
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
   if (currentCompany.has_credtrack) loadFpDocsSummary(staffId); // fire-and-forget
+  loadRemindersFor('staff', staffId); // fire-and-forget
 }
 
 // For creating a brand-new staff member from a CV, rather than enriching
@@ -13104,10 +13111,17 @@ async function showHrEmployeeSheet(employeeId) {
       </div>
       <div style="margin-bottom:16px;">${docsHtml}</div>
 
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">Reminders</div>
+        <button class="btn btn-sm btn-ghost" onclick="showAddReminderModal('hr_employee','${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">+ Add reminder</button>
+      </div>
+      <div id="remindersFor_hr_employee_${employeeId}" style="margin-bottom:16px;">Loading…</div>
+
       <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeSheetModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+  loadRemindersFor('hr_employee', employeeId); // fire-and-forget
 }
 
 // ══ HR SSN modals — same encrypted/justification-logged pattern as
@@ -13290,6 +13304,99 @@ async function markHrDocumentAcknowledged(docId, employeeId) {
   toast('✓ Marked acknowledged');
   await showHrEmployeeSheet(employeeId);
 }
+
+// ══ CUSTOM REMINDERS — one shared table/UI for both credentialing staff
+// and HR employees, since the feature (an admin's free-text memo, emailed
+// starting at a chosen date/time, repeating weekly until marked done) is
+// identical for either — only which FK column gets set differs.
+function showAddReminderModal(recipientType, recipientId, recipientName) {
+  const existing = document.getElementById('addReminderModal');
+  if (existing) existing.remove();
+
+  const now = new Date();
+  now.setMinutes(now.getMinutes() - now.getTimezoneOffset()); // local time for the datetime-local input's default
+  const defaultDateTime = now.toISOString().slice(0, 16);
+
+  const modal = document.createElement('div');
+  modal.id = 'addReminderModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1150;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Add a reminder — ${recipientName}</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:12px;">Emailed to them starting at the date/time below, then repeats weekly until you mark it done.</p>
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Message</label>
+      <textarea id="reminderMessage" placeholder="What do you want them reminded about?" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box;"></textarea>
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Send starting</label>
+      <input class="inline-input" type="datetime-local" id="reminderSendAt" value="${defaultDateTime}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <div id="reminderModalErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveReminder('${recipientType}','${recipientId}')" style="flex:1;justify-content:center;">Save reminder</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('addReminderModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveReminder(recipientType, recipientId) {
+  const errEl = document.getElementById('reminderModalErr');
+  errEl.style.display = 'none';
+  const message = document.getElementById('reminderMessage').value.trim();
+  const sendAtLocal = document.getElementById('reminderSendAt').value;
+  if (!message) { errEl.textContent = 'Enter a message first.'; errEl.style.display = 'block'; return; }
+  if (!sendAtLocal) { errEl.textContent = 'Pick a send date/time.'; errEl.style.display = 'block'; return; }
+
+  const payload = {
+    company_id: currentCompany.id,
+    message,
+    send_at: new Date(sendAtLocal).toISOString(),
+    status: 'pending',
+    created_by: currentProfile.id,
+  };
+  if (recipientType === 'staff') payload.staff_id = recipientId;
+  else payload.hr_employee_id = recipientId;
+
+  const { error } = await sb.from('staff_reminders').insert(payload);
+  if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
+
+  document.getElementById('addReminderModal')?.remove();
+  toast('✓ Reminder saved');
+  await loadRemindersFor(recipientType, recipientId);
+}
+
+async function loadRemindersFor(recipientType, recipientId) {
+  const container = document.getElementById(`remindersFor_${recipientType}_${recipientId}`);
+  if (!container) return;
+  const col = recipientType === 'staff' ? 'staff_id' : 'hr_employee_id';
+  const { data, error } = await sb.from('staff_reminders').select('*').eq(col, recipientId).order('send_at', { ascending: false });
+  if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+  if (!data?.length) { container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.35);">No reminders set.</div>'; return; }
+
+  const now = new Date();
+  container.innerHTML = data.map(r => `
+    <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
+        <p style="flex:1;color:#fff;font-size:12px;margin:0;">${r.message}</p>
+        <span style="font-size:10px;color:${r.status === 'pending' ? '#f59e0b' : 'rgba(255,255,255,.3)'};white-space:nowrap;">${r.status === 'pending' ? 'PENDING' : '✓ DONE'}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+        <span style="font-size:10px;color:rgba(255,255,255,.35);">${new Date(r.send_at) > now ? 'Starts ' : 'Started '}${fmtDate(r.send_at)}</span>
+        ${r.status === 'pending' ? `<button class="btn btn-sm btn-ghost" onclick="markReminderDone('${r.id}','${recipientType}','${recipientId}')" style="font-size:10px;padding:2px 6px;color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function markReminderDone(reminderId, recipientType, recipientId) {
+  const { error } = await sb.from('staff_reminders').update({
+    status: 'acknowledged',
+    acknowledged_at: new Date().toISOString(),
+    acknowledged_by: currentProfile.id,
+  }).eq('id', reminderId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Marked done');
+  await loadRemindersFor(recipientType, recipientId);
+}
+
 // Shared normalization used both by the static regex guesses below AND
 // by the learned-mapping memory (see recordFieldMappingMemory /
 // memoryGuess) — keeping this in one place guarantees a field seen at
