@@ -12788,9 +12788,14 @@ async function fillHrTemplate(tmpl, company, employee) {
   if (dlErr) throw dlErr;
   const bytes = await fileBlob.arrayBuffer();
 
-  const { PDFDocument } = PDFLib;
+  const { PDFDocument, PDFName } = PDFLib;
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const form = pdfDoc.getForm();
+  // See the matching comment in fillCredTemplate — some government
+  // forms are XFA-hybrid PDFs whose viewer renders a separate XFA layer
+  // instead of the AcroForm layer this function fills, making correctly
+  // filled values invisible unless the XFA entry is removed.
+  form.acroForm.dict.delete(PDFName.of('XFA'));
 
   const skipped = [];
   for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
@@ -14006,9 +14011,18 @@ async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
   if (dlErr) throw dlErr;
   const bytes = await fileBlob.arrayBuffer();
 
-  const { PDFDocument } = PDFLib;
+  const { PDFDocument, PDFName } = PDFLib;
   const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
   const form = pdfDoc.getForm();
+  // Some government forms (the IRS's fillable W-9 among them) are
+  // XFA-hybrid PDFs — they carry a separate XFA layer alongside the
+  // plain AcroForm layer pdf-lib fills, and most viewers (Acrobat
+  // included) render the XFA layer instead, so a correctly-filled
+  // AcroForm value never actually displays. Deleting the XFA entry
+  // forces every viewer back onto the AcroForm layer this function just
+  // filled. Harmless no-op on the vast majority of forms that have no
+  // XFA data at all.
+  form.acroForm.dict.delete(PDFName.of('XFA'));
 
   const skipped = [];
   for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
