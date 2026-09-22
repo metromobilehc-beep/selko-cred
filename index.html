@@ -15780,6 +15780,7 @@ function showCompanyManageModal(companyId) {
     <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '\u2713' : '\u2715'}</span>
     <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '\u2713' : '\u2715'}</span>
     <span class="flag-pill ${c.has_credentialing_addon ? 'flag-on' : 'flag-off'}">Credentialing ${c.has_credentialing_addon ? '\u2713' : '\u2715'}</span>
+    <span class="flag-pill ${c.has_hr_addon ? 'flag-on' : 'flag-off'}">HR Onboarding ${c.has_hr_addon ? '\u2713' : '\u2715'}</span>
     <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
     ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">\ud83d\uddd1 Deleted \u2014 purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
   `;
@@ -16578,6 +16579,11 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
         <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Pro</option>
       </select>` : ''}
 
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#fff;margin-bottom:14px;cursor:pointer;">
+        <input type="checkbox" ${c.has_hr_addon ? 'checked' : ''} onchange="applyModalHrToggle('${companyId}','${companyName.replace(/'/g,"\\'")}', this.checked)" />
+        HR Onboarding add-on <span style="font-size:10px;color:var(--gold);margin-left:2px;">ADD-ON</span>
+      </label>
+
       <label class="inline-label">Plan</label>
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
         <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard</option>
@@ -16600,6 +16606,10 @@ async function applyModalModuleChange(companyId, companyName, value) {
 }
 async function applyModalCredTierChange(companyId, companyName, value) {
   await setCredentialingTier(companyId, value);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+async function applyModalHrToggle(companyId, companyName, checked) {
+  await toggleCompanyFlag(companyId, 'has_hr_addon', !checked);
   await showSubscriptionSettingsModal(companyId, companyName);
 }
 async function applyModalPlanChange(companyId, companyName, value) {
