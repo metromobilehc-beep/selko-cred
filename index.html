@@ -304,6 +304,7 @@ window.selkoSharedAuthStorage = {
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
       <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> <span id="tabCredentialingLabel">Credentialing</span></button>
+      <button class="tab"        id="tab-hr" onclick="switchTab('hr')"><i class="ti ti-id-badge-2"></i> HR Onboarding</button>
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
@@ -1247,6 +1248,49 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" id="credentialingLock" style="display:none;">
         <h2 id="credentialingLockTitle">Credentialing <span style="font-size:10px;color:var(--gold);margin-left:6px;">ADD-ON</span></h2>
         <p id="credentialingLockDesc" style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:14px;">Payer-credentialing-level detail on top of basic document compliance — track organizational Tax ID/NPI, accreditations (ACHC, CHAP, Joint Commission), and per-clinician CAQH ID/DEA number, all in one place.</p>
+        <p style="color:rgba(255,255,255,.4);font-size:12px;">Contact Selko to add this to your plan.</p>
+      </div>
+    </div>
+
+    <!-- HR ONBOARDING TAB (add-on) — deliberately separate storage,
+         tables, and access (Admin-only) from Credentialing above, per
+         the I-9 segregated-file requirement. -->
+    <div id="tabHr" style="display:none;">
+      <div id="hrContent">
+        <div class="dark-panel" style="margin-bottom:16px;">
+          <h2>Employees</h2>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <input type="text" class="inline-input" id="hrEmployeeSearch" placeholder="🔍 Search employees..." style="flex:1;box-sizing:border-box;" oninput="loadHrEmployees()" />
+            <button class="btn btn-sm btn-teal" onclick="showAddHrEmployeeModal()">+ Add employee</button>
+          </div>
+          <div id="hrEmployeeList"></div>
+        </div>
+
+        <div class="dark-panel" style="margin-bottom:16px;">
+          <h2>HR form templates</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">I-9, W-4, background check authorization, or your own company policy documents — mapped once, generated per employee. Background-check-authorization forms should be uploaded and checked as a standalone disclosure, never bundled with the others.</p>
+          <div id="hrTemplatesList" style="margin-bottom:14px;"></div>
+          <button class="btn btn-sm btn-ghost" id="toggleAddHrTemplateBtn" onclick="document.getElementById('addHrTemplateSection').style.display = document.getElementById('addHrTemplateSection').style.display === 'none' ? 'block' : 'none';" style="color:#fff;border-color:rgba(255,255,255,.2);">+ Add a new form template</button>
+          <div id="addHrTemplateSection" style="display:none;margin-top:14px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:11px;color:rgba(255,255,255,.5);">Form name</label>
+                <input class="inline-input" type="text" id="newHrTemplateName" placeholder="e.g. Form I-9" style="width:240px;" />
+              </div>
+              <div style="display:flex;flex-direction:column;gap:4px;">
+                <label style="font-size:11px;color:rgba(255,255,255,.5);">Fillable PDF</label>
+                <input type="file" id="newHrTemplateFile" accept="application/pdf" style="color:#fff;font-size:12px;" />
+              </div>
+              <button class="btn btn-sm btn-teal" onclick="startHrTemplateUpload()">+ Upload &amp; map fields</button>
+            </div>
+            <div id="hrTemplateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="dark-panel" id="hrLock" style="display:none;">
+        <h2>HR Onboarding <span style="font-size:10px;color:var(--gold);margin-left:6px;">ADD-ON</span></h2>
+        <p style="color:rgba(255,255,255,.6);font-size:13px;margin-bottom:14px;">I-9, W-4, background check authorization, and your own policy documents — mapped once, generated per employee, kept in a file segregated from credentialing per federal requirements. Covers every hire, not just credentialed clinicians.</p>
         <p style="color:rgba(255,255,255,.4);font-size:12px;">Contact Selko to add this to your plan.</p>
       </div>
     </div>
@@ -2740,6 +2784,7 @@ async function initSession(user) {
     currentCompany = company;
     window._isPro  = ['pro','enterprise'].includes(company.plan);
     window._hasCredAddon = !!company.has_credentialing_addon;
+    window._hasHrAddon = !!company.has_hr_addon;
 
     // Anyone set up via setupStaffLogin()/resetPassword() (temp password,
     // admin-generated) gets must_change_password=true. Force them to pick
@@ -3921,6 +3966,11 @@ function updateModuleTabVisibility(company, profile) {
   document.getElementById('tab-credentialing').style.display = (company.has_credentialing_addon || !teaserHidden) ? 'inline-flex' : 'none';
   const tabLabel = document.getElementById('tabCredentialingLabel');
   if (tabLabel) tabLabel.textContent = company.credentialing_teaser_label || 'Credentialing';
+
+  // Same always-visible-as-upsell-teaser pattern as Credentialing above —
+  // the tab itself is always shown; loadHrTab()'s own gate on
+  // window._hasHrAddon is what actually locks the content behind it.
+  document.getElementById('tab-hr').style.display = 'inline-flex';
 }
 
 function updateProFeatureButtons() {
@@ -9660,7 +9710,7 @@ async function loadSensitiveAccessLog() {
   const showAcknowledged = document.getElementById('showAcknowledgedLog')?.checked;
 
   let q = sb.from('sensitive_field_access_log')
-    .select('*, credtrack_staff(full_name)')
+    .select('*, credtrack_staff(full_name), hr_employees(full_name)')
     .order('accessed_at', { ascending: false })
     .limit(100);
   if (!showAcknowledged) q = q.is('acknowledged_at', null);
@@ -9678,7 +9728,7 @@ async function loadSensitiveAccessLog() {
   tbody.innerHTML = data.map(r => `
     <tr>
       <td style="font-size:11px;color:rgba(255,255,255,.5);white-space:nowrap;">${new Date(r.accessed_at).toLocaleString()}</td>
-      <td>${r.credtrack_staff?.full_name || '—'}</td>
+      <td>${r.credtrack_staff?.full_name || r.hr_employees?.full_name || '—'}${r.hr_employee_id ? ' <span style="font-size:10px;color:rgba(255,255,255,.35);">HR</span>' : ''}</td>
       <td><span class="badge ${r.action === 'read' ? 'badge-warn' : 'badge-ok'}">${r.action === 'read' ? 'Viewed' : 'Entered/updated'}</span></td>
       <td style="font-size:12px;">${r.accessed_by || '—'}</td>
       <td style="max-width:260px;white-space:normal;font-size:12px;color:rgba(255,255,255,.6);">${r.justification || '—'}</td>
@@ -11257,6 +11307,23 @@ async function exportCredentialingDataExcel() {
   toast(`✓ Exported ${sorted.length} staff member(s)`);
 }
 
+async function loadHrTab() {
+  const content = document.getElementById('hrContent');
+  const lock = document.getElementById('hrLock');
+  if (!window._hasHrAddon) {
+    content.style.display = 'none';
+    lock.style.display = 'block';
+    return;
+  }
+  content.style.display = 'block';
+  lock.style.display = 'none';
+
+  _hrEmployeesCache = null;
+  _hrTemplatesCache = null;
+  await loadHrEmployees();
+  await loadHrTemplates();
+}
+
 async function loadCredentialingTab() {
   const content = document.getElementById('credentialingContent');
   const lock = document.getElementById('credentialingLock');
@@ -11914,6 +11981,75 @@ function resolveCredDataSource(path, company, staff) {
   return val || '';
 }
 
+// ══ HR MODULE — separate data-source list from credentialing's. HR
+// employees are a distinct, much simpler record (no NPI/CAQH/licenses/
+// hospital privileges), and deliberately never includes an ssn entry
+// here for the same reason CRED_DATA_SOURCES never does — SSN is only
+// ever surfaced through the reveal-with-justification modal, never as
+// an auto-fill value written into a generated PDF.
+const HR_DATA_SOURCES = [
+  { group: 'Employee', options: [
+    ['employee.full_name', 'Full name'],
+    ['employee.first_name', 'First name (parsed from full name)'],
+    ['employee.last_name', 'Last name (parsed from full name)'],
+    ['employee.date_of_birth', 'Date of birth'],
+    ['employee.address', 'Address'],
+    ['employee.phone', 'Phone'],
+    ['employee.email', 'Email'],
+    ['employee.hire_date', 'Hire date'],
+    ['employee.position', 'Position / job title'],
+  ]},
+  { group: 'Company', options: [
+    ['company.legal_business_name', 'Legal business name'],
+    ['company.tax_id', 'Tax ID (EIN)'],
+    ['company.location_1_address', 'Business address'],
+    ['company.location_1_phone', 'Business phone'],
+  ]},
+];
+
+function resolveHrDataSource(path, company, employee) {
+  const [scope, key] = path.split('.');
+  if (scope === 'employee') {
+    if (key === 'first_name') return (employee.full_name || '').trim().split(/\s+/)[0] || '';
+    if (key === 'last_name') {
+      const parts = (employee.full_name || '').trim().split(/\s+/);
+      return parts.length > 1 ? parts.slice(1).join(' ') : '';
+    }
+    const val = employee[key];
+    return (val && HR_DATE_FIELDS.has(path)) ? fmtDate(val) : (val || '');
+  }
+  if (scope === 'company') return company?.[key] || '';
+  return '';
+}
+
+const HR_DATE_FIELDS = new Set(['employee.date_of_birth', 'employee.hire_date']);
+
+// Static guesses only — no learned-memory lookup, unlike credentialing's
+// bestGuess(). The HR form library is a handful of fixed federal/company
+// forms (I-9, W-4, background check authorization, policy documents),
+// mapped once each and reused indefinitely — a memory system earns its
+// keep across dozens of different, ever-changing payer forms; it has
+// little to learn here.
+function guessHrDefaultMapping(fieldName) {
+  const n = normalizeFieldName(fieldName);
+  const guesses = [
+    [/^last.*name$|employee.*last.*name|surname/, 'employee.last_name'],
+    [/^first.*name$|employee.*first.*name|given.*name/, 'employee.first_name'],
+    [/full.*name|employee.*name$|^name$/, 'employee.full_name'],
+    [/date.*of.*birth|^dob$/, 'employee.date_of_birth'],
+    [/address|street/, 'employee.address'],
+    [/phone|telephone/, 'employee.phone'],
+    [/e.?mail/, 'employee.email'],
+    [/hire.*date|date.*of.*hire|start.*date/, 'employee.hire_date'],
+    [/position|job.*title|^title$/, 'employee.position'],
+    [/employer.*name|business.*name|company.*name/, 'company.legal_business_name'],
+    [/^ein$|employer.*id|tax.*id/, 'company.tax_id'],
+    [/employer.*address|business.*address/, 'company.location_1_address'],
+  ];
+  for (const [re, val] of guesses) if (re.test(n)) return val;
+  return '';
+}
+
 async function updateCredTemplateCategory(id, category) {
   const { error } = await sb.from('credentialing_templates').update({ category: category || null }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
@@ -12192,6 +12328,19 @@ async function startTemplateUpload() {
   await processTemplateFile(name, file, err);
 }
 
+async function startHrTemplateUpload() {
+  const name = document.getElementById('newHrTemplateName').value.trim();
+  const fileInput = document.getElementById('newHrTemplateFile');
+  const err = document.getElementById('hrTemplateUploadErr');
+  err.style.display = 'none';
+
+  if (!name) { err.textContent = 'Enter a form name first.'; err.style.display = 'block'; return; }
+  const file = fileInput.files[0];
+  if (!file) { err.textContent = 'Choose a PDF file first.'; err.style.display = 'block'; return; }
+
+  await processHrTemplateFile(name, file, err);
+}
+
 // Fetches a PDF server-side (via an Edge Function) rather than in the
 // browser — most sites don't allow cross-origin fetches of their files, so
 // a direct client-side fetch would get silently blocked by CORS on most
@@ -12409,7 +12558,570 @@ async function extractFieldPositions(bytes) {
   return positions;
 }
 
-// Shared normalization used both by the static regex guesses below AND
+// ══ HR MODULE — template upload/save/delete/list. Reuses
+// extractFieldPositions and normalizeFieldName above unchanged (both
+// are already domain-agnostic); everything credentialing-specific
+// (bucket, table, roster mode, field-mapping memory) is deliberately
+// NOT reused here — see the chat reply for why.
+let _hrTemplatesCache = null;
+
+async function processHrTemplateFile(name, file, err) {
+  try {
+    const bytes = await file.arrayBuffer();
+    const { PDFDocument } = PDFLib;
+    const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+    const form = pdfDoc.getForm();
+    const fieldNames = form.getFields().map(f => ({
+      name: f.getName(),
+      isCheckbox: typeof f.check === 'function',
+    }));
+
+    if (!fieldNames.length) {
+      err.innerHTML = `This PDF has no fillable form fields — it looks like a static or scanned document, not a fillable form. Only PDFs with real form fields can be auto-filled this way.
+        <br><br>
+        <strong>What to do instead:</strong>
+        <br>• Run it through Acrobat's "Prepare Form" tool (Tools → Prepare Form) to auto-detect and add real fillable fields, then re-upload the result.
+        <br>• If that's not an option, upload it as a custom document instead — employees can still acknowledge it, just without auto-fill.`;
+      err.style.display = 'block';
+      return;
+    }
+
+    _pendingHrTemplateFile = file;
+    let fieldPositions = {};
+    try {
+      fieldPositions = await extractFieldPositions(bytes);
+    } catch (posErr) {
+      console.error('Could not extract field positions for visual preview:', posErr);
+    }
+
+    const extraCheckboxHtml = `
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:14px;cursor:pointer;">
+        <input type="checkbox" id="templateStandaloneDisclosure" />
+        This is a standalone legal disclosure (e.g. background check authorization) — never bundle it with other documents into one combined packet
+      </label>`;
+
+    showTemplateFieldMappingModal(name, fieldNames, bytes, fieldPositions, {
+      dataSources: HR_DATA_SOURCES,
+      guessFn: guessHrDefaultMapping,
+      saveFn: 'saveHrTemplateMapping',
+      extraCheckboxHtml,
+    });
+  } catch (e) {
+    err.textContent = 'Could not read this PDF: ' + e.message;
+    err.style.display = 'block';
+  }
+}
+
+let _pendingHrTemplateFile = null;
+
+async function saveHrTemplateMapping(name) {
+  const errEl = document.getElementById('templateSaveErr');
+  errEl.style.display = 'none';
+  if (!_pendingHrTemplateFile) { errEl.textContent = 'File missing — please re-select it and try again.'; errEl.style.display = 'block'; return; }
+
+  const mapping = {};
+  document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
+    if (!sel.value) return;
+    if (sel.value === '__FIXED_TEXT__') {
+      const row = sel.closest('.template-mapping-row');
+      const literal = row?.querySelector('.template-fixed-text-input')?.value?.trim() || '';
+      if (literal) mapping[sel.dataset.fieldName] = `__FIXED_TEXT__:${literal}`;
+    } else {
+      mapping[sel.dataset.fieldName] = sel.value;
+    }
+  });
+
+  try {
+    const path = `${currentCompany.id}/templates/${Date.now()}_${_pendingHrTemplateFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
+    const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, _pendingHrTemplateFile, { contentType: 'application/pdf' });
+    if (uploadErr) throw uploadErr;
+
+    // Only a super admin uploading outside a company's own session makes
+    // this a Selko-provided standard form (I-9, W-4, background check
+    // authorization) usable by every company — same rule as credentialing.
+    const isGlobal = currentProfile.is_super_admin && !_superProfile;
+    const insertPayload = {
+      company_id: isGlobal ? null : currentCompany.id,
+      name,
+      storage_path: path,
+      field_mapping: mapping,
+      requires_ssn_entry: document.getElementById('templateRequiresSsnEntry')?.checked || false,
+      is_standalone_disclosure: document.getElementById('templateStandaloneDisclosure')?.checked || false,
+    };
+    const { error: insertErr } = await sb.from('hr_templates').insert(insertPayload);
+    if (insertErr) throw insertErr;
+
+    document.getElementById('templateMappingModal')?.remove();
+    _pendingHrTemplateFile = null;
+    toast(`✓ "${name}" saved`);
+    _hrTemplatesCache = null;
+    await loadHrTemplates();
+  } catch (e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function deleteHrTemplate(id, name) {
+  if (!confirm(`Delete the "${name}" template? Any documents already generated from it are unaffected.`)) return;
+  const { data: tmpl } = await sb.from('hr_templates').select('storage_path').eq('id', id).maybeSingle();
+  const { error } = await sb.from('hr_templates').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  if (tmpl?.storage_path) await sb.storage.from('hr-documents').remove([tmpl.storage_path]);
+  toast(`Deleted "${name}"`);
+  _hrTemplatesCache = null;
+  await loadHrTemplates();
+}
+
+async function loadHrTemplates() {
+  const container = document.getElementById('hrTemplatesList');
+  if (!container) return;
+  if (!_hrTemplatesCache) {
+    const { data, error } = await sb.from('hr_templates')
+      .select('*')
+      .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
+      .order('name');
+    if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+    _hrTemplatesCache = data || [];
+  }
+
+  if (!_hrTemplatesCache.length) {
+    container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.4);">No HR form templates yet — upload one below (I-9, W-4, background check authorization, or a company policy document).</div>';
+    return;
+  }
+
+  container.innerHTML = _hrTemplatesCache.map(t => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.is_standalone_disclosure ? ' <span style="font-size:10px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
+      <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
+    </div>`).join('');
+}
+
+async function fillHrTemplate(tmpl, company, employee) {
+  const { data: fileBlob, error: dlErr } = await sb.storage.from('hr-documents').download(tmpl.storage_path);
+  if (dlErr) throw dlErr;
+  const bytes = await fileBlob.arrayBuffer();
+
+  const { PDFDocument } = PDFLib;
+  const pdfDoc = await PDFDocument.load(bytes, { ignoreEncryption: true });
+  const form = pdfDoc.getForm();
+
+  const skipped = [];
+  for (const [pdfFieldName, sourcePath] of Object.entries(tmpl.field_mapping || {})) {
+    try {
+      if (sourcePath === '__FIXED_CHECKED__') {
+        form.getCheckBox(pdfFieldName).check();
+      } else if (sourcePath === '__FIXED_UNCHECKED__') {
+        form.getCheckBox(pdfFieldName).uncheck();
+      } else if (sourcePath.startsWith('__FIXED_TEXT__:')) {
+        form.getTextField(pdfFieldName).setText(sourcePath.slice('__FIXED_TEXT__:'.length));
+      } else {
+        const value = resolveHrDataSource(sourcePath, company, employee);
+        const field = form.getField(pdfFieldName);
+        if (typeof field.check === 'function') {
+          const truthy = typeof value === 'string' && ['yes', 'true'].includes(value.trim().toLowerCase());
+          if (truthy) field.check(); else field.uncheck();
+        } else {
+          form.getTextField(pdfFieldName).setText(String(value || ''));
+        }
+      }
+    } catch (fieldErr) {
+      skipped.push(pdfFieldName);
+    }
+  }
+
+  const filledBytes = await pdfDoc.save();
+  return { blob: new Blob([filledBytes], { type: 'application/pdf' }), skipped };
+}
+
+// Unlike credentialing's generateFilledForm, this always runs in the
+// context of one already-known employee (called from their profile
+// sheet) — no staff-search box needed. The filled copy is both
+// downloaded AND uploaded into hr-documents/employees/<id>/ with an
+// hr_documents row tracking it, so "generate the I-9" actually leaves
+// a retrievable record behind, not just a one-time browser download.
+async function generateFilledHrForm(templateId, employeeId) {
+  try {
+    const { data: tmpl, error: tmplErr } = await sb.from('hr_templates').select('*').eq('id', templateId).maybeSingle();
+    if (tmplErr) throw tmplErr;
+    if (!tmpl) throw new Error('Template not found');
+
+    const { data: employee, error: empErr } = await sb.from('hr_employees').select('*').eq('id', employeeId).maybeSingle();
+    if (empErr) throw empErr;
+    if (!employee) throw new Error('Employee not found');
+
+    const { blob, skipped } = await fillHrTemplate(tmpl, currentCompany, employee);
+
+    const fileName = `${tmpl.name.replace(/[^a-z0-9]/gi,'_')}_${employee.full_name.replace(/[^a-z0-9]/gi,'_')}.pdf`;
+    const storagePath = `${currentCompany.id}/employees/${employeeId}/${Date.now()}_${fileName}`;
+    const { error: uploadErr } = await sb.storage.from('hr-documents').upload(storagePath, blob, { contentType: 'application/pdf' });
+    if (uploadErr) throw uploadErr;
+
+    await sb.from('hr_documents').insert({
+      employee_id: employeeId,
+      company_id: currentCompany.id,
+      template_id: templateId,
+      name: tmpl.name,
+      storage_path: storagePath,
+      status: 'completed',
+      created_by: currentProfile.id,
+    });
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 30000);
+
+    toast(skipped.length
+      ? `Generated — ${skipped.length} mapped field(s) no longer matched the PDF and were skipped`
+      : `✓ ${tmpl.name} generated and filed for ${employee.full_name}`);
+    await showHrEmployeeSheet(employeeId); // refresh so the new document shows in their file list
+  } catch (e) {
+    toast('Could not generate form: ' + e.message, true);
+  }
+}
+
+// ══ HR EMPLOYEES ══
+let _hrEmployeesCache = null;
+
+async function loadHrEmployees() {
+  const container = document.getElementById('hrEmployeeList');
+  if (!container) return;
+  const search = (document.getElementById('hrEmployeeSearch')?.value || '').trim().toLowerCase();
+
+  if (!_hrEmployeesCache) {
+    const { data, error } = await sb.from('hr_employees').select('*').eq('company_id', currentCompany.id).order('full_name');
+    if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
+    _hrEmployeesCache = data || [];
+  }
+
+  const filtered = search
+    ? _hrEmployeesCache.filter(e => e.full_name.toLowerCase().includes(search))
+    : _hrEmployeesCache;
+
+  if (!filtered.length) {
+    container.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,.4);">${_hrEmployeesCache.length ? 'No matches.' : 'No employees added yet — click "+ Add employee" to start.'}</div>`;
+    return;
+  }
+
+  container.innerHTML = filtered.map(e => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onclick="showHrEmployeeSheet('${e.id}')">
+      <span style="flex:1;color:#fff;font-size:13px;">${e.full_name}${e.active === false ? ' <span style="font-size:10px;color:rgba(255,255,255,.35);">INACTIVE</span>' : ''}</span>
+      <span style="font-size:12px;color:rgba(255,255,255,.4);">${e.position || ''}</span>
+      <span style="font-size:11px;color:${e.has_ssn_on_file ? 'rgba(255,255,255,.3)' : '#f59e0b'};">${e.has_ssn_on_file ? 'SSN on file' : 'No SSN on file'}</span>
+    </div>`).join('');
+}
+
+function showAddHrEmployeeModal(employeeId) {
+  const existing = document.getElementById('hrEmployeeFormModal');
+  if (existing) existing.remove();
+  const e = employeeId ? _hrEmployeesCache?.find(x => x.id === employeeId) : null;
+
+  const modal = document.createElement('div');
+  modal.id = 'hrEmployeeFormModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">${e ? 'Edit employee' : 'Add employee'}</div>
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Full name *</label>
+      <input class="inline-input" type="text" id="hrEmpFullName" value="${(e?.full_name || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Position / job title</label>
+      <input class="inline-input" type="text" id="hrEmpPosition" value="${(e?.position || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Date of birth</label>
+      <input class="inline-input" type="date" id="hrEmpDob" value="${e?.date_of_birth || ''}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Hire date</label>
+      <input class="inline-input" type="date" id="hrEmpHireDate" value="${e?.hire_date || ''}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Address</label>
+      <input class="inline-input" type="text" id="hrEmpAddress" value="${(e?.address || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Phone</label>
+      <input class="inline-input" type="text" id="hrEmpPhone" value="${(e?.phone || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Email</label>
+      <input class="inline-input" type="text" id="hrEmpEmail" value="${(e?.email || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <div id="hrEmpFormErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveHrEmployee(${e ? `'${e.id}'` : 'null'})" style="flex:1;justify-content:center;">${e ? 'Save changes' : 'Add employee'}</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeFormModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+}
+
+async function saveHrEmployee(employeeId) {
+  const errEl = document.getElementById('hrEmpFormErr');
+  errEl.style.display = 'none';
+  const fullName = document.getElementById('hrEmpFullName').value.trim();
+  if (!fullName) { errEl.textContent = 'Full name is required.'; errEl.style.display = 'block'; return; }
+
+  const payload = {
+    full_name: fullName,
+    position: document.getElementById('hrEmpPosition').value.trim() || null,
+    date_of_birth: document.getElementById('hrEmpDob').value || null,
+    hire_date: document.getElementById('hrEmpHireDate').value || null,
+    address: document.getElementById('hrEmpAddress').value.trim() || null,
+    phone: document.getElementById('hrEmpPhone').value.trim() || null,
+    email: document.getElementById('hrEmpEmail').value.trim() || null,
+  };
+
+  let error;
+  if (employeeId) {
+    ({ error } = await sb.from('hr_employees').update(payload).eq('id', employeeId));
+  } else {
+    payload.company_id = currentCompany.id;
+    payload.created_by = currentProfile.id;
+    ({ error } = await sb.from('hr_employees').insert(payload));
+  }
+  if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
+
+  document.getElementById('hrEmployeeFormModal')?.remove();
+  toast(employeeId ? '✓ Employee updated' : '✓ Employee added');
+  _hrEmployeesCache = null;
+  await loadHrEmployees();
+  if (employeeId) await showHrEmployeeSheet(employeeId);
+}
+
+async function showHrEmployeeSheet(employeeId) {
+  const existing = document.getElementById('hrEmployeeSheetModal');
+  if (existing) existing.remove();
+
+  const { data: employee } = await sb.from('hr_employees').select('*').eq('id', employeeId).maybeSingle();
+  if (!employee) { toast('Employee not found', true); return; }
+
+  if (!_hrTemplatesCache) await loadHrTemplates();
+  const { data: docs } = await sb.from('hr_documents').select('*, hr_templates(name)').eq('employee_id', employeeId).order('created_at', { ascending: false });
+
+  const templateOptionsHtml = (_hrTemplatesCache || []).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+
+  const docsHtml = (docs || []).length
+    ? docs.map(d => `
+      <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+        <span style="flex:1;color:#fff;font-size:12px;">${d.name}</span>
+        <span style="font-size:10px;color:${d.status === 'pending_acknowledgment' ? '#f59e0b' : 'rgba(255,255,255,.35)'};">${d.status === 'pending_acknowledgment' ? 'PENDING ACKNOWLEDGMENT' : 'ON FILE'}</span>
+        ${d.status === 'pending_acknowledgment' ? `<button class="btn btn-sm btn-ghost" onclick="markHrDocumentAcknowledged('${d.id}','${employeeId}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Mark acknowledged</button>` : ''}
+      </div>`).join('')
+    : '<div style="font-size:12px;color:rgba(255,255,255,.35);">No documents on file yet.</div>';
+
+  const modal = document.createElement('div');
+  modal.id = 'hrEmployeeSheetModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
+        <div style="color:#fff;font-size:17px;font-weight:700;">${employee.full_name}</div>
+        <button class="btn btn-sm btn-ghost" onclick="showAddHrEmployeeModal('${employeeId}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
+      </div>
+      <div style="color:rgba(255,255,255,.5);font-size:12px;margin-bottom:16px;">${employee.position || 'No position on file'}${employee.hire_date ? ' · Hired ' + fmtDate(employee.hire_date) : ''}</div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Social Security Number</div>
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:16px;display:flex;align-items:center;gap:10px;">
+        <span style="flex:1;font-size:12px;color:rgba(255,255,255,.5);">${employee.has_ssn_on_file ? '••• •• •••• (encrypted, on file)' : 'Not on file'}</span>
+        ${employee.has_ssn_on_file
+          ? `<button class="btn btn-sm btn-ghost" onclick="showRevealHrSsnPrompt('${employeeId}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">View</button>`
+          : `<button class="btn btn-sm btn-teal" onclick="showEnterHrSsnForm('${employeeId}')" style="font-size:11px;padding:3px 10px;">Enter SSN</button>`}
+      </div>
+
+      <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;">Generate a form</div>
+      <div style="display:flex;gap:8px;margin-bottom:16px;">
+        <select class="inline-select" id="hrGenerateTemplateSelect" style="flex:1;">${templateOptionsHtml || '<option value="">No templates yet</option>'}</select>
+        <button class="btn btn-sm btn-teal" onclick="const sel=document.getElementById('hrGenerateTemplateSelect'); if(sel.value) generateFilledHrForm(sel.value,'${employeeId}');" ${templateOptionsHtml ? '' : 'disabled'}>Generate</button>
+      </div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">Documents on file</div>
+        <button class="btn btn-sm btn-ghost" onclick="showUploadHrDocumentModal('${employeeId}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">+ Upload for acknowledgment</button>
+      </div>
+      <div style="margin-bottom:16px;">${docsHtml}</div>
+
+      <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeSheetModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+}
+
+// ══ HR SSN modals — same encrypted/justification-logged pattern as
+// credentialing's SSN, pointed at hr_employee_ssn via the encrypt-hr-ssn-ts
+// / reveal-hr-ssn-ts Edge Functions instead of the staff-scoped ones.
+function showEnterHrSsnForm(employeeId) {
+  const existing = document.getElementById('hrSsnEnterModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'hrSsnEnterModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:320px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Enter Social Security Number</div>
+      <input class="inline-input" type="text" id="hrSsnEnterInput" placeholder="XXX-XX-XXXX" maxlength="11" style="margin-bottom:10px;" />
+      <div id="hrSsnEnterErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitEnterHrSsn('${employeeId}')" style="flex:1;justify-content:center;">Save (encrypted)</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('hrSsnEnterModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitEnterHrSsn(employeeId) {
+  const ssn = document.getElementById('hrSsnEnterInput').value.trim();
+  const errEl = document.getElementById('hrSsnEnterErr');
+  errEl.style.display = 'none';
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/encrypt-hr-ssn-ts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ employee_id: employeeId, ssn }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not save SSN.');
+
+    document.getElementById('hrSsnEnterModal')?.remove();
+    toast('✓ SSN saved, encrypted');
+    _hrEmployeesCache = null;
+    await loadHrEmployees();
+    await showHrEmployeeSheet(employeeId);
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+function showRevealHrSsnPrompt(employeeId) {
+  const existing = document.getElementById('hrSsnRevealModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'hrSsnRevealModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:6px;">Why do you need to view this SSN?</div>
+      <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:12px;">This access — including your reason — is permanently logged and cannot be deleted.</p>
+      <textarea id="hrSsnJustification" placeholder="e.g. Completing Form I-9 for this employee's onboarding" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box;"></textarea>
+      <div id="hrSsnRevealErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div id="hrSsnRevealValue" style="display:none;background:rgba(255,255,255,.05);border-radius:6px;padding:14px;text-align:center;font-size:20px;letter-spacing:2px;color:#fff;font-weight:700;margin-bottom:12px;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="hrSsnRevealBtn" onclick="submitRevealHrSsn('${employeeId}')" style="flex:1;justify-content:center;">View SSN</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('hrSsnRevealModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitRevealHrSsn(employeeId) {
+  const justification = document.getElementById('hrSsnJustification').value.trim();
+  const errEl = document.getElementById('hrSsnRevealErr');
+  const btn = document.getElementById('hrSsnRevealBtn');
+  errEl.style.display = 'none';
+
+  if (justification.length < 10) {
+    errEl.textContent = 'Enter a real reason (at least a full sentence) — this is logged either way.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Verifying...';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reveal-hr-ssn-ts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ employee_id: employeeId, justification }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not retrieve SSN.');
+
+    document.getElementById('hrSsnRevealValue').textContent = result.ssn;
+    document.getElementById('hrSsnRevealValue').style.display = 'block';
+    document.getElementById('hrSsnJustification').disabled = true;
+    btn.style.display = 'none';
+    toast('This access has been logged.');
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = 'View SSN';
+  }
+}
+
+// ══ HR custom document upload (policy/procedure/handbook) — a
+// simpler acknowledgment-tracking flow rather than the fillable-field
+// pipeline above: upload as-is, employee acknowledges outside the app
+// (or an admin marks it acknowledged on their behalf), tracked here.
+function showUploadHrDocumentModal(employeeId) {
+  const existing = document.getElementById('hrDocUploadModal');
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = 'hrDocUploadModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">Upload a document for acknowledgment</div>
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">Document name</label>
+      <input class="inline-input" type="text" id="hrDocName" placeholder="e.g. Employee Handbook" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <label style="font-size:11px;color:rgba(255,255,255,.5);">File</label>
+      <input type="file" id="hrDocFile" style="width:100%;margin-bottom:10px;color:#fff;" />
+      <div id="hrDocUploadErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveHrDocumentUpload('${employeeId}')" style="flex:1;justify-content:center;">Upload</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('hrDocUploadModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function saveHrDocumentUpload(employeeId) {
+  const errEl = document.getElementById('hrDocUploadErr');
+  errEl.style.display = 'none';
+  const name = document.getElementById('hrDocName').value.trim();
+  const file = document.getElementById('hrDocFile').files[0];
+  if (!name || !file) { errEl.textContent = 'Both a name and a file are required.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const path = `${currentCompany.id}/employees/${employeeId}/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
+    const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, file);
+    if (uploadErr) throw uploadErr;
+
+    const { error: insertErr } = await sb.from('hr_documents').insert({
+      employee_id: employeeId,
+      company_id: currentCompany.id,
+      template_id: null,
+      name,
+      storage_path: path,
+      status: 'pending_acknowledgment',
+      created_by: currentProfile.id,
+    });
+    if (insertErr) throw insertErr;
+
+    document.getElementById('hrDocUploadModal')?.remove();
+    toast(`✓ "${name}" uploaded`);
+    await showHrEmployeeSheet(employeeId);
+  } catch (e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function markHrDocumentAcknowledged(docId, employeeId) {
+  const { error } = await sb.from('hr_documents').update({
+    status: 'completed',
+    acknowledged_at: new Date().toISOString(),
+    acknowledged_by: currentProfile.id,
+  }).eq('id', docId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Marked acknowledged');
+  await showHrEmployeeSheet(employeeId);
+}
 // by the learned-mapping memory (see recordFieldMappingMemory /
 // memoryGuess) — keeping this in one place guarantees a field seen at
 // save time and the same field seen later on a different template
@@ -12615,12 +13327,22 @@ async function recordFieldMappingMemory(mapping) {
   await loadFieldMappingMemory(); // refresh cache so this session benefits immediately too
 }
 
-function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPositions) {
+function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPositions, opts = {}) {
+  // Generalized so the HR module can reuse this same modal + preview
+  // renderer rather than duplicating ~220 lines of UI — everything in
+  // here (the preview panel, page rendering, locate/highlight) is
+  // already domain-agnostic; only the data-source list, the guess
+  // function, and where "Save" actually writes to differ per domain.
+  const dataSources = opts.dataSources || CRED_DATA_SOURCES;
+  const guessFn = opts.guessFn || bestGuess;
+  const saveFn = opts.saveFn || 'saveTemplateMapping';
+  const extraCheckboxHtml = opts.extraCheckboxHtml || '';
+
   const existing = document.getElementById('templateMappingModal');
   if (existing) existing.remove();
   const hasPreview = !!(pdfBytes && fieldPositions);
 
-  const optionsHtml = CRED_DATA_SOURCES.map(g =>
+  const optionsHtml = dataSources.map(g =>
     `<optgroup label="${g.group}">${g.options.map(([val, label]) => `<option value="${val}">${label}</option>`).join('')}</optgroup>`
   ).join('');
 
@@ -12668,6 +13390,7 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
         <input type="checkbox" id="templateRequiresSsnEntry" />
         This form asks for a Social Security Number — show a "View SSN to fill in manually" shortcut when generating (SSN is never auto-filled, regardless of this setting)
       </label>
+      ${extraCheckboxHtml}
       <div style="display:flex;gap:20px;flex:1;min-height:0;overflow:hidden;">
         ${hasPreview ? `
         <div id="templatePreviewPanel" style="width:420px;flex-shrink:0;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(0,0,0,.2);">
@@ -12680,7 +13403,7 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:14px;">
-        <button class="btn btn-teal" onclick="saveTemplateMapping('${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save template</button>
+        <button class="btn btn-teal" onclick="${saveFn}('${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save template</button>
         <button class="btn btn-ghost" onclick="document.getElementById('templateMappingModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -12696,11 +13419,14 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
   });
 
   // Apply the guessed defaults now that the selects exist in the DOM —
-  // learned memory first, static heuristics as fallback (see bestGuess).
+  // learned memory first, static heuristics as fallback (see bestGuess)
+  // for credentialing; HR passes its own guessFn with no memory lookup,
+  // since the small, fixed set of HR forms doesn't benefit from a
+  // learned-mapping system the way dozens of different payer forms do.
   // Fixed-value options are never guessed — they're a deliberate manual
   // choice per template, not something to infer from a field's name.
   modal.querySelectorAll('select[data-field-name]').forEach(sel => {
-    const guess = bestGuess(sel.dataset.fieldName);
+    const guess = guessFn(sel.dataset.fieldName);
     if (guess) sel.value = guess;
   });
 
@@ -13903,6 +14629,7 @@ async function viewAsAdmin(companyId, companyName) {
   currentCompany = company;
   window._isPro  = ['pro','enterprise'].includes(company.plan);
   window._hasCredAddon = !!company.has_credentialing_addon;
+  window._hasHrAddon = !!company.has_hr_addon;
   updateModuleTabVisibility(company, currentProfile);
   updateProFeatureButtons();
   loadSidebarMemo();
@@ -13928,6 +14655,7 @@ async function exitViewAsAdmin() {
   currentCompany = { ..._superCompany };
   window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
   window._hasCredAddon = !!currentCompany.has_credentialing_addon;
+  window._hasHrAddon = !!currentCompany.has_hr_addon;
   updateModuleTabVisibility(currentCompany, currentProfile);
   updateProFeatureButtons();
   loadSidebarMemo();
@@ -13966,7 +14694,7 @@ function applyBranding(branding, logoUrl) {
 // ══ TABS ══
 function switchTab(tab) {
   _activeTab = tab;
-  ['overview','docs','exp','staff','insurance','credentialing','settings','super'].forEach(t => {
+  ['overview','docs','exp','staff','insurance','credentialing','hr','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
@@ -13978,6 +14706,7 @@ function switchTab(tab) {
   if (tab === 'staff')     loadStaffTable();
   if (tab === 'insurance') loadInsuranceTab();
   if (tab === 'credentialing') loadCredentialingTab();
+  if (tab === 'hr')        loadHrTab();
   if (tab === 'settings')  loadSettings();
   if (tab === 'super')     loadSuperAdmin();
 }
