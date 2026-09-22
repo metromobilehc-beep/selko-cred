@@ -16099,6 +16099,9 @@ function showCompanyManageModal(companyId) {
 
   const actionsHtml = c.deleted_at ? `
     <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${escName}')">\u21a9 Restore</button>
+    ${c.offboarded_at
+      ? `<span style="font-size:11px;color:rgba(255,255,255,.4);align-self:center;">Offboarded ${new Date(c.offboarded_at).toLocaleDateString()} \u2014 final purge scheduled ${new Date(c.purge_scheduled_at).toLocaleDateString()}</span>`
+      : `<button class="btn btn-sm btn-gold" onclick="offboardCompanyNow('${c.id}','${escName}')">\ud83d\udcc1 Offboard now</button>`}
     <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${escName}')">\u26a0 Purge now</button>
   ` : `
     <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
@@ -16994,15 +16997,66 @@ async function restoreCompany(id, name) {
   }
 }
 
+// Saves an audit trail (activity logs + document/staff metadata, no
+// file content, no raw sensitive values) and then expels the actual
+// sensitive content — document files, encrypted SSN, encrypted CAQH
+// credentials — while leaving the company/staff records themselves
+// intact. This is what actually makes a later "Purge now" or the
+// automatic cron safe: by the time either of those run, there's
+// nothing sensitive left to lose. One-way — there's no "undo
+// offboarding" the way restoreCompany() undoes a soft-delete.
+async function offboardCompanyNow(id, name) {
+  if (!currentProfile?.is_super_admin) { toast('Only super admins can offboard a company.', true); return; }
+  if (!confirm(`Offboard ${name}?\n\nThis saves a permanent audit trail (logs and document metadata, no file content), then permanently deletes their actual document files and encrypted SSN/CAQH credentials. The company record and staff roster stay, stripped of sensitive content, until the final purge date (3 years out).\n\nThis cannot be undone. Type the company name to confirm.`)) return;
+  const confirmName = prompt(`Type "${name}" to confirm offboarding:`);
+  if (confirmName !== name) { toast('Name did not match — offboarding cancelled'); return; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/offboard-company-ts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ company_id: id }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not offboard this company.');
+
+    // Surface any individual expulsion step that failed (e.g. the CAQH
+    // table name mismatch flagged in offboard-company-ts) rather than
+    // silently reporting full success — the audit archive is saved
+    // either way, but a failed step means some sensitive content may
+    // not actually be gone yet.
+    const failedSteps = Object.entries(result.expulsionResults || {}).filter(([, v]) => v !== 'ok');
+    if (failedSteps.length) {
+      toast(`Offboarded, but ${failedSteps.length} cleanup step(s) failed: ${failedSteps.map(([k]) => k).join(', ')} — check function logs.`, true);
+    } else {
+      toast(`✓ ${name} offboarded — audit trail saved, sensitive content removed. Final purge scheduled for ${new Date(result.finalPurgeScheduledFor).toLocaleDateString()}.`);
+    }
+    document.getElementById('companyManageModal')?.remove();
+    await loadSuperAdmin();
+  } catch (e) {
+    toast('Offboarding failed: ' + e.message, true);
+  }
+}
+
 async function purgeCompanyPermanently(id, name) {
-  // This is the actual, irreversible destruction step — no longer the
-  // primary "Delete" action. Reached either automatically (30 days after
-  // softDeleteCompany, via the purge-deleted-companies cron) or manually
-  // via "Purge now" on an already soft-deleted company. Never call this
-  // directly on a company that hasn't been through soft-delete first.
-  const { data: co } = await sb.from('companies').select('deleted_at').eq('id', id).maybeSingle();
+  // This is the actual, irreversible destruction step. Reached either
+  // automatically (via the purge-deleted-companies cron, only once
+  // offboarded AND the retention horizon has passed) or manually via
+  // "Purge now" here. Never call this directly on a company that hasn't
+  // been through soft-delete first — and, as of the offboarding flow,
+  // not on one that hasn't been offboarded either: without an audit
+  // archive already saved, an immediate "Purge now" click would destroy
+  // the same sensitive content offboardCompanyNow() exists to preserve
+  // a record of first. Use "Offboard now" first for any company where
+  // that audit trail actually matters.
+  const { data: co } = await sb.from('companies').select('deleted_at, offboarded_at').eq('id', id).maybeSingle();
   if (!co?.deleted_at) {
     toast('This company must be deleted (soft-deleted) first before it can be purged.', true);
+    return;
+  }
+  if (!co.offboarded_at) {
+    toast('This company hasn\'t been offboarded yet — click "Offboard now" first, so an audit trail is saved before anything is destroyed.', true);
     return;
   }
   if (!confirm(`Permanently and immediately purge ${name}?\n\nThis will remove all associated staff, documents, completions, logins, and other records for this company. This cannot be undone.\n\nType the company name to confirm.`)) return;
@@ -17083,6 +17137,28 @@ async function purgeCompanyPermanently(id, name) {
       ['oig_exclusion_checks', () => sb.from('oig_exclusion_checks').delete().eq('company_id', id)],
       ['subscriptions', () => sb.from('subscriptions').delete().eq('company_id', id)],
       ['support_requests', () => sb.from('support_requests').delete().eq('company_id', id)],
+      // Added the same night the HR module, task digest, and custom
+      // reminders were built — all four have their own company_id
+      // column and ON DELETE CASCADE to companies, but per the note
+      // above this purge chain never relies on cascade alone. Order
+      // among these four doesn't actually matter (each cascades
+      // correctly to companies(id) either way), but hr_documents and
+      // hr_employee_ssn are listed before hr_employees anyway, purely
+      // for readability — they're what hr_employees itself cascades to.
+      ['hr_documents', () => sb.from('hr_documents').delete().eq('company_id', id)],
+      ['hr_employee_ssn', () => sb.from('hr_employee_ssn').delete().eq('company_id', id)],
+      ['hr_employees', () => sb.from('hr_employees').delete().eq('company_id', id)],
+      // hr_templates is nullable on company_id (null = Selko-provided
+      // global template, shared across every company) — this only
+      // matches THIS company's own uploads, global ones are untouched.
+      ['hr_templates', () => sb.from('hr_templates').delete().eq('company_id', id)],
+      ['task_reminder_log', () => sb.from('task_reminder_log').delete().eq('company_id', id)],
+      // staff_reminder_log has no company_id column of its own (only
+      // reminder_id, referencing staff_reminders) — relies on its
+      // ON DELETE CASCADE from staff_reminders below rather than a
+      // direct step here, since there's no simple company_id filter
+      // to run it by.
+      ['staff_reminders', () => sb.from('staff_reminders').delete().eq('company_id', id)],
     ];
     for (const [tableName, runDelete] of purgeSteps) {
       const { error: stepErr } = await runDelete();
