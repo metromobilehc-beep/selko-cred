@@ -259,6 +259,7 @@ window.selkoSharedAuthStorage = {
       <div>
         <h1 id="partnerGreeting">Staff Credentials</h1>
         <p>Verified documents for your linked staff.</p>
+        <p id="partnerStatSummary" style="color:var(--teal); font-weight:600; font-size:13px; margin-top:6px;"></p>
       </div>
     </div>
     <div style="margin-bottom:16px;">
@@ -3280,19 +3281,25 @@ async function initPartnerView(partnerRecord) {
       ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}','${d.id}')">⬇ Download</button>` : ''}
     </div>`).join('');
 
-    return `<div class="panel" data-staff-name="${cs.full_name.toLowerCase().replace(/"/g,'&quot;')}">
+    const docCount = (docs || []).length;
+    return { staff: cs, docCount, html: `<div class="panel" data-staff-name="${cs.full_name.toLowerCase().replace(/"/g,'&quot;')}" style="border-left:3px solid var(--teal);">
       <div class="panel-head panel-header-collapsible" onclick="togglePartnerPanel(this)">
-        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''} <span style="font-weight:400;color:var(--gray-500,#888);font-size:13px;">(${(docs||[]).length} doc${(docs||[]).length!==1?'s':''})</span></span>
+        <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''}</span>
         <div style="display:flex;align-items:center;gap:10px;" onclick="event.stopPropagation()">
-          ${docs && docs.length ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
+          <span class="badge ${docCount ? 'badge-verified' : 'badge-none'}">${docCount} doc${docCount!==1?'s':''}</span>
+          ${docCount ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
         </div>
         <span class="panel-chevron">▸</span>
       </div>
       <div class="panel-body" style="display:none;">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
-    </div>`;
+    </div>` };
   }));
 
-  container.innerHTML = panels.join('');
+  const totalDocs = panels.reduce((sum, p) => sum + p.docCount, 0);
+  document.getElementById('partnerStatSummary').textContent =
+    `${assignedStaff.length} staff member${assignedStaff.length!==1?'s':''} · ${totalDocs} verified document${totalDocs!==1?'s':''} shared`;
+
+  container.innerHTML = panels.map(p => p.html).join('');
   filterPartnerStaffList();
 }
 
@@ -7124,6 +7131,12 @@ function showAccountActionsMenu(staffId) {
     rows.push(`<button class="btn ${s.exclude_from_compliance ? 'btn-teal' : 'btn-ghost'}" onclick="closeStaffActionsMenu();toggleExcludeFromCompliance('${s.id}',${!!s.exclude_from_compliance})" style="width:100%;justify-content:flex-start;${s.exclude_from_compliance ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}" title="For shared/generic office logins that shouldn't be tracked for personal credentials like background checks">${s.exclude_from_compliance ? '✓ Excluded from compliance' : 'Not a real credentialed person? Exclude'}</button>`);
   }
   rows.push(`<button class="btn btn-gold" onclick="closeStaffActionsMenu();toggleActive('${s.id}',${s.active})" style="width:100%;justify-content:flex-start;">${s.active ? 'Deactivate' : 'Reactivate'}</button>`);
+  if (!s.active && !s.offboarded_at) {
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();offboardStaffMember('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN and CAQH login credentials — everything else (documents, employment history, credentialing profile) stays">📁 Offboard (expunge SSN/CAQH)</button>`);
+  }
+  if (s.offboarded_at) {
+    rows.push(`<div style="font-size:11px;color:rgba(255,255,255,.35);padding:4px 0;">Offboarded ${new Date(s.offboarded_at).toLocaleDateString()} — SSN/CAQH already expunged</div>`);
+  }
   rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Delete</button>`);
 
   const modal = document.createElement('div');
@@ -7491,6 +7504,58 @@ async function editStaff(id) {
 async function toggleActive(id, active) {
   await sb.from('credtrack_staff').update({ active: !active }).eq('id', id);
   toast(active ? 'Staff member deactivated' : 'Staff member reactivated');
+  await loadStaffTable();
+}
+
+// Individual counterpart to offboardCompanyNow — same idea, one level
+// down: expunge the narrowly sensitive, time-limited-value payload (SSN,
+// CAQH login credentials) for someone who's actually left, without
+// touching anything else about their record. Unlike deleteStaff, this
+// keeps their documents, employment history, and credentialing profile
+// entirely intact — those may still have legitimate long-term value to
+// the company even after someone's gone (audit response, rehire
+// eligibility), where SSN specifically doesn't need to sit around
+// indefinitely once nobody's actively using it for payroll/credentialing.
+// Gated behind already-inactive, same reasoning as company offboarding
+// requiring soft-delete first — you shouldn't be expunging the SSN of
+// someone still actively working.
+async function offboardStaffMember(id, fullName) {
+  if (!currentProfile?.is_super_admin && currentProfile?.role !== 'admin') {
+    toast('Only admins can offboard a staff member.', true);
+    return;
+  }
+  const s = staffList.find(x => x.id === id);
+  if (s?.active) { toast('Deactivate this person first — offboarding is only for staff who have already left.', true); return; }
+  if (s?.offboarded_at) { toast('Already offboarded.', true); return; }
+
+  if (!confirm(`Offboard ${fullName}?\n\nThis permanently deletes their SSN and CAQH login credentials from the system. Their documents, employment history, and credentialing profile are NOT affected — this only removes those two sensitive items.\n\nThis cannot be undone. Type their name to confirm.`)) return;
+  const confirmName = prompt(`Type "${fullName}" to confirm:`);
+  if (confirmName !== fullName) { toast('Name did not match — offboarding cancelled'); return; }
+
+  const failures = [];
+  try {
+    const { error } = await sb.from('credtrack_staff_ssn').delete().eq('staff_id', id);
+    if (error) failures.push('SSN: ' + error.message);
+  } catch (e) { failures.push('SSN: ' + e.message); }
+
+  try {
+    // PLACEHOLDER table name — same unconfirmed guess as offboard-company-ts.
+    // Confirm the real table before relying on this step.
+    const { error } = await sb.from('credtrack_staff_caqh_credentials').delete().eq('staff_id', id);
+    if (error) failures.push('CAQH credentials: ' + error.message);
+  } catch (e) { failures.push('CAQH credentials: ' + e.message); }
+
+  await sb.from('credtrack_staff').update({
+    offboarded_at: new Date().toISOString(),
+    has_ssn_on_file: false,
+    has_caqh_credentials_on_file: false,
+  }).eq('id', id);
+
+  if (failures.length) {
+    toast(`Offboarded, but some cleanup failed: ${failures.join('; ')}`, true);
+  } else {
+    toast(`✓ ${fullName} offboarded — SSN and CAQH credentials expunged`);
+  }
   await loadStaffTable();
 }
 
@@ -12970,6 +13035,11 @@ function showAddHrEmployeeModal(employeeId) {
       <input class="inline-input" type="text" id="hrEmpPhone" value="${(e?.phone || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Email</label>
       <input class="inline-input" type="text" id="hrEmpEmail" value="${(e?.email || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      ${e ? `
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#fff;margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="hrEmpActive" ${e.active !== false ? 'checked' : ''} />
+        Active
+      </label>` : ''}
       <div id="hrEmpFormErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-teal" onclick="saveHrEmployee(${e ? `'${e.id}'` : 'null'})" style="flex:1;justify-content:center;">${e ? 'Save changes' : 'Add employee'}</button>
@@ -12995,6 +13065,10 @@ async function saveHrEmployee(employeeId) {
     phone: document.getElementById('hrEmpPhone').value.trim() || null,
     email: document.getElementById('hrEmpEmail').value.trim() || null,
   };
+  if (employeeId) {
+    const activeEl = document.getElementById('hrEmpActive');
+    if (activeEl) payload.active = activeEl.checked;
+  }
 
   let error;
   if (employeeId) {
@@ -13149,6 +13223,9 @@ async function showHrEmployeeSheet(employeeId) {
       <div id="remindersFor_hr_employee_${employeeId}" style="margin-bottom:16px;">Loading…</div>
 
       <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-top:4px;">
+        ${employee.active === false && !employee.offboarded_at ? `
+        <button class="btn btn-sm btn-ghost" onclick="offboardHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN — everything else (documents, reminders) stays">📁 Offboard (expunge SSN)</button>` : ''}
+        ${employee.offboarded_at ? `<div style="font-size:11px;color:rgba(255,255,255,.35);padding:4px 0 8px;">Offboarded ${new Date(employee.offboarded_at).toLocaleDateString()} — SSN already expunged</div>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;">🗑 Delete employee</button>
         <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeSheetModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
       </div>
@@ -13193,6 +13270,38 @@ async function deleteHrEmployee(employeeId, employeeName) {
   } catch (e) {
     toast('Delete failed: ' + e.message, true);
   }
+}
+
+// Individual counterpart to offboardCompanyNow/offboardStaffMember —
+// expunges just this person's SSN, keeping their record, documents, and
+// reminder history intact. Gated behind already-inactive, same
+// reasoning as the other two offboarding flows.
+async function offboardHrEmployee(employeeId, employeeName) {
+  if (!currentProfile?.is_super_admin && currentProfile?.role !== 'admin') {
+    toast('Only admins can offboard an employee.', true);
+    return;
+  }
+  const e = _hrEmployeesCache?.find(x => x.id === employeeId);
+  if (e?.active !== false) { toast('Mark this person inactive first — offboarding is only for employees who have already left.', true); return; }
+  if (e?.offboarded_at) { toast('Already offboarded.', true); return; }
+
+  if (!confirm(`Offboard ${employeeName}?\n\nThis permanently deletes their SSN from the system. Their HR record, documents, and reminder history are NOT affected.\n\nThis cannot be undone. Type their name to confirm.`)) return;
+  const confirmName = prompt(`Type "${employeeName}" to confirm:`);
+  if (confirmName !== employeeName) { toast('Name did not match — offboarding cancelled'); return; }
+
+  const { error: ssnErr } = await sb.from('hr_employee_ssn').delete().eq('employee_id', employeeId);
+  await sb.from('hr_employees').update({
+    offboarded_at: new Date().toISOString(),
+    has_ssn_on_file: false,
+  }).eq('id', employeeId);
+
+  if (ssnErr) {
+    toast(`Offboarded, but SSN cleanup failed: ${ssnErr.message}`, true);
+  } else {
+    toast(`✓ ${employeeName} offboarded — SSN expunged`);
+  }
+  _hrEmployeesCache = null;
+  await showHrEmployeeSheet(employeeId);
 }
 
 function showEnterHrSsnForm(employeeId) {

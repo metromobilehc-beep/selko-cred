@@ -221,7 +221,7 @@
   .ov-attention-row .ov-days-badge { font-weight: 700; font-size: 12px; padding: 3px 9px; border-radius: 12px; }
   .dark-panel h2 { font-size: 12px; color: var(--teal-l); margin-bottom: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
   .panel-header-collapsible { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
-  .panel-chevron { display: inline-block; font-size: 11px; color: rgba(255,255,255,.4); transition: transform .18s ease; margin-left: 10px; }
+  .panel-chevron { display: inline-block; font-size: 11px; color: inherit; opacity: .4; transition: transform .18s ease; margin-left: 10px; }
   .panel-chevron.open { transform: rotate(90deg); }
   .panel-body { overflow: hidden; }
   .btn-more-item { display: block; width: 100%; text-align: left; font-size: 13px; padding: 8px 10px; border: none; background: none; color: #fff; cursor: pointer; border-radius: var(--radius-sm); }
