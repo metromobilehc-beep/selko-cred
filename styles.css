@@ -231,24 +231,19 @@
   .filter-sel { padding: 6px 10px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.15); background: rgba(255,255,255,.06); color: #fff; font-size: 13px; cursor: pointer; font-family: inherit; }
   .filter-sel option { background: var(--navy2); }
 
-  /* PARTNER PORTAL — same dark theme as the rest of the platform, not
-     the original light card design .panel/.doc-item/.stat-card still
-     use elsewhere (the staff self-service screens share those same
-     classes, so this is scoped to #partnerScreen specifically rather
-     than redefining those classes globally, which would have changed
-     those other screens too). */
+  /* PARTNER PORTAL — dark page background matching the rest of the
+     platform, but individual staff cards stay light (white card, dark
+     text) — same "light card floating on a dark page" pattern the
+     Overview/Selko Admin stat-cards already use elsewhere, rather than
+     making every element dark. Scoped to #partnerScreen specifically
+     rather than redefining .panel/.doc-item globally, since the staff
+     self-service screens share those same classes on their own
+     fully-light pages. */
   #partnerScreen { background: var(--navy); min-height: 100vh; }
   #partnerScreen .page-header h1 { color: #fff; }
   #partnerScreen .page-header p { color: rgba(255,255,255,.6); }
   #partnerScreen input[type=text] { background: var(--navy2); border-color: rgba(255,255,255,.15); color: #fff; }
   #partnerScreen input[type=text]::placeholder { color: rgba(255,255,255,.35); }
-  #partnerScreen .panel { background: var(--navy2); border-color: rgba(255,255,255,.1); box-shadow: none; }
-  #partnerScreen .panel-head { border-bottom-color: rgba(255,255,255,.08); }
-  #partnerScreen .panel-title { color: #fff; }
-  #partnerScreen .doc-item { border-bottom-color: rgba(255,255,255,.08); }
-  #partnerScreen .doc-name { color: #fff; }
-  #partnerScreen .doc-meta { color: rgba(255,255,255,.45); }
-  #partnerScreen .empty-state { color: rgba(255,255,255,.4); }
 
   /* TABLE */
   .tbl-wrap { overflow-x: auto; }
