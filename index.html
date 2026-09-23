@@ -1031,9 +1031,10 @@ window.selkoSharedAuthStorage = {
               <label style="font-size:11px;color:rgba(255,255,255,.5);">Location name</label>
               <input class="inline-input" type="text" id="newLocationName" placeholder="e.g. Downtown Clinic" />
             </div>
-            <div>
+            <div style="position:relative;">
               <label style="font-size:11px;color:rgba(255,255,255,.5);">Address</label>
-              <input class="inline-input" type="text" id="newLocationAddress" />
+              <input class="inline-input" type="text" id="newLocationAddress" placeholder="Start typing an address..." autocomplete="off" oninput="handleAddressSearch(this, 'newLocation')" onblur="setTimeout(() => hideAddressSuggestions('newLocation'), 200)" />
+              <div id="newLocationAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
             </div>
             <div>
               <label style="font-size:11px;color:rgba(255,255,255,.5);">City</label>
@@ -5590,11 +5591,21 @@ function selectAddressSuggestion(prefix, index) {
   if (!result) return;
   const a = result.address || {};
 
-  const streetParts = [a.house_number, a.road].filter(Boolean).join(' ');
-  document.getElementById(`${prefix}Address`).value = streetParts || result.display_name;
   const cityEl = document.getElementById(`${prefix}City`);
   const stateEl = document.getElementById(`${prefix}State`);
   const zipEl = document.getElementById(`${prefix}Zip`);
+
+  // Only split into just the street number+name when there's somewhere
+  // for the rest (city/state/zip) to actually go — otherwise that
+  // context would be silently dropped with nothing left to hold it, so
+  // single-field address inputs (no city/state/zip siblings) get the
+  // full formatted address instead.
+  const hasStructuredFields = cityEl || stateEl || zipEl;
+  const streetParts = [a.house_number, a.road].filter(Boolean).join(' ');
+  document.getElementById(`${prefix}Address`).value = hasStructuredFields
+    ? (streetParts || result.display_name)
+    : result.display_name;
+
   if (cityEl) cityEl.value = a.city || a.town || a.village || a.county || '';
   if (stateEl) stateEl.value = US_STATE_ABBREVIATIONS[(a.state || '').toLowerCase()] || (a.state || '').slice(0, 2).toUpperCase();
   if (zipEl) zipEl.value = a.postcode || '';
@@ -8712,7 +8723,10 @@ async function showEmploymentHistory(staffId, staffName) {
           <input class="inline-input" type="text" id="empPositionTitle" placeholder="Position / title" />
         </div>
         <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
-          <input class="inline-input" type="text" id="empAddress" placeholder="Employer address" />
+          <div style="position:relative;">
+            <input class="inline-input" type="text" id="empAddress" placeholder="Employer address" autocomplete="off" oninput="handleAddressSearch(this, 'emp')" onblur="setTimeout(() => hideAddressSuggestions('emp'), 200)" style="width:100%;box-sizing:border-box;" />
+            <div id="empAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+          </div>
           <input class="inline-input" type="text" id="empCity" placeholder="City" />
           <input class="inline-input" type="text" id="empState" placeholder="State" maxlength="2" />
           <input class="inline-input" type="text" id="empZip" placeholder="Postal code" />
@@ -8960,7 +8974,10 @@ async function showEducationTraining(staffId, staffName) {
         </div>
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="etInstitution" placeholder="Institution" />
-          <input class="inline-input" type="text" id="etAddress" placeholder="Street address" />
+          <div style="position:relative;">
+            <input class="inline-input" type="text" id="etAddress" placeholder="Street address" autocomplete="off" oninput="handleAddressSearch(this, 'et')" onblur="setTimeout(() => hideAddressSuggestions('et'), 200)" style="width:100%;box-sizing:border-box;" />
+            <div id="etAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+          </div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="etCity" placeholder="City" />
@@ -9090,7 +9107,10 @@ async function showHospitalPrivileges(staffId, staffName) {
           <input class="inline-input" type="text" id="hpHospitalName" placeholder="Hospital name" />
           <input class="inline-input" type="text" id="hpPrivilegeType" placeholder="Type (e.g. Provisional, Full)" />
         </div>
-        <input class="inline-input" type="text" id="hpAddress" placeholder="Street address" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+        <div style="position:relative;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="hpAddress" placeholder="Street address" autocomplete="off" oninput="handleAddressSearch(this, 'hp')" onblur="setTimeout(() => hideAddressSuggestions('hp'), 200)" style="width:100%;box-sizing:border-box;" />
+          <div id="hpAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="hpCity" placeholder="City" />
           <input class="inline-input" type="text" id="hpState" placeholder="State/Country" />
@@ -10719,7 +10739,10 @@ function showEditPayerModal(id, name, address, phone, fax, email) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:14px;">${name}</div>
       <label class="inline-label">Address</label>
-      <input class="inline-input" type="text" id="editPayerAddress" value="${address || ''}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="inline-input" type="text" id="editPayerAddress" value="${address || ''}" autocomplete="off" oninput="handleAddressSearch(this, 'editPayer')" onblur="setTimeout(() => hideAddressSuggestions('editPayer'), 200)" style="width:100%;box-sizing:border-box;" />
+        <div id="editPayerAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <div>
           <label class="inline-label">Phone</label>
@@ -12939,7 +12962,10 @@ function showAddHrEmployeeModal(employeeId) {
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Hire date</label>
       <input class="inline-input" type="date" id="hrEmpHireDate" value="${e?.hire_date || ''}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Address</label>
-      <input class="inline-input" type="text" id="hrEmpAddress" value="${(e?.address || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
+      <div style="position:relative;margin-bottom:10px;">
+        <input class="inline-input" type="text" id="hrEmpAddress" value="${(e?.address || '').replace(/"/g,'&quot;')}" autocomplete="off" oninput="handleAddressSearch(this, 'hrEmp')" onblur="setTimeout(() => hideAddressSuggestions('hrEmp'), 200)" style="width:100%;box-sizing:border-box;" />
+        <div id="hrEmpAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
+      </div>
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Phone</label>
       <input class="inline-input" type="text" id="hrEmpPhone" value="${(e?.phone || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Email</label>
