@@ -13798,10 +13798,21 @@ async function loadAllRemindersFor(recipientType) {
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
         <span style="font-size:10px;color:rgba(255,255,255,.35);">${new Date(r.send_at) > now ? 'Starts ' : 'Started '}${fmtDate(r.send_at)}</span>
-        ${r.status === 'pending' ? `<button class="btn btn-sm btn-ghost" onclick="markReminderDone('${r.id}','${recipientType}')" style="font-size:10px;padding:2px 6px;color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
+        <div style="display:flex;gap:6px;">
+          ${r.status === 'pending' ? `<button class="btn btn-sm btn-ghost" onclick="markReminderDone('${r.id}','${recipientType}')" style="font-size:10px;padding:2px 6px;color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="deleteReminder('${r.id}','${recipientType}')" style="font-size:10px;padding:2px 6px;color:#f87171;border-color:rgba(248,113,113,.3);">Delete</button>
+        </div>
       </div>
     </div>`;
   }).join('') + renderPaginationControls(paginationKey, currentPage, totalPages, totalCount, recipientType === 'staff' ? 'loadAllStaffRemindersWrapper' : 'loadAllHrRemindersWrapper');
+}
+
+async function deleteReminder(reminderId, recipientType) {
+  if (!confirm('Delete this reminder? This cannot be undone.')) return;
+  const { error } = await sb.from('staff_reminders').delete().eq('id', reminderId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Reminder deleted');
+  await loadAllRemindersFor(recipientType);
 }
 
 // renderPaginationControls calls its reload function with no arguments —
