@@ -5479,24 +5479,34 @@ function formatPhoneInput(input) {
   input.value = formatted;
 }
 
-// Free, no-API-key address lookup via OpenStreetMap's Nominatim. Purely a
-// convenience layer — if nothing matches (rural addresses and brand-new
-// buildings are common gaps in OSM's data), the field just stays a normal
-// text box and the person types their address by hand like always.
-// Debounced and gated to 4+ characters specifically to stay well within
-// Nominatim's fair-use policy for their free public server.
+// Address autocomplete via Mapbox's Geocoding API (migrated off OSM's
+// free Nominatim, which had no reliability guarantees — a shared public
+// instance with no SLA). Purely a convenience layer — if nothing
+// matches, the field just stays a normal text box and the person types
+// their address by hand like always. Still debounced to avoid firing a
+// request on every keystroke.
 let _addressSearchTimers = {};
-function handleAddressSearch(input, prefix) {
+// Mapbox public token — safe to embed client-side by design (unlike a
+// secret key), restricted by URL in the Mapbox dashboard to this app's
+// domains so it can't be reused elsewhere if it ever leaks.
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibWV0cm9tb2JpbGVoYyIsImEiOiJjbXVlcnk2anMwN2IxMndwbmxxeWxmcGx0In0.Wn2KYVGNb2tachaor-GfTQ';
+
+function handleAddressSearch(input, prefix, allowInternational) {
   clearTimeout(_addressSearchTimers[prefix]);
   const query = input.value.trim();
   if (query.length < 4) { hideAddressSuggestions(prefix); return; }
 
   _addressSearchTimers[prefix] = setTimeout(async () => {
     try {
-      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&limit=5&countrycodes=us&q=${encodeURIComponent(query)}`);
+      // US-only by default (staff/company/HR addresses are legitimately
+      // domestic) — Education/Training is the one field that explicitly
+      // supports international institutions, so it opts out of the
+      // country restriction rather than every field needing it lifted.
+      const countryParam = allowInternational ? '' : '&country=us';
+      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${MAPBOX_TOKEN}${countryParam}&types=address&autocomplete=true&limit=5`);
       if (!res.ok) { hideAddressSuggestions(prefix); return; }
-      const results = await res.json();
-      renderAddressSuggestions(prefix, results);
+      const data = await res.json();
+      renderAddressSuggestions(prefix, data.features || []);
     } catch (e) {
       hideAddressSuggestions(prefix); // network hiccup — just fall back to plain typing, no error shown
     }
@@ -5510,7 +5520,7 @@ function renderAddressSuggestions(prefix, results) {
 
   box.innerHTML = results.map((r, i) => `
     <div onclick="selectAddressSuggestion('${prefix}', ${i})" style="padding:8px 12px;font-size:13px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
-      ${r.display_name}
+      ${r.place_name}
     </div>`).join('');
   box.style.display = 'block';
   window[`_addressResults_${prefix}`] = results; // stash for selectAddressSuggestion to read by index
@@ -5596,26 +5606,43 @@ function hideStateBoardSuggestions() {
 function selectAddressSuggestion(prefix, index) {
   const result = window[`_addressResults_${prefix}`]?.[index];
   if (!result) return;
-  const a = result.address || {};
 
   const cityEl = document.getElementById(`${prefix}City`);
   const stateEl = document.getElementById(`${prefix}State`);
   const zipEl = document.getElementById(`${prefix}Zip`);
 
+  // Mapbox returns city/state/zip as a flat "context" array of
+  // {id, text, short_code?} entries rather than Nominatim's nested
+  // address object — id prefixes ("place.", "region.", "postcode.")
+  // are how you tell them apart, since there's no dedicated key name
+  // for each like Nominatim's address.city/address.state/address.postcode.
+  const getContext = (idPrefix) => (result.context || []).find(c => c.id.startsWith(idPrefix));
+  const cityCtx = getContext('place.');
+  const regionCtx = getContext('region.');
+  const zipCtx = getContext('postcode.');
+
   // Only split into just the street number+name when there's somewhere
   // for the rest (city/state/zip) to actually go — otherwise that
   // context would be silently dropped with nothing left to hold it, so
   // single-field address inputs (no city/state/zip siblings) get the
-  // full formatted address instead.
+  // full formatted address instead. result.address is the house number,
+  // result.text is the street name, for an address-type Mapbox result.
   const hasStructuredFields = cityEl || stateEl || zipEl;
-  const streetParts = [a.house_number, a.road].filter(Boolean).join(' ');
+  const streetParts = [result.address, result.text].filter(Boolean).join(' ');
   document.getElementById(`${prefix}Address`).value = hasStructuredFields
-    ? (streetParts || result.display_name)
-    : result.display_name;
+    ? (streetParts || result.place_name)
+    : result.place_name;
 
-  if (cityEl) cityEl.value = a.city || a.town || a.village || a.county || '';
-  if (stateEl) stateEl.value = US_STATE_ABBREVIATIONS[(a.state || '').toLowerCase()] || (a.state || '').slice(0, 2).toUpperCase();
-  if (zipEl) zipEl.value = a.postcode || '';
+  if (cityEl) cityEl.value = cityCtx?.text || '';
+  if (stateEl) {
+    // region.short_code arrives as "US-OK" — the part after the dash is
+    // the state abbreviation directly, no name-to-abbreviation lookup
+    // needed; only falls back to the lookup table if short_code is
+    // ever missing from a result.
+    const shortCode = regionCtx?.short_code;
+    stateEl.value = shortCode ? shortCode.split('-')[1] : (US_STATE_ABBREVIATIONS[(regionCtx?.text || '').toLowerCase()] || (regionCtx?.text || '').slice(0, 2).toUpperCase());
+  }
+  if (zipEl) zipEl.value = zipCtx?.text || '';
 
   hideAddressSuggestions(prefix);
 }
@@ -9040,7 +9067,7 @@ async function showEducationTraining(staffId, staffName) {
         <div style="display:grid;grid-template-columns:2fr 1fr;gap:10px;margin-bottom:10px;">
           <input class="inline-input" type="text" id="etInstitution" placeholder="Institution" />
           <div style="position:relative;">
-            <input class="inline-input" type="text" id="etAddress" placeholder="Street address" autocomplete="off" oninput="handleAddressSearch(this, 'et')" onblur="setTimeout(() => hideAddressSuggestions('et'), 200)" style="width:100%;box-sizing:border-box;" />
+            <input class="inline-input" type="text" id="etAddress" placeholder="Street address" autocomplete="off" oninput="handleAddressSearch(this, 'et', true)" onblur="setTimeout(() => hideAddressSuggestions('et'), 200)" style="width:100%;box-sizing:border-box;" />
             <div id="etAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
           </div>
         </div>
@@ -16271,6 +16298,7 @@ function showCompanyManageModal(companyId) {
 
   const actionsHtml = c.deleted_at ? `
     <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${escName}')">\u21a9 Restore</button>
+    <button class="btn btn-sm btn-ghost" onclick="exportCompanyDocumentsAsZip('${c.id}','${escName}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Downloads every document for this company as a zip — a portable backup independent of Selko's own storage">\u2b07 Export documents (zip)</button>
     ${c.offboarded_at
       ? `<span style="font-size:11px;color:rgba(255,255,255,.4);align-self:center;">Offboarded ${new Date(c.offboarded_at).toLocaleDateString()} \u2014 final purge scheduled ${new Date(c.purge_scheduled_at).toLocaleDateString()}</span>`
       : `<button class="btn btn-sm btn-gold" onclick="offboardCompanyNow('${c.id}','${escName}')">\ud83d\udcc1 Offboard now</button>`}
@@ -17177,6 +17205,68 @@ async function restoreCompany(id, name) {
 // automatic cron safe: by the time either of those run, there's
 // nothing sensitive left to lose. One-way — there's no "undo
 // offboarding" the way restoreCompany() undoes a soft-delete.
+// A portable backup independent of Selko's own storage — the actual
+// answer to "what if we want to keep files around for audit purposes
+// without relying on Selko to still have them." Grabs every document
+// for every staff member AND every HR employee at this company,
+// regardless of verified/archived/partner_visible status (unlike
+// downloadAllPartnerDocs, which intentionally filters to what a partner
+// should see — this is a full internal backup, not a partner view),
+// organized into one folder per person so the zip is actually
+// navigable rather than a flat pile of same-named files.
+async function exportCompanyDocumentsAsZip(companyId, companyName) {
+  try {
+    toast('Preparing export — this can take a while for a company with a lot of documents…');
+    const zip = new JSZip();
+    let fileCount = 0;
+
+    const { data: staff } = await sb.from('credtrack_staff').select('id, full_name').eq('company_id', companyId);
+    for (const s of staff || []) {
+      const { data: docs } = await sb.from('credtrack_documents')
+        .select('*, document_types(name)')
+        .eq('staff_id', s.id)
+        .not('file_url', 'is', null);
+      const folder = zip.folder(`Staff/${s.full_name.replace(/[\/\\:*?"<>|]/g, '_')}`);
+      for (const d of docs || []) {
+        const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(d.file_url);
+        if (dlErr) { console.warn('Skipped', d.file_url, dlErr); continue; }
+        const ext = (d.file_name || '').split('.').pop() || 'bin';
+        const typeName = (d.document_types?.name || d.label || 'document').replace(/[\/\\:*?"<>|]/g, '_');
+        folder.file(`${typeName}_${d.id.slice(0,8)}.${ext}`, blobData);
+        fileCount++;
+      }
+    }
+
+    const { data: employees } = await sb.from('hr_employees').select('id, full_name').eq('company_id', companyId);
+    for (const e of employees || []) {
+      const { data: docs } = await sb.from('hr_documents')
+        .select('*')
+        .eq('employee_id', e.id);
+      const folder = zip.folder(`HR/${e.full_name.replace(/[\/\\:*?"<>|]/g, '_')}`);
+      for (const d of docs || []) {
+        const { data: blobData, error: dlErr } = await sb.storage.from('hr-documents').download(d.storage_path);
+        if (dlErr) { console.warn('Skipped', d.storage_path, dlErr); continue; }
+        const ext = (d.storage_path || '').split('.').pop() || 'bin';
+        folder.file(`${(d.name || 'document').replace(/[\/\\:*?"<>|]/g, '_')}_${d.id.slice(0,8)}.${ext}`, blobData);
+        fileCount++;
+      }
+    }
+
+    if (!fileCount) { toast('No files found to export.', true); return; }
+
+    const content = await zip.generateAsync({ type: 'blob' });
+    const url = URL.createObjectURL(content);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${companyName.replace(/[^a-z0-9]/gi,'_')}_Documents_${new Date().toISOString().slice(0,10)}.zip`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast(`✓ Export ready — ${fileCount} file${fileCount!==1?'s':''}`);
+  } catch (e) {
+    toast('Export failed: ' + e.message, true);
+  }
+}
+
 async function offboardCompanyNow(id, name) {
   if (!currentProfile?.is_super_admin) { toast('Only super admins can offboard a company.', true); return; }
   if (!confirm(`Offboard ${name}?\n\nThis saves a permanent audit trail (logs and document metadata, no file content), then permanently deletes their actual document files and encrypted SSN/CAQH credentials. The company record and staff roster stay, stripped of sensitive content, until the final purge date (3 years out).\n\nThis cannot be undone. Type the company name to confirm.`)) return;
