@@ -2570,6 +2570,7 @@ let docTypes       = [];
 let staffList      = [];
 let _staffSortKey  = 'full_name';
 let _staffSortDir  = 'asc';
+let _lastStaffFilterSignature = null;
 
 function setStaffSort(key) {
   if (_staffSortKey === key) {
@@ -5360,6 +5361,47 @@ async function exportStaffRosterPDF() {
   toast('Staff roster exported');
 }
 
+// ══ Reusable pagination — one small helper reused across every list
+// long enough to need it (Staff, HR Employees, and anywhere else this
+// comes up), rather than a bespoke "show N, load more" built per list.
+// Works on a plain array regardless of what the underlying data looks
+// like or how each list renders its own rows, since it only ever
+// returns a page-sliced array plus a state object — each list's own
+// render function decides how to actually draw a row (a <tr>, a <div>,
+// whatever it already does).
+const _paginationState = {};
+
+function paginateItems(items, listKey, pageSize = 25) {
+  const requestedPage = _paginationState[listKey] || 1;
+  const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const currentPage = Math.min(Math.max(1, requestedPage), totalPages);
+  _paginationState[listKey] = currentPage;
+  const start = (currentPage - 1) * pageSize;
+  return { pageItems: items.slice(start, start + pageSize), currentPage, totalPages, totalCount: items.length };
+}
+
+// resetPage: true whenever the underlying filtered set just changed (a
+// new search term, a new filter) — otherwise a search that narrows the
+// list down to 1 page would leave you stranded on, say, page 4 of a
+// list that no longer has one.
+function setPaginationPage(listKey, page, reloadFnName) {
+  _paginationState[listKey] = page;
+  window[reloadFnName]();
+}
+
+function renderPaginationControls(listKey, currentPage, totalPages, totalCount, reloadFnName) {
+  if (totalPages <= 1) return '';
+  return `
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 4px 4px;margin-top:6px;border-top:1px solid rgba(255,255,255,.08);">
+      <span style="font-size:12px;color:rgba(255,255,255,.4);">${totalCount} total</span>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="btn btn-sm btn-ghost" ${currentPage <= 1 ? 'disabled' : ''} onclick="setPaginationPage('${listKey}', ${currentPage - 1}, '${reloadFnName}')" style="color:#fff;border-color:rgba(255,255,255,.2);${currentPage <= 1 ? 'opacity:.35;cursor:default;' : ''}">← Prev</button>
+        <span style="font-size:12px;color:rgba(255,255,255,.5);">Page ${currentPage} of ${totalPages}</span>
+        <button class="btn btn-sm btn-ghost" ${currentPage >= totalPages ? 'disabled' : ''} onclick="setPaginationPage('${listKey}', ${currentPage + 1}, '${reloadFnName}')" style="color:#fff;border-color:rgba(255,255,255,.2);${currentPage >= totalPages ? 'opacity:.35;cursor:default;' : ''}">Next →</button>
+      </div>
+    </div>`;
+}
+
 async function loadStaffTable() {
   await loadStaffList();
   const tbody = document.getElementById('staffTbody');
@@ -5421,6 +5463,18 @@ async function loadStaffTable() {
     return;
   }
 
+  // Reset to page 1 only when the actual filter/sort criteria changed —
+  // not on every call, since loadStaffTable() also re-renders after
+  // routine edits (discipline change, etc.) where jumping back to page 1
+  // and losing your place would be an annoying side effect.
+  const filterSignature = `${personFilter}|${licTypeFilter}|${verifiedFilter}|${_staffSortKey}|${_staffSortDir}`;
+  if (_lastStaffFilterSignature !== filterSignature) {
+    _paginationState.staffTable = 1;
+    _lastStaffFilterSignature = filterSignature;
+  }
+  const { pageItems: paginatedStaff, currentPage, totalPages, totalCount } = paginateItems(filteredStaff, 'staffTable', 25);
+  filteredStaff = paginatedStaff;
+
   const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
   const staffTypeGroupLabels = { clinician: 'Clinical staff', office: 'Office staff', admin: 'Admin staff' };
 
@@ -5456,7 +5510,7 @@ async function loadStaffTable() {
       <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile${s.license_number ? '' : ' ⚠'}</button>
     </div></td>
   </tr>`;
-  }).join('');
+  }).join('') + (totalPages > 1 ? `<tr><td colspan="6" style="padding:0;">${renderPaginationControls('staffTable', currentPage, totalPages, totalCount, 'loadStaffTable')}</td></tr>` : '');
 }
 
 function closeStaffActionsMenu() {
@@ -13026,12 +13080,18 @@ async function loadHrEmployees() {
     return;
   }
 
-  container.innerHTML = filtered.map(e => `
+  // Search narrowing the list shouldn't leave you stranded on a page
+  // number that no longer has anything on it — reset to page 1 whenever
+  // the search box itself triggered this reload.
+  if (document.activeElement?.id === 'hrEmployeeSearch') _paginationState.hrEmployees = 1;
+  const { pageItems, currentPage, totalPages, totalCount } = paginateItems(filtered, 'hrEmployees', 25);
+
+  container.innerHTML = pageItems.map(e => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onclick="showHrEmployeeSheet('${e.id}')">
       <span style="flex:1;color:#fff;font-size:13px;">${e.full_name}${e.active === false ? ' <span style="font-size:10px;color:rgba(255,255,255,.35);">INACTIVE</span>' : ''}${e.credtrack_staff_id ? ' <span style="font-size:10px;color:var(--teal-l);" title="Imported from the staff list — linked to their credentialing record">🔗</span>' : ''}</span>
       <span style="font-size:12px;color:rgba(255,255,255,.4);">${e.position || ''}</span>
       <span style="font-size:11px;color:${e.has_ssn_on_file ? 'rgba(255,255,255,.3)' : '#f59e0b'};">${e.has_ssn_on_file ? 'SSN on file' : 'No SSN on file'}</span>
-    </div>`).join('');
+    </div>`).join('') + renderPaginationControls('hrEmployees', currentPage, totalPages, totalCount, 'loadHrEmployees');
 }
 
 function showAddHrEmployeeModal(employeeId) {
