@@ -724,6 +724,10 @@ window.selkoSharedAuthStorage = {
           <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('staff')">+ New reminder</button>
         </div>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">A memo you write, emailed starting at the date/time you pick, repeating weekly until marked done.</p>
+        <select class="filter-sel" id="staffRemindersFilter" style="margin-bottom:10px;" onchange="_paginationState.staffReminders = 1; loadAllRemindersFor('staff')">
+          <option value="pending">Pending only</option>
+          <option value="all">All (including done)</option>
+        </select>
         <div id="allStaffRemindersList">Loading…</div>
       </div>
     </div>
@@ -1306,6 +1310,10 @@ window.selkoSharedAuthStorage = {
           <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('hr_employee')">+ New reminder</button>
         </div>
         <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">A memo you write, emailed starting at the date/time you pick, repeating weekly until marked done.</p>
+        <select class="filter-sel" id="hrRemindersFilter" style="margin-bottom:10px;" onchange="_paginationState.hrReminders = 1; loadAllRemindersFor('hr_employee')">
+          <option value="pending">Pending only</option>
+          <option value="all">All (including done)</option>
+        </select>
         <div id="allHrRemindersList">Loading…</div>
       </div>
 
@@ -13746,19 +13754,38 @@ async function loadAllRemindersFor(recipientType) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
+  const filterId = recipientType === 'staff' ? 'staffRemindersFilter' : 'hrRemindersFilter';
+  const showAll = document.getElementById(filterId)?.value === 'all';
+
   const col = recipientType === 'staff' ? 'staff_id' : 'hr_employee_id';
   const nameTable = recipientType === 'staff' ? 'credtrack_staff' : 'hr_employees';
-  const { data, error } = await sb.from('staff_reminders')
+  let query = sb.from('staff_reminders')
     .select(`*, ${nameTable}(full_name)`)
     .eq('company_id', currentCompany.id)
-    .not(col, 'is', null)
-    .order('status', { ascending: true }) // pending first
+    .not(col, 'is', null);
+  // Defaults to pending-only — otherwise this list only ever grows,
+  // since nothing else ever removes a completed reminder from it. Most
+  // of the time what's actually useful to see is "what's still
+  // outstanding," not a permanent, ever-growing history of everything
+  // ever sent.
+  if (!showAll) query = query.eq('status', 'pending');
+  const { data, error } = await query
+    .order('status', { ascending: true }) // pending first (only matters when showAll)
     .order('send_at', { ascending: false });
   if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
-  if (!data?.length) { container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.35);">No reminders yet.</div>'; return; }
+  if (!data?.length) {
+    container.innerHTML = `<div style="font-size:12px;color:rgba(255,255,255,.35);">${showAll ? 'No reminders yet.' : 'Nothing pending — nice.'}</div>`;
+    return;
+  }
+
+  // Same pagination helper as the Staff/HR employee lists — this list
+  // has the identical "just keeps growing" problem those had, and the
+  // fix is the same reusable pattern rather than a bespoke solution.
+  const paginationKey = recipientType === 'staff' ? 'staffReminders' : 'hrReminders';
+  const { pageItems, currentPage, totalPages, totalCount } = paginateItems(data, paginationKey, 25);
 
   const now = new Date();
-  container.innerHTML = data.map(r => {
+  container.innerHTML = pageItems.map(r => {
     const personName = r[nameTable]?.full_name || 'Unknown';
     return `
     <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
@@ -13774,8 +13801,16 @@ async function loadAllRemindersFor(recipientType) {
         ${r.status === 'pending' ? `<button class="btn btn-sm btn-ghost" onclick="markReminderDone('${r.id}','${recipientType}')" style="font-size:10px;padding:2px 6px;color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
       </div>
     </div>`;
-  }).join('');
+  }).join('') + renderPaginationControls(paginationKey, currentPage, totalPages, totalCount, recipientType === 'staff' ? 'loadAllStaffRemindersWrapper' : 'loadAllHrRemindersWrapper');
 }
+
+// renderPaginationControls calls its reload function with no arguments —
+// these two just supply the recipientType loadAllRemindersFor actually
+// needs, so pagination's Prev/Next buttons can call a plain function
+// name rather than needing renderPaginationControls itself to support
+// passing arguments through.
+function loadAllStaffRemindersWrapper() { loadAllRemindersFor('staff'); }
+function loadAllHrRemindersWrapper() { loadAllRemindersFor('hr_employee'); }
 
 async function markReminderDone(reminderId, recipientType) {
   const { error } = await sb.from('staff_reminders').update({
