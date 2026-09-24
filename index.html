@@ -3837,7 +3837,7 @@ async function performGlobalSearch(query) {
   const like = `%${query}%`;
   const companyId = currentCompany.id;
 
-  const [staffRes, empRes, notesRes, filesRes, accRes, locRes] = await Promise.all([
+  const [staffRes, empRes, notesRes, filesRes, accRes, locRes, hrEmpRes, hrDocRes, reminderRes, credTemplateRes] = await Promise.all([
     sb.from('credtrack_staff')
       .select('id, full_name, discipline, license_number, npi_number, caqh_id, dea_number, email, phone, hospital_affiliation_1, hospital_affiliation_2, hospital_affiliation_3, board_name')
       .eq('company_id', companyId)
@@ -3873,6 +3873,34 @@ async function performGlobalSearch(query) {
       .eq('company_id', companyId)
       .or(`location_name.ilike.${like},address.ilike.${like},city.ilike.${like}`)
       .limit(6),
+
+    // Everything below is new — the HR module, custom reminders, and
+    // credentialing templates all launched without ever being wired
+    // into global search, so none of it was findable this way despite
+    // being fully usable everywhere else in the app.
+    currentCompany.has_hr_addon
+      ? sb.from('hr_employees').select('id, full_name, position, email').eq('company_id', companyId)
+          .or(`full_name.ilike.${like},position.ilike.${like},email.ilike.${like}`).limit(6)
+      : Promise.resolve({ data: [] }),
+
+    currentCompany.has_hr_addon
+      ? sb.from('hr_documents').select('id, employee_id, name, hr_employees(full_name)').eq('company_id', companyId)
+          .ilike('name', like).limit(6)
+      : Promise.resolve({ data: [] }),
+
+    // Custom reminders can be for either a credentialed staff member or
+    // an HR employee — company_id is on the reminder itself either way,
+    // so this one query covers both without needing the addon check.
+    sb.from('staff_reminders')
+      .select('id, staff_id, hr_employee_id, message, credtrack_staff(full_name), hr_employees(full_name)')
+      .eq('company_id', companyId)
+      .ilike('message', like)
+      .limit(6),
+
+    currentCompany.has_credentialing_addon
+      ? sb.from('credentialing_templates').select('id, name').ilike('name', like)
+          .or(`company_id.eq.${companyId},company_id.is.null`).limit(6)
+      : Promise.resolve({ data: [] }),
   ]);
 
   return {
@@ -3882,6 +3910,10 @@ async function performGlobalSearch(query) {
     files: filesRes.data || [],
     accreditations: accRes.data || [],
     locations: locRes.data || [],
+    hrEmployees: hrEmpRes.data || [],
+    hrDocuments: hrDocRes.data || [],
+    reminders: reminderRes.data || [],
+    credentialingTemplates: credTemplateRes.data || [],
   };
 }
 
@@ -3948,6 +3980,34 @@ function renderGlobalSearchResults(results, query, quickActions) {
     sections.push(renderSearchSection('📍 Locations', results.locations.map(l => ({
       label: l.location_name || 'Unnamed location',
       sub: [l.address, l.city].filter(Boolean).join(', '),
+      onclick: `switchTab('credentialing')`,
+    }))));
+  }
+  if (results.hrEmployees?.length) {
+    sections.push(renderSearchSection('🪪 HR Employees', results.hrEmployees.map(e => ({
+      label: e.full_name,
+      sub: e.position || '',
+      onclick: `showHrEmployeeSheet('${e.id}')`,
+    }))));
+  }
+  if (results.hrDocuments?.length) {
+    sections.push(renderSearchSection('📁 HR Documents', results.hrDocuments.map(d => ({
+      label: d.name,
+      sub: d.hr_employees?.full_name || 'Unknown employee',
+      onclick: `showHrEmployeeSheet('${d.employee_id}')`,
+    }))));
+  }
+  if (results.reminders?.length) {
+    sections.push(renderSearchSection('⏰ Reminders', results.reminders.map(r => ({
+      label: r.message.length > 60 ? r.message.slice(0, 60) + '…' : r.message,
+      sub: r.credtrack_staff?.full_name || r.hr_employees?.full_name || 'Unknown',
+      onclick: r.staff_id ? `switchTab('staff')` : `switchTab('hr')`,
+    }))));
+  }
+  if (results.credentialingTemplates?.length) {
+    sections.push(renderSearchSection('📄 Credentialing Templates', results.credentialingTemplates.map(t => ({
+      label: t.name,
+      sub: '',
       onclick: `switchTab('credentialing')`,
     }))));
   }
