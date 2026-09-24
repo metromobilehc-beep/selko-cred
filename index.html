@@ -7699,9 +7699,8 @@ async function offboardStaffMember(id, fullName) {
   } catch (e) { failures.push('SSN: ' + e.message); }
 
   try {
-    // PLACEHOLDER table name — same unconfirmed guess as offboard-company-ts.
-    // Confirm the real table before relying on this step.
-    const { error } = await sb.from('credtrack_staff_caqh_credentials').delete().eq('staff_id', id);
+    // Confirmed via information_schema query against the live database.
+    const { error } = await sb.from('staff_caqh_credentials').delete().eq('staff_id', id);
     if (error) failures.push('CAQH credentials: ' + error.message);
   } catch (e) { failures.push('CAQH credentials: ' + e.message); }
 
