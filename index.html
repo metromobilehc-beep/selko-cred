@@ -717,6 +717,15 @@ window.selkoSharedAuthStorage = {
           </table>
         </div>
       </div>
+
+      <div class="dark-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h2 style="margin:0;">Reminders</h2>
+          <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('staff')">+ New reminder</button>
+        </div>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">A memo you write, emailed starting at the date/time you pick, repeating weekly until marked done.</p>
+        <div id="allStaffRemindersList">Loading…</div>
+      </div>
     </div>
 
     <!-- SETTINGS TAB -->
@@ -1289,6 +1298,15 @@ window.selkoSharedAuthStorage = {
             <div id="hrTemplateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
           </div>
         </div>
+      </div>
+
+      <div class="dark-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <h2 style="margin:0;">Reminders</h2>
+          <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('hr_employee')">+ New reminder</button>
+        </div>
+        <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">A memo you write, emailed starting at the date/time you pick, repeating weekly until marked done.</p>
+        <div id="allHrRemindersList">Loading…</div>
       </div>
 
       <div class="dark-panel" id="hrLock" style="display:none;">
@@ -6208,12 +6226,6 @@ function showFullProfileSheet(staffId) {
         <div id="fpDocsSummary" style="font-size:12px;color:rgba(255,255,255,.3);">Loading...</div>
       </div>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;margin-top:16px;">
-        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">Reminders</div>
-        <button class="btn btn-sm btn-ghost" onclick="showAddReminderModal('staff','${staffId}','${s.full_name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">+ Add reminder</button>
-      </div>
-      <div id="remindersFor_staff_${staffId}" style="margin-bottom:10px;">Loading…</div>
-
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:11px;color:rgba(255,255,255,.4);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
@@ -6278,7 +6290,6 @@ function showFullProfileSheet(staffId) {
 
   restoreHospitalInfoOnLoad(s); // fire-and-forget — populates verification link/code if an existing value matches
   if (currentCompany.has_credtrack) loadFpDocsSummary(staffId); // fire-and-forget
-  loadRemindersFor('staff', staffId); // fire-and-forget
 }
 
 // For creating a brand-new staff member from a CV, rather than enriching
@@ -13303,12 +13314,6 @@ async function showHrEmployeeSheet(employeeId) {
       </div>
       <div style="margin-bottom:16px;">${docsHtml}</div>
 
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">Reminders</div>
-        <button class="btn btn-sm btn-ghost" onclick="showAddReminderModal('hr_employee','${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">+ Add reminder</button>
-      </div>
-      <div id="remindersFor_hr_employee_${employeeId}" style="margin-bottom:16px;">Loading…</div>
-
       <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-top:4px;">
         ${employee.active === false && !employee.offboarded_at ? `
         <button class="btn btn-sm btn-ghost" onclick="offboardHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN — everything else (documents, reminders) stays">📁 Offboard (expunge SSN)</button>` : ''}
@@ -13319,7 +13324,6 @@ async function showHrEmployeeSheet(employeeId) {
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
-  loadRemindersFor('hr_employee', employeeId); // fire-and-forget
 }
 
 // ══ HR SSN modals — same encrypted/justification-logged pattern as
@@ -13625,32 +13629,95 @@ async function saveReminder(recipientType, recipientId) {
 
   document.getElementById('addReminderModal')?.remove();
   toast('✓ Reminder saved');
-  await loadRemindersFor(recipientType, recipientId);
+  await loadAllRemindersFor(recipientType);
 }
 
-async function loadRemindersFor(recipientType, recipientId) {
-  const container = document.getElementById(`remindersFor_${recipientType}_${recipientId}`);
+// A dedicated Reminders panel on the Staff and HR Onboarding tabs —
+// pulled out of each person's own sheet, where sending a reminder
+// meant drilling into that specific profile first. "+ New reminder"
+// opens this picker, then hands off to the existing showAddReminderModal
+// once someone's actually selected — same underlying save/list/done
+// functions as before, just reached from one central place instead of
+// scattered across every individual profile.
+function showPickPersonForReminderModal(recipientType) {
+  const existing = document.getElementById('pickPersonModal');
+  if (existing) existing.remove();
+
+  const people = recipientType === 'staff'
+    ? (staffList || []).map(s => ({ id: s.id, name: s.full_name }))
+    : (_hrEmployeesCache || []).map(e => ({ id: e.id, name: e.full_name }));
+
+  const modal = document.createElement('div');
+  modal.id = 'pickPersonModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1150;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;max-height:70vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:12px;">Who's this reminder for?</div>
+      <input class="inline-input" type="text" id="pickPersonSearch" placeholder="Search by name..." style="width:100%;margin-bottom:10px;box-sizing:border-box;" oninput="filterPickPersonList('${recipientType}')" autofocus />
+      <div id="pickPersonList" style="flex:1;overflow-y:auto;"></div>
+      <button class="btn btn-ghost" onclick="document.getElementById('pickPersonModal').remove()" style="margin-top:10px;color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  window._pickPersonList = people;
+  renderPickPersonList(recipientType, people);
+}
+
+function renderPickPersonList(recipientType, people) {
+  const container = document.getElementById('pickPersonList');
   if (!container) return;
+  if (!people.length) { container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.35);padding:12px 0;">No matches.</div>'; return; }
+  container.innerHTML = people.map(p => `
+    <div onclick="document.getElementById('pickPersonModal').remove();showAddReminderModal('${recipientType}','${p.id}','${p.name.replace(/'/g,"\\'")}')" style="padding:8px 10px;font-size:13px;color:#fff;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">${p.name}</div>`).join('');
+}
+
+function filterPickPersonList(recipientType) {
+  const term = document.getElementById('pickPersonSearch').value.trim().toLowerCase();
+  const filtered = !term ? window._pickPersonList : window._pickPersonList.filter(p => p.name.toLowerCase().includes(term));
+  renderPickPersonList(recipientType, filtered);
+}
+
+// Aggregate view across every staff/HR-employee reminder at this
+// company — replaces the old per-person loadRemindersFor, since
+// reminders now live in one shared panel rather than inside each
+// individual profile sheet.
+async function loadAllRemindersFor(recipientType) {
+  const containerId = recipientType === 'staff' ? 'allStaffRemindersList' : 'allHrRemindersList';
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
   const col = recipientType === 'staff' ? 'staff_id' : 'hr_employee_id';
-  const { data, error } = await sb.from('staff_reminders').select('*').eq(col, recipientId).order('send_at', { ascending: false });
+  const nameTable = recipientType === 'staff' ? 'credtrack_staff' : 'hr_employees';
+  const { data, error } = await sb.from('staff_reminders')
+    .select(`*, ${nameTable}(full_name)`)
+    .eq('company_id', currentCompany.id)
+    .not(col, 'is', null)
+    .order('status', { ascending: true }) // pending first
+    .order('send_at', { ascending: false });
   if (error) { container.innerHTML = `<span style="color:#f87171;font-size:12px;">${error.message}</span>`; return; }
-  if (!data?.length) { container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.35);">No reminders set.</div>'; return; }
+  if (!data?.length) { container.innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,.35);">No reminders yet.</div>'; return; }
 
   const now = new Date();
-  container.innerHTML = data.map(r => `
-    <div style="padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+  container.innerHTML = data.map(r => {
+    const personName = r[nameTable]?.full_name || 'Unknown';
+    return `
+    <div style="padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="display:flex;justify-content:space-between;gap:8px;align-items:flex-start;">
-        <p style="flex:1;color:#fff;font-size:12px;margin:0;">${r.message}</p>
+        <div style="flex:1;">
+          <span style="color:#fff;font-size:13px;font-weight:600;">${personName}</span>
+          <p style="color:rgba(255,255,255,.7);font-size:12px;margin:2px 0 0;">${r.message}</p>
+        </div>
         <span style="font-size:10px;color:${r.status === 'pending' ? '#f59e0b' : 'rgba(255,255,255,.3)'};white-space:nowrap;">${r.status === 'pending' ? 'PENDING' : '✓ DONE'}</span>
       </div>
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:4px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
         <span style="font-size:10px;color:rgba(255,255,255,.35);">${new Date(r.send_at) > now ? 'Starts ' : 'Started '}${fmtDate(r.send_at)}</span>
-        ${r.status === 'pending' ? `<button class="btn btn-sm btn-ghost" onclick="markReminderDone('${r.id}','${recipientType}','${recipientId}')" style="font-size:10px;padding:2px 6px;color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
+        ${r.status === 'pending' ? `<button class="btn btn-sm btn-ghost" onclick="markReminderDone('${r.id}','${recipientType}')" style="font-size:10px;padding:2px 6px;color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
       </div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
-async function markReminderDone(reminderId, recipientType, recipientId) {
+async function markReminderDone(reminderId, recipientType) {
   const { error } = await sb.from('staff_reminders').update({
     status: 'acknowledged',
     acknowledged_at: new Date().toISOString(),
@@ -13658,7 +13725,7 @@ async function markReminderDone(reminderId, recipientType, recipientId) {
   }).eq('id', reminderId);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('✓ Marked done');
-  await loadRemindersFor(recipientType, recipientId);
+  await loadAllRemindersFor(recipientType);
 }
 
 // Shared normalization used both by the static regex guesses below AND
@@ -15295,10 +15362,10 @@ function switchTab(tab) {
   if (tab === 'overview')  loadOverview();
   if (tab === 'docs')      setDocViewMode(_docViewMode);
   if (tab === 'exp')       loadExpTracker();
-  if (tab === 'staff')     loadStaffTable();
+  if (tab === 'staff')     { loadStaffTable(); loadAllRemindersFor('staff'); }
   if (tab === 'insurance') loadInsuranceTab();
   if (tab === 'credentialing') loadCredentialingTab();
-  if (tab === 'hr')        loadHrTab();
+  if (tab === 'hr')        { loadHrTab(); loadAllRemindersFor('hr_employee'); }
   if (tab === 'settings')  loadSettings();
   if (tab === 'super')     loadSuperAdmin();
 }
