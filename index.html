@@ -17259,17 +17259,23 @@ async function toggleCompanyFlag(id, flag, current) {
 // independent toggles — those could reach an invalid "both off" state that
 // would lock the company out of logging in entirely, since the login gate
 // requires at least one of has_credtrack/has_credentialing_addon to be true.
+//
+// FIXED: the 'credentialing' mode (Credentialing only, no Document
+// Tracking) used to exist here — removed now that Document Tracking is a
+// required prerequisite for Credentialing, matching what
+// setCredentialingTier already enforced but this older function didn't.
+// 'docs' and 'both' are the only two valid states now; a company can no
+// longer have Credentialing without Document Tracking through this path.
 async function setCompanyModules(id, mode) {
   const updates = {
-    docs:          { has_credtrack: true,  has_credentialing_addon: false },
-    credentialing: { has_credtrack: false, has_credentialing_addon: true },
-    both:          { has_credtrack: true,  has_credentialing_addon: true },
+    docs: { has_credtrack: true, has_credentialing_addon: false },
+    both: { has_credtrack: true, has_credentialing_addon: true },
   }[mode];
   if (!updates) return;
 
   const { error } = await sb.from('companies').update(updates).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
-  const labels = { docs: 'Document tracking only', credentialing: 'Credentialing only', both: 'Both' };
+  const labels = { docs: 'Document tracking only', both: 'Both' };
   toast(`✓ Set to: ${labels[mode]}`);
   await loadSuperAdmin();
 
@@ -17361,10 +17367,9 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
 
       <label class="inline-label">Module</label>
       <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
-        <option value="docs" ${c.has_credtrack && !c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
+        <option value="docs" ${!c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
         ${!moduleOptionHidden ? `
-        <option value="credentialing" ${!c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Credentialing only</option>
-        <option value="both" ${c.has_credtrack && c.has_credentialing_addon ? 'selected' : ''}>Both</option>` : ''}
+        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (Credentialing requires Document Tracking)</option>` : ''}
       </select>
       ${moduleOptionHidden ? `<p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
