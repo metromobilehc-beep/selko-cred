@@ -7780,8 +7780,15 @@ async function checkStaffLimitBlock(companyId, additionalCount = 1) {
   if (companyId === 'b00ca9bc-d669-492d-8ad5-2d2783321ade') return null;
 
   const limits = { standard: 25, pro: 50 }; // enterprise and any other value: no cap
-  const limit = limits[currentCompany.plan];
-  if (!limit) return null;
+  const baseLimit = limits[currentCompany.plan];
+  if (!baseLimit) return null;
+
+  // Each purchased block adds 25 seats on top of the tier's base limit —
+  // same $30/mo-per-block rule for both Standard and Pro. Set via the
+  // Subscription Settings modal in Selko Admin, same place every other
+  // subscription attribute (Module, Credentialing tier, Plan) already
+  // gets managed — not a separate self-service purchase flow.
+  const limit = baseLimit + ((currentCompany.extra_seat_blocks || 0) * 25);
 
   const { count } = await sb.from('credtrack_staff')
     .select('id', { count: 'exact', head: true })
@@ -7800,8 +7807,8 @@ async function checkStaffLimitBlock(companyId, additionalCount = 1) {
     return null;
   }
 
-  const upgradeTo = currentCompany.plan === 'standard' ? 'Pro' : 'Enterprise';
-  return `The ${currentCompany.plan === 'standard' ? 'Standard' : 'Pro'} plan is limited to ${limit} active staff members (currently at ${count}). Upgrade to ${upgradeTo}${currentCompany.plan === 'pro' ? ' for unlimited staff' : ''} — contact Selko to upgrade.`;
+  const tierName = currentCompany.plan === 'standard' ? 'Standard' : 'Pro';
+  return `Your ${tierName} plan${currentCompany.extra_seat_blocks ? ` (with ${currentCompany.extra_seat_blocks} extra seat block${currentCompany.extra_seat_blocks !== 1 ? 's' : ''})` : ''} is limited to ${limit} active staff members (currently at ${count}). Add another block of 25 seats for $30/mo, or upgrade${currentCompany.plan === 'pro' ? ' to Enterprise for unlimited staff' : ''} — contact Selko to upgrade.`;
 }
 
 async function saveNewStaff() {
@@ -17731,6 +17738,14 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
         <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise</option>
       </select>
 
+      ${(c.plan === 'pro' || c.plan === 'standard' || !c.plan) ? `
+      <label class="inline-label">Extra seat blocks ($30/mo each, +25 seats per block)</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+        <input type="number" class="inline-select" id="modalSeatBlocksInput" min="0" step="1" value="${c.extra_seat_blocks || 0}" style="width:80px;box-sizing:border-box;" />
+        <button class="btn btn-sm btn-teal" onclick="applyModalSeatBlocksChange('${companyId}','${companyName.replace(/'/g,"\\'")}')">Save</button>
+        <span style="font-size:11px;color:rgba(255,255,255,.4);">= ${((c.plan === 'pro' ? 50 : 25) + (c.extra_seat_blocks || 0) * 25)} total seats</span>
+      </div>` : ''}
+
       <button class="btn btn-ghost" onclick="document.getElementById('subscriptionSettingsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
     </div>`;
   document.body.appendChild(modal);
@@ -17754,6 +17769,14 @@ async function applyModalHrToggle(companyId, companyName, checked) {
 }
 async function applyModalPlanChange(companyId, companyName, value) {
   await setCompanyPlan(companyId, value);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+async function applyModalSeatBlocksChange(companyId, companyName) {
+  const val = parseInt(document.getElementById('modalSeatBlocksInput').value, 10);
+  const blocks = Number.isFinite(val) && val >= 0 ? val : 0;
+  const { error } = await sb.from('companies').update({ extra_seat_blocks: blocks }).eq('id', companyId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ Set to ${blocks} extra seat block${blocks !== 1 ? 's' : ''} ($${blocks * 30}/mo)`);
   await showSubscriptionSettingsModal(companyId, companyName);
 }
 
