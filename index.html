@@ -5872,14 +5872,19 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
   if (!staffId) return ''; // org-level Notes has no per-provider tabs
   const safeName = staffName.replace(/'/g, "\\'");
   // Licenses/Education/Privileges/Claims were built specifically for the
-  // physician/urgent-care credentialing use case — same bar as other
-  // Full-tier-only features (one-click form generation, clinician self-
-  // upload), not something a Documents-only or Basic Credentialing company
-  // has any use for. Nothing harmful about them showing regardless (a
-  // Basic company couldn't do anything with them), but seeing tabs for a
-  // feature set that doesn't apply is exactly the kind of clutter worth
-  // trimming as the app keeps growing.
-  const showFullCredTabs = currentCompany.has_credentialing_addon && currentCompany.credentialing_tier === 'full';
+  // FIXED: these five tabs were bundled into the same "Full-tier-only"
+  // gate as genuinely premium conveniences (one-click form generation,
+  // clinician self-upload — see canUploadFiles above, untouched by this
+  // fix). That was a mismatch: Licenses, Education, Employment History,
+  // Hospital Privileges, and Malpractice Claims aren't premium extras —
+  // they're the actual baseline data CAQH requires to complete any
+  // credentialing application at all (confirmed against CAQH's own
+  // documented requirements). A Basic-tier company couldn't enter this
+  // data anywhere in the app, meaning Basic couldn't actually be used to
+  // prep a real CAQH application — not "simplified," just missing.
+  // These five now show for ANY credentialing tier (has_credentialing_addon
+  // alone); only genuinely advanced conveniences stay Full-only.
+  const showCredDataTabs = currentCompany.has_credentialing_addon;
   // Each Full-tier tab also respects its own individual panel-visibility
   // toggle, so a company can keep some of these (e.g. Education,
   // Employment History — genuinely useful outside healthcare) while
@@ -5888,7 +5893,7 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
   const hidden = _hiddenPanelsCache || new Set();
   const tabs = [
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
-    ...(showFullCredTabs ? [
+    ...(showCredDataTabs ? [
       !hidden.has('additional_licenses') ? { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` } : null,
       !hidden.has('education') ? { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` } : null,
       !hidden.has('hospital_privileges') ? { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` } : null,
@@ -11630,8 +11635,12 @@ async function loadCredentialingTab() {
   }
 
   // Full Credentialing includes everything Basic does, plus the template
-  // upload/mapping/generate-filled-form feature — Basic is org profile,
-  // accreditations, and per-staff CAQH/DEA only (data entry, no generation).
+  // upload/mapping/generate-filled-form feature — the only thing that's
+  // actually Full-only. Basic includes full data entry (org profile,
+  // accreditations, per-staff CAQH/DEA, licenses, education, employment
+  // history, hospital privileges, malpractice claims — everything CAQH
+  // itself requires to complete an application); it just can't
+  // auto-generate a filled payer form from that data the way Full can.
   const isFullCredentialing = currentCompany.credentialing_tier !== 'basic';
   document.getElementById('credTemplatesPanel').style.display = isFullCredentialing ? 'block' : 'none';
   document.getElementById('credTemplatesLock').style.display  = isFullCredentialing ? 'none' : 'block';
