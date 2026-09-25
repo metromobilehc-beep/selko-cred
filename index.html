@@ -176,6 +176,74 @@ window.selkoSharedAuthStorage = {
       </div>
     </div>
     <div class="stat-grid" id="statCards"></div>
+
+    <!-- HR onboarding self-service — shown only when this person has a
+         linked HR record with onboarding_status = 'not_started'. This is
+         the employee's own Section 1 of I-9 (name, address, DOB,
+         citizenship status), not something admins fill in for them —
+         Section 2 (the employer's physical document examination) still
+         happens separately, on the admin side, after this is submitted. -->
+    <div class="panel" id="hrOnboardingPanel" style="display:none;border:2px solid var(--teal);">
+      <div class="panel-head"><span class="panel-title">📋 Complete your onboarding</span></div>
+      <div class="panel-body">
+        <p style="font-size:13px;color:var(--gray-400);margin-bottom:14px;">Your employer needs a few details to complete your employment paperwork. This only takes a few minutes, and you'll only need to do this once.</p>
+
+        <div class="form-grid-2" style="margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Full legal name</label>
+            <input type="text" id="hrOnbLegalName" placeholder="As it appears on your ID" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Other last names used (if any)</label>
+            <input type="text" id="hrOnbOtherNames" placeholder="Leave blank if none" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="field-label">Home address</label>
+          <input type="text" id="hrOnbAddress" placeholder="Street, city, state, zip" />
+        </div>
+        <div class="form-grid-2" style="margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Date of birth</label>
+            <input type="date" id="hrOnbDob" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Phone</label>
+            <input type="text" id="hrOnbPhone" oninput="formatPhoneInput(this)" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:10px;">
+          <label class="field-label">Citizenship / immigration status</label>
+          <select id="hrOnbCitizenship" onchange="document.getElementById('hrOnbAlienRow').style.display = ['permanent_resident','authorized_alien'].includes(this.value) ? 'grid' : 'none';">
+            <option value="">— Select —</option>
+            <option value="citizen">A citizen of the United States</option>
+            <option value="noncitizen_national">A noncitizen national of the United States</option>
+            <option value="permanent_resident">A lawful permanent resident</option>
+            <option value="authorized_alien">An alien authorized to work</option>
+          </select>
+        </div>
+        <div class="form-grid-2" id="hrOnbAlienRow" style="display:none;margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Alien registration number</label>
+            <input type="text" id="hrOnbAlienNumber" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Work authorization expires</label>
+            <input type="date" id="hrOnbWorkAuthExp" />
+          </div>
+        </div>
+
+        <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
+          <label class="field-label">Type your full legal name to sign and attest</label>
+          <input type="text" id="hrOnbSignature" placeholder="Typing your name here counts as your signature" style="margin-bottom:6px;" />
+          <p style="font-size:11px;color:var(--gray-400);margin:0;">By typing your name above, you attest under penalty of perjury that the information you've entered is true and correct, and that you are the person named above.</p>
+        </div>
+
+        <div id="hrOnboardingErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
+        <button class="btn btn-teal" onclick="submitHrOnboarding()" style="width:100%;justify-content:center;">Submit</button>
+      </div>
+    </div>
+
     <div class="panel">
       <div class="panel-head"><span class="panel-title">Upload a document</span></div>
       <div class="panel-body">
@@ -3198,6 +3266,54 @@ async function toggleMyCredsView() {
   }
 }
 
+async function submitHrOnboarding() {
+  const errEl = document.getElementById('hrOnboardingErr');
+  errEl.style.display = 'none';
+
+  const legalName = document.getElementById('hrOnbLegalName').value.trim();
+  const citizenship = document.getElementById('hrOnbCitizenship').value;
+  const signature = document.getElementById('hrOnbSignature').value.trim();
+
+  if (!legalName) { errEl.textContent = 'Full legal name is required.'; errEl.style.display = 'block'; return; }
+  if (!citizenship) { errEl.textContent = 'Citizenship/immigration status is required.'; errEl.style.display = 'block'; return; }
+  if (!signature) { errEl.textContent = 'Type your name to sign and submit.'; errEl.style.display = 'block'; return; }
+  // A real, if imperfect, check that they typed their own name rather
+  // than anything else — not a legal safeguard by itself, just catches
+  // the honest mistake of skipping past this field with garbage text.
+  if (signature.toLowerCase().replace(/[^a-z]/g, '') !== legalName.toLowerCase().replace(/[^a-z]/g, '')) {
+    errEl.textContent = 'Your signature must match the full legal name you entered above.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const payload = {
+    full_name: legalName,
+    other_last_names_used: document.getElementById('hrOnbOtherNames').value.trim() || null,
+    address: document.getElementById('hrOnbAddress').value.trim() || null,
+    date_of_birth: document.getElementById('hrOnbDob').value || null,
+    phone: document.getElementById('hrOnbPhone').value.trim() || null,
+    citizenship_status: citizenship,
+    employee_attestation_signature: signature,
+    employee_attested_at: new Date().toISOString(),
+    onboarding_status: 'submitted',
+  };
+  if (['permanent_resident', 'authorized_alien'].includes(citizenship)) {
+    payload.alien_registration_number = document.getElementById('hrOnbAlienNumber').value.trim() || null;
+    payload.work_authorization_expiration = document.getElementById('hrOnbWorkAuthExp').value || null;
+  }
+
+  // RLS (hr_employees_self_service_update) enforces that this can only
+  // ever write onboarding_status: 'submitted' from this path, regardless
+  // of what gets sent here — a second, real backstop beyond this
+  // client-side code.
+  const { error } = await sb.from('hr_employees').update(payload).eq('id', window._hrOnboardingId);
+  if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
+
+  toast('✓ Onboarding submitted — your employer will follow up with the rest');
+  document.getElementById('hrOnboardingPanel').style.display = 'none';
+  window._hrOnboardingId = null;
+}
+
 async function initStaff() {
   document.getElementById('staffGreeting').textContent =
     'My Credentials — ' + currentProfile.full_name.split(',')[0];
@@ -3207,6 +3323,19 @@ async function initStaff() {
   await renderStatCards(window._staffId);
   await loadMyDocs(window._staffId);
   await restorePendingFrontPhoto();
+
+  // HR onboarding self-service — only shown when this person has a
+  // linked HR record still in 'not_started'. Uses the same RLS-scoped
+  // self-service path (hr_employees_self_service policy), so this only
+  // ever finds THEIR OWN record, never anyone else's, regardless of
+  // what staffId ends up being passed around client-side.
+  const onboardingPanel = document.getElementById('hrOnboardingPanel');
+  if (onboardingPanel && window._staffId) {
+    const { data: hrRec } = await sb.from('hr_employees')
+      .select('id, onboarding_status').eq('credtrack_staff_id', window._staffId).maybeSingle();
+    window._hrOnboardingId = (hrRec && hrRec.onboarding_status === 'not_started') ? hrRec.id : null;
+    onboardingPanel.style.display = window._hrOnboardingId ? 'block' : 'none';
+  }
 
   // The panel itself shows whenever Credentialing is on at all — a Basic-
   // tier company still has files an admin uploaded on this person's
