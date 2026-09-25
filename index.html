@@ -7590,21 +7590,40 @@ function hideAddStaff() {
   window._pendingAddStaffCvData = null; // covers Cancel, and is a safety net for the save path too
 }
 
-// Pro plan caps at 50 active staff — Enterprise is unlimited above that,
-// Standard has no limit at all (this only ever applies to Pro
-// specifically). additionalCount lets a bulk import check "would adding
-// N more people push us over" in one call, rather than checking one at a
+// Staff limits by plan: Standard caps at 25, Pro at 50, Enterprise is
+// unlimited. additionalCount lets a bulk import check "would adding N
+// more people push us over" in one call, rather than checking one at a
 // time. Returns null if adding is fine, or a message to show if blocked.
 async function checkStaffLimitBlock(companyId, additionalCount = 1) {
-  if (currentCompany.plan !== 'pro') return null; // only Pro has this cap
+  // Metro is Selko's own company, already at 39 active staff before this
+  // limit existed — deliberately exempt rather than grandfather everyone
+  // in this state, since Metro specifically is never going to be a real
+  // Standard-tier customer subject to this cap.
+  if (companyId === 'b00ca9bc-d669-492d-8ad5-2d2783321ade') return null;
+
+  const limits = { standard: 25, pro: 50 }; // enterprise and any other value: no cap
+  const limit = limits[currentCompany.plan];
+  if (!limit) return null;
+
   const { count } = await sb.from('credtrack_staff')
     .select('id', { count: 'exact', head: true })
     .eq('company_id', companyId)
     .eq('active', true);
-  if ((count || 0) + additionalCount > 50) {
-    return `The Pro plan is limited to 50 active staff members (currently at ${count}). Upgrade to Enterprise for unlimited staff — contact Selko to upgrade.`;
+  const wouldBe = (count || 0) + additionalCount;
+  if (wouldBe <= limit) return null;
+
+  // A company actively trialing never gets hard-blocked from adding
+  // real staff to properly evaluate the product — being stopped mid-
+  // evaluation, before they've even decided to buy, is a bad first
+  // impression. They still get told what they'd need once the trial
+  // converts, just as a heads-up rather than a wall.
+  if (currentCompany.custom_vars?.trial_status === 'trial') {
+    toast(`Heads up: you're at ${count} active staff, above the ${limit}-seat ${currentCompany.plan === 'standard' ? 'Standard' : 'Pro'} plan limit you're currently trialing. This won't block you during your trial, but you'll need to upgrade once it converts.`, true);
+    return null;
   }
-  return null;
+
+  const upgradeTo = currentCompany.plan === 'standard' ? 'Pro' : 'Enterprise';
+  return `The ${currentCompany.plan === 'standard' ? 'Standard' : 'Pro'} plan is limited to ${limit} active staff members (currently at ${count}). Upgrade to ${upgradeTo}${currentCompany.plan === 'pro' ? ' for unlimited staff' : ''} — contact Selko to upgrade.`;
 }
 
 async function saveNewStaff() {
