@@ -3102,7 +3102,7 @@ async function initStaff() {
   const credFilesPanel = document.getElementById('staffCredFilesPanel');
   if (credFilesPanel) {
     const canSeeFiles = currentCompany.has_credentialing_addon && window._staffId;
-    const canUploadFiles = canSeeFiles && currentCompany.credentialing_tier !== 'basic' && !currentCompany.has_credtrack;
+    const canUploadFiles = canSeeFiles && !currentCompany.has_credtrack;
     credFilesPanel.style.display = canSeeFiles ? 'block' : 'none';
     document.getElementById('staffCredFileUploadRow').style.display = canUploadFiles ? 'flex' : 'none';
     document.getElementById('staffCredFilesDesc').textContent = canUploadFiles
@@ -3119,7 +3119,7 @@ async function uploadStaffCredFile() {
   const errEl = document.getElementById('staffCredFileErr');
   errEl.style.display = 'none';
 
-  if (currentCompany.credentialing_tier === 'basic') {
+  if (!currentCompany.has_credentialing_addon) {
     errEl.textContent = 'Self-upload isn\'t available on your company\'s current plan — ask your admin to upload this for you.';
     errEl.style.display = 'block';
     return;
@@ -5589,16 +5589,11 @@ const PROVIDER_TAB_MODAL_ID = 'providerTabModal';
 function renderProviderTabBar(staffId, staffName, activeTab) {
   if (!staffId) return ''; // org-level Notes has no per-provider tabs
   const safeName = staffName.replace(/'/g, "\\'");
-  // Licenses/Education/Privileges/Claims were built specifically for the
-  // physician/urgent-care credentialing use case — same bar as other
-  // Full-tier-only features (one-click form generation, clinician self-
-  // upload), not something a Documents-only or Basic Credentialing company
-  // has any use for. Nothing harmful about them showing regardless (a
-  // Basic company couldn't do anything with them), but seeing tabs for a
-  // feature set that doesn't apply is exactly the kind of clutter worth
-  // trimming as the app keeps growing.
-  const showFullCredTabs = currentCompany.has_credentialing_addon && currentCompany.credentialing_tier === 'full';
-  // Each Full-tier tab also respects its own individual panel-visibility
+  // Credentialing is one flat tier now (no more Basic/Full split) — any
+  // company with the addon at all gets Licenses/Education/Privileges/
+  // Claims, same as everything else Credentialing includes.
+  const showFullCredTabs = currentCompany.has_credentialing_addon;
+  // Each of these tabs still respects its own individual panel-visibility
   // toggle, so a company can keep some of these (e.g. Education,
   // Employment History — genuinely useful outside healthcare) while
   // hiding others (e.g. Hospital Privileges, Claims) for a non-healthcare
@@ -9611,9 +9606,9 @@ async function loadBillingStatus() {
   const { data: sub } = await sb.from('subscriptions').select('status, current_period_end').eq('company_id', currentCompany.id).maybeSingle();
 
   const docLabel = currentCompany.plan === 'enterprise' ? 'Enterprise' : (currentCompany.plan === 'pro' ? 'Pro' : (currentCompany.plan === 'standard' ? 'Standard' : 'None'));
-  const credLabel = currentCompany.has_credentialing_addon
-    ? (currentCompany.credentialing_tier === 'full' ? 'Pro' : 'Basic')
-    : 'None';
+  // Credentialing is one flat tier now — just active or not, no Basic/Pro
+  // distinction left to display.
+  const credLabel = currentCompany.has_credentialing_addon ? 'Active' : 'None';
 
   const statusNote = sub?.status === 'past_due'
     ? ' — <span style="color:#f87171;">payment past due</span>'
@@ -11180,15 +11175,18 @@ async function loadCredentialingTab() {
 
   const credComparisonPanel = document.getElementById('credTierComparisonPanel');
   if (credComparisonPanel) {
-    credComparisonPanel.style.display = currentCompany.credentialing_tier === 'basic' ? 'block' : 'none';
+    // Credentialing is one flat tier now — there's no "upgrade to unlock
+    // more" comparison to show anymore, so this panel never shows at all.
+    credComparisonPanel.style.display = 'none';
   }
 
-  // Full Credentialing includes everything Basic does, plus the template
-  // upload/mapping/generate-filled-form feature — Basic is org profile,
-  // accreditations, and per-staff CAQH/DEA only (data entry, no generation).
-  const isFullCredentialing = currentCompany.credentialing_tier !== 'basic';
-  document.getElementById('credTemplatesPanel').style.display = isFullCredentialing ? 'block' : 'none';
-  document.getElementById('credTemplatesLock').style.display  = isFullCredentialing ? 'none' : 'block';
+  // Templates (upload/mapping/generate-filled-form) used to be Full-tier
+  // only, with Basic getting just org profile, accreditations, and
+  // per-staff CAQH/DEA. Credentialing is single-tier now, and this whole
+  // function already returned above for any company without the addon
+  // at all — so anyone reaching this line always gets the real panel.
+  document.getElementById('credTemplatesPanel').style.display = 'block';
+  document.getElementById('credTemplatesLock').style.display  = 'none';
 
   document.getElementById('oigPreferredDaySelect').value = currentCompany.oig_check_preferred_day || 1;
   await loadMyOigHistory();
@@ -11236,7 +11234,7 @@ async function loadCredentialingTab() {
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
   renderCredGuides(); // reference material — available at every tier, not gated like template generation is
-  if (isFullCredentialing) await loadCredentialingTemplates();
+  await loadCredentialingTemplates(); // always reachable here — the addon-check early return already handled the alternative
 }
 
 // ══ GUIDES & RESOURCES — admin-facing reference material ══
@@ -15499,28 +15497,6 @@ async function setCompanyModules(id, mode) {
   }
 }
 
-async function setCredentialingTier(id, tier) {
-  // Reverted: Credentialing no longer bundles document tracking
-  // automatically — as of the pricing revision, it's back to being a
-  // standalone add-on (flat $49/mo, one tier, no Basic/Full split) on top
-  // of whatever Document Tracking tier the company already has, same as
-  // before the earlier bundling change. This only sets credentialing_tier
-  // again, nothing else.
-  const { error } = await sb.from('companies').update({ credentialing_tier: tier }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast(`✓ Credentialing set to: ${tier === 'basic' ? 'Basic' : 'Pro'}`);
-  await loadSuperAdmin();
-
-  const sel = document.getElementById(`credTierSelect_${id}`);
-  if (sel) {
-    sel.style.borderColor = 'var(--teal)';
-    sel.style.boxShadow = '0 0 0 3px rgba(20,184,166,.35)';
-    setTimeout(() => {
-      sel.style.borderColor = '';
-      sel.style.boxShadow = '';
-    }, 1500);
-  }
-}
 
 // Same direct, one-click pattern as Module and Credentialing tier above —
 // previously this required opening the separate Edit modal just to
@@ -15576,13 +15552,6 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       </select>
       ${moduleOptionHidden ? `<p style="font-size:11px;color:rgba(255,255,255,.4);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
-      ${c.has_credentialing_addon ? `
-      <label class="inline-label">Credentialing tier</label>
-      <select class="inline-select" id="modalCredTierSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalCredTierChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
-        <option value="basic" ${c.credentialing_tier === 'basic' ? 'selected' : ''}>Basic</option>
-        <option value="full" ${c.credentialing_tier !== 'basic' ? 'selected' : ''}>Pro</option>
-      </select>` : ''}
-
       <label class="inline-label">Plan</label>
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
         <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard</option>
@@ -15601,10 +15570,6 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
 // in an inline onchange wouldn't wait, and would reopen with stale data).
 async function applyModalModuleChange(companyId, companyName, value) {
   await setCompanyModules(companyId, value);
-  await showSubscriptionSettingsModal(companyId, companyName);
-}
-async function applyModalCredTierChange(companyId, companyName, value) {
-  await setCredentialingTier(companyId, value);
   await showSubscriptionSettingsModal(companyId, companyName);
 }
 async function applyModalPlanChange(companyId, companyName, value) {
