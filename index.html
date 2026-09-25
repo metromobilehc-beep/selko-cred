@@ -3330,9 +3330,47 @@ async function submitHrOnboarding() {
   const { error } = await sb.from('hr_employees').update(payload).eq('id', window._hrOnboardingId);
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
 
-  toast('✓ Onboarding submitted — your employer will follow up with the rest');
-  document.getElementById('hrOnboardingPanel').style.display = 'none';
-  window._hrOnboardingId = null;
+  // Auto-generate the actual filled I-9 right now, using whatever
+  // template the admin already mapped — reuses fillHrTemplate, the same
+  // proven engine behind the admin-side "Generate" button, so this isn't
+  // new form-filling logic, just a new place that triggers it. Matched
+  // by name since hr_templates has no dedicated "this is the I-9" flag —
+  // if nothing matches, submission still succeeds; the form-download
+  // step is a bonus, not a requirement to complete onboarding.
+  document.getElementById('hrOnboardingPanel').innerHTML = `
+    <div class="panel-head"><span class="panel-title">📋 Onboarding submitted</span></div>
+    <div class="panel-body" id="hrOnbConfirmationBody">
+      <p style="font-size:13px;color:var(--gray-600);">Your employer will follow up with the rest. Checking whether your I-9 is ready to download…</p>
+    </div>`;
+
+  const { data: i9Template } = await sb.from('hr_templates')
+    .select('*')
+    .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
+    .ilike('name', '%I-9%')
+    .maybeSingle();
+
+  const confirmBody = document.getElementById('hrOnbConfirmationBody');
+  if (!i9Template) {
+    confirmBody.innerHTML = `<p style="font-size:13px;color:var(--gray-600);">Your information has been submitted. Your employer will follow up with the rest of your paperwork.</p>`;
+    return;
+  }
+
+  try {
+    const { data: freshEmployee } = await sb.from('hr_employees').select('*').eq('id', window._hrOnboardingId).single();
+    const { blob, skipped } = await fillHrTemplate(i9Template, currentCompany, freshEmployee);
+    const fileName = `I-9_${freshEmployee.full_name.replace(/[^a-z0-9]/gi,'_')}.pdf`;
+    const url = URL.createObjectURL(blob);
+
+    confirmBody.innerHTML = `
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Your Section 1 has been filled in automatically from what you just entered. Your employer still needs to complete Section 2 after reviewing your ID in person.</p>
+      <a href="${url}" download="${fileName}" class="btn btn-teal" style="width:100%;justify-content:center;">⬇ Download your I-9</a>
+      ${skipped.length ? `<p style="font-size:11px;color:var(--gray-400);margin-top:8px;">${skipped.length} field(s) on the form didn't have a match and were left blank — your employer can fill those in.</p>` : ''}`;
+  } catch (e) {
+    // Submission already succeeded above — a form-generation failure here
+    // shouldn't read as the whole thing having failed.
+    confirmBody.innerHTML = `<p style="font-size:13px;color:var(--gray-600);">Your information has been submitted. Your employer will follow up with the rest of your paperwork.</p>`;
+    console.error('I-9 auto-generation failed (submission itself still succeeded):', e);
+  }
 }
 
 async function initStaff() {
