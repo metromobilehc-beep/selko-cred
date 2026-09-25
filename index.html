@@ -3271,6 +3271,18 @@ async function toggleMyCredsView() {
   }
 }
 
+async function reopenHrOnboarding(employeeId, employeeName) {
+  if (!confirm(`Reopen onboarding for ${employeeName}?\n\nThey'll be able to log in and add or correct information — whatever they already submitted stays filled in, so they're not starting over.`)) return;
+
+  const { error } = await sb.from('hr_employees').update({ onboarding_status: 'not_started' }).eq('id', employeeId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  toast(`✓ Reopened — ${employeeName} will see the onboarding form next time they log in`);
+  document.getElementById('hrEmployeeSheetModal')?.remove();
+  _hrEmployeesCache = null;
+  await loadHrEmployees();
+}
+
 async function submitHrOnboarding() {
   const errEl = document.getElementById('hrOnboardingErr');
   errEl.style.display = 'none';
@@ -3341,9 +3353,28 @@ async function initStaff() {
   const onboardingPanel = document.getElementById('hrOnboardingPanel');
   if (onboardingPanel && window._staffId) {
     const { data: hrRec } = await sb.from('hr_employees')
-      .select('id, onboarding_status').eq('credtrack_staff_id', window._staffId).maybeSingle();
+      .select('*').eq('credtrack_staff_id', window._staffId).maybeSingle();
     window._hrOnboardingId = (hrRec && hrRec.onboarding_status === 'not_started') ? hrRec.id : null;
     onboardingPanel.style.display = window._hrOnboardingId ? 'block' : 'none';
+
+    // Pre-fill from whatever's already on file — matters now that
+    // "reopen" is a real path back into this form (an admin asking for
+    // more/corrected info shouldn't mean the person has to retype
+    // everything they already submitted the first time).
+    if (window._hrOnboardingId && hrRec) {
+      document.getElementById('hrOnbFirstName').value = hrRec.first_name || '';
+      document.getElementById('hrOnbLastName').value = hrRec.last_name || '';
+      document.getElementById('hrOnbOtherNames').value = hrRec.other_last_names_used || '';
+      document.getElementById('hrOnbAddress').value = hrRec.address || '';
+      document.getElementById('hrOnbDob').value = hrRec.date_of_birth || '';
+      document.getElementById('hrOnbPhone').value = hrRec.phone || '';
+      document.getElementById('hrOnbCitizenship').value = hrRec.citizenship_status || '';
+      document.getElementById('hrOnbAlienNumber').value = hrRec.alien_registration_number || '';
+      document.getElementById('hrOnbWorkAuthExp').value = hrRec.work_authorization_expiration || '';
+      document.getElementById('hrOnbAlienRow').style.display = ['permanent_resident','authorized_alien'].includes(hrRec.citizenship_status) ? 'grid' : 'none';
+      // Signature deliberately NOT pre-filled — re-attesting should be a
+      // deliberate act each time, not something carried over silently.
+    }
   }
 
   // The panel itself shows whenever Credentialing is on at all — a Basic-
@@ -13713,6 +13744,11 @@ async function showHrEmployeeSheet(employeeId) {
       <div style="margin-bottom:16px;">${docsHtml}</div>
 
       <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-top:4px;">
+        ${employee.onboarding_status && employee.onboarding_status !== 'not_started' ? `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <span style="font-size:11px;color:rgba(255,255,255,.5);">Onboarding: <strong style="color:${employee.onboarding_status === 'completed' ? '#4ade80' : '#f59e0b'};">${employee.onboarding_status === 'completed' ? 'Completed' : 'Submitted, awaiting review'}</strong></span>
+          <button class="btn btn-sm btn-ghost" onclick="reopenHrOnboarding('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);" title="Lets them log back in and add or correct information — keeps what they already submitted">↺ Reopen for more info</button>
+        </div>` : ''}
         ${employee.active === false && !employee.offboarded_at ? `
         <button class="btn btn-sm btn-ghost" onclick="offboardHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN — everything else (documents, reminders) stays">📁 Offboard (expunge SSN)</button>` : ''}
         ${employee.offboarded_at ? `<div style="font-size:11px;color:rgba(255,255,255,.35);padding:4px 0 8px;">Offboarded ${new Date(employee.offboarded_at).toLocaleDateString()} — SSN already expunged</div>` : ''}
