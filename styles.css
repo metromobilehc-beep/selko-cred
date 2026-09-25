@@ -242,6 +242,18 @@
   #partnerScreen { background: var(--navy); min-height: 100vh; }
   #partnerScreen .page-header h1 { color: #fff; }
   #partnerScreen .page-header p { color: rgba(255,255,255,.6); }
+
+  /* STAFF SCREEN ("My Credentials") — same dark-page/light-card
+     treatment as #partnerScreen above, for the same reason: this
+     screen still uses the original light theme's .panel/.stat-grid/
+     .form-group classes, which read as plain and inconsistent next to
+     the polished dark admin experience. Cards stay light (matching the
+     established pattern elsewhere — Overview's own stat-cards are
+     light cards on a dark page too), only the outer page background
+     and header text change. */
+  #staffScreen { background: var(--navy); min-height: 100vh; }
+  #staffScreen .page-header h1 { color: #fff; }
+  #staffScreen .page-header p { color: rgba(255,255,255,.6); }
   #partnerScreen input[type=text] { background: var(--navy2); border-color: rgba(255,255,255,.15); color: #fff; }
   #partnerScreen input[type=text]::placeholder { color: rgba(255,255,255,.35); }
 

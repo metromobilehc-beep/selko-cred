@@ -190,17 +190,22 @@ window.selkoSharedAuthStorage = {
 
         <div class="form-grid-2" style="margin-bottom:10px;">
           <div class="form-group" style="margin:0;">
-            <label class="field-label">Full legal name</label>
-            <input type="text" id="hrOnbLegalName" placeholder="As it appears on your ID" />
+            <label class="field-label">Legal first name</label>
+            <input type="text" id="hrOnbFirstName" placeholder="As it appears on your ID" />
           </div>
           <div class="form-group" style="margin:0;">
-            <label class="field-label">Other last names used (if any)</label>
-            <input type="text" id="hrOnbOtherNames" placeholder="Leave blank if none" />
+            <label class="field-label">Legal last name</label>
+            <input type="text" id="hrOnbLastName" placeholder="As it appears on your ID" />
           </div>
         </div>
         <div class="form-group" style="margin-bottom:10px;">
+          <label class="field-label">Other last names used (if any)</label>
+          <input type="text" id="hrOnbOtherNames" placeholder="Leave blank if none" />
+        </div>
+        <div class="form-group" style="margin-bottom:10px;position:relative;">
           <label class="field-label">Home address</label>
-          <input type="text" id="hrOnbAddress" placeholder="Street, city, state, zip" />
+          <input type="text" id="hrOnbAddress" placeholder="Start typing an address..." autocomplete="off" oninput="handleAddressSearch(this, 'hrOnb')" onblur="setTimeout(() => hideAddressSuggestions('hrOnb'), 200)" />
+          <div id="hrOnbAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--gray-200);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
         </div>
         <div class="form-grid-2" style="margin-bottom:10px;">
           <div class="form-group" style="margin:0;">
@@ -3270,24 +3275,28 @@ async function submitHrOnboarding() {
   const errEl = document.getElementById('hrOnboardingErr');
   errEl.style.display = 'none';
 
-  const legalName = document.getElementById('hrOnbLegalName').value.trim();
+  const firstName = document.getElementById('hrOnbFirstName').value.trim();
+  const lastName = document.getElementById('hrOnbLastName').value.trim();
   const citizenship = document.getElementById('hrOnbCitizenship').value;
   const signature = document.getElementById('hrOnbSignature').value.trim();
 
-  if (!legalName) { errEl.textContent = 'Full legal name is required.'; errEl.style.display = 'block'; return; }
+  if (!firstName || !lastName) { errEl.textContent = 'Legal first and last name are both required.'; errEl.style.display = 'block'; return; }
   if (!citizenship) { errEl.textContent = 'Citizenship/immigration status is required.'; errEl.style.display = 'block'; return; }
   if (!signature) { errEl.textContent = 'Type your name to sign and submit.'; errEl.style.display = 'block'; return; }
   // A real, if imperfect, check that they typed their own name rather
   // than anything else — not a legal safeguard by itself, just catches
   // the honest mistake of skipping past this field with garbage text.
-  if (signature.toLowerCase().replace(/[^a-z]/g, '') !== legalName.toLowerCase().replace(/[^a-z]/g, '')) {
-    errEl.textContent = 'Your signature must match the full legal name you entered above.';
+  const fullName = `${firstName} ${lastName}`;
+  if (signature.toLowerCase().replace(/[^a-z]/g, '') !== fullName.toLowerCase().replace(/[^a-z]/g, '')) {
+    errEl.textContent = 'Your signature must match your first and last name above.';
     errEl.style.display = 'block';
     return;
   }
 
   const payload = {
-    full_name: legalName,
+    first_name: firstName,
+    last_name: lastName,
+    full_name: fullName,
     other_last_names_used: document.getElementById('hrOnbOtherNames').value.trim() || null,
     address: document.getElementById('hrOnbAddress').value.trim() || null,
     date_of_birth: document.getElementById('hrOnbDob').value || null,
