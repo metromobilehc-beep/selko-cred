@@ -18215,6 +18215,20 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
         <span style="font-size:11px;color:rgba(255,255,255,.4);">= ${((c.plan === 'pro' ? 50 : 25) + (c.extra_seat_blocks || 0) * 25)} total seats</span>
       </div>` : ''}
 
+      <label class="inline-label">Beta pricing — $29.99/mo flat, regardless of modules enabled</label>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+        <input type="date" class="inline-select" id="modalBetaExpiryInput" value="${c.beta_pricing_expires_at || ''}" style="width:160px;box-sizing:border-box;" />
+        <button class="btn btn-sm btn-teal" onclick="applyModalBetaPricingChange('${companyId}','${companyName.replace(/'/g,"\\'")}')">Save</button>
+        ${c.beta_pricing_expires_at ? `<button class="btn btn-sm btn-ghost" onclick="clearModalBetaPricing('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Remove</button>` : ''}
+      </div>
+      <p style="font-size:11px;color:${c.beta_pricing_expires_at && new Date(c.beta_pricing_expires_at) >= new Date() ? 'var(--gold)' : 'rgba(255,255,255,.4)'};margin:0 0 16px;">
+        ${c.beta_pricing_expires_at
+          ? (new Date(c.beta_pricing_expires_at) >= new Date()
+              ? `Active — flat $29.99/mo until ${fmtDate(c.beta_pricing_expires_at)}, then rolls to standard pricing`
+              : `Expired ${fmtDate(c.beta_pricing_expires_at)} — now on standard pricing`)
+          : 'Set an expiration date to enable, editable anytime'}
+      </p>
+
       <button class="btn btn-ghost" onclick="document.getElementById('subscriptionSettingsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
     </div>`;
   document.body.appendChild(modal);
@@ -18246,6 +18260,23 @@ async function applyModalSeatBlocksChange(companyId, companyName) {
   const { error } = await sb.from('companies').update({ extra_seat_blocks: blocks }).eq('id', companyId);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(`✓ Set to ${blocks} extra seat block${blocks !== 1 ? 's' : ''} ($${blocks * 30}/mo)`);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+
+async function applyModalBetaPricingChange(companyId, companyName) {
+  const dateVal = document.getElementById('modalBetaExpiryInput').value;
+  if (!dateVal) { toast('Set an expiration date first, or use Remove to take them off beta pricing.', true); return; }
+  const { error } = await sb.from('companies').update({ beta_pricing_expires_at: dateVal }).eq('id', companyId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast(`✓ Beta pricing set — $29.99/mo flat until ${dateVal}`);
+  await showSubscriptionSettingsModal(companyId, companyName);
+}
+
+async function clearModalBetaPricing(companyId, companyName) {
+  if (!confirm(`Remove beta pricing for ${companyName}? They'll move to standard pricing immediately.`)) return;
+  const { error } = await sb.from('companies').update({ beta_pricing_expires_at: null }).eq('id', companyId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Beta pricing removed');
   await showSubscriptionSettingsModal(companyId, companyName);
 }
 
