@@ -1234,6 +1234,19 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
+        <!-- OFAC sanctions check — same self-service pattern as OIG
+             above, using US Treasury's public SDN list instead. No
+             NPI-equivalent identifier exists for this list, so every
+             match here is name-only (medium confidence at best) —
+             worth a human reviewing before treating it as confirmed. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>🌐 OFAC Sanctions Check</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Checks your active staff by name against the US Treasury's Specially Designated Nationals (SDN) list, downloaded live from treasury.gov. Unlike the OIG check, there's no ID number to corroborate against — every match here is name-only and needs a human look before acting on it.</p>
+          <button class="btn btn-sm btn-teal" id="myOfacRunCheckBtn" onclick="runMyCompanyOfacCheck()">Run check now</button>
+          <div id="myOfacCheckStatus" style="font-size:13px;color:rgba(255,255,255,.6);margin:10px 0;"></div>
+          <div id="myOfacMatchesList"></div>
+        </div>
+
         <!-- Guides & Resources — process reference material, not staff/
              company data entry. Content lives in CRED_GUIDES (a plain JS
              array) rather than being hand-written per guide here, so
@@ -2229,6 +2242,66 @@ async function saveOigPreferredDay() {
   if (error) { toast('Could not save: ' + error.message, true); return; }
   currentCompany.oig_check_preferred_day = day;
   toast(`Preferred check day saved — day ${day} of each month.`);
+}
+
+// OFAC SDN sanctions check — manual trigger. Calls check-ofac-sanctions,
+// stores the result, and renders matches directly (no separate history/
+// archive view yet — that's the natural next piece, matching what OIG
+// already has, not built in this pass).
+async function runMyCompanyOfacCheck() {
+  const btn = document.getElementById('myOfacRunCheckBtn');
+  const statusEl = document.getElementById('myOfacCheckStatus');
+  const listEl = document.getElementById('myOfacMatchesList');
+  const companyId = currentCompany.id;
+
+  btn.disabled = true;
+  statusEl.textContent = 'Downloading the OFAC SDN list and checking staff — this can take a few seconds…';
+  listEl.innerHTML = '';
+
+  try {
+    const { data, error } = await sb.functions.invoke('check-ofac-sanctions', {
+      body: { company_id: companyId }
+    });
+    if (error) {
+      let detail = error.message;
+      if (error.context && typeof error.context.json === 'function') {
+        try {
+          const body = await error.context.json();
+          if (body && body.error) detail = extractErrorMessage(body.error);
+        } catch (parseErr) { /* fall back to the generic message above */ }
+      }
+      throw new Error(extractErrorMessage(detail));
+    }
+
+    const { error: insErr } = await sb.from('ofac_sanctions_checks').insert({
+      company_id: companyId,
+      checked_by: currentProfile ? currentProfile.id : null,
+      staff_checked_count: data.checked,
+      checked_staff: data.checked_staff || null,
+      matches: data.matches,
+      match_count: data.matches.length,
+      sdn_source: data.sdn_source,
+    });
+    if (insErr) throw insErr;
+
+    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.`;
+    if (data.matches.length) {
+      toast(`⚠ ${data.matches.length} potential OFAC match(es) found — review below`, true);
+      listEl.innerHTML = data.matches.map(m => `
+        <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-top:8px;">
+          <strong style="color:#fff;">${m.full_name}</strong>
+          <div style="font-size:12px;color:rgba(255,255,255,.6);">${m.detail} — confidence: ${m.confidence}</div>
+        </div>
+      `).join('');
+    } else {
+      toast('OFAC check complete — no matches found');
+    }
+  } catch (err) {
+    statusEl.textContent = '';
+    toast('Error: ' + extractErrorMessage(err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function runMyCompanyOigCheck() {
