@@ -15890,6 +15890,30 @@ async function saveBranding() {
     company_name: document.getElementById('setBrandName').value.trim(),
   };
   const statusEl = document.getElementById('setBrandStatus');
+
+  // The whole app's dark theme assumes this specific color is always
+  // dark — hundreds of places show white/light text directly on top of
+  // it without checking. A light "navy" color (like the white Juan
+  // tried for Aggieland) makes that text invisible everywhere at once.
+  // Rather than let that ship and break the whole UI, block it here
+  // with a real contrast check (relative luminance), not just a guess.
+  if (branding.navy) {
+    const hex = branding.navy.replace('#', '');
+    if (hex.length === 6) {
+      const r = parseInt(hex.slice(0, 2), 16) / 255;
+      const g = parseInt(hex.slice(2, 4), 16) / 255;
+      const b = parseInt(hex.slice(4, 6), 16) / 255;
+      const lin = c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+      if (luminance > 0.35) {
+        statusEl.textContent = `"${branding.navy}" is too light to use as the background color — this app's text is designed for a dark background, and a light one would make most of it unreadable. Try a darker shade instead.`;
+        statusEl.className = 'up-status up-err';
+        statusEl.style.display = 'block';
+        return;
+      }
+    }
+  }
+
   let logo_url = document.getElementById('setBrandLogo').value.trim();
 
   const logoFile = document.getElementById('setBrandLogoFile').files[0];
