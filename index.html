@@ -3514,7 +3514,7 @@ async function initPartnerView(partnerRecord) {
     </div>`).join('');
 
     const docCount = (docs || []).length;
-    return { staff: cs, docCount, html: `<div class="panel" data-staff-name="${cs.full_name.toLowerCase().replace(/"/g,'&quot;')}" style="border-left:3px solid var(--teal);">
+    return { staff: cs, docCount, html: `<div class="panel" data-staff-name="${cs.full_name.toLowerCase().replace(/"/g,'&quot;')}" style="box-shadow: inset 3px 0 0 0 var(--teal), var(--shadow);">
       <div class="panel-head panel-header-collapsible" onclick="togglePartnerPanel(this)">
         <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''}</span>
         <div style="display:flex;align-items:center;gap:10px;" onclick="event.stopPropagation()">
@@ -16996,6 +16996,23 @@ async function clearSidebarMemo() {
   toast('Memo cleared');
 }
 
+async function toggleJuanAgencyAccess(companyId, granted) {
+  if (!window._juanProfileId) return;
+
+  const { data: current } = await sb.from('profiles')
+    .select('restricted_agency_ids').eq('id', window._juanProfileId).maybeSingle();
+  const existing = new Set(current?.restricted_agency_ids || []);
+
+  if (granted) existing.add(companyId); else existing.delete(companyId);
+
+  const { error } = await sb.from('profiles')
+    .update({ restricted_agency_ids: Array.from(existing) })
+    .eq('id', window._juanProfileId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+
+  toast(granted ? '✓ Juan granted access to this agency' : '✓ Juan\'s access to this agency removed');
+}
+
 async function loadSuperAdmin() {
   await loadBugLog();
   await loadSupportRequests();
@@ -17011,6 +17028,15 @@ async function loadSuperAdmin() {
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
+
+  // Juan is the only restricted (non-Stephen/Evan) super admin right
+  // now — a quick toggle here beats hand-writing a SQL array update
+  // every time his agency list changes. One lookup, reused per row
+  // below, rather than a query per company card.
+  const { data: juanProfile } = await sb.from('profiles')
+    .select('id, restricted_agency_ids').eq('email', 'juanm@certifycreds.com').maybeSingle();
+  window._juanProfileId = juanProfile?.id || null;
+  const juanAccessSet = new Set(juanProfile?.restricted_agency_ids || []);
 
   // Staff and doc counts per company
   const staffCounts = {}, docCounts = {};
@@ -17070,6 +17096,12 @@ async function loadSuperAdmin() {
         <span>${staff} staff</span>
         <span>${docs} docs</span>
       </div>
+
+      ${window._juanProfileId ? `
+      <label style="display:flex;align-items:center;gap:6px;font-size:11px;color:rgba(255,255,255,.6);margin-bottom:8px;cursor:pointer;">
+        <input type="checkbox" ${juanAccessSet.has(c.id) ? 'checked' : ''} onchange="toggleJuanAgencyAccess('${c.id}', this.checked)" style="cursor:pointer;" />
+        Juan has access
+      </label>` : ''}
 
       <div style="display:flex;gap:6px;">
         ${!c.deleted_at ? `<button class="btn btn-sm btn-gold" style="flex:1;justify-content:center;" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>` : ''}
