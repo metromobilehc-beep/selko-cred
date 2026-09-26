@@ -6194,6 +6194,79 @@ async function toggleExemptCheck(staffId, checkKey, makeExempt) {
   toast(makeExempt ? `Exempted from ${checkKey.replace('_', ' ')}` : `No longer exempt from ${checkKey.replace('_', ' ')}`);
 }
 
+// Provider Readiness Tracker — Juan's "pizza tracker" idea, applied to
+// how far along a single provider's own credentialing file is. Built
+// entirely from data already tracked elsewhere (no new tables) — five
+// stages, each a real check against existing records, not a status
+// someone has to remember to update by hand.
+async function renderProviderReadinessTracker(staffId) {
+  const container = document.getElementById('providerReadinessTracker');
+  if (!container) return;
+
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+
+  const [docsRes, empRes, eduRes, oigRes] = await Promise.all([
+    sb.from('credtrack_documents').select('id', { count: 'exact', head: true }).eq('staff_id', staffId),
+    sb.from('staff_employment_history').select('id', { count: 'exact', head: true }).eq('staff_id', staffId),
+    sb.from('staff_education_training').select('id', { count: 'exact', head: true }).eq('staff_id', staffId),
+    sb.from('oig_exclusion_checks').select('matches').eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(1).maybeSingle(),
+  ]);
+
+  // Same definition of "verified" already used by the Staff table's
+  // filter dropdown — a license number on file plus a verified
+  // "License Verification Record" document, not just a raw upload.
+  const { data: verifDoc } = await sb.from('credtrack_documents')
+    .select('id, document_types!inner(name)')
+    .eq('staff_id', staffId).eq('verified', true).eq('document_types.name', 'License Verification Record')
+    .maybeSingle();
+  const licenseVerified = !!(s.license_number && verifDoc);
+
+  const oigChecked = !!oigRes.data;
+  const oigClear = oigChecked && !(oigRes.data.matches || []).some(m => m.staff_id === staffId);
+
+  const stages = [
+    {
+      label: 'Basic Info',
+      done: !!(s.full_name && s.npi_number && (s.address || s.phone)),
+    },
+    {
+      label: 'Documents',
+      done: (docsRes.count || 0) > 0,
+    },
+    {
+      label: 'OIG Screened',
+      done: oigClear,
+      pending: !oigChecked, // distinct from "failed" — just never run yet
+    },
+    {
+      label: 'License Verified',
+      done: licenseVerified,
+    },
+    {
+      label: 'CAQH Ready',
+      done: !!(s.caqh_id && (empRes.count || 0) > 0 && (eduRes.count || 0) > 0),
+    },
+  ];
+
+  const completedCount = stages.filter(st => st.done).length;
+
+  container.innerHTML = `
+    <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Credentialing readiness — ${completedCount}/${stages.length}</div>
+    <div style="display:flex;align-items:center;">
+      ${stages.map((st, i) => `
+        <div style="display:flex;flex-direction:column;align-items:center;flex:1;position:relative;">
+          ${i > 0 ? `<div style="position:absolute;top:14px;right:50%;width:100%;height:2px;background:${st.done && stages[i-1].done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};z-index:0;"></div>` : ''}
+          <div style="width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;z-index:1;background:${st.done ? 'var(--teal)' : st.pending ? 'rgba(255,255,255,.08)' : 'rgba(255,255,255,.08)'};border:2px solid ${st.done ? 'var(--teal)' : st.pending ? 'rgba(255,255,255,.2)' : '#f59e0b'};color:${st.done ? '#fff' : st.pending ? 'rgba(255,255,255,.4)' : '#f59e0b'};">
+            ${st.done ? '✓' : st.pending ? '·' : '!'}
+          </div>
+          <div style="font-size:10px;color:${st.done ? '#fff' : 'rgba(255,255,255,.45)'};text-align:center;margin-top:6px;max-width:80px;line-height:1.3;">${st.label}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+}
+
 function showFullProfileSheet(staffId) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -6238,6 +6311,8 @@ function showFullProfileSheet(staffId) {
         <label for="cvImportFile" class="btn btn-sm btn-teal" style="cursor:pointer;">📄 Import from CV</label>
         <span id="cvImportStatus" style="font-size:11px;color:rgba(255,255,255,.4);"></span>
       </div>
+
+      <div id="providerReadinessTracker" style="margin-bottom:20px;">Loading readiness…</div>
 
       <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
@@ -6592,6 +6667,7 @@ function showFullProfileSheet(staffId) {
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   populateExemptChecksList(s);
+  renderProviderReadinessTracker(staffId);
 
   // Re-check the DEA/physician sections' visibility live if discipline
   // changes while the sheet is open, rather than requiring a full reopen.
