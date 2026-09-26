@@ -216,6 +216,17 @@
        to produce. Letting each button size to its own content is what
        actually lets them sit side by side and wrap naturally. */
     .admin-sidebar .tab { width: auto; }
+    /* The sticky column wrapper (sidebar + Memo box together) was never
+       adjusted here at all — position:sticky made sense for the wide,
+       side-by-side desktop layout, but once .admin-layout stacks
+       vertically at this width, a stuck-in-place element just floats
+       over whatever content scrolls underneath it instead of flowing
+       normally above it. Same fix as .admin-sidebar just above:
+       static positioning once things stack. Memo box's own fixed
+       240px width gets the same treatment, so it doesn't sit
+       awkwardly narrow next to a now-full-width sidebar above it. */
+    .admin-sidebar-col { position: static; }
+    .admin-sidebar-memo { width: 100%; }
   }
 
   /* DARK PANEL */
