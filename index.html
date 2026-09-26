@@ -15666,10 +15666,33 @@ function renderPayerBoard() {
     expired:        'Expired',
   };
 
+  // Juan's "pizza tracker" idea, applied to payer enrollment — a
+  // compact version for this table's row height, inferred entirely
+  // from fields already on this table (date_submitted, date_confirmed,
+  // status). Only rendered for the "in progress" states (pending/
+  // in_network); out_of_network and expired are terminal states that
+  // don't fit a linear progress bar, so those keep the plain badge.
+  function statusCell(r) {
+    if (r.status === 'out_of_network' || r.status === 'expired') {
+      return `<span class="badge ${badgeClass[r.status]}">${badgeLabel[r.status]}</span>`;
+    }
+    const stages = [
+      { label: 'Submitted', done: !!r.date_submitted },
+      { label: 'Confirmed', done: !!r.date_confirmed },
+      { label: 'In-network', done: r.status === 'in_network' },
+    ];
+    return `<div style="display:flex;align-items:center;gap:3px;" title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}">
+      ${stages.map((st, i) => `
+        <div style="width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.08)'};color:${st.done ? '#fff' : 'rgba(255,255,255,.3)'};border:1px solid ${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};flex-shrink:0;">${st.done ? '✓' : ''}</div>
+        ${i < stages.length - 1 ? `<div style="width:10px;height:1px;background:${st.done && stages[i+1] ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
+      `).join('')}
+    </div>`;
+  }
+
   const rowHtml = (r, nameCell) => `<tr>
     <td>${nameCell}</td>
     <td>${r.payers?.name || '—'}</td>
-    <td><span class="badge ${badgeClass[r.status] || 'badge-none'}">${badgeLabel[r.status] || r.status}</span></td>
+    <td>${statusCell(r)}</td>
     <td>${r.date_submitted  || '—'}</td>
     <td>${r.date_confirmed  || '—'}</td>
     <td>${r.date_in_network || '—'}</td>
