@@ -5709,6 +5709,20 @@ async function loadStaffTable() {
     .eq('document_types.name', 'License Verification Record');
   const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
 
+  // One-time lookup: which staff are also linked to an HR employee
+  // record — lets renderProviderTabBar show/hide the "HR" tab
+  // synchronously on every click, rather than an async fetch per tab
+  // switch. Only relevant for companies with the HR add-on at all.
+  if (currentCompany.has_hr_addon) {
+    const { data: hrLinks } = await sb.from('hr_employees')
+      .select('id, credtrack_staff_id')
+      .eq('company_id', currentCompany.id)
+      .not('credtrack_staff_id', 'is', null);
+    window._staffHrLinkMap = new Map((hrLinks || []).map(h => [h.credtrack_staff_id, h.id]));
+  } else {
+    window._staffHrLinkMap = new Map();
+  }
+
   const personFilter = document.getElementById('fStaffPerson')?.value || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
   const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
@@ -6118,6 +6132,16 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
       !hidden.has('employment_history') ? { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` } : null,
     ].filter(Boolean) : []),
     ...(showReferencesTab ? [{ key: 'references', label: '📇 References', fn: `showProfessionalReferences('${staffId}','${safeName}')` }] : []),
+    // Only appears when this person is ALSO linked to an hr_employees
+    // record — most staff won't have one. Same Admin/Super-Admin-only
+    // gate as References, matching HR's existing access boundary
+    // (Office can't see HR data anywhere else either). The underlying
+    // tables/storage stay completely separate — this is purely a
+    // navigation shortcut, not a data merge, which is the whole reason
+    // I-9's legally-required file segregation is untouched by this.
+    ...((window._staffHrLinkMap?.has(staffId) && (currentProfile?.role === 'admin' || currentProfile?.is_super_admin))
+      ? [{ key: 'hr', label: '🪪 HR', fn: `showHrEmployeeSheet('${window._staffHrLinkMap.get(staffId)}')` }]
+      : []),
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
     { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
     { key: 'history', label: '🕒 History', fn: `showEditHistory('${staffId}','${safeName}')` },
@@ -13785,8 +13809,20 @@ async function showHrEmployeeSheet(employeeId) {
   const modal = document.createElement('div');
   modal.id = 'hrEmployeeSheetModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  // Only linked employees (imported from / connected to a credentialing
+  // staff record) get the sidebar — most HR-only hires (billing
+  // coordinators, office admins with no clinical credentialing needs)
+  // have no credtrack_staff_id at all, and see exactly the same
+  // standalone sheet as always. Purely a navigation shortcut for the
+  // subset of people who exist in both systems — the underlying tables
+  // stay completely separate either way.
+  const sidebarHtml = employee.credtrack_staff_id
+    ? `<div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">${renderProviderTabBar(employee.credtrack_staff_id, employee.full_name, 'hr')}</div>`
+    : '';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;width:${employee.credtrack_staff_id ? 'clamp(625px, 62.5vw, 1125px)' : '100%'};max-width:${employee.credtrack_staff_id ? 'none' : '560px'};max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      ${sidebarHtml}
+      <div style="flex:1;padding:24px;overflow-y:auto;min-width:0;">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4px;">
         <div style="color:#fff;font-size:17px;font-weight:700;">${employee.full_name}</div>
         <button class="btn btn-sm btn-ghost" onclick="showAddHrEmployeeModal('${employeeId}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
@@ -13824,6 +13860,7 @@ async function showHrEmployeeSheet(employeeId) {
         ${employee.offboarded_at ? `<div style="font-size:11px;color:rgba(255,255,255,.35);padding:4px 0 8px;">Offboarded ${new Date(employee.offboarded_at).toLocaleDateString()} — SSN already expunged</div>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;">🗑 Delete employee</button>
         <button class="btn btn-ghost" onclick="document.getElementById('hrEmployeeSheetModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
       </div>
     </div>`;
   document.body.appendChild(modal);
