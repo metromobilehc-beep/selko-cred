@@ -315,18 +315,6 @@ window.selkoSharedAuthStorage = {
          license number, etc.) is visible or editable here, ever — this is
          purely so an admin can ask "can you upload a copy of your DL for
          a credentialing application?" without a round trip through email. -->
-    <div class="panel" id="staffCredFilesPanel" style="display:none;">
-      <div class="panel-head"><span class="panel-title">📎 Credentialing files</span></div>
-      <div class="panel-body">
-        <p id="staffCredFilesDesc" style="font-size:13px;color:var(--gray-400);margin-bottom:14px;"></p>
-        <div id="staffCredFileUploadRow" style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
-          <input type="file" id="staffCredFileInput" style="font-size:12px;flex:1;min-width:160px;" />
-          <button class="btn btn-sm btn-teal" onclick="uploadStaffCredFile()">+ Upload</button>
-        </div>
-        <div id="staffCredFileErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-        <div id="staffCredFilesList">Loading...</div>
-      </div>
-    </div>
     <div class="panel">
       <div class="panel-head"><span class="panel-title">My documents</span></div>
       <div class="panel-body" id="myDocsList">
@@ -3472,56 +3460,16 @@ async function initStaff() {
   //
   // Upload capability is further restricted to Full tier AND no Documents
   // module — if a company also has Documents on, "Upload a document"
-  // already gives staff a structured upload path, and having a second,
-  // less-structured one alongside it just looked like two overlapping
-  // ways to do the same thing. For a Credentialing-only company, though,
-  // "Upload a document" doesn't exist at all (it's gated on has_credtrack),
-  // so this remains their only way to attach anything to their own record.
-  const credFilesPanel = document.getElementById('staffCredFilesPanel');
-  if (credFilesPanel) {
-    const canSeeFiles = currentCompany.has_credentialing_addon && window._staffId;
-    const canUploadFiles = canSeeFiles && currentCompany.credentialing_tier !== 'basic' && !currentCompany.has_credtrack;
-    credFilesPanel.style.display = canSeeFiles ? 'block' : 'none';
-    document.getElementById('staffCredFileUploadRow').style.display = canUploadFiles ? 'flex' : 'none';
-    document.getElementById('staffCredFilesDesc').textContent = canUploadFiles
-      ? 'If your office needs a specific document for a payer credentialing application — like a copy of your driver\'s license — upload it here.'
-      : 'Files your office has attached to your credentialing record. Ask your admin if you need to add something new.';
-    if (canSeeFiles) {
-      await renderCredentialingFilesList(document.getElementById('staffCredFilesList'), window._staffId, true);
-    }
-  }
-}
-
-async function uploadStaffCredFile() {
-  const fileInput = document.getElementById('staffCredFileInput');
-  const errEl = document.getElementById('staffCredFileErr');
-  errEl.style.display = 'none';
-
-  if (currentCompany.credentialing_tier === 'basic') {
-    errEl.textContent = 'Self-upload isn\'t available on your company\'s current plan — ask your admin to upload this for you.';
-    errEl.style.display = 'block';
-    return;
-  }
-  const file = fileInput.files[0];
-  if (!file) { errEl.textContent = 'Choose a file first.'; errEl.style.display = 'block'; return; }
-  if (!window._staffId) { errEl.textContent = 'Could not find your staff record — contact your admin.'; errEl.style.display = 'block'; return; }
-
-  const path = `${currentCompany.id}/${window._staffId}/${Date.now()}_${file.name}`;
-  const { error: uploadErr } = await sb.storage.from(CREDENTIALING_FILES_BUCKET).upload(path, file);
-  if (uploadErr) { errEl.textContent = uploadErr.message; errEl.style.display = 'block'; return; }
-
-  const { error: insertErr } = await sb.from('credentialing_files').insert({
-    company_id: currentCompany.id,
-    staff_id: window._staffId,
-    file_name: file.name,
-    storage_path: path,
-    uploaded_by: currentProfile.full_name || currentProfile.email,
-  });
-  if (insertErr) { errEl.textContent = insertErr.message; errEl.style.display = 'block'; return; }
-
-  fileInput.value = '';
-  toast(`✓ ${file.name} uploaded`);
-  await renderCredentialingFilesList(document.getElementById('staffCredFilesList'), window._staffId);
+  // Credentialing Files (self-service upload) removed from this screen —
+  // its upload path required !has_credtrack, meaning it only ever
+  // worked for "Credentialing-only" companies with no Document
+  // Tracking. Since Credentialing now mandatorily requires Document
+  // Tracking, that scenario can't exist anymore; the upload button was
+  // permanently unreachable dead code, and the read-only viewing was
+  // redundant with "My documents" below, which every Credentialing
+  // customer now also has. renderCredentialingFilesList/
+  // CREDENTIALING_FILES_BUCKET stay — still used by the admin-side
+  // per-provider Files tab, an entirely separate, still-valid feature.
 }
 
 async function initPartnerView(partnerRecord) {
