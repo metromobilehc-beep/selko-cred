@@ -1557,19 +1557,15 @@ window.selkoSharedAuthStorage = {
         </div>
         <div id="brandingForm">
           <p style="color:rgba(255,255,255,.4);font-size:12px;margin-bottom:14px;">These apply everywhere — the header, every tab, and your staff's own self-service view.</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:14px;">
-            <div>
-              <label class="inline-label">Primary color</label>
-              <input class="inline-input" type="text" id="setBrandPrimary" placeholder="#0d9488" />
-            </div>
-            <div>
-              <label class="inline-label">Navy/background color</label>
-              <input class="inline-input" type="text" id="setBrandNavy" placeholder="#0f1f2e" />
-            </div>
-            <div>
-              <label class="inline-label">Company display name</label>
-              <input class="inline-input" type="text" id="setBrandName" placeholder="My Agency" />
-            </div>
+
+          <label class="inline-label">Accent color</label>
+          <p style="color:rgba(255,255,255,.35);font-size:11px;margin:2px 0 10px;">Used for buttons, highlights, and badges throughout the app. Pick whichever fits your agency — background stays a fixed dark navy everywhere, so this is always safe to change.</p>
+          <div id="brandSwatchPicker" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;"></div>
+          <input type="hidden" id="setBrandPrimary" />
+
+          <div style="max-width:280px;margin-bottom:14px;">
+            <label class="inline-label">Company display name</label>
+            <input class="inline-input" type="text" id="setBrandName" placeholder="My Agency" />
           </div>
           <div style="margin-bottom:14px;">
             <label class="inline-label">Logo</label>
@@ -10774,9 +10770,9 @@ async function loadSettings() {
     document.getElementById('brandingForm').style.display   = 'block';
     document.getElementById('brandingProTag').style.display = 'none';
     const b = c.branding || {};
-    document.getElementById('setBrandPrimary').value = b.primary || '';
-    document.getElementById('setBrandNavy').value    = b.navy    || '';
+    document.getElementById('setBrandPrimary').value = b.primary || BRAND_SWATCHES[0].hex;
     document.getElementById('setBrandName').value    = b.company_name || '';
+    renderBrandSwatchPicker();
     document.getElementById('setBrandLogo').value    = c.logo_url || '';
     const logoPreview = document.getElementById('setBrandLogoPreview');
     const logoName    = document.getElementById('setBrandLogoName');
@@ -15883,37 +15879,51 @@ function onBrandLogoSelected(input) {
   reader.readAsDataURL(file);
 }
 
+// Curated accent palette — the ONLY colors an agency can choose from,
+// deliberately not a free-form picker. Each one is only ever used for
+// buttons/highlights/badges, never as a whole-page background, so any
+// of these is safe regardless of which gets picked — unlike the old
+// navy/background field, which broke two real companies' entire UI
+// before this was caught. Includes Juan's original Aggieland maroon
+// (#800000, Texas A&M's actual color) — clearly an intentional choice,
+// just paired with an unsafe background field at the time.
+const BRAND_SWATCHES = [
+  { hex: '#0d9488', label: 'Teal (default)' },
+  { hex: '#2563eb', label: 'Blue' },
+  { hex: '#7c3aed', label: 'Purple' },
+  { hex: '#800000', label: 'Maroon' },
+  { hex: '#15803d', label: 'Forest green' },
+  { hex: '#475569', label: 'Slate' },
+  { hex: '#d97706', label: 'Gold' },
+  { hex: '#db2777', label: 'Rose' },
+];
+
+function renderBrandSwatchPicker() {
+  const container = document.getElementById('brandSwatchPicker');
+  if (!container) return;
+  const current = document.getElementById('setBrandPrimary').value;
+
+  container.innerHTML = BRAND_SWATCHES.map(s => `
+    <button type="button" onclick="selectBrandSwatch('${s.hex}')" title="${s.label}"
+      style="width:36px;height:36px;border-radius:50%;background:${s.hex};cursor:pointer;
+             border:3px solid ${s.hex === current ? '#fff' : 'transparent'};
+             box-shadow:${s.hex === current ? '0 0 0 2px ' + s.hex : 'none'};
+             transition:transform .1s;" onmouseover="this.style.transform='scale(1.1)'" onmouseout="this.style.transform='scale(1)'">
+    </button>
+  `).join('');
+}
+
+function selectBrandSwatch(hex) {
+  document.getElementById('setBrandPrimary').value = hex;
+  renderBrandSwatchPicker();
+}
+
 async function saveBranding() {
   const branding = {
     primary:      document.getElementById('setBrandPrimary').value.trim(),
-    navy:         document.getElementById('setBrandNavy').value.trim(),
     company_name: document.getElementById('setBrandName').value.trim(),
   };
   const statusEl = document.getElementById('setBrandStatus');
-
-  // The whole app's dark theme assumes this specific color is always
-  // dark — hundreds of places show white/light text directly on top of
-  // it without checking. A light "navy" color (like the white Juan
-  // tried for Aggieland) makes that text invisible everywhere at once.
-  // Rather than let that ship and break the whole UI, block it here
-  // with a real contrast check (relative luminance), not just a guess.
-  if (branding.navy) {
-    const hex = branding.navy.replace('#', '');
-    if (hex.length === 6) {
-      const r = parseInt(hex.slice(0, 2), 16) / 255;
-      const g = parseInt(hex.slice(2, 4), 16) / 255;
-      const b = parseInt(hex.slice(4, 6), 16) / 255;
-      const lin = c => c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-      const luminance = 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
-      if (luminance > 0.35) {
-        statusEl.textContent = `"${branding.navy}" is too light to use as the background color — this app's text is designed for a dark background, and a light one would make most of it unreadable. Try a darker shade instead.`;
-        statusEl.className = 'up-status up-err';
-        statusEl.style.display = 'block';
-        return;
-      }
-    }
-  }
-
   let logo_url = document.getElementById('setBrandLogo').value.trim();
 
   const logoFile = document.getElementById('setBrandLogoFile').files[0];
@@ -16042,7 +16052,11 @@ function applyBranding(branding, logoUrl) {
   const r = document.documentElement.style;
   if (branding.primary)  { r.setProperty('--teal',   branding.primary); r.setProperty('--teal-l', branding.primary); }
   if (branding.secondary) r.setProperty('--gold', branding.secondary);
-  if (branding.navy)     { r.setProperty('--navy', branding.navy); r.setProperty('--navy2', branding.navy); }
+  // Background is deliberately no longer customizable — hundreds of
+  // places assume it's always dark, and letting it vary broke the
+  // whole UI for two real companies (Aggieland, Certified
+  // Credentialing) before this was caught. --navy/--navy2 stay at
+  // their platform defaults regardless of what's stored in branding.
   if (logoUrl) {
     const mark = document.querySelector('.logo-mark');
     if (mark) mark.innerHTML = `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;" />`;
