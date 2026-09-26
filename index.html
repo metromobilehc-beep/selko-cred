@@ -368,6 +368,9 @@ window.selkoSharedAuthStorage = {
 
     <div class="admin-layout">
     <div class="admin-sidebar-col" style="display:flex;flex-direction:column;gap:12px;position:sticky;top:76px;align-self:flex-start;">
+    <button class="admin-sidebar-toggle" onclick="toggleAdminSidebar()" style="display:none;">
+      <i class="ti ti-menu-2"></i> <span id="adminSidebarToggleLabel">Menu</span>
+    </button>
     <div class="tabs admin-sidebar">
       <button class="tab active" id="tab-overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
       <button class="tab"        id="tab-docs"     onclick="switchTab('docs')"><i class="ti ti-file-text"></i> Documents</button>
@@ -16177,7 +16180,44 @@ function applyBranding(branding, logoUrl) {
 }
 
 // ══ TABS ══
+// Only actually does anything at the responsive breakpoint (the
+// button itself is display:none above 900px, matching the CSS media
+// query) — toggles a class rather than inline styles, so the same
+// media query stays the single source of truth for what "open" and
+// "closed" mean at this width, instead of JS and CSS disagreeing.
+function toggleAdminSidebar() {
+  const sidebar = document.querySelector('.admin-sidebar');
+  const label = document.getElementById('adminSidebarToggleLabel');
+  const isOpen = sidebar.classList.toggle('mobile-open');
+  if (label) label.textContent = isOpen ? 'Close' : 'Menu';
+}
+
+// Standard dropdown expectation: clicking anywhere outside the open
+// menu closes it, not just the toggle button itself. Attached once at
+// load, checked every click rather than added/removed per toggle —
+// simpler and avoids any risk of accidentally stacking duplicate
+// listeners across repeated opens.
+document.addEventListener('click', (e) => {
+  const sidebar = document.querySelector('.admin-sidebar');
+  const toggleBtn = document.querySelector('.admin-sidebar-toggle');
+  if (!sidebar || !sidebar.classList.contains('mobile-open')) return;
+  if (sidebar.contains(e.target) || (toggleBtn && toggleBtn.contains(e.target))) return;
+  sidebar.classList.remove('mobile-open');
+  const label = document.getElementById('adminSidebarToggleLabel');
+  if (label) label.textContent = 'Menu';
+});
+
 function switchTab(tab) {
+  // Collapse the mobile menu back down once a screen is actually
+  // picked — harmless no-op on desktop, where .admin-sidebar is never
+  // in the closed state to begin with.
+  const sidebar = document.querySelector('.admin-sidebar');
+  if (sidebar && sidebar.classList.contains('mobile-open')) {
+    sidebar.classList.remove('mobile-open');
+    const label = document.getElementById('adminSidebarToggleLabel');
+    if (label) label.textContent = 'Menu';
+  }
+
   _activeTab = tab;
   ['overview','docs','exp','staff','insurance','credentialing','hr','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));

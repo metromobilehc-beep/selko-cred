@@ -205,27 +205,32 @@
   .admin-sidebar .tab.active { background: var(--teal); color: #fff; font-weight: 700; box-shadow: 0 2px 10px rgba(13,148,136,.35); }
   .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.06); color: rgba(255,255,255,.9); }
   .admin-main { flex: 1; min-width: 0; }
+  .admin-sidebar-toggle {
+    align-items: center; gap: 10px; width: 100%; padding: 13px 16px;
+    background: var(--navy); color: #fff; border: 1px solid rgba(255,255,255,.15);
+    border-radius: var(--radius-lg); font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .admin-sidebar-toggle i { font-size: 18px; }
+
   @media (max-width: 900px) {
     .admin-layout { flex-direction: column; }
-    .admin-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; position: static; }
-    /* .admin-sidebar .tab's own width:100% (above) was fighting this
-       row/wrap layout — every button still claimed the full row width
-       even in "row" mode, so each one wrapped onto its own line anyway,
-       looking identical to a plain vertical stack instead of the
-       compact, multi-per-row flow this media query was clearly meant
-       to produce. Letting each button size to its own content is what
-       actually lets them sit side by side and wrap naturally. */
-    .admin-sidebar .tab { width: auto; }
-    /* The sticky column wrapper (sidebar + Memo box together) was never
-       adjusted here at all — position:sticky made sense for the wide,
-       side-by-side desktop layout, but once .admin-layout stacks
-       vertically at this width, a stuck-in-place element just floats
-       over whatever content scrolls underneath it instead of flowing
-       normally above it. Same fix as .admin-sidebar just above:
-       static positioning once things stack. Memo box's own fixed
-       240px width gets the same treatment, so it doesn't sit
-       awkwardly narrow next to a now-full-width sidebar above it. */
-    .admin-sidebar-col { position: static; }
+    .admin-sidebar-toggle { display: flex; }
+    /* Collapsed by default at this width — the whole point of a
+       hamburger toggle is that the full tab list isn't sitting there
+       eating vertical space above the actual content until asked for.
+       .mobile-open (toggled by toggleAdminSidebar()) is what reveals it. */
+    .admin-sidebar { display: none; width: 100%; position: static; }
+    .admin-sidebar.mobile-open {
+      display: flex; flex-direction: column; gap: 4px;
+      position: absolute; top: 100%; left: 0; right: 0; z-index: 40;
+      box-shadow: var(--shadow-dark);
+    }
+    /* Still needed for when .mobile-open IS active — each button goes
+       back to claiming full width here, since the open state is a
+       normal vertical dropdown list, not the row/wrap layout an
+       earlier version of this fix was built around. */
+    .admin-sidebar.mobile-open .tab { width: 100%; }
+    .admin-sidebar-col { position: relative; }
     .admin-sidebar-memo { width: 100%; }
   }
 
