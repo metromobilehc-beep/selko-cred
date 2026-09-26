@@ -3038,6 +3038,7 @@ async function initSession(user) {
       // company (has_credentialing_addon but not has_credtrack) never sees
       updateModuleTabVisibility(company, profile);
       if (!company.has_credtrack) switchTab(company.has_credentialing_addon ? 'credentialing' : 'staff');
+      if (profile.is_super_admin) await showSuperAdminQuickSwitch(profile, company);
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -16061,6 +16062,47 @@ function exitPartnerPreview() {
   showScreen('adminScreen');
 }
 
+// Skippable "quick switch" prompt shown right after a super admin's
+// normal login lands them in their own default company — the actual
+// friction being solved: today, reaching any OTHER company means
+// navigating to Selko Admin and finding it in a card grid, every
+// single session, with no memory of what you looked at last time.
+// This surfaces the same switch (reusing viewAsAdmin unchanged) right
+// where it's needed, without forcing anyone to use it.
+async function showSuperAdminQuickSwitch(profile, currentCompanyRow) {
+  const { data: myProfile } = await sb.from('profiles')
+    .select('restricted_agency_ids').eq('id', profile.id).maybeSingle();
+  const restrictedIds = myProfile?.restricted_agency_ids;
+
+  let query = sb.from('companies').select('id, name').neq('id', currentCompanyRow.id).is('deleted_at', null);
+  if (restrictedIds && restrictedIds.length) {
+    query = query.in('id', restrictedIds);
+  } else if (restrictedIds && restrictedIds.length === 0) {
+    return; // explicitly restricted to zero other companies - nothing to offer
+  }
+  // restrictedIds === null (unrestricted, e.g. Stephen/Evan) falls through
+  // with no .in() filter at all - every other company is a valid switch target.
+
+  const { data: otherCompanies } = await query.order('name');
+  if (!otherCompanies?.length) return; // nothing else to switch to - skip silently, no empty modal
+
+  const modal = document.createElement('div');
+  modal.id = 'quickSwitchModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Switch company?</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">You're in <strong style="color:#fff;">${currentCompanyRow.name}</strong>. Jump to another company, or stay here.</div>
+      <div style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
+        ${otherCompanies.map(c => `
+          <button class="btn btn-sm btn-ghost" style="width:100%;justify-content:flex-start;margin-bottom:6px;color:#fff;border-color:rgba(255,255,255,.15);" onclick="document.getElementById('quickSwitchModal').remove(); viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}');">${c.name}</button>
+        `).join('')}
+      </div>
+      <button class="btn btn-teal" style="width:100%;justify-content:center;" onclick="document.getElementById('quickSwitchModal').remove();">Stay in ${currentCompanyRow.name}</button>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
 async function viewAsAdmin(companyId, companyName) {
   _superProfile = { ...currentProfile };
   _superCompany = { ...currentCompany };
@@ -17219,6 +17261,7 @@ async function loadSuperAdmin() {
   await loadPlatformDocTypes();
   await loadDeletionReview();
   await loadRecentUploads();
+  await loadStorageUsage(); // defined, but was never actually being called anywhere — real, standalone gap, not something tonight's changes caused
   const { data: companies } = await sb.from('companies').select('*').order('name');
   const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
   const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
