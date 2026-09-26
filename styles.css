@@ -254,6 +254,16 @@
   #staffScreen { background: var(--navy); min-height: 100vh; }
   #staffScreen .page-header h1 { color: #fff; }
   #staffScreen .page-header p { color: rgba(255,255,255,.6); }
+
+  /* ADMIN SCREEN — the screen every admin actually spends most of
+     their time in never got this treatment at all, unlike its two
+     siblings above. Its .page-header sat on the plain body background
+     (--offwhite) this whole time — always a real inconsistency, just
+     far more visible once a company's own dark --navy branding makes
+     everything else around it look intentional. Same fix, third time. */
+  #adminScreen { background: var(--navy); min-height: 100vh; }
+  #adminScreen .page-header h1 { color: #fff; }
+  #adminScreen .page-header p { color: rgba(255,255,255,.6); }
   #partnerScreen input[type=text] { background: var(--navy2); border-color: rgba(255,255,255,.15); color: #fff; }
   #partnerScreen input[type=text]::placeholder { color: rgba(255,255,255,.35); }
 
