@@ -7989,15 +7989,20 @@ async function deleteStaff(id, fullName) {
       }
     }
 
-    // These two tables use NO ACTION (not CASCADE), so they must be cleared
+    // These tables use NO ACTION (not CASCADE), so they must be cleared
     // explicitly first or the staff delete below will be silently blocked.
     // A failure here would surface anyway as a confusing FK-constraint
     // error on the credtrack_staff delete below — checked explicitly here
-    // instead, so the actual failing table is clear.
+    // instead, so the actual failing table is clear. credtrack_audit_log
+    // added after a real delete failure (Jimmy Dean) surfaced it as a
+    // third table in this same category, missed by the original audit
+    // that caught the first two.
     const { error: pnErr } = await sb.from('staff_payer_networks').delete().eq('staff_id', id);
     if (pnErr) throw new Error(`Could not clear payer network records first: ${pnErr.message}`);
     const { error: agErr } = await sb.from('credtrack_staff_agencies').delete().eq('staff_id', id);
     if (agErr) throw new Error(`Could not clear agency assignment records first: ${agErr.message}`);
+    const { error: alErr } = await sb.from('credtrack_audit_log').delete().eq('staff_id', id);
+    if (alErr) throw new Error(`Could not clear audit log records first: ${alErr.message}`);
 
     const { error } = await sb.from('credtrack_staff').delete().eq('id', id);
     if (error) throw error;
