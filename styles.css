@@ -220,27 +220,40 @@
     box-shadow: 0 4px 24px rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.1);
     border-radius: 8px; width: 240px; box-sizing: border-box;
   }
+  .admin-sidebar-backdrop { display: none; }
 
   @media (max-width: 900px) {
-    .admin-layout { flex-direction: column; }
     .admin-sidebar-toggle { display: flex; }
-    /* Collapsed by default at this width — the whole point of a
-       hamburger toggle is that the full tab list isn't sitting there
-       eating vertical space above the actual content until asked for.
-       .mobile-open (toggled by toggleAdminSidebar()) is what reveals it. */
-    .admin-sidebar { display: none; width: 100%; position: static; }
-    .admin-sidebar.mobile-open {
-      display: flex; flex-direction: column; gap: 4px;
-      position: absolute; top: 100%; left: 0; right: 0; z-index: 40;
+    /* The drawer is position:fixed, anchored to the viewport itself —
+       deliberately NOT participating in .admin-layout's flex flow at
+       all at this width. Every earlier attempt at this (sticky, then
+       relative, wrapped in a flex-direction:column parent) kept
+       breaking because it was still entangled with the surrounding
+       page layout in one way or another. Fixed positioning sidesteps
+       that class of bug entirely — this element no longer cares what
+       its parent or siblings are doing. Closed by default
+       (translateX(-100%), off-screen to the left); .mobile-open
+       slides it into view. */
+    .admin-sidebar-col {
+      position: fixed; top: 0; left: 0; height: 100vh; width: 280px;
+      max-width: 85vw; z-index: 100; background: var(--navy);
+      padding: 20px 14px; box-sizing: border-box; overflow-y: auto;
+      transform: translateX(-100%); transition: transform .25s ease;
       box-shadow: var(--shadow-dark);
     }
-    /* Still needed for when .mobile-open IS active — each button goes
-       back to claiming full width here, since the open state is a
-       normal vertical dropdown list, not the row/wrap layout an
-       earlier version of this fix was built around. */
-    .admin-sidebar.mobile-open .tab { width: 100%; }
-    .admin-sidebar-col { position: relative; }
+    .admin-sidebar-col.mobile-open { transform: translateX(0); }
     .admin-sidebar-memo { width: 100%; }
+    /* Dimmed backdrop behind the open drawer — also fixed to the
+       viewport, sitting just below the drawer's own z-index. Clicking
+       it closes the drawer (wired in the HTML itself), same standard
+       pattern as any slide-out panel. */
+    .admin-sidebar-backdrop {
+      display: block; position: fixed; inset: 0; background: rgba(0,0,0,.5);
+      z-index: 90; opacity: 0; pointer-events: none; transition: opacity .25s ease;
+    }
+    .admin-sidebar-backdrop.mobile-open {
+      opacity: 1; pointer-events: auto;
+    }
   }
 
   /* DARK PANEL */
