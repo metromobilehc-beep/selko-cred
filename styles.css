@@ -211,6 +211,15 @@
     border-radius: var(--radius-lg); font-size: 14px; font-weight: 600; cursor: pointer;
   }
   .admin-sidebar-toggle i { font-size: 18px; }
+  .admin-sidebar-col {
+    display: flex; flex-direction: column; gap: 12px;
+    position: sticky; top: 76px; align-self: flex-start;
+  }
+  .admin-sidebar-memo {
+    margin: 12px 0 0; padding: 12px; background: var(--navy);
+    box-shadow: 0 4px 24px rgba(0,0,0,.18); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 8px; width: 240px; box-sizing: border-box;
+  }
 
   @media (max-width: 900px) {
     .admin-layout { flex-direction: column; }
