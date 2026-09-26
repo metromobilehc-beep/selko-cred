@@ -261,6 +261,19 @@
     .admin-sidebar-backdrop.mobile-open {
       opacity: 1; pointer-events: auto;
     }
+    /* The header's own height was fixed at 56px with no override at
+       all — fine when its content fits one row, but at this width
+       there's genuinely too much (hamburger, logo+name, user info,
+       Admin badge, 3 buttons) to force into that row without severe
+       text wrapping inside too-short flex items. Letting it grow and
+       wrap naturally is the direct fix — quicker than relocating
+       buttons into the drawer, which is the better long-term answer
+       if this ever feels cramped again.  */
+    header {
+      height: auto; min-height: 56px; flex-wrap: wrap;
+      padding: 10px 14px; gap: 8px 12px; row-gap: 8px;
+    }
+    #hdrRight { flex-wrap: wrap; row-gap: 6px; }
   }
 
   /* DARK PANEL */
