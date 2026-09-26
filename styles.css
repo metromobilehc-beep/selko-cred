@@ -208,6 +208,14 @@
   @media (max-width: 900px) {
     .admin-layout { flex-direction: column; }
     .admin-sidebar { width: 100%; flex-direction: row; flex-wrap: wrap; position: static; }
+    /* .admin-sidebar .tab's own width:100% (above) was fighting this
+       row/wrap layout — every button still claimed the full row width
+       even in "row" mode, so each one wrapped onto its own line anyway,
+       looking identical to a plain vertical stack instead of the
+       compact, multi-per-row flow this media query was clearly meant
+       to produce. Letting each button size to its own content is what
+       actually lets them sit side by side and wrap naturally. */
+    .admin-sidebar .tab { width: auto; }
   }
 
   /* DARK PANEL */
