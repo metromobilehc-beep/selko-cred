@@ -206,9 +206,10 @@
   .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.06); color: rgba(255,255,255,.9); }
   .admin-main { flex: 1; min-width: 0; }
   .admin-sidebar-toggle {
-    display: none; align-items: center; gap: 10px; padding: 10px 16px;
-    background: var(--navy); color: #fff; border: 1px solid rgba(255,255,255,.15);
-    border-radius: var(--radius-lg); font-size: 14px; font-weight: 600; cursor: pointer;
+    display: none; align-items: center; justify-content: center;
+    width: 36px; height: 36px; flex-shrink: 0;
+    background: transparent; color: #fff; border: 1px solid rgba(255,255,255,.2);
+    border-radius: var(--radius-sm); font-size: 18px; cursor: pointer;
   }
   .admin-sidebar-toggle i { font-size: 18px; }
   .admin-sidebar-col {
@@ -223,16 +224,13 @@
   .admin-sidebar-backdrop { display: none; }
 
   @media (max-width: 900px) {
-    /* Fixed to the actual viewport corner, matching standard placement
-       most sites use — always reachable in the same spot regardless of
-       scroll position. This also fixes a real bug: the button used to
-       be a normal in-flow flex child of .admin-layout with width:100%,
-       which claimed the entire row and squeezed .admin-main down to
-       nothing. Fixed positioning removes it from that flow entirely,
-       solving both things with the same change. */
-    .admin-sidebar-toggle {
-      display: flex; position: fixed; top: 76px; left: 12px; z-index: 95;
-    }
+    /* Now a real child of <header> itself — a normal, in-flow flex
+       item there, not fixed/floating over the page. That's both the
+       standard placement (leftmost, in the persistent header) and
+       what actually stopped it from interfering with page content,
+       since it's no longer competing with .admin-main in a different
+       flex container the way it was before. */
+    .admin-sidebar-toggle { display: flex; }
     /* The drawer is position:fixed, anchored to the viewport itself —
        deliberately NOT participating in .admin-layout's flex flow at
        all at this width. Every earlier attempt at this (sticky, then

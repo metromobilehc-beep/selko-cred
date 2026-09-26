@@ -108,6 +108,9 @@ window.selkoSharedAuthStorage = {
 <body>
 
 <header>
+  <button class="admin-sidebar-toggle" onclick="toggleAdminSidebar()" aria-label="Menu">
+    <i class="ti ti-menu-2"></i>
+  </button>
   <div class="logo">
     <div class="logo-mark">SC</div>
     <div>
@@ -367,9 +370,6 @@ window.selkoSharedAuthStorage = {
     </div>
 
     <div class="admin-layout">
-    <button class="admin-sidebar-toggle" onclick="toggleAdminSidebar()">
-      <i class="ti ti-menu-2"></i> <span id="adminSidebarToggleLabel">Menu</span>
-    </button>
     <div class="admin-sidebar-backdrop" onclick="toggleAdminSidebar()"></div>
     <div class="admin-sidebar-col">
     <div class="tabs admin-sidebar">
