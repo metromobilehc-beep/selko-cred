@@ -5824,11 +5824,15 @@ async function loadStaffTable() {
       ? `<tr><td colspan="6" style="padding:10px 12px 6px;font-weight:700;font-size:11px;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02);">${staffTypeGroupLabels[thisType] || thisType}</td></tr>`
       : '';
 
-    const fullyVerified = s.license_number && verifiedStaffIds.has(s.id);
-    const licenseLabel = s.license_type ? `${s.license_type} License` : 'License';
-    const nameCell = fullyVerified
-      ? `${s.full_name} <span class="badge badge-verified" title="License number on file, and a board verification record uploaded — does not cover CPR, driver's license, insurance, or other credential types" style="margin-left:6px;">✓ ${licenseLabel} Verified</span>`
-      : s.full_name;
+    // Removed the name-level "✓ [Discipline] License Verified" badge —
+    // redundant with the per-document "✓ Verified" badge already shown
+    // in the profile's document list, and only ever applied to
+    // therapy disciplines (PT/PTA/OT/COTA/SLP) since license_type isn't
+    // populated the same way for DO and others — inconsistent enough
+    // across rows that it read as confusing rather than useful. The
+    // "Verified" filter dropdown above the table still uses
+    // verifiedStaffIds directly (untouched), just not this badge.
+    const nameCell = s.full_name;
     const staffTypeCell = isOffice
       ? `<span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span>`
       : `<button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
