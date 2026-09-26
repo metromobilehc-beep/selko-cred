@@ -7978,6 +7978,14 @@ async function deleteStaff(id, fullName) {
     const paths = (docs || []).map(d => d.file_url).filter(Boolean);
     if (paths.length) await sb.storage.from(STORAGE_BUCKET).remove(paths);
 
+    // credentialing_files has its own storage-backed files too (same
+    // bucket the admin-side per-provider Files tab uses) — clean those
+    // up before the DB rows below, same reasoning as credtrack_documents.
+    const { data: credFiles } = await sb.from('credentialing_files')
+      .select('storage_path').eq('staff_id', id);
+    const credFilePaths = (credFiles || []).map(f => f.storage_path).filter(Boolean);
+    if (credFilePaths.length) await sb.storage.from(CREDENTIALING_FILES_BUCKET).remove(credFilePaths);
+
     // Delete the underlying auth login too, so this email can be re-invited later
     if (staffRecord && staffRecord.email) {
       try {
@@ -8003,6 +8011,15 @@ async function deleteStaff(id, fullName) {
     if (agErr) throw new Error(`Could not clear agency assignment records first: ${agErr.message}`);
     const { error: alErr } = await sb.from('credtrack_audit_log').delete().eq('staff_id', id);
     if (alErr) throw new Error(`Could not clear audit log records first: ${alErr.message}`);
+    // Three more found via a full diagnostic query rather than one at a
+    // time by tripping over them — closing this class of bug out
+    // completely instead of incrementally.
+    const { error: cfErr } = await sb.from('credentialing_files').delete().eq('staff_id', id);
+    if (cfErr) throw new Error(`Could not clear credentialing file records first: ${cfErr.message}`);
+    const { error: cnErr } = await sb.from('credentialing_notes').delete().eq('staff_id', id);
+    if (cnErr) throw new Error(`Could not clear credentialing notes first: ${cnErr.message}`);
+    const { error: sfErr } = await sb.from('sensitive_field_access_log').delete().eq('staff_id', id);
+    if (sfErr) throw new Error(`Could not clear sensitive-field access log records first: ${sfErr.message}`);
 
     const { error } = await sb.from('credtrack_staff').delete().eq('id', id);
     if (error) throw error;
