@@ -206,7 +206,7 @@
   .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.06); color: rgba(255,255,255,.9); }
   .admin-main { flex: 1; min-width: 0; }
   .admin-sidebar-toggle {
-    align-items: center; gap: 10px; width: 100%; padding: 13px 16px;
+    display: none; align-items: center; gap: 10px; width: 100%; padding: 13px 16px;
     background: var(--navy); color: #fff; border: 1px solid rgba(255,255,255,.15);
     border-radius: var(--radius-lg); font-size: 14px; font-weight: 600; cursor: pointer;
   }
