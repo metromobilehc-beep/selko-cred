@@ -238,6 +238,21 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
+        <div class="form-grid-2" style="margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Driver's license number</label>
+            <input type="text" id="hrOnbDlNumber" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">Issuing state</label>
+            <input type="text" id="hrOnbDlState" maxlength="2" placeholder="e.g. OK" />
+          </div>
+        </div>
+        <div class="form-group" style="margin-bottom:14px;">
+          <label class="field-label">Photo of your driver's license</label>
+          <input type="file" id="hrOnbDlPhoto" accept="image/*,.pdf" />
+        </div>
+
         <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
           <label class="field-label">Type your full legal name to sign and attest</label>
           <input type="text" id="hrOnbSignature" placeholder="Typing your name here counts as your signature" style="margin-bottom:6px;" />
@@ -3314,6 +3329,8 @@ async function submitHrOnboarding() {
     date_of_birth: document.getElementById('hrOnbDob').value || null,
     phone: document.getElementById('hrOnbPhone').value.trim() || null,
     citizenship_status: citizenship,
+    driver_license_number: document.getElementById('hrOnbDlNumber').value.trim() || null,
+    driver_license_state: document.getElementById('hrOnbDlState').value.trim().toUpperCase() || null,
     employee_attestation_signature: signature,
     employee_attested_at: new Date().toISOString(),
     onboarding_status: 'submitted',
@@ -3321,6 +3338,33 @@ async function submitHrOnboarding() {
   if (['permanent_resident', 'authorized_alien'].includes(citizenship)) {
     payload.alien_registration_number = document.getElementById('hrOnbAlienNumber').value.trim() || null;
     payload.work_authorization_expiration = document.getElementById('hrOnbWorkAuthExp').value || null;
+  }
+
+  // Upload the license photo BEFORE flipping onboarding_status below —
+  // both the storage and hr_documents self-service INSERT policies
+  // require onboarding_status to still be 'not_started', so this has to
+  // happen first or it'll be correctly rejected by RLS the moment
+  // status moves to 'submitted'. A failure here is non-fatal — logged,
+  // not blocking — since the actual data submission (which admins can
+  // always follow up on directly) matters more than the photo.
+  const dlPhotoFile = document.getElementById('hrOnbDlPhoto').files[0];
+  if (dlPhotoFile) {
+    try {
+      const path = `${currentCompany.id}/employees/${window._hrOnboardingId}/${Date.now()}_${dlPhotoFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
+      const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, dlPhotoFile);
+      if (uploadErr) throw uploadErr;
+      await sb.from('hr_documents').insert({
+        employee_id: window._hrOnboardingId,
+        company_id: currentCompany.id,
+        template_id: null,
+        name: "Driver's License Photo",
+        storage_path: path,
+        status: 'submitted_by_employee', // distinct from 'pending_acknowledgment', which is for admin-uploaded docs the employee needs to acknowledge reading — the reverse direction here
+        created_by: currentProfile.id,
+      });
+    } catch (e) {
+      console.error('Driver license photo upload failed (submission itself still proceeds):', e);
+    }
   }
 
   // RLS (hr_employees_self_service_update) enforces that this can only
@@ -3407,6 +3451,8 @@ async function initStaff() {
       document.getElementById('hrOnbDob').value = hrRec.date_of_birth || '';
       document.getElementById('hrOnbPhone').value = hrRec.phone || '';
       document.getElementById('hrOnbCitizenship').value = hrRec.citizenship_status || '';
+      document.getElementById('hrOnbDlNumber').value = hrRec.driver_license_number || '';
+      document.getElementById('hrOnbDlState').value = hrRec.driver_license_state || '';
       document.getElementById('hrOnbAlienNumber').value = hrRec.alien_registration_number || '';
       document.getElementById('hrOnbWorkAuthExp').value = hrRec.work_authorization_expiration || '';
       document.getElementById('hrOnbAlienRow').style.display = ['permanent_resident','authorized_alien'].includes(hrRec.citizenship_status) ? 'grid' : 'none';
