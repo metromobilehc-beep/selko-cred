@@ -16050,7 +16050,50 @@ async function exitViewAsAdmin() {
 function applyBranding(branding, logoUrl) {
   if (!branding) return;
   const r = document.documentElement.style;
-  if (branding.primary)  { r.setProperty('--teal',   branding.primary); r.setProperty('--teal-l', branding.primary); }
+  if (branding.primary) {
+    r.setProperty('--teal', branding.primary);
+    // --teal-l is used as literal TEXT color throughout the app
+    // (.inline-label, section headers, table headers) — reusing the
+    // raw swatch color broke this the moment a dark accent (like
+    // Aggieland's maroon) was picked: dark text on dark navy, same
+    // category of bug as the background issue, just a different
+    // variable. Force a genuinely light variant here regardless of
+    // which swatch was chosen, so every one of the 8 stays legible.
+    r.setProperty('--teal-l', lightenColorForText(branding.primary));
+  }
+
+  function lightenColorForText(hex) {
+    const h = hex.replace('#', '');
+    let r = parseInt(h.slice(0, 2), 16) / 255;
+    let g = parseInt(h.slice(2, 4), 16) / 255;
+    let b = parseInt(h.slice(4, 6), 16) / 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    let hue, sat, light = (max + min) / 2;
+    if (max === min) { hue = sat = 0; }
+    else {
+      const d = max - min;
+      sat = light > 0.5 ? d / (2 - max - min) : d / (max + min);
+      if (max === r) hue = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+      else if (max === g) hue = ((b - r) / d + 2) / 6;
+      else hue = ((r - g) / d + 4) / 6;
+    }
+    // Force a bright, readable-as-text lightness regardless of the
+    // original swatch's own lightness — this is the whole fix.
+    light = 0.72;
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = light < 0.5 ? light * (1 + sat) : light + sat - light * sat;
+    const p = 2 * light - q;
+    const rr = Math.round(hue2rgb(p, q, hue + 1/3) * 255);
+    const gg = Math.round(hue2rgb(p, q, hue) * 255);
+    const bb = Math.round(hue2rgb(p, q, hue - 1/3) * 255);
+    return `#${[rr, gg, bb].map(x => x.toString(16).padStart(2, '0')).join('')}`;
+  }
   if (branding.secondary) r.setProperty('--gold', branding.secondary);
   // Background is deliberately no longer customizable — hundreds of
   // places assume it's always dark, and letting it vary broke the
