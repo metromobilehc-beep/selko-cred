@@ -3470,11 +3470,22 @@ async function submitHrOnboarding() {
       <p style="font-size:13px;color:var(--gray-600);">Your employer will follow up with the rest. Checking whether your I-9 is ready to download…</p>
     </div>`;
 
-  const { data: i9Template } = await sb.from('hr_templates')
+  // FIXED — was matching by name (`.ilike('name', '%I-9%')`), which
+  // broke for any template not literally named with "I-9" in it, and
+  // would have actually ERRORED (not just missed) if two templates
+  // ever matched at once, since .maybeSingle() throws on more than one
+  // row — silently failing this whole step. Now uses the explicit
+  // form_type designation an admin sets at upload time. Still handles
+  // more than one result gracefully (company-specific preferred over
+  // a Selko-provided global one) rather than assuming there's ever
+  // only exactly one row, in case an admin uploads a second one before
+  // deleting the first.
+  const { data: i9Templates } = await sb.from('hr_templates')
     .select('*')
     .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
-    .ilike('name', '%I-9%')
-    .maybeSingle();
+    .eq('form_type', 'i9')
+    .order('company_id', { ascending: true, nullsFirst: false }); // company-specific rows (non-null) sort first
+  const i9Template = i9Templates?.[0] || null;
 
   const confirmBody = document.getElementById('hrOnbConfirmationBody');
   if (!i9Template) {
@@ -13547,6 +13558,16 @@ async function processHrTemplateFile(name, file, err) {
     }
 
     const extraCheckboxHtml = `
+      <div style="margin-bottom:14px;">
+        <label style="font-size:11px;color:rgba(255,255,255,.5);display:block;margin-bottom:4px;">Form type</label>
+        <select class="inline-select" id="templateFormType" style="width:220px;">
+          <option value="other">Other / company policy document</option>
+          <option value="i9">I-9 (Employment Eligibility Verification)</option>
+          <option value="w4">W-4</option>
+          <option value="background_check">Background check authorization</option>
+        </select>
+        <p style="font-size:11px;color:rgba(255,255,255,.35);margin-top:4px;">Designating this as I-9 is what makes it the one auto-filled and offered for download right when a new hire submits their onboarding form — not the template's name.</p>
+      </div>
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:14px;cursor:pointer;">
         <input type="checkbox" id="templateStandaloneDisclosure" />
         This is a standalone legal disclosure (e.g. background check authorization) — never bundle it with other documents into one combined packet
@@ -13584,6 +13605,26 @@ async function saveHrTemplateMapping(name) {
   });
 
   try {
+    const formType = document.getElementById('templateFormType')?.value || 'other';
+
+    // Warn (don't hard-block, since an admin might genuinely be
+    // replacing an outdated version) if another template already
+    // holds this same designation in the same scope — otherwise two
+    // templates could both claim to be "the I-9" for one company,
+    // reintroducing the exact ambiguity this whole change exists to
+    // remove.
+    if (formType !== 'other') {
+      const isGlobalCheck = currentProfile.is_super_admin && !_superProfile;
+      const { data: existing } = await sb.from('hr_templates')
+        .select('id, name')
+        .eq('form_type', formType)
+        .eq('company_id', isGlobalCheck ? null : currentCompany.id)
+        .maybeSingle();
+      if (existing && !confirm(`"${existing.name}" is already designated as this form type. Continue anyway? (Both would exist, but only one will actually be used — whichever the system finds first.)`)) {
+        return;
+      }
+    }
+
     const path = `${currentCompany.id}/templates/${Date.now()}_${_pendingHrTemplateFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
     const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, _pendingHrTemplateFile, { contentType: 'application/pdf' });
     if (uploadErr) throw uploadErr;
@@ -13599,6 +13640,7 @@ async function saveHrTemplateMapping(name) {
       field_mapping: mapping,
       requires_ssn_entry: document.getElementById('templateRequiresSsnEntry')?.checked || false,
       is_standalone_disclosure: document.getElementById('templateStandaloneDisclosure')?.checked || false,
+      form_type: formType,
     };
     const { error: insertErr } = await sb.from('hr_templates').insert(insertPayload);
     if (insertErr) throw insertErr;
@@ -13644,11 +13686,15 @@ async function loadHrTemplates() {
     return;
   }
 
-  container.innerHTML = _hrTemplatesCache.map(t => `
+  container.innerHTML = _hrTemplatesCache.map(t => {
+    const typeLabels = { i9: 'I-9', w4: 'W-4', background_check: 'BACKGROUND CHECK' };
+    const typeBadge = typeLabels[t.form_type] ? ` <span style="font-size:10px;color:var(--teal-l);">${typeLabels[t.form_type]}</span>` : '';
+    return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
-      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.is_standalone_disclosure ? ' <span style="font-size:10px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
+      <span style="flex:1;color:#fff;font-size:13px;">${t.name}${typeBadge}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.is_standalone_disclosure ? ' <span style="font-size:10px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
       <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 // ══ Selko Admin — global HR templates. Shares _hrTemplatesCache with the
