@@ -12982,6 +12982,16 @@ const HR_DATE_FIELDS = new Set(['employee.date_of_birth', 'employee.hire_date'])
 // little to learn here.
 function guessHrDefaultMapping(fieldName) {
   const n = normalizeFieldName(fieldName);
+
+  // FIXED — a field qualified by "preparer"/"translator" (I-9's optional
+  // third-party-assisted-completion section) refers to a different
+  // person entirely, even when its own name also contains "first name"
+  // or "address". This app has no preparer/translator data source at
+  // all, so these should never be auto-guessed — without this, the
+  // employee's own name and address were being stamped into boxes
+  // meant for someone else, a real bug found on an actual filled form.
+  if (/preparer|translator/.test(n)) return '';
+
   const guesses = [
     [/^last.*name$|employee.*last.*name|surname/, 'employee.last_name'],
     [/^first.*name$|employee.*first.*name|given.*name/, 'employee.first_name'],
@@ -13008,10 +13018,18 @@ function guessHrDefaultMapping(fieldName) {
     // forcing a deliberate choice (leave blank, or use fixed text) instead
     // of a silent, confident-looking wrong guess.
     [/city|town|\bstate\b|zip|postal|apt\.?\s*number|apartment/, ''],
-    [/address|street/, 'employee.address'],
-    [/employer.*name|business.*name|company.*name/, 'company.legal_business_name'],
-    [/^ein$|employer.*id|tax.*id/, 'company.tax_id'],
+    // FIXED — employer/business-qualified address and name fields must
+    // be checked BEFORE the generic employee address|street pattern
+    // below, for the same reason email/phone needed to be checked
+    // before it: "Employers Business or Org Address" contains the
+    // substring "address" and would otherwise match the employee
+    // pattern first — a second real bug found on the same actual form,
+    // stamping the employee's personal address into the company's
+    // business address field instead.
     [/employer.*address|business.*address/, 'company.location_1_address'],
+    [/employer.*name|business.*name|company.*name/, 'company.legal_business_name'],
+    [/address|street/, 'employee.address'],
+    [/^ein$|employer.*id|tax.*id/, 'company.tax_id'],
   ];
   for (const [re, val] of guesses) if (re.test(n)) return val;
   return '';
@@ -14178,6 +14196,7 @@ async function showHrEmployeeSheet(employeeId) {
         <span style="flex:1;color:#fff;font-size:12px;">${d.name}</span>
         <span style="font-size:10px;color:${d.status === 'pending_acknowledgment' ? '#f59e0b' : 'rgba(255,255,255,.35)'};">${d.status === 'pending_acknowledgment' ? 'PENDING ACKNOWLEDGMENT' : 'ON FILE'}</span>
         ${d.status === 'pending_acknowledgment' ? `<button class="btn btn-sm btn-ghost" onclick="markHrDocumentAcknowledged('${d.id}','${employeeId}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Mark acknowledged</button>` : ''}
+        <button class="btn btn-sm btn-danger" onclick="deleteHrDocument('${d.id}','${(d.storage_path || '').replace(/'/g,"\\'")}','${employeeId}','${d.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
       </div>`).join('')
     : '<div style="font-size:12px;color:rgba(255,255,255,.35);">No documents on file yet.</div>';
 
@@ -14487,6 +14506,19 @@ async function markHrDocumentAcknowledged(docId, employeeId) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('✓ Marked acknowledged');
   await showHrEmployeeSheet(employeeId);
+}
+
+async function deleteHrDocument(docId, storagePath, employeeId, docName) {
+  if (!confirm(`Delete "${docName}" from this employee's file? This can't be undone.`)) return;
+  try {
+    if (storagePath) await sb.storage.from('hr-documents').remove([storagePath]);
+    const { error } = await sb.from('hr_documents').delete().eq('id', docId);
+    if (error) throw error;
+    toast(`✓ "${docName}" deleted`);
+    await showHrEmployeeSheet(employeeId);
+  } catch (e) {
+    toast('Error: ' + e.message, true);
+  }
 }
 
 // ══ CUSTOM REMINDERS — one shared table/UI for both credentialing staff
