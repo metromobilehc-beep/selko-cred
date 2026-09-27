@@ -12987,11 +12987,28 @@ function guessHrDefaultMapping(fieldName) {
     [/^first.*name$|employee.*first.*name|given.*name/, 'employee.first_name'],
     [/full.*name|employee.*name$|^name$/, 'employee.full_name'],
     [/date.*of.*birth|^dob$/, 'employee.date_of_birth'],
-    [/address|street/, 'employee.address'],
+    // FIXED — e-mail and phone must be checked BEFORE the broad
+    // address|street pattern below, not after. "Employee's Email
+    // Address" contains the literal substring "address" — with email
+    // checked later in the list, that field matched employee.address
+    // first and was never reached by the actual email pattern at all.
+    // Same reasoning applies to phone (e.g. a field literally named
+    // "Address/Phone" would have the same problem).
     [/phone|telephone/, 'employee.phone'],
     [/e.?mail/, 'employee.email'],
     [/hire.*date|date.*of.*hire|start.*date/, 'employee.hire_date'],
     [/position|job.*title|^title$/, 'employee.position'],
+    // FIXED — city/state/zip/apt are sub-components of an address that
+    // this app has no separate data source for at all (employee.address
+    // is one combined field, not split into parts). Guessing
+    // employee.address for these would silently produce the exact bug
+    // just found on a real filled I-9 — the full street address landing
+    // in the "City or Town" box. No correct automatic guess exists for
+    // these, so this explicitly returns nothing rather than a wrong one,
+    // forcing a deliberate choice (leave blank, or use fixed text) instead
+    // of a silent, confident-looking wrong guess.
+    [/city|town|\bstate\b|zip|postal|apt\.?\s*number|apartment/, ''],
+    [/address|street/, 'employee.address'],
     [/employer.*name|business.*name|company.*name/, 'company.legal_business_name'],
     [/^ein$|employer.*id|tax.*id/, 'company.tax_id'],
     [/employer.*address|business.*address/, 'company.location_1_address'],
