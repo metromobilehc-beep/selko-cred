@@ -13313,6 +13313,7 @@ async function startHrTemplateUpload() {
   const fileInput = document.getElementById('newHrTemplateFile');
   const err = document.getElementById('hrTemplateUploadErr');
   err.style.display = 'none';
+  _editingHrTemplateId = null; // this is a genuinely new upload, not editing an existing template
 
   if (!name) { err.textContent = 'Enter a form name first.'; err.style.display = 'block'; return; }
   const file = fileInput.files[0];
@@ -13603,6 +13604,64 @@ async function processHrTemplateFile(name, file, err) {
 }
 
 let _pendingHrTemplateFile = null;
+// Set while editing an existing template's mapping (vs. uploading a new
+// one) — non-null means saveHrTemplateMapping should UPDATE this row and
+// keep its existing storage_path, rather than upload a new file and
+// insert a new row.
+let _editingHrTemplateId = null;
+
+// Re-opens an already-uploaded template's mapping for correction —
+// downloads its existing PDF from storage rather than requiring a fresh
+// upload (the file itself hasn't changed, only the mapping needs
+// fixing), reusing the exact same extraction and modal logic a new
+// upload uses. Pre-fills each field from the mapping actually saved,
+// overriding the guess-function's fresh guesses, which would otherwise
+// paper back over exactly the kind of wrong mapping this exists to fix.
+async function editHrTemplate(id, name) {
+  const container = document.getElementById('hrTemplatesList');
+  try {
+    const { data: tmpl, error: fetchErr } = await sb.from('hr_templates')
+      .select('*').eq('id', id).single();
+    if (fetchErr) throw fetchErr;
+
+    const { data: blob, error: downloadErr } = await sb.storage.from('hr-documents').download(tmpl.storage_path);
+    if (downloadErr) throw downloadErr;
+
+    _editingHrTemplateId = id;
+    const fakeErrEl = document.createElement('div'); // processHrTemplateFile needs an element to write errors into; this one's never shown, real errors surface via toast in the catch below
+    await processHrTemplateFile(name, blob, fakeErrEl);
+    if (fakeErrEl.style.display === 'block') { toast(fakeErrEl.textContent, true); _editingHrTemplateId = null; return; }
+
+    // Override the modal's fresh guesses with what's actually saved —
+    // the whole point of editing is to correct a wrong guess, so
+    // re-guessing here would silently undo that.
+    const modal = document.getElementById('templateMappingModal');
+    if (modal) {
+      Object.entries(tmpl.field_mapping || {}).forEach(([fieldName, value]) => {
+        const sel = modal.querySelector(`select.template-mapping-select[data-field-name="${CSS.escape(fieldName)}"]`);
+        if (!sel) return;
+        if (typeof value === 'string' && value.startsWith('__FIXED_TEXT__:')) {
+          sel.value = '__FIXED_TEXT__';
+          const row = sel.closest('.template-mapping-row');
+          const textInput = row?.querySelector('.template-fixed-text-input');
+          if (textInput) {
+            textInput.value = value.slice('__FIXED_TEXT__:'.length);
+            textInput.style.display = 'block';
+          }
+        } else {
+          sel.value = value;
+        }
+      });
+      const formTypeSel = document.getElementById('templateFormType');
+      if (formTypeSel && tmpl.form_type) formTypeSel.value = tmpl.form_type;
+      const standaloneCheck = document.getElementById('templateStandaloneDisclosure');
+      if (standaloneCheck) standaloneCheck.checked = !!tmpl.is_standalone_disclosure;
+    }
+  } catch (e) {
+    toast('Could not open this template for editing: ' + e.message, true);
+    _editingHrTemplateId = null;
+  }
+}
 
 async function saveHrTemplateMapping(name) {
   const errEl = document.getElementById('templateSaveErr');
@@ -13632,14 +13691,42 @@ async function saveHrTemplateMapping(name) {
     // remove.
     if (formType !== 'other') {
       const isGlobalCheck = currentProfile.is_super_admin && !_superProfile;
-      const { data: existing } = await sb.from('hr_templates')
+      let dupQuery = sb.from('hr_templates')
         .select('id, name')
         .eq('form_type', formType)
-        .eq('company_id', isGlobalCheck ? null : currentCompany.id)
-        .maybeSingle();
+        .eq('company_id', isGlobalCheck ? null : currentCompany.id);
+      // Editing an existing template would otherwise match against
+      // itself here — it already holds this exact designation, which
+      // isn't a real conflict.
+      if (_editingHrTemplateId) dupQuery = dupQuery.neq('id', _editingHrTemplateId);
+      const { data: existing } = await dupQuery.maybeSingle();
       if (existing && !confirm(`"${existing.name}" is already designated as this form type. Continue anyway? (Both would exist, but only one will actually be used — whichever the system finds first.)`)) {
         return;
       }
+    }
+
+    // FIXED — when editing an existing template, the file itself
+    // hasn't changed, only the mapping has. Re-uploading it to a new
+    // storage path would be wasteful and would orphan the original
+    // file unless separately cleaned up — so this updates the
+    // existing row in place instead, keeping its original storage_path.
+    if (_editingHrTemplateId) {
+      const { error: updateErr } = await sb.from('hr_templates').update({
+        field_mapping: mapping,
+        requires_ssn_entry: document.getElementById('templateRequiresSsnEntry')?.checked || false,
+        is_standalone_disclosure: document.getElementById('templateStandaloneDisclosure')?.checked || false,
+        form_type: formType,
+      }).eq('id', _editingHrTemplateId);
+      if (updateErr) throw updateErr;
+
+      document.getElementById('templateMappingModal')?.remove();
+      _pendingHrTemplateFile = null;
+      _editingHrTemplateId = null;
+      toast(`✓ "${name}" mapping updated`);
+      _hrTemplatesCache = null;
+      await loadHrTemplates();
+      await loadSuperHrTemplates();
+      return;
     }
 
     const path = `${currentCompany.id}/templates/${Date.now()}_${_pendingHrTemplateFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
@@ -13709,6 +13796,7 @@ async function loadHrTemplates() {
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
       <span style="flex:1;color:#fff;font-size:13px;">${t.name}${typeBadge}${t.company_id ? '' : ' <span style="font-size:10px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.is_standalone_disclosure ? ' <span style="font-size:10px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
+      <button class="btn btn-sm btn-ghost" onclick="editHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Edit mapping</button>
       <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
     </div>`;
   }).join('');
@@ -13827,15 +13915,38 @@ async function generateFilledHrForm(templateId, employeeId) {
     const { error: uploadErr } = await sb.storage.from('hr-documents').upload(storagePath, blob, { contentType: 'application/pdf' });
     if (uploadErr) throw uploadErr;
 
-    await sb.from('hr_documents').insert({
-      employee_id: employeeId,
-      company_id: currentCompany.id,
-      template_id: templateId,
-      name: tmpl.name,
-      storage_path: storagePath,
-      status: 'completed',
-      created_by: currentProfile.id,
-    });
+    // FIXED — previously always inserted a new row, meaning every click
+    // of "Generate" left another permanent copy behind, with no way to
+    // tell which one was current versus a stale version generated
+    // before some later fix or correction. Now only one copy of a given
+    // form ever exists per employee — generating again replaces it,
+    // storage file and row alike, rather than piling up alongside it.
+    const { data: priorDoc } = await sb.from('hr_documents')
+      .select('id, storage_path')
+      .eq('employee_id', employeeId)
+      .eq('template_id', templateId)
+      .maybeSingle();
+
+    if (priorDoc) {
+      if (priorDoc.storage_path) await sb.storage.from('hr-documents').remove([priorDoc.storage_path]);
+      await sb.from('hr_documents').update({
+        name: tmpl.name,
+        storage_path: storagePath,
+        status: 'completed',
+        created_by: currentProfile.id,
+        created_at: new Date().toISOString(),
+      }).eq('id', priorDoc.id);
+    } else {
+      await sb.from('hr_documents').insert({
+        employee_id: employeeId,
+        company_id: currentCompany.id,
+        template_id: templateId,
+        name: tmpl.name,
+        storage_path: storagePath,
+        status: 'completed',
+        created_by: currentProfile.id,
+      });
+    }
 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
