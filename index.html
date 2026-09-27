@@ -2145,7 +2145,7 @@ window.selkoSharedAuthStorage = {
         </div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th></tr></thead>
+            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th><th>IP / Device</th></tr></thead>
             <tbody id="bugLogTbody"></tbody>
           </table>
         </div>
@@ -2864,6 +2864,12 @@ async function logError(errorType, message, context) {
       error_message: String(message).slice(0, 2000),
       context:       context ? String(context).slice(0, 2000) : null,
       url:           window.location.href,
+      // ip_address is populated server-side by a trigger reading the
+      // real request headers, not sent from here — a client-reported
+      // IP could be wrong or spoofed. user_agent is fine to send
+      // directly since it's low-stakes (worst case, someone lies about
+      // their own browser, which isn't meaningfully exploitable).
+      user_agent:    navigator.userAgent,
     });
   } catch (_) {
     // Never let logging itself break the app
@@ -16772,12 +16778,12 @@ async function loadBugLog() {
   const { data, error } = await q;
   const tbody = document.getElementById('bugLogTbody');
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#ff6b6b;padding:20px;">${error.message}</td></tr>`;
     _lastBugLogData = [];
     return;
   }
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No errors logged.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.3);padding:20px;">No errors logged.</td></tr>';
     _lastBugLogData = [];
     return;
   }
@@ -16792,6 +16798,26 @@ async function loadBugLog() {
 
   _lastBugLogData = data.map(r => ({ ...r, companyName: companyNames[r.company_id] || null }));
 
+  // Lightweight browser/OS extraction from the raw user_agent string —
+  // just enough for a glance ("Chrome on Windows"), not a precise
+  // parse. Good enough to answer "is this the same device as usual"
+  // without cluttering the table with a full verbose UA string.
+  function parseUserAgent(ua) {
+    if (!ua) return '—';
+    let browser = 'Unknown browser';
+    if (/edg\//i.test(ua)) browser = 'Edge';
+    else if (/chrome\//i.test(ua)) browser = 'Chrome';
+    else if (/firefox\//i.test(ua)) browser = 'Firefox';
+    else if (/safari\//i.test(ua)) browser = 'Safari';
+    let os = 'Unknown OS';
+    if (/windows/i.test(ua)) os = 'Windows';
+    else if (/iphone|ipad/i.test(ua)) os = 'iOS';
+    else if (/mac os/i.test(ua)) os = 'Mac';
+    else if (/android/i.test(ua)) os = 'Android';
+    else if (/linux/i.test(ua)) os = 'Linux';
+    return `${browser} / ${os}`;
+  }
+
   tbody.innerHTML = data.map(r => `<tr>
     <td style="white-space:nowrap;font-size:11px;color:rgba(255,255,255,.5);">${new Date(r.created_at).toLocaleString()}</td>
     <td><span class="badge badge-ok">${r.source_app || '—'}</span></td>
@@ -16800,6 +16826,7 @@ async function loadBugLog() {
     <td style="font-size:11px;">${r.user_email || '—'}</td>
     <td style="font-size:11px;">${companyNames[r.company_id] || '—'}</td>
     <td style="max-width:200px;white-space:normal;font-size:11px;color:rgba(255,255,255,.4);">${r.context || '—'}</td>
+    <td style="font-size:11px;color:rgba(255,255,255,.4);white-space:nowrap;" title="${(r.user_agent || '').replace(/"/g,'&quot;')}">${r.ip_address || '—'}<br/>${parseUserAgent(r.user_agent)}</td>
   </tr>`).join('');
 }
 
@@ -16892,6 +16919,8 @@ async function copyBugLogForClaude() {
     if (r.companyName)  lines.push(`- **Company:** ${r.companyName}`);
     lines.push(`- **Message:** ${r.error_message || '—'}`);
     if (r.context)       lines.push(`- **Context:** ${r.context}`);
+    if (r.ip_address)    lines.push(`- **IP:** ${r.ip_address}`);
+    if (r.user_agent)    lines.push(`- **User agent:** ${r.user_agent}`);
     lines.push('');
   });
 
