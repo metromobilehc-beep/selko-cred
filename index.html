@@ -15140,7 +15140,7 @@ async function renderTemplatePreviewPages(pdfBytes, fieldPositions) {
     return;
   }
 
-  const renderWidth = 380; // fits the 420px panel with room for its own scrollbar
+  const renderWidth = 440; // fits the 480px panel with room for its own scrollbar
   let renderedCount = 0;
   let failedCount = 0;
 
@@ -15172,7 +15172,17 @@ async function renderTemplatePreviewPages(pdfBytes, fieldPositions) {
 
         const pageWrap = document.createElement('div');
         pageWrap.id = `templatePreviewPage_${pageIndex}`;
-        pageWrap.style.cssText = 'position:relative;margin:10px;border:1px solid rgba(255,255,255,.15);';
+        // FIXED — this div previously had no explicit width, so as a
+        // plain block-level element it expanded to fill the FULL
+        // container width, while the canvas inside it stayed at its
+        // own smaller render size. The overlay boxes below are
+        // positioned as percentages relative to THIS div, not the
+        // canvas directly — so they were being sized against a wider,
+        // invisible box than the actual page image, making them
+        // visibly too large and misaligned. display:inline-block with
+        // an explicit width matching the canvas makes this div
+        // shrink-wrap to the canvas's real size instead.
+        pageWrap.style.cssText = `position:relative;display:inline-block;width:${viewport.width}px;margin:10px;border:1px solid rgba(255,255,255,.15);`;
         pageWrap.appendChild(canvas);
 
         (byPage[pageIndex] || []).forEach(box => {
