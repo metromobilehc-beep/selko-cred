@@ -17258,7 +17258,7 @@ async function permanentlyDeleteDoc(id, filePath) {
 
 async function loadSidebarMemo() {
   const input = document.getElementById('sidebarMemoInput');
-  if (!input) return;
+  if (!input || !currentCompany) return;
 
   const { data } = await sb.from('company_memo').select('memo_text').eq('company_id', currentCompany.id).maybeSingle();
   input.value = data?.memo_text || '';
