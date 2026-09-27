@@ -741,10 +741,14 @@ window.selkoSharedAuthStorage = {
           <span id="addStaffCvStatus" style="font-size:12px;color:rgba(255,255,255,.4);align-self:center;"></span>
         </div>
         <div class="inline-form" id="addStaffForm">
-          <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr auto;">
+          <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr auto;">
             <div>
-              <label class="inline-label">Full name</label>
-              <input class="inline-input" type="text" id="nsName" placeholder="Jane Smith, PT" />
+              <label class="inline-label">First name</label>
+              <input class="inline-input" type="text" id="nsFirstName" placeholder="Jane" />
+            </div>
+            <div>
+              <label class="inline-label">Last name</label>
+              <input class="inline-input" type="text" id="nsLastName" placeholder="Smith" />
             </div>
             <div>
               <label class="inline-label">Email (optional)</label>
@@ -1870,8 +1874,12 @@ window.selkoSharedAuthStorage = {
               </select>
             </div>
             <div>
-              <label class="inline-label">Admin name</label>
-              <input class="inline-input" type="text" id="coAdminName" placeholder="Jane Smith" />
+              <label class="inline-label">Admin first name</label>
+              <input class="inline-input" type="text" id="coAdminFirstName" placeholder="Jane" />
+            </div>
+            <div>
+              <label class="inline-label">Admin last name</label>
+              <input class="inline-input" type="text" id="coAdminLastName" placeholder="Smith" />
             </div>
             <div>
               <label class="inline-label">Admin email</label>
@@ -6786,7 +6794,16 @@ async function handleAddStaffCvFile(input) {
     if (result.error) throw new Error(result.error);
 
     const pi = result.extracted.practitioner_info;
-    if (pi?.name) document.getElementById('nsName').value = pi.name;
+    if (pi?.name) {
+      // Same principle as everywhere else the AI extraction path feeds
+      // a name in — split it into a starting guess, let the admin
+      // verify/correct in the actual form fields rather than silently
+      // trusting a combined string.
+      const namePart = pi.name.includes(',') ? pi.name.split(',')[0].trim() : pi.name.trim();
+      const words = namePart.split(/\s+/).filter(Boolean);
+      document.getElementById('nsFirstName').value = words[0] || '';
+      document.getElementById('nsLastName').value = words.length > 1 ? words.slice(1).join(' ') : '';
+    }
     if (pi?.discipline) {
       // Only set it if it's actually one of this company's configured
       // disciplines — an extracted value that doesn't match a real
@@ -6859,18 +6876,30 @@ function showPayrollImportReviewModal(staffRows) {
       <div style="overflow-y:auto;flex:1;">
         <table style="width:100%;border-collapse:collapse;">
           <thead><tr style="text-align:left;font-size:11px;color:rgba(255,255,255,.5);">
-            <th style="padding:6px;"></th><th style="padding:6px;">Name</th><th style="padding:6px;">Email</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Title</th>
+            <th style="padding:6px;"></th><th style="padding:6px;">First name</th><th style="padding:6px;">Last name</th><th style="padding:6px;">Email</th><th style="padding:6px;">Phone</th><th style="padding:6px;">Title</th>
           </tr></thead>
           <tbody>
-            ${staffRows.map((r, i) => `
+            ${staffRows.map((r, i) => {
+              // AI-extracted screenshots only ever produce one combined
+              // name string — there's no separate first/last to
+              // preserve from the source. Splitting it here is a
+              // starting guess the admin can correct, same principle as
+              // everywhere else: never silently trust a parsed guess,
+              // let a human verify it before it's saved.
+              const namePart = (r.full_name || '').includes(',') ? r.full_name.split(',')[0].trim() : (r.full_name || '').trim();
+              const words = namePart.split(/\s+/).filter(Boolean);
+              const guessedFirst = words[0] || '';
+              const guessedLast = words.length > 1 ? words.slice(1).join(' ') : '';
+              return `
               <tr>
                 <td style="padding:6px;"><input type="checkbox" class="payrollImportCheck" data-idx="${i}" checked /></td>
-                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="full_name" data-idx="${i}" value="${(r.full_name || '').replace(/"/g,'&quot;')}" /></td>
+                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="first_name" data-idx="${i}" value="${guessedFirst.replace(/"/g,'&quot;')}" /></td>
+                <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="last_name" data-idx="${i}" value="${guessedLast.replace(/"/g,'&quot;')}" /></td>
                 <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="email" data-idx="${i}" value="${(r.email || '').replace(/"/g,'&quot;')}" /></td>
                 <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="phone" data-idx="${i}" value="${(r.phone || '').replace(/"/g,'&quot;')}" /></td>
                 <td style="padding:6px;"><input class="inline-input" style="font-size:12px;" data-field="job_title" data-idx="${i}" value="${(r.job_title || '').replace(/"/g,'&quot;')}" /></td>
               </tr>
-            `).join('')}
+            `;}).join('')}
           </tbody>
         </table>
       </div>
@@ -6897,15 +6926,17 @@ async function confirmPayrollImport() {
     document.querySelectorAll(`[data-idx="${idx}"][data-field]`).forEach(inp => {
       row[inp.getAttribute('data-field')] = inp.value.trim() || null;
     });
-    if (row.full_name) toImport.push(row);
+    if (row.first_name && row.last_name) toImport.push(row);
   });
 
-  if (!toImport.length) { errEl.textContent = 'No rows checked (or all missing a name) — nothing to import.'; errEl.style.display = 'block'; return; }
+  if (!toImport.length) { errEl.textContent = 'No rows checked (or all missing a first/last name) — nothing to import.'; errEl.style.display = 'block'; return; }
 
   const { error } = await sb.from('credtrack_staff').insert(
     toImport.map(r => ({
       company_id: currentCompany.id,
-      full_name: r.full_name,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      full_name: `${r.first_name} ${r.last_name}`,
       email: r.email,
       phone: r.phone,
       job_title: r.job_title,
@@ -7970,7 +8001,7 @@ function showAddStaff() {
 }
 function hideAddStaff() {
   document.getElementById('addStaffForm').style.display = 'none';
-  ['nsName','nsEmail','nsTitle'].forEach(id => document.getElementById(id).value = '');
+  ['nsFirstName','nsLastName','nsEmail','nsTitle'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('nsErr').style.display = 'none';
   window._pendingAddStaffCvData = null; // covers Cancel, and is a safety net for the save path too
 }
@@ -8019,14 +8050,16 @@ async function checkStaffLimitBlock(companyId, additionalCount = 1) {
 }
 
 async function saveNewStaff() {
-  const name  = document.getElementById('nsName').value.trim();
+  const firstName = document.getElementById('nsFirstName').value.trim();
+  const lastName  = document.getElementById('nsLastName').value.trim();
   const email = document.getElementById('nsEmail').value.trim();
   const title = document.getElementById('nsTitle').value.trim();
   const disc  = document.getElementById('nsDiscipline').value;
   const type  = document.getElementById('nsType').value;
   const err   = document.getElementById('nsErr');
   err.style.display = 'none';
-  if (!name)  { err.textContent = 'Name is required.';  err.style.display = 'block'; return; }
+  if (!firstName || !lastName) { err.textContent = 'First and last name are both required.'; err.style.display = 'block'; return; }
+  const name = `${firstName} ${lastName}`;
 
   const limitMsg = await checkStaffLimitBlock(currentCompany.id);
   if (limitMsg) { err.textContent = limitMsg; err.style.display = 'block'; return; }
@@ -8034,6 +8067,8 @@ async function saveNewStaff() {
   try {
     const { data: created, error } = await sb.from('credtrack_staff').insert({
       company_id: currentCompany.id,
+      first_name: firstName,
+      last_name:  lastName,
       full_name:  name,
       email:      email || null,
       job_title:  title || null,
@@ -18299,6 +18334,18 @@ async function softDeleteCompany(id, name) {
     toast(`${name} deleted — permanently purged in 30 days unless restored`);
     document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
+
+    // Fire-and-forget — the deletion itself already succeeded above;
+    // a failure here shouldn't block or roll that back, just means the
+    // notification specifically didn't go out this time.
+    sb.functions.invoke('notify-company-deletion', {
+      body: {
+        companyName: name,
+        deletedByName: currentProfile.full_name || currentProfile.email,
+        deletedByEmail: currentProfile.email,
+        purgeDate: purgeDate.toLocaleDateString(),
+      },
+    }).catch(e => console.error('Deletion notification failed to send:', e));
   } catch(e) {
     toast('Delete failed: ' + e.message, true);
   }
@@ -18596,7 +18643,8 @@ function hideAddCompany() {
 // one code path for actually sending/re-sending an admin login, so both
 // places behave identically and a future fix only needs to happen once.
 // Throws on failure; callers decide how to surface that.
-async function sendAdminInvite(companyId, adminName, email) {
+async function sendAdminInvite(companyId, firstName, lastName, email) {
+  const adminName = `${firstName} ${lastName}`;
   const tempPassword = generateTempPassword();
   const { data: { session } } = await sb.auth.getSession();
   const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/set-user-password', {
@@ -18624,7 +18672,7 @@ async function sendAdminInvite(companyId, adminName, email) {
     .select('id').eq('company_id', companyId).eq('email', email).maybeSingle();
   if (!existingStaff) {
     await sb.from('credtrack_staff').insert({
-      company_id: companyId, full_name: adminName, email,
+      company_id: companyId, first_name: firstName, last_name: lastName, full_name: adminName, email,
       staff_type: 'admin', active: true,
       profile_id: result.user_id || null,
     });
@@ -18645,11 +18693,22 @@ async function showResendInvitePrompt(companyId, companyName, prefilledEmail) {
   const existing = document.getElementById('resendInviteModal');
   if (existing) existing.remove();
 
-  let prefilledName = '';
+  let prefilledFirstName = '', prefilledLastName = '';
   if (prefilledEmail) {
     const { data: staffRec } = await sb.from('credtrack_staff')
-      .select('full_name').eq('company_id', companyId).eq('email', prefilledEmail).maybeSingle();
-    prefilledName = staffRec?.full_name || '';
+      .select('first_name, last_name, full_name').eq('company_id', companyId).eq('email', prefilledEmail).maybeSingle();
+    if (staffRec?.first_name && staffRec?.last_name) {
+      prefilledFirstName = staffRec.first_name;
+      prefilledLastName = staffRec.last_name;
+    } else if (staffRec?.full_name) {
+      // Older record predating the name-split backfill, or one created
+      // through a path that hadn't been fixed yet — fall back to
+      // splitting full_name, same proven logic used everywhere else.
+      const namePart = staffRec.full_name.includes(',') ? staffRec.full_name.split(',')[0].trim() : staffRec.full_name.trim();
+      const words = namePart.split(/\s+/).filter(Boolean);
+      prefilledFirstName = words[0] || '';
+      prefilledLastName = words.length > 1 ? words.slice(1).join(' ') : '';
+    }
   }
 
   const modal = document.createElement('div');
@@ -18659,8 +18718,10 @@ async function showResendInvitePrompt(companyId, companyName, prefilledEmail) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:4px;">Resend invite — ${companyName}</div>
       <p style="font-size:12px;color:rgba(255,255,255,.4);margin-bottom:14px;">Sends a fresh login. If they already have one, this just confirms access — their existing password is left alone.</p>
-      <label class="inline-label">Admin name</label>
-      <input class="inline-input" type="text" id="resendInviteName" value="${prefilledName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;" />
+      <label class="inline-label">Admin first name</label>
+      <input class="inline-input" type="text" id="resendInviteFirstName" value="${prefilledFirstName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;" />
+      <label class="inline-label">Admin last name</label>
+      <input class="inline-input" type="text" id="resendInviteLastName" value="${prefilledLastName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;" />
       <label class="inline-label">Admin email</label>
       <input class="inline-input" type="email" id="resendInviteEmail" value="${(prefilledEmail||'').replace(/"/g,'&quot;')}" style="margin-bottom:10px;" />
       <div id="resendInviteErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
@@ -18674,16 +18735,17 @@ async function showResendInvitePrompt(companyId, companyName, prefilledEmail) {
 }
 
 async function submitResendInvite(companyId) {
-  const name  = document.getElementById('resendInviteName').value.trim();
+  const firstName = document.getElementById('resendInviteFirstName').value.trim();
+  const lastName  = document.getElementById('resendInviteLastName').value.trim();
   const email = document.getElementById('resendInviteEmail').value.trim();
   const errEl = document.getElementById('resendInviteErr');
   errEl.style.display = 'none';
 
-  if (!name)  { errEl.textContent = 'Admin name is required.';  errEl.style.display = 'block'; return; }
+  if (!firstName || !lastName) { errEl.textContent = 'Admin first and last name are both required.'; errEl.style.display = 'block'; return; }
   if (!email) { errEl.textContent = 'Admin email is required.'; errEl.style.display = 'block'; return; }
 
   try {
-    await sendAdminInvite(companyId, name, email);
+    await sendAdminInvite(companyId, firstName, lastName, email);
     document.getElementById('resendInviteModal')?.remove();
   } catch (e) {
     errEl.textContent = e.message;
@@ -18695,7 +18757,8 @@ async function saveNewCompany() {
   const name      = document.getElementById('coName').value.trim();
   const slug      = document.getElementById('coSlug').value.trim().toLowerCase().replace(/[^a-z0-9-]/g,'');
   const plan      = document.getElementById('coPlan').value;
-  const adminName = document.getElementById('coAdminName').value.trim();
+  const adminFirstName = document.getElementById('coAdminFirstName').value.trim();
+  const adminLastName  = document.getElementById('coAdminLastName').value.trim();
   const email     = document.getElementById('coEmail').value.trim();
   const err       = document.getElementById('coErr');
   err.style.display = 'none';
@@ -18704,8 +18767,9 @@ async function saveNewCompany() {
   // Admin name and email are optional together, but not one without the
   // other — a lone email with no name isn't enough to invite anyone, and
   // silently ignoring it would look like the invite happened when it didn't.
-  if (email && !adminName) { err.textContent = 'Enter an admin name too, or leave both blank to invite later.'; err.style.display = 'block'; return; }
-  if (adminName && !email) { err.textContent = 'Enter an admin email too, or leave both blank to invite later.'; err.style.display = 'block'; return; }
+  const hasAdminName = adminFirstName && adminLastName;
+  if (email && !hasAdminName) { err.textContent = 'Enter an admin first and last name too, or leave all three blank to invite later.'; err.style.display = 'block'; return; }
+  if (hasAdminName && !email) { err.textContent = 'Enter an admin email too, or leave both blank to invite later.'; err.style.display = 'block'; return; }
 
   const { data: newCompany, error } = await sb.from('companies').insert({
     name, slug, plan,
@@ -18721,7 +18785,8 @@ async function saveNewCompany() {
   toast(name + ' added');
   document.getElementById('coName').value = '';
   document.getElementById('coSlug').value = '';
-  document.getElementById('coAdminName').value = '';
+  document.getElementById('coAdminFirstName').value = '';
+  document.getElementById('coAdminLastName').value = '';
   document.getElementById('coEmail').value = '';
 
   // This is the piece that was missing — company creation used to stop
@@ -18730,9 +18795,9 @@ async function saveNewCompany() {
   // company) left the company created but with no actual admin login for
   // it — which is what actually caused staff to be un-addable, not a bug
   // in the staff-add flow itself.
-  if (adminName && email && newCompany) {
+  if (hasAdminName && email && newCompany) {
     try {
-      await sendAdminInvite(newCompany.id, adminName, email);
+      await sendAdminInvite(newCompany.id, adminFirstName, adminLastName, email);
     } catch (e) {
       // The company itself was created successfully even if this part
       // fails — don't lose that, just surface that the invite specifically
