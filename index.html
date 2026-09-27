@@ -1472,6 +1472,10 @@ window.selkoSharedAuthStorage = {
             </div>
           </div>
           <div id="billingBundleHint" style="display:none;font-size:12px;color:var(--teal-l);margin-bottom:12px;">✓ 20% bundle discount applies automatically at checkout for choosing all three.</div>
+          <div style="margin-bottom:14px;">
+            <label class="inline-label">Promo code (optional)</label>
+            <input class="inline-input" type="text" id="billingPromoCode" placeholder="Enter a promo code" style="max-width:220px;" />
+          </div>
           <button class="btn btn-sm btn-gold" onclick="startCheckout()">Continue to checkout</button>
         </div>
 
@@ -10780,6 +10784,7 @@ async function startCheckout() {
   const docTier = document.getElementById('billingDocTier').value;
   const credTier = document.getElementById('billingCredTier').value;
   const hrTier = document.getElementById('billingHrTier').value;
+  const promoCode = document.getElementById('billingPromoCode').value.trim();
   if (!docTier && !credTier && !hrTier) { errEl.textContent = 'Select at least one plan component.'; errEl.style.display = 'block'; return; }
 
   try {
@@ -10787,7 +10792,7 @@ async function startCheckout() {
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/create-checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ company_id: currentCompany.id, doc_tier: docTier || null, cred_tier: credTier || null, hr_tier: hrTier || null }),
+      body: JSON.stringify({ company_id: currentCompany.id, doc_tier: docTier || null, cred_tier: credTier || null, hr_tier: hrTier || null, promo_code: promoCode || null }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
