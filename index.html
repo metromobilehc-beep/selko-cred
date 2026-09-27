@@ -13697,6 +13697,7 @@ async function editHrTemplate(id, name) {
       if (formTypeSel && tmpl.form_type) formTypeSel.value = tmpl.form_type;
       const standaloneCheck = document.getElementById('templateStandaloneDisclosure');
       if (standaloneCheck) standaloneCheck.checked = !!tmpl.is_standalone_disclosure;
+      updateMappingProgress(); // reflect the actual saved mapping just applied above, not the fresh guesses it overrode
     }
   } catch (e) {
     toast('Could not open this template for editing: ' + e.message, true);
@@ -15000,10 +15001,11 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
     // briefly highlights its box, the reverse of clicking a box.
     const hasPosition = hasPreview && fieldPositions[fn];
     return `
-    <div class="template-mapping-row" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+    <div class="template-mapping-row" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
+      <span class="template-mapping-status-dot" title="Unmapped" style="width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.2);flex-shrink:0;"></span>
       ${hasPosition ? `<button type="button" class="btn-locate-field" onclick="locateFieldOnPreview('${fn.replace(/'/g,"\\'")}')" title="Show where this field is on the page" style="background:none;border:1px solid rgba(255,255,255,.2);border-radius:6px;color:var(--teal-l);font-size:12px;padding:2px 7px;cursor:pointer;flex-shrink:0;">📍</button>` : '<span style="width:26px;flex-shrink:0;"></span>'}
-      <span style="flex:1;min-width:140px;color:#fff;font-size:13px;">${fn}${fi.isCheckbox ? ' <span style="color:rgba(255,255,255,.35);font-size:11px;">(checkbox)</span>' : ''}</span>
-      <select class="inline-select template-mapping-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:260px;">
+      <span style="flex:1;min-width:180px;color:#fff;font-size:14px;">${fn}${fi.isCheckbox ? ' <span style="color:rgba(255,255,255,.35);font-size:11px;">(checkbox)</span>' : ''}</span>
+      <select class="inline-select template-mapping-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:320px;">
         <option value="">— Leave blank / fill manually —</option>
         ${fixedOptionsHtml}
         ${optionsHtml}
@@ -15014,11 +15016,12 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
 
   const modal = document.createElement('div');
   modal.id = 'templateMappingModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:${hasPreview ? '1100px' : '620px'};max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:${hasPreview ? '96vw' : '760px'};max-height:94vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
-      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:16px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.${hasPreview ? ' Click 📍 next to a field to see exactly where it sits on the page.' : ''} Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
+      <div style="color:rgba(255,255,255,.5);font-size:13px;margin-bottom:4px;">${fieldInfos.length} fillable fields found. Map each to where its value should come from — we've guessed some based on the field's name, double-check before saving.${hasPreview ? ' Click 📍 next to a field to see exactly where it sits on the page.' : ''} Checkbox fields can also be set to always-checked/unchecked; text fields can be given a fixed value that's the same on every generated copy.</div>
+      <div id="templateMappingProgress" style="font-size:12px;color:var(--teal-l);font-weight:600;margin-bottom:16px;"></div>
       <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:rgba(255,255,255,.6);margin-bottom:14px;cursor:pointer;">
         <input type="checkbox" id="templateRequiresSsnEntry" />
         This form asks for a Social Security Number — show a "View SSN to fill in manually" shortcut when generating (SSN is never auto-filled, regardless of this setting)
@@ -15026,7 +15029,7 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
       ${extraCheckboxHtml}
       <div style="display:flex;gap:20px;flex:1;min-height:0;overflow:hidden;">
         ${hasPreview ? `
-        <div id="templatePreviewPanel" style="width:420px;flex-shrink:0;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(0,0,0,.2);">
+        <div id="templatePreviewPanel" style="width:480px;flex-shrink:0;overflow-y:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:rgba(0,0,0,.2);">
           <div id="templatePreviewLoading" style="padding:40px;text-align:center;color:rgba(255,255,255,.4);font-size:13px;">Rendering pages…</div>
           <div id="templatePreviewPages" style="display:none;"></div>
         </div>` : ''}
@@ -15041,6 +15044,10 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
       </div>
     </div>`;
   document.body.appendChild(modal);
+
+  modal.querySelectorAll('select.template-mapping-select').forEach(sel => {
+    sel.addEventListener('change', updateMappingProgress);
+  });
 
   // Show/hide the companion "fixed text" input as its select changes.
   modal.querySelectorAll('select.template-mapping-select').forEach(sel => {
@@ -15062,8 +15069,38 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
     const guess = guessFn(sel.dataset.fieldName);
     if (guess) sel.value = guess;
   });
+  updateMappingProgress(); // reflect the guesses just applied — setting .value directly doesn't fire 'change' on its own
 
   if (hasPreview) renderTemplatePreviewPages(pdfBytes, fieldPositions);
+}
+
+// Live mapped/unmapped status for the template mapping modal — a dot per
+// row plus a running count at the top, so with a form the size of the
+// I-9 (20+ fields) it's actually possible to see progress at a glance
+// rather than reading every dropdown's current value individually. A
+// standalone global function (not nested inside showTemplateFieldMappingModal)
+// specifically so editHrTemplate's mapping-override logic can call it
+// too after pre-filling from an existing template's saved values —
+// setting .value directly, there or in the guess step above, never
+// fires a native 'change' event on its own, so nothing updates the
+// dots or count unless this is called explicitly afterward.
+function updateMappingProgress() {
+  const modal = document.getElementById('templateMappingModal');
+  if (!modal) return;
+  const allSelects = modal.querySelectorAll('select.template-mapping-select');
+  let mappedCount = 0;
+  allSelects.forEach(sel => {
+    const row = sel.closest('.template-mapping-row');
+    const dot = row?.querySelector('.template-mapping-status-dot');
+    const isMapped = !!sel.value;
+    if (isMapped) mappedCount++;
+    if (dot) {
+      dot.style.background = isMapped ? 'var(--teal)' : 'rgba(255,255,255,.2)';
+      dot.title = isMapped ? 'Mapped' : 'Unmapped';
+    }
+  });
+  const progressEl = document.getElementById('templateMappingProgress');
+  if (progressEl) progressEl.textContent = `${mappedCount} of ${allSelects.length} fields mapped`;
 }
 
 // Renders every page of the uploaded PDF into the left-hand preview
