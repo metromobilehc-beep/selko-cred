@@ -210,6 +210,20 @@ window.selkoSharedAuthStorage = {
           <input type="text" id="hrOnbAddress" placeholder="Start typing an address..." autocomplete="off" oninput="handleAddressSearch(this, 'hrOnb')" onblur="setTimeout(() => hideAddressSuggestions('hrOnb'), 200)" />
           <div id="hrOnbAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid var(--gray-200);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;box-shadow:0 4px 12px rgba(0,0,0,.1);"></div>
         </div>
+        <div class="form-grid-3" style="margin-bottom:10px;">
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">City</label>
+            <input type="text" id="hrOnbCity" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">State</label>
+            <input type="text" id="hrOnbState" maxlength="2" />
+          </div>
+          <div class="form-group" style="margin:0;">
+            <label class="field-label">ZIP code</label>
+            <input type="text" id="hrOnbZip" />
+          </div>
+        </div>
         <div class="form-grid-2" style="margin-bottom:10px;">
           <div class="form-group" style="margin:0;">
             <label class="field-label">Date of birth</label>
@@ -3409,6 +3423,9 @@ async function submitHrOnboarding() {
     full_name: fullName,
     other_last_names_used: document.getElementById('hrOnbOtherNames').value.trim() || null,
     address: document.getElementById('hrOnbAddress').value.trim() || null,
+    city: document.getElementById('hrOnbCity').value.trim() || null,
+    state: document.getElementById('hrOnbState').value.trim() || null,
+    zip: document.getElementById('hrOnbZip').value.trim() || null,
     date_of_birth: document.getElementById('hrOnbDob').value || null,
     phone: document.getElementById('hrOnbPhone').value.trim() || null,
     citizenship_status: citizenship,
@@ -3542,6 +3559,9 @@ async function initStaff() {
       document.getElementById('hrOnbLastName').value = hrRec.last_name || '';
       document.getElementById('hrOnbOtherNames').value = hrRec.other_last_names_used || '';
       document.getElementById('hrOnbAddress').value = hrRec.address || '';
+      document.getElementById('hrOnbCity').value = hrRec.city || '';
+      document.getElementById('hrOnbState').value = hrRec.state || '';
+      document.getElementById('hrOnbZip').value = hrRec.zip || '';
       document.getElementById('hrOnbDob').value = hrRec.date_of_birth || '';
       document.getElementById('hrOnbPhone').value = hrRec.phone || '';
       document.getElementById('hrOnbCitizenship').value = hrRec.citizenship_status || '';
@@ -12943,7 +12963,10 @@ const HR_DATA_SOURCES = [
     ['employee.first_name', 'First name (parsed from full name)'],
     ['employee.last_name', 'Last name (parsed from full name)'],
     ['employee.date_of_birth', 'Date of birth'],
-    ['employee.address', 'Address'],
+    ['employee.address', 'Street address'],
+    ['employee.city', 'City'],
+    ['employee.state', 'State'],
+    ['employee.zip', 'ZIP code'],
     ['employee.phone', 'Phone'],
     ['employee.email', 'Email'],
     ['employee.hire_date', 'Hire date'],
@@ -13008,16 +13031,16 @@ function guessHrDefaultMapping(fieldName) {
     [/e.?mail/, 'employee.email'],
     [/hire.*date|date.*of.*hire|start.*date/, 'employee.hire_date'],
     [/position|job.*title|^title$/, 'employee.position'],
-    // FIXED — city/state/zip/apt are sub-components of an address that
-    // this app has no separate data source for at all (employee.address
-    // is one combined field, not split into parts). Guessing
-    // employee.address for these would silently produce the exact bug
-    // just found on a real filled I-9 — the full street address landing
-    // in the "City or Town" box. No correct automatic guess exists for
-    // these, so this explicitly returns nothing rather than a wrong one,
-    // forcing a deliberate choice (leave blank, or use fixed text) instead
-    // of a silent, confident-looking wrong guess.
-    [/city|town|\bstate\b|zip|postal|apt\.?\s*number|apartment/, ''],
+    // FIXED — city/state/zip now have real, separate data sources
+    // (added alongside the address split), so these can be correctly
+    // guessed instead of deliberately left blank. Apartment/unit number
+    // still has no data source at all — no separate field exists for
+    // it — so that one alone still returns nothing rather than a wrong
+    // guess.
+    [/city|town/, 'employee.city'],
+    [/\bstate\b/, 'employee.state'],
+    [/zip|postal/, 'employee.zip'],
+    [/apt\.?\s*number|apartment/, ''],
     // FIXED — employer/business-qualified address and name fields must
     // be checked BEFORE the generic employee address|street pattern
     // below, for the same reason email/phone needed to be checked
@@ -14045,6 +14068,20 @@ function showAddHrEmployeeModal(employeeId) {
         <input class="inline-input" type="text" id="hrEmpAddress" value="${(e?.address || '').replace(/"/g,'&quot;')}" autocomplete="off" oninput="handleAddressSearch(this, 'hrEmp')" onblur="setTimeout(() => hideAddressSuggestions('hrEmp'), 200)" style="width:100%;box-sizing:border-box;" />
         <div id="hrEmpAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
       </div>
+      <div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:8px;margin-bottom:10px;">
+        <div>
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">City</label>
+          <input class="inline-input" type="text" id="hrEmpCity" value="${(e?.city || '').replace(/"/g,'&quot;')}" style="width:100%;box-sizing:border-box;" />
+        </div>
+        <div>
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">State</label>
+          <input class="inline-input" type="text" id="hrEmpState" value="${(e?.state || '').replace(/"/g,'&quot;')}" maxlength="2" style="width:100%;box-sizing:border-box;" />
+        </div>
+        <div>
+          <label style="font-size:11px;color:rgba(255,255,255,.5);">ZIP</label>
+          <input class="inline-input" type="text" id="hrEmpZip" value="${(e?.zip || '').replace(/"/g,'&quot;')}" style="width:100%;box-sizing:border-box;" />
+        </div>
+      </div>
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Phone</label>
       <input class="inline-input" type="text" id="hrEmpPhone" value="${(e?.phone || '').replace(/"/g,'&quot;')}" style="width:100%;margin-bottom:10px;box-sizing:border-box;" />
       <label style="font-size:11px;color:rgba(255,255,255,.5);">Email</label>
@@ -14076,6 +14113,9 @@ async function saveHrEmployee(employeeId) {
     date_of_birth: document.getElementById('hrEmpDob').value || null,
     hire_date: document.getElementById('hrEmpHireDate').value || null,
     address: document.getElementById('hrEmpAddress').value.trim() || null,
+    city: document.getElementById('hrEmpCity').value.trim() || null,
+    state: document.getElementById('hrEmpState').value.trim() || null,
+    zip: document.getElementById('hrEmpZip').value.trim() || null,
     phone: document.getElementById('hrEmpPhone').value.trim() || null,
     email: document.getElementById('hrEmpEmail').value.trim() || null,
   };
