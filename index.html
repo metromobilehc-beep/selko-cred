@@ -11381,8 +11381,14 @@ async function loadSensitiveAccessLog() {
 
   const showAcknowledged = document.getElementById('showAcknowledgedLog')?.checked;
 
+  // Scoped to the company being VIEWED, explicitly. This used to rely on the database's
+  // access rule alone — fine for an ordinary admin, but a super admin's rule allows every
+  // company's rows, so working inside one company (View as Admin) listed every OTHER
+  // company's sensitive-access entries too: their staff names and the justification text,
+  // in front of whoever was looking at that screen. The log is per-company by nature.
   let q = sb.from('sensitive_field_access_log')
     .select('*, credtrack_staff(full_name), hr_employees(full_name)')
+    .eq('company_id', currentCompany.id)
     .order('accessed_at', { ascending: false })
     .limit(100);
   if (!showAcknowledged) q = q.is('acknowledged_at', null);
@@ -11414,7 +11420,7 @@ async function acknowledgeAccessLogEntry(id) {
   const { error } = await sb.from('sensitive_field_access_log').update({
     acknowledged_at: new Date().toISOString(),
     acknowledged_by: currentProfile.full_name || currentProfile.email,
-  }).eq('id', id);
+  }).eq('id', id).eq('company_id', currentCompany.id); // same scoping: an entry from another company can't be marked reviewed from here
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('✓ Marked reviewed');
   await loadSensitiveAccessLog();
