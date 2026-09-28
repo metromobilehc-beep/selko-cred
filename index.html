@@ -7896,8 +7896,15 @@ async function saveCvImportSelections(staffId) {
   const extracted = window._cvImportData;
   if (!extracted) return;
 
+  // Company-level details (practice location, fax) can be refused for an account that may edit
+  // people but not the company itself. That must not throw away the PERSON's education, licenses
+  // and the rest of what was just reviewed — but it also must not vanish silently. So those steps
+  // are attempted on their own, and anything the database wouldn't take is reported at the end.
+  const notSaved = [];
+
   try {
     if (document.getElementById('cvCompanyCheck')?.checked && extracted.company_info) {
+     try {
       const ci = extracted.company_info;
       const locations = await getOrderedCompanyLocations(currentCompany.id);
       const primary = locations.find(l => l.is_primary) || locations[0];
@@ -7912,8 +7919,9 @@ async function saveCvImportSelections(staffId) {
         if (ci.phone && !primary.phone) locUpdates.phone = ci.phone;
         if (ci.facility_name && !primary.location_name) locUpdates.location_name = ci.facility_name;
         if (Object.keys(locUpdates).length) {
-          const { error } = await sb.from('company_locations').update(locUpdates).eq('id', primary.id);
+          const { data: changed, error } = await sb.from('company_locations').update(locUpdates).eq('id', primary.id).select('id');
           if (error) throw error;
+          if (!changed || !changed.length) throw new Error('no permission to edit company details');
         }
       } else if (ci.address || ci.facility_name) {
         // No location on file at all yet — create one as Primary, same as
@@ -7933,10 +7941,14 @@ async function saveCvImportSelections(staffId) {
       }
 
       if (ci.fax && !currentCompany.fax) {
-        const { error } = await sb.from('companies').update({ fax: ci.fax }).eq('id', currentCompany.id);
+        const { data: changed, error } = await sb.from('companies').update({ fax: ci.fax }).eq('id', currentCompany.id).select('id');
         if (error) throw error;
+        if (!changed || !changed.length) throw new Error('no permission to edit company details');
         currentCompany.fax = ci.fax;
       }
+     } catch (companyErr) {
+      notSaved.push(`the company's practice location / fax (${companyErr.message})`);
+     }
     }
 
     if (document.getElementById('cvPractitionerCheck')?.checked && extracted.practitioner_info) {
@@ -7951,8 +7963,9 @@ async function saveCvImportSelections(staffId) {
       if (pi.caqh_id && !current.caqh_id) updates.caqh_id = pi.caqh_id;
       if (pi.npi_number && !current.npi_number) updates.npi_number = pi.npi_number;
       if (Object.keys(updates).length) {
-        const { error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId);
+        const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
         if (error) throw error;
+        if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so nothing was imported.");
       }
     }
 
@@ -8026,14 +8039,16 @@ async function saveCvImportSelections(staffId) {
       if (extracted.board_certified !== null) updates.board_certified = extracted.board_certified;
       if (extracted.board_name) updates.board_name = extracted.board_name;
       if (Object.keys(updates).length) {
-        const { error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId);
+        const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
         if (error) throw error;
+        if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so the specialty wasn't saved.");
       }
     }
 
     document.getElementById('cvImportReviewModal')?.remove();
     window._cvImportData = null;
-    toast('✓ Imported successfully');
+    if (notSaved.length) toast(`Imported the person's information, but not ${notSaved.join('; ')}.`, true);
+    else toast('✓ Imported successfully');
     await loadStaffTable();
   } catch (e) {
     errEl.textContent = e.message;
@@ -8098,6 +8113,16 @@ async function saveFullProfileSheet(staffId) {
   if (error) {
     errEl.textContent = error.message;
     errEl.style.display = 'block';
+    return;
+  }
+  // When the database's access rules refuse an UPDATE it reports NO error — it just changes
+  // zero rows. Asking for the changed row back (above) is how that gets noticed: no row
+  // means nothing was saved, and saying "✓ Full profile updated" anyway would let someone
+  // walk away believing their work was kept.
+  if (!updated) {
+    errEl.textContent = "Nothing was saved — your account may not have permission to edit this person's record. If you should be able to, ask the account owner to check your access to this company.";
+    errEl.style.display = 'block';
+    toast('Profile not saved — no permission to edit this record.', true);
     return;
   }
 
