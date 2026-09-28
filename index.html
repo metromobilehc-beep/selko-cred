@@ -270,6 +270,59 @@ window.selkoSharedAuthStorage = {
           <input type="file" id="hrOnbDlPhoto" accept="image/*,.pdf" />
         </div>
 
+        <!-- Only shown when this company (or Selko globally) has a form designated
+             as the I-9 — see initHrOnbI9Documents. Documents chosen here are uploaded
+             as part of the same submission and land on the admin's employee sheet,
+             marked "awaiting review", alongside the filled-in I-9 itself. -->
+        <div id="hrOnbI9Docs" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
+          <label class="field-label">Documents for your Form I-9</label>
+          <p style="font-size:12px;color:var(--gray-400);margin:0 0 10px;">You choose which acceptable documents to present — your employer can't require a specific one. Pick one option below. Documents must be unexpired. Your employer will still need to look at your original documents to complete Section 2 of the I-9; uploading them here just gets that review started.</p>
+          <p id="hrOnbI9ResubmitNote" style="display:none;font-size:12px;color:var(--gray-600);margin:0 0 10px;">You've already submitted onboarding once. Only choose an option below if you need to add or replace documents.</p>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:6px;cursor:pointer;">
+            <input type="radio" name="hrOnbI9Option" value="A" onchange="onHrOnbI9OptionChange()" style="margin-top:3px;" />
+            <span>One document from <strong>List A</strong> (proves both identity and work authorization)</span>
+          </label>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:6px;cursor:pointer;">
+            <input type="radio" name="hrOnbI9Option" value="BC" onchange="onHrOnbI9OptionChange()" style="margin-top:3px;" />
+            <span>One document from <strong>List B</strong> (identity) <strong>plus</strong> one from <strong>List C</strong> (work authorization)</span>
+          </label>
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:10px;cursor:pointer;">
+            <input type="radio" name="hrOnbI9Option" value="LATER" onchange="onHrOnbI9OptionChange()" style="margin-top:3px;" />
+            <span>I'll bring my original documents in person instead</span>
+          </label>
+
+          <div id="hrOnbI9SlotA" style="display:none;">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="field-label">List A document</label>
+              <select id="hrOnbI9DocA"><option value="">— Select the document you're providing —</option></select>
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <input type="file" id="hrOnbI9FileA" accept="image/*,.pdf" multiple />
+              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Attach every page or part — front and back of a card, or a passport together with its I-94 if your document requires both. Photos or PDFs, up to 10 MB each.</p>
+            </div>
+          </div>
+          <div id="hrOnbI9SlotB" style="display:none;">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="field-label">List B document (identity)</label>
+              <select id="hrOnbI9DocB"><option value="">— Select the document you're providing —</option></select>
+            </div>
+            <div class="form-group" style="margin-bottom:8px;">
+              <input type="file" id="hrOnbI9FileB" accept="image/*,.pdf" multiple />
+              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Attach every page or part — front and back of a card, for example. Photos or PDFs, up to 10 MB each. Your driver's license photo above is saved separately; if you're using your driver's license here, attach it again.</p>
+            </div>
+          </div>
+          <div id="hrOnbI9SlotC" style="display:none;">
+            <div class="form-group" style="margin-bottom:8px;">
+              <label class="field-label">List C document (work authorization)</label>
+              <select id="hrOnbI9DocC"><option value="">— Select the document you're providing —</option></select>
+            </div>
+            <div class="form-group" style="margin-bottom:0;">
+              <input type="file" id="hrOnbI9FileC" accept="image/*,.pdf" multiple />
+              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Photos or PDFs, up to 10 MB each.</p>
+            </div>
+          </div>
+        </div>
+
         <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
           <label class="field-label">Type your full legal name to sign and attest</label>
           <input type="text" id="hrOnbSignature" placeholder="Typing your name here counts as your signature" style="margin-bottom:6px;" />
@@ -3395,6 +3448,116 @@ async function reopenHrOnboarding(employeeId, employeeName) {
   await loadHrEmployees();
 }
 
+// USCIS Form I-9 "Lists of Acceptable Documents". Checked against the
+// published lists when this was built (Form I-9 edition 01/20/25 is the
+// version currently in use here) — but USCIS does revise these, so
+// compare against page 2 of the uploaded I-9 whenever the form edition
+// changes, and edit this one constant to match. The rule itself: an
+// employee presents ONE List A document, OR one List B document AND one
+// List C document, all unexpired. Order within each list is USCIS's own —
+// nothing here nudges toward any particular document, because employers
+// may not specify which acceptable documents an employee must present.
+// `label` is what's stored on the document's name; `detail` only adds
+// context in the dropdown. Receipts for lost/stolen/damaged documents
+// (a limited, time-boxed exception) aren't modeled — an admin handles
+// those directly.
+const I9_ACCEPTABLE_DOCUMENTS = {
+  A: [
+    { label: 'U.S. Passport or U.S. Passport Card' },
+    { label: 'Permanent Resident Card or Alien Registration Receipt Card (Form I-551)' },
+    { label: 'Foreign passport with a temporary I-551 stamp or notation', detail: 'temporary I-551 stamp or printed notation on a machine-readable immigrant visa' },
+    { label: 'Employment Authorization Document with photo (Form I-766)' },
+    { label: 'Foreign passport plus Form I-94/I-94A', detail: 'for someone temporarily authorized to work for a specific employer; same name on both, endorsement not expired — attach both' },
+    { label: 'FSM or RMI passport plus Form I-94/I-94A', detail: 'Federated States of Micronesia or Republic of the Marshall Islands, nonimmigrant admission under the Compact of Free Association — attach both' },
+  ],
+  B: [
+    { label: "Driver's license or state ID card", detail: 'issued by a State or outlying possession of the U.S., with a photograph or identifying information (name, date of birth, gender, height, eye color, address)' },
+    { label: 'Federal, state, or local government ID card', detail: 'with a photograph or identifying information (name, date of birth, gender, height, eye color, address)' },
+    { label: 'School ID card with photograph' },
+    { label: "Voter's registration card" },
+    { label: 'U.S. military card or draft record' },
+    { label: "Military dependent's ID card" },
+    { label: 'U.S. Coast Guard Merchant Mariner Card' },
+    { label: 'Native American tribal document' },
+    { label: "Driver's license issued by a Canadian government authority" },
+    { label: 'School record or report card', detail: 'only for someone under 18 who has none of the documents above' },
+    { label: 'Clinic, doctor, or hospital record', detail: 'only for someone under 18 who has none of the documents above' },
+    { label: 'Day-care or nursery school record', detail: 'only for someone under 18 who has none of the documents above' },
+  ],
+  C: [
+    { label: 'Social Security Account Number card', detail: 'not valid if marked "NOT VALID FOR EMPLOYMENT" or valid for work only with INS/DHS authorization' },
+    { label: 'Certification of Report of Birth from the Department of State', detail: 'Form DS-1350, FS-545, or FS-240' },
+    { label: 'Original or certified copy of a birth certificate', detail: 'issued by a State, county, municipal authority, or U.S. territory, bearing an official seal' },
+    { label: 'Native American tribal document' },
+    { label: 'U.S. Citizen ID Card (Form I-197)' },
+    { label: 'Identification Card for Use of Resident Citizen in the United States (Form I-179)' },
+    { label: 'Employment authorization document issued by the Department of Homeland Security' },
+  ],
+};
+
+const I9_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+// Shows the I-9 document section only when a form is actually designated
+// as the I-9 (company's own, or a Selko-provided global one) — so it
+// appears on the employee's side the moment an admin sets one up, with
+// no separate switch to flip. Populates the dropdowns once.
+function initHrOnbI9Documents(hrRec, hasTemplate) {
+  const section = document.getElementById('hrOnbI9Docs');
+  if (!section) return;
+  section.style.display = hasTemplate ? 'block' : 'none';
+  window._hrOnbPreviouslySubmitted = !!(hrRec && hrRec.employee_attested_at);
+  if (!hasTemplate) return;
+
+  ['A', 'B', 'C'].forEach(list => {
+    const sel = document.getElementById(`hrOnbI9Doc${list}`);
+    if (!sel || sel.options.length > 1) return; // already populated on an earlier call
+    I9_ACCEPTABLE_DOCUMENTS[list].forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d.label;
+      opt.textContent = d.detail ? `${d.label} — ${d.detail}` : d.label;
+      sel.appendChild(opt);
+    });
+  });
+  const note = document.getElementById('hrOnbI9ResubmitNote');
+  if (note) note.style.display = window._hrOnbPreviouslySubmitted ? 'block' : 'none';
+}
+
+function onHrOnbI9OptionChange() {
+  const opt = (document.querySelector('input[name="hrOnbI9Option"]:checked') || {}).value || '';
+  document.getElementById('hrOnbI9SlotA').style.display = opt === 'A' ? 'block' : 'none';
+  document.getElementById('hrOnbI9SlotB').style.display = opt === 'BC' ? 'block' : 'none';
+  document.getElementById('hrOnbI9SlotC').style.display = opt === 'BC' ? 'block' : 'none';
+}
+
+// Reads and validates the I-9 document choice. Returns { ok: false, error }
+// or { ok: true, selections: [{ list, label, files }] } — an empty
+// selections array is valid (chose to bring originals in person, or a
+// resubmission that isn't changing documents).
+function collectHrOnbI9Selections() {
+  const section = document.getElementById('hrOnbI9Docs');
+  if (!section || section.style.display === 'none') return { ok: true, selections: [] };
+
+  const opt = (document.querySelector('input[name="hrOnbI9Option"]:checked') || {}).value || '';
+  if (!opt) {
+    if (window._hrOnbPreviouslySubmitted) return { ok: true, selections: [] };
+    return { ok: false, error: "Choose how you'll provide your I-9 documents — or choose to bring your originals in person." };
+  }
+  if (opt === 'LATER') return { ok: true, selections: [] };
+
+  const lists = opt === 'A' ? ['A'] : ['B', 'C'];
+  const selections = [];
+  for (const list of lists) {
+    const label = document.getElementById(`hrOnbI9Doc${list}`).value;
+    const files = Array.from(document.getElementById(`hrOnbI9File${list}`).files || []);
+    if (!label) return { ok: false, error: `Choose which List ${list} document you're providing.` };
+    if (!files.length) return { ok: false, error: `Attach a photo or PDF of your ${label}.` };
+    const tooBig = files.find(f => f.size > I9_MAX_UPLOAD_BYTES);
+    if (tooBig) return { ok: false, error: `"${tooBig.name}" is larger than 10 MB — try a smaller photo or a compressed PDF.` };
+    selections.push({ list, label, files });
+  }
+  return { ok: true, selections };
+}
+
 async function submitHrOnboarding() {
   const errEl = document.getElementById('hrOnboardingErr');
   errEl.style.display = 'none';
@@ -3416,6 +3579,9 @@ async function submitHrOnboarding() {
     errEl.style.display = 'block';
     return;
   }
+
+  const i9Choice = collectHrOnbI9Selections();
+  if (!i9Choice.ok) { errEl.textContent = i9Choice.error; errEl.style.display = 'block'; return; }
 
   const payload = {
     first_name: firstName,
@@ -3448,7 +3614,7 @@ async function submitHrOnboarding() {
   // not blocking — since the actual data submission (which admins can
   // always follow up on directly) matters more than the photo.
   const dlPhotoFile = document.getElementById('hrOnbDlPhoto').files[0];
-  if (dlPhotoFile) {
+  if (dlPhotoFile && !window._hrOnbDlUploaded) {
     try {
       const path = `${currentCompany.id}/employees/${window._hrOnboardingId}/${Date.now()}_${dlPhotoFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
       const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, dlPhotoFile);
@@ -3462,8 +3628,93 @@ async function submitHrOnboarding() {
         status: 'submitted_by_employee', // distinct from 'pending_acknowledgment', which is for admin-uploaded docs the employee needs to acknowledge reading — the reverse direction here
         created_by: currentProfile.id,
       });
+      window._hrOnbDlUploaded = true; // a retry after a later failure shouldn't upload it a second time
     } catch (e) {
       console.error('Driver license photo upload failed (submission itself still proceeds):', e);
+    }
+  }
+
+  // I-9 identity/work-authorization documents. Unlike the license photo
+  // above, a failure here IS fatal to the submission: the employee just
+  // chose these specifically, and telling them "submitted" while their
+  // documents silently didn't arrive would be worse than asking them to
+  // retry. Nothing has been flipped to 'submitted' yet, so a retry is
+  // clean; files already sent successfully are remembered (below) so a
+  // retry doesn't send them twice.
+  window._hrOnbI9Uploaded = window._hrOnbI9Uploaded || new Set();
+  for (const sel of i9Choice.selections) {
+    for (let i = 0; i < sel.files.length; i++) {
+      const file = sel.files[i];
+      const uploadKey = `${sel.list}|${sel.label}|${file.name}|${file.size}|${file.lastModified}`;
+      if (window._hrOnbI9Uploaded.has(uploadKey)) continue;
+      try {
+        const path = `${currentCompany.id}/employees/${window._hrOnboardingId}/${Date.now()}_i9_${sel.list}_${file.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
+        const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, file);
+        if (uploadErr) throw uploadErr;
+        const { error: rowErr } = await sb.from('hr_documents').insert({
+          employee_id: window._hrOnboardingId,
+          company_id: currentCompany.id,
+          template_id: null,
+          name: `I-9 List ${sel.list} — ${sel.label}${sel.files.length > 1 ? ` (file ${i + 1} of ${sel.files.length})` : ''}`,
+          storage_path: path,
+          status: 'submitted_by_employee',
+          created_by: currentProfile.id,
+        });
+        if (rowErr) throw rowErr;
+        window._hrOnbI9Uploaded.add(uploadKey);
+      } catch (e) {
+        console.error('I-9 document upload failed:', e);
+        errEl.textContent = `Couldn't upload "${file.name}" — nothing has been submitted yet. Check your connection and try again. (${e.message})`;
+        errEl.style.display = 'block';
+        return;
+      }
+    }
+  }
+
+  // Generate the filled I-9 NOW, from what's being submitted, and store it
+  // for the admin — this is what actually puts the completed form in
+  // front of them for review, instead of it only ever existing as a
+  // download in the employee's own browser. Has to happen before the
+  // status flip below for the same RLS reason as the uploads. Failure
+  // here is non-fatal: an admin can always generate it from the
+  // employee's sheet. Also found while building this: reading the
+  // template PDF back from storage as an employee needs its own read
+  // policy (i9-self-service-migration.sql) — without it this step
+  // silently failed every time and the employee's I-9 download never
+  // appeared.
+  const { data: i9Templates } = await sb.from('hr_templates')
+    .select('*')
+    .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
+    .eq('form_type', 'i9')
+    .order('company_id', { ascending: true, nullsFirst: false }); // company-specific rows (non-null) sort first
+  const i9Template = i9Templates?.[0] || null;
+
+  let generatedI9 = null; // { blob, skipped, fileName }
+  if (i9Template) {
+    try {
+      const { data: currentEmployee } = await sb.from('hr_employees').select('*').eq('id', window._hrOnboardingId).single();
+      const employeeForFill = { ...currentEmployee, ...payload };
+      const { blob, skipped } = await fillHrTemplate(i9Template, currentCompany, employeeForFill);
+      const fileName = `I-9_${fullName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+      generatedI9 = { blob, skipped, fileName };
+      if (!window._hrOnbI9FormStored) {
+        const path = `${currentCompany.id}/employees/${window._hrOnboardingId}/${Date.now()}_${fileName}`;
+        const { error: formUploadErr } = await sb.storage.from('hr-documents').upload(path, blob, { contentType: 'application/pdf' });
+        if (formUploadErr) throw formUploadErr;
+        const { error: formRowErr } = await sb.from('hr_documents').insert({
+          employee_id: window._hrOnboardingId,
+          company_id: currentCompany.id,
+          template_id: i9Template.id,
+          name: i9Template.name,
+          storage_path: path,
+          status: 'submitted_by_employee',
+          created_by: currentProfile.id,
+        });
+        if (formRowErr) throw formRowErr;
+        window._hrOnbI9FormStored = true;
+      }
+    } catch (e) {
+      console.error('I-9 generation/storage failed (submission itself still proceeds):', e);
     }
   }
 
@@ -3474,58 +3725,30 @@ async function submitHrOnboarding() {
   const { error } = await sb.from('hr_employees').update(payload).eq('id', window._hrOnboardingId);
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
 
-  // Auto-generate the actual filled I-9 right now, using whatever
-  // template the admin already mapped — reuses fillHrTemplate, the same
-  // proven engine behind the admin-side "Generate" button, so this isn't
-  // new form-filling logic, just a new place that triggers it. Matched
-  // by name since hr_templates has no dedicated "this is the I-9" flag —
-  // if nothing matches, submission still succeeds; the form-download
-  // step is a bonus, not a requirement to complete onboarding.
+  // The filled I-9 was already generated (and stored for the admin)
+  // above, before the status flip — this just presents it. Submission
+  // itself has already succeeded at this point; a missing I-9 here
+  // shouldn't read as the whole thing having failed.
+  const uploadedCount = window._hrOnbI9Uploaded ? window._hrOnbI9Uploaded.size : 0;
+  const docsLine = uploadedCount
+    ? `<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">${uploadedCount} document file${uploadedCount === 1 ? '' : 's'} sent to your employer for review.</p>`
+    : '';
+  let confirmHtml;
+  if (generatedI9) {
+    const url = URL.createObjectURL(generatedI9.blob);
+    confirmHtml = `
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Your Section 1 has been filled in automatically from what you entered and sent to your employer for review. Your employer still needs to complete Section 2 after examining your documents.</p>
+      ${docsLine}
+      <a href="${url}" download="${generatedI9.fileName}" class="btn btn-teal" style="width:100%;justify-content:center;">⬇ Download a copy of your I-9</a>
+      ${generatedI9.skipped.length ? `<p style="font-size:11px;color:var(--gray-400);margin-top:8px;">${generatedI9.skipped.length} field(s) on the form didn't have a match and were left blank — your employer can fill those in.</p>` : ''}`;
+  } else {
+    confirmHtml = `
+      <p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Your information has been submitted. Your employer will follow up with the rest of your paperwork.</p>
+      ${docsLine}`;
+  }
   document.getElementById('hrOnboardingPanel').innerHTML = `
     <div class="panel-head"><span class="panel-title">📋 Onboarding submitted</span></div>
-    <div class="panel-body" id="hrOnbConfirmationBody">
-      <p style="font-size:13px;color:var(--gray-600);">Your employer will follow up with the rest. Checking whether your I-9 is ready to download…</p>
-    </div>`;
-
-  // FIXED — was matching by name (`.ilike('name', '%I-9%')`), which
-  // broke for any template not literally named with "I-9" in it, and
-  // would have actually ERRORED (not just missed) if two templates
-  // ever matched at once, since .maybeSingle() throws on more than one
-  // row — silently failing this whole step. Now uses the explicit
-  // form_type designation an admin sets at upload time. Still handles
-  // more than one result gracefully (company-specific preferred over
-  // a Selko-provided global one) rather than assuming there's ever
-  // only exactly one row, in case an admin uploads a second one before
-  // deleting the first.
-  const { data: i9Templates } = await sb.from('hr_templates')
-    .select('*')
-    .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
-    .eq('form_type', 'i9')
-    .order('company_id', { ascending: true, nullsFirst: false }); // company-specific rows (non-null) sort first
-  const i9Template = i9Templates?.[0] || null;
-
-  const confirmBody = document.getElementById('hrOnbConfirmationBody');
-  if (!i9Template) {
-    confirmBody.innerHTML = `<p style="font-size:13px;color:var(--gray-600);">Your information has been submitted. Your employer will follow up with the rest of your paperwork.</p>`;
-    return;
-  }
-
-  try {
-    const { data: freshEmployee } = await sb.from('hr_employees').select('*').eq('id', window._hrOnboardingId).single();
-    const { blob, skipped } = await fillHrTemplate(i9Template, currentCompany, freshEmployee);
-    const fileName = `I-9_${freshEmployee.full_name.replace(/[^a-z0-9]/gi,'_')}.pdf`;
-    const url = URL.createObjectURL(blob);
-
-    confirmBody.innerHTML = `
-      <p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Your Section 1 has been filled in automatically from what you just entered. Your employer still needs to complete Section 2 after reviewing your ID in person.</p>
-      <a href="${url}" download="${fileName}" class="btn btn-teal" style="width:100%;justify-content:center;">⬇ Download your I-9</a>
-      ${skipped.length ? `<p style="font-size:11px;color:var(--gray-400);margin-top:8px;">${skipped.length} field(s) on the form didn't have a match and were left blank — your employer can fill those in.</p>` : ''}`;
-  } catch (e) {
-    // Submission already succeeded above — a form-generation failure here
-    // shouldn't read as the whole thing having failed.
-    confirmBody.innerHTML = `<p style="font-size:13px;color:var(--gray-600);">Your information has been submitted. Your employer will follow up with the rest of your paperwork.</p>`;
-    console.error('I-9 auto-generation failed (submission itself still succeeded):', e);
-  }
+    <div class="panel-body">${confirmHtml}</div>`;
 }
 
 async function initStaff() {
@@ -3549,6 +3772,19 @@ async function initStaff() {
       .select('*').eq('credtrack_staff_id', window._staffId).maybeSingle();
     window._hrOnboardingId = (hrRec && hrRec.onboarding_status === 'not_started') ? hrRec.id : null;
     onboardingPanel.style.display = window._hrOnboardingId ? 'block' : 'none';
+
+    // The I-9 document section appears the moment a form is designated as
+    // the I-9 (this company's own or a Selko-provided global one) — read
+    // through the same hr_templates policy that already lets any member of
+    // the company see the template list.
+    if (window._hrOnboardingId) {
+      const { data: i9Check } = await sb.from('hr_templates')
+        .select('id')
+        .eq('form_type', 'i9')
+        .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
+        .limit(1);
+      initHrOnbI9Documents(hrRec, !!(i9Check && i9Check.length));
+    }
 
     // Pre-fill from whatever's already on file — matters now that
     // "reopen" is a real path back into this form (an admin asking for
@@ -13963,11 +14199,24 @@ async function generateFilledHrForm(templateId, employeeId) {
     // before some later fix or correction. Now only one copy of a given
     // form ever exists per employee — generating again replaces it,
     // storage file and row alike, rather than piling up alongside it.
-    const { data: priorDoc } = await sb.from('hr_documents')
-      .select('id, storage_path')
+    //
+    // Tolerates MORE than one existing copy rather than assuming exactly
+    // one: an employee who's reopened for more info and resubmits gets a
+    // second self-generated copy stored (they can't delete their own
+    // rows), and .maybeSingle() throws on two matches — which would have
+    // broken this button for exactly the employees who most need it.
+    // Newest is the one updated in place; any older extras are cleaned up.
+    const { data: priorDocs } = await sb.from('hr_documents')
+      .select('id, storage_path, created_at')
       .eq('employee_id', employeeId)
       .eq('template_id', templateId)
-      .maybeSingle();
+      .order('created_at', { ascending: false });
+    const priorDoc = priorDocs?.[0] || null;
+
+    for (const extra of (priorDocs || []).slice(1)) {
+      if (extra.storage_path) await sb.storage.from('hr-documents').remove([extra.storage_path]);
+      await sb.from('hr_documents').delete().eq('id', extra.id);
+    }
 
     if (priorDoc) {
       if (priorDoc.storage_path) await sb.storage.from('hr-documents').remove([priorDoc.storage_path]);
@@ -14231,14 +14480,25 @@ async function showHrEmployeeSheet(employeeId) {
 
   const templateOptionsHtml = (_hrTemplatesCache || []).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
 
+  // Three real states, not two: "ON FILE" used to be the label for
+  // everything that wasn't pending acknowledgment — including documents an
+  // employee had just submitted that no admin had looked at yet, which is
+  // exactly the situation where "on file" reads as "confirmed."
+  const docStatus = d => {
+    if (d.status === 'pending_acknowledgment') return { label: 'PENDING ACKNOWLEDGMENT', color: '#f59e0b' };
+    if (d.status === 'submitted_by_employee') return { label: 'AWAITING REVIEW', color: '#f59e0b' };
+    return { label: 'ON FILE', color: 'rgba(255,255,255,.35)' };
+  };
   const docsHtml = (docs || []).length
-    ? docs.map(d => `
+    ? docs.map(d => { const st = docStatus(d); return `
       <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
         <span style="flex:1;color:#fff;font-size:12px;">${d.name}</span>
-        <span style="font-size:10px;color:${d.status === 'pending_acknowledgment' ? '#f59e0b' : 'rgba(255,255,255,.35)'};">${d.status === 'pending_acknowledgment' ? 'PENDING ACKNOWLEDGMENT' : 'ON FILE'}</span>
+        <span style="font-size:10px;color:${st.color};">${st.label}</span>
+        ${d.storage_path ? `<button class="btn btn-sm btn-ghost" onclick="viewHrDocument('${d.id}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">View</button>` : ''}
         ${d.status === 'pending_acknowledgment' ? `<button class="btn btn-sm btn-ghost" onclick="markHrDocumentAcknowledged('${d.id}','${employeeId}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Mark acknowledged</button>` : ''}
+        ${d.status === 'submitted_by_employee' ? `<button class="btn btn-sm btn-teal" onclick="markHrDocumentReviewed('${d.id}','${employeeId}')" style="font-size:11px;padding:3px 8px;">Mark reviewed</button>` : ''}
         <button class="btn btn-sm btn-danger" onclick="deleteHrDocument('${d.id}','${(d.storage_path || '').replace(/'/g,"\\'")}','${employeeId}','${d.name.replace(/'/g,"\\'")}')" style="font-size:11px;padding:3px 8px;">Delete</button>
-      </div>`).join('')
+      </div>`; }).join('')
     : '<div style="font-size:12px;color:rgba(255,255,255,.35);">No documents on file yet.</div>';
 
   const modal = document.createElement('div');
@@ -14547,6 +14807,49 @@ async function markHrDocumentAcknowledged(docId, employeeId) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('✓ Marked acknowledged');
   await showHrEmployeeSheet(employeeId);
+}
+
+async function markHrDocumentReviewed(docId, employeeId) {
+  // Reuses acknowledged_at/acknowledged_by rather than adding a second pair
+  // of columns for what is the same event — an admin confirming they've
+  // dealt with this document.
+  const { error } = await sb.from('hr_documents').update({
+    status: 'completed',
+    acknowledged_at: new Date().toISOString(),
+    acknowledged_by: currentProfile.id,
+  }).eq('id', docId);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('✓ Marked reviewed');
+  await showHrEmployeeSheet(employeeId);
+}
+
+// Opens an uploaded document through the view-hr-document Edge Function
+// rather than a direct storage link: the function checks this admin has
+// access to that company, writes the view to the same audit log SSN
+// reveals use, and only then returns a short-lived link. Identity
+// documents can contain exactly what the SSN controls exist to protect
+// (a Social Security card is a valid List C document), so opening one
+// shouldn't be an unlogged side door around them.
+async function viewHrDocument(docId) {
+  // Opened synchronously, before the network call, so browsers treat it as
+  // a user-initiated pop-up rather than blocking it after the await.
+  const win = window.open('about:blank', '_blank');
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/view-hr-document', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ document_id: docId }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    if (!win) { toast('Pop-up blocked — allow pop-ups for this site, then try again.', true); return; }
+    win.opener = null;
+    win.location.href = result.url;
+  } catch (e) {
+    if (win) win.close();
+    toast('Could not open document: ' + e.message, true);
+  }
 }
 
 async function deleteHrDocument(docId, storagePath, employeeId, docName) {
