@@ -13012,7 +13012,12 @@ async function loadCredentialingTab() {
   await loadAccreditationsPanel();
   await renderCredentialingStaffTable();
   renderCredGuides(); // reference material — available at every tier, not gated like template generation is
-  if (isFullCredentialing) await loadCredentialingTemplates();
+  // This used to be gated on the old Basic-vs-Full tier check. That check's variable
+  // was deleted when Credentialing collapsed to a single tier, but this one use of it
+  // was missed — so it threw a ReferenceError as the last line of this function on
+  // every open of the tab, and the templates list never loaded. Template generation
+  // is available to every Credentialing customer now, so there's nothing left to check.
+  await loadCredentialingTemplates();
 }
 
 // ══ GUIDES & RESOURCES — admin-facing reference material ══
@@ -15279,7 +15284,14 @@ async function viewHrDocument(docId) {
     win.location.href = result.url;
   } catch (e) {
     if (win) win.close();
-    toast('Could not open document: ' + e.message, true);
+    // "Failed to fetch" is the browser's bare wording for "the request never got an
+    // answer" (no connection, or the service isn't reachable) — not much use to
+    // whoever's reading it, so say what it means. Server-side messages (no access,
+    // not found, couldn't record the access) are already clear and pass through.
+    const unreachable = e instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    toast(unreachable
+      ? "Couldn't reach the document service — check your connection and try again. If it keeps happening, contact support."
+      : 'Could not open document: ' + e.message, true);
   }
 }
 
@@ -17230,11 +17242,26 @@ async function showSuperAdminQuickSwitch(profile, currentCompanyRow) {
 }
 
 async function viewAsAdmin(companyId, companyName) {
+  // These mark "we are viewing as someone" — other code keys off them (global HR
+  // template uploads, whether the company name is editable, ...). They used to be
+  // set BEFORE the company lookup and never undone when it came back empty, so a
+  // failed attempt left the app believing it was mid-"view as" with no banner and
+  // no way out short of a reload. Now they only stick if the switch really happens.
+  const prevSuperProfile = _superProfile;
+  const prevSuperCompany = _superCompany;
   _superProfile = { ...currentProfile };
   _superCompany = { ...currentCompany };
 
   const { data: company } = await sb.from('companies').select('*').eq('id', companyId).single();
-  if (!company) { toast('Company not found', true); return; }
+  if (!company) {
+    _superProfile = prevSuperProfile;
+    _superCompany = prevSuperCompany;
+    // A lookup that comes back empty is also exactly what a restricted super admin
+    // gets for a company outside their allowed list — "not found" alone made that
+    // look like a bug instead of the restriction doing its job.
+    toast("Company not found, or you don't have access to it.", true);
+    return;
+  }
 
   currentCompany = company;
   window._isPro  = ['pro','enterprise'].includes(company.plan);
@@ -19288,7 +19315,7 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
   if (existing) existing.remove();
 
   const { data: c } = await sb.from('companies').select('*').eq('id', companyId).single();
-  if (!c) { toast('Company not found', true); return; }
+  if (!c) { toast("Company not found, or you don't have access to it.", true); return; }
 
   // Fetched fresh for this specific company, since it may not be the one
   // currently being viewed (_hiddenPanelsCache is scoped to that instead).
