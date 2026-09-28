@@ -265,10 +265,11 @@ window.selkoSharedAuthStorage = {
             <input type="text" id="hrOnbDlState" maxlength="2" placeholder="e.g. OK" />
           </div>
         </div>
-        <div class="form-group" style="margin-bottom:14px;">
-          <label class="field-label">Photo of your driver's license</label>
-          <input type="file" id="hrOnbDlPhoto" accept="image/*,.pdf" />
-        </div>
+        <!-- Documents this company requires at onboarding (Settings → "Documents required at
+             onboarding"; defaults to Driver License + Auto Insurance). Rendered by
+             initHrOnbRequiredDocs. These are saved as regular credential documents — with
+             expiration dates, reminders and verification — not as loose HR files. -->
+        <div id="hrOnbReqDocs" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;"></div>
 
         <!-- Only shown when this company (or Selko globally) has a form designated
              as the I-9 — see initHrOnbI9Documents. Documents chosen here are uploaded
@@ -297,8 +298,8 @@ window.selkoSharedAuthStorage = {
               <select id="hrOnbI9DocA"><option value="">— Select the document you're providing —</option></select>
             </div>
             <div class="form-group" style="margin-bottom:8px;">
-              <input type="file" id="hrOnbI9FileA" accept="image/*,.pdf" multiple />
-              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Attach every page or part — front and back of a card, or a passport together with its I-94 if your document requires both. Photos or PDFs, up to 10 MB each.</p>
+              <div data-hr-attach="A"></div>
+              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Add every page or part — front and back of a card, or a passport together with its I-94 if your document requires both. Take a photo (tap once per side or page) or attach a photo or PDF.</p>
             </div>
           </div>
           <div id="hrOnbI9SlotB" style="display:none;">
@@ -307,8 +308,8 @@ window.selkoSharedAuthStorage = {
               <select id="hrOnbI9DocB"><option value="">— Select the document you're providing —</option></select>
             </div>
             <div class="form-group" style="margin-bottom:8px;">
-              <input type="file" id="hrOnbI9FileB" accept="image/*,.pdf" multiple />
-              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Attach every page or part — front and back of a card, for example. Photos or PDFs, up to 10 MB each. Your driver's license photo above is saved separately; if you're using your driver's license here, attach it again.</p>
+              <div data-hr-attach="B"></div>
+              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Add every page or part — front and back of a card, for example. If you're using your driver's license here, add it here too — the copy for your credential file is saved separately.</p>
             </div>
           </div>
           <div id="hrOnbI9SlotC" style="display:none;">
@@ -317,8 +318,8 @@ window.selkoSharedAuthStorage = {
               <select id="hrOnbI9DocC"><option value="">— Select the document you're providing —</option></select>
             </div>
             <div class="form-group" style="margin-bottom:0;">
-              <input type="file" id="hrOnbI9FileC" accept="image/*,.pdf" multiple />
-              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Photos or PDFs, up to 10 MB each.</p>
+              <div data-hr-attach="C"></div>
+              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Take a photo or attach a photo or PDF.</p>
             </div>
           </div>
         </div>
@@ -334,7 +335,20 @@ window.selkoSharedAuthStorage = {
       </div>
     </div>
 
-    <div class="panel">
+    <!-- Shown INSTEAD of the upload panel below while an onboarding form is still waiting
+         on this person: the documents the company requires are collected in that form, so
+         offering the same document types in a second place invites uploading them twice.
+         Not a lock — imported veteran staff also start as "not started", and reminder emails
+         link straight to this page — so it always offers a way through. -->
+    <div class="panel" id="staffUploadDeferred" style="display:none;">
+      <div class="panel-head"><span class="panel-title">Upload a document</span></div>
+      <div class="panel-body">
+        <p style="font-size:13px;color:var(--gray-600);margin:0 0 10px;">Finish your onboarding form above first — the documents your employer requires are collected there, so there's nothing to upload separately. You'll be able to add other documents here once you submit.</p>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="setStaffUploadDeferred(false)">Upload a different document now</button>
+      </div>
+    </div>
+
+    <div class="panel" id="staffUploadPanel">
       <div class="panel-head"><span class="panel-title">Upload a document</span></div>
       <div class="panel-body">
         <div class="form-grid-2" style="margin-bottom:14px;">
@@ -1625,6 +1639,12 @@ window.selkoSharedAuthStorage = {
             <label class="inline-label">Onboarding reminder — nag unfinished new hires every (days)</label>
             <input class="inline-input" type="number" id="setOnboardingReminderInterval" value="3" min="1" max="30" />
           </div>
+        </div>
+        <div style="margin-bottom:14px;">
+          <label class="inline-label">Documents required at onboarding</label>
+          <p style="font-size:11px;color:rgba(255,255,255,.4);margin:0 0 8px;">New hires must have these on file — or upload them — before they can submit their onboarding form. They're saved as regular credential documents, so expiration reminders and verification apply. Only document types staff are allowed to upload themselves are listed.</p>
+          <div id="setOnboardingDocTypes" style="display:flex;flex-wrap:wrap;gap:6px 22px;max-height:200px;overflow-y:auto;"></div>
+          <p id="setOnboardingDocTypesNote" style="font-size:11px;color:var(--gold);margin:8px 0 0;display:none;"></p>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;">
           <input type="checkbox" id="setShowPartnerRecs" checked />
@@ -3529,6 +3549,350 @@ function onHrOnbI9OptionChange() {
   document.getElementById('hrOnbI9SlotC').style.display = opt === 'BC' ? 'block' : 'none';
 }
 
+// ── Attach control: "Take photo" + "Choose file(s)" with a running list ──
+//
+// A camera capture returns exactly ONE photo per tap, and a card has two
+// sides — so photos have to accumulate somewhere the employee can see
+// them, rather than living only inside a file input that a second tap
+// would overwrite. Every upload spot in the onboarding form (the driver's
+// license plus List A/B/C) uses this same control.
+//
+// Phone photos are also routinely bigger than the 10 MB limit, which
+// would make the most natural path (point camera, tap) fail. Camera
+// shots are shrunk in the browser first: longest side capped at 2400px
+// and re-encoded as JPEG — still plenty sharp for small print on an ID
+// or Social Security card, but a fraction of the size. If anything about
+// that goes wrong the original file is used untouched, so resizing can
+// only ever help.
+const HR_ONB_MAX_IMAGE_EDGE = 2400;
+const HR_ONB_JPEG_QUALITY = 0.85;
+const HR_ONB_SKIP_RESIZE_BELOW = 2 * 1024 * 1024; // gallery images this small are left exactly as chosen
+const HR_ONB_MAX_FILES_PER_SLOT = 6;
+const HR_ONB_IMAGE_LOAD_TIMEOUT_MS = 8000;
+
+window._hrOnbFiles = { A: [], B: [], C: [] };
+window._hrOnbSlotMax = {}; // optional per-slot cap (data-hr-attach-max); falls back to HR_ONB_MAX_FILES_PER_SLOT
+window._hrOnbThumbs = new Map(); // File -> object URL for its preview, revoked when the file is removed
+window._hrOnbPhotoSeq = 0;
+
+function hrOnbEsc(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Pure — the size math, kept separate so it can be checked on its own.
+function hrOnbScaledSize(width, height, maxEdge) {
+  const longest = Math.max(width, height);
+  if (longest <= maxEdge) return { width, height };
+  const scale = maxEdge / longest;
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+function hrOnbLoadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const done = (fn, val) => { clearTimeout(timer); URL.revokeObjectURL(url); fn(val); };
+    const timer = setTimeout(() => done(reject, new Error('image took too long to decode')), HR_ONB_IMAGE_LOAD_TIMEOUT_MS);
+    const img = new Image();
+    img.onload = () => done(resolve, img);
+    img.onerror = () => done(reject, new Error('unreadable image'));
+    img.src = url;
+  });
+}
+
+// Returns a (usually smaller) image File, or the original if resizing
+// isn't needed or doesn't work. PDFs pass straight through.
+async function hrOnbPrepareImage(file, fromCamera) {
+  if (!file.type || !file.type.startsWith('image/')) return file;
+  if (!fromCamera && file.size <= HR_ONB_SKIP_RESIZE_BELOW) return file;
+  try {
+    const img = await hrOnbLoadImage(file);
+    const { width, height } = hrOnbScaledSize(img.naturalWidth || img.width, img.naturalHeight || img.height, HR_ONB_MAX_IMAGE_EDGE);
+    const canvas = document.createElement('canvas');
+    canvas.width = width; canvas.height = height;
+    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+    const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', HR_ONB_JPEG_QUALITY));
+    if (!blob || blob.size >= file.size) return file; // never make it bigger or lose it
+    // Camera captures are all called "image.jpg" on some phones — a
+    // distinct name keeps the list (and what the admin later sees) readable.
+    const name = fromCamera ? `photo-${++window._hrOnbPhotoSeq}.jpg` : file.name.replace(/\.[^.]+$/, '') + '.jpg';
+    return new File([blob], name, { type: 'image/jpeg', lastModified: Date.now() });
+  } catch (e) {
+    console.warn('Image resize skipped, using the original file:', e.message);
+    return file;
+  }
+}
+
+function hrOnbFormatSize(bytes) {
+  return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+// Fills every [data-hr-attach] placeholder with its buttons and list.
+// Safe to call more than once.
+function hrOnbInitAttachControls() {
+  document.querySelectorAll('[data-hr-attach]').forEach(box => {
+    if (box.dataset.ready) return;
+    const slot = box.dataset.hrAttach;
+    if (!window._hrOnbFiles[slot]) window._hrOnbFiles[slot] = [];
+    if (box.dataset.hrAttachMax) window._hrOnbSlotMax[slot] = parseInt(box.dataset.hrAttachMax, 10);
+    box.innerHTML = `
+      <div class="file-btns">
+        <label for="hrOnbPick_${slot}" class="file-label file-label-primary">📎 Choose file(s)</label>
+        <label for="hrOnbCam_${slot}" class="file-label file-label-secondary">📷 Take photo</label>
+      </div>
+      <input type="file" id="hrOnbPick_${slot}" accept="image/*,.pdf" multiple style="display:none;" onchange="hrOnbFilesChosen('${slot}', this, false)" />
+      <input type="file" id="hrOnbCam_${slot}" accept="image/*" capture="environment" style="display:none;" onchange="hrOnbFilesChosen('${slot}', this, true)" />
+      <div id="hrOnbFileList_${slot}"></div>`;
+    box.dataset.ready = '1';
+  });
+}
+
+async function hrOnbFilesChosen(slot, input, fromCamera) {
+  const picked = Array.from(input.files || []);
+  input.value = ''; // so the same file (or another camera shot) can be chosen again
+  if (!picked.length) return;
+
+  const slotMax = window._hrOnbSlotMax[slot] || HR_ONB_MAX_FILES_PER_SLOT;
+  for (const original of picked) {
+    if (window._hrOnbFiles[slot].length >= slotMax) {
+      toast(`You can add up to ${slotMax} files here.`, true);
+      break;
+    }
+    const isPdf = original.type === 'application/pdf' || /\.pdf$/i.test(original.name);
+    const isImage = !!original.type && original.type.startsWith('image/');
+    if (!isPdf && !isImage) { toast(`"${original.name}" isn't a photo or PDF, so it wasn't added.`, true); continue; }
+
+    const file = await hrOnbPrepareImage(original, fromCamera);
+    if (file.size > I9_MAX_UPLOAD_BYTES) {
+      toast(`"${file.name}" is still larger than 10 MB — try a smaller photo or a compressed PDF.`, true);
+      continue;
+    }
+    window._hrOnbFiles[slot].push(file);
+  }
+  hrOnbRenderFileList(slot);
+}
+
+function hrOnbRemoveFile(slot, index) {
+  const [removed] = window._hrOnbFiles[slot].splice(index, 1);
+  const url = removed && window._hrOnbThumbs.get(removed);
+  if (url) { URL.revokeObjectURL(url); window._hrOnbThumbs.delete(removed); }
+  hrOnbRenderFileList(slot);
+}
+
+function hrOnbRenderFileList(slot) {
+  const box = document.getElementById(`hrOnbFileList_${slot}`);
+  if (!box) return;
+  box.innerHTML = window._hrOnbFiles[slot].map((f, i) => {
+    let thumb = '<span style="width:44px;height:44px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);border-radius:6px;font-size:18px;">📄</span>';
+    if (f.type && f.type.startsWith('image/')) {
+      if (!window._hrOnbThumbs.has(f)) window._hrOnbThumbs.set(f, URL.createObjectURL(f));
+      thumb = `<img src="${window._hrOnbThumbs.get(f)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:6px;border:1px solid var(--gray-200);" />`;
+    }
+    return `<div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+      ${thumb}
+      <span style="flex:1;min-width:0;font-size:12px;color:var(--gray-600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${hrOnbEsc(f.name)} <span style="color:var(--gray-400);">(${hrOnbFormatSize(f.size)})</span></span>
+      <button type="button" onclick="hrOnbRemoveFile('${slot}', ${i})" title="Remove" style="background:none;border:1px solid var(--gray-200);border-radius:6px;color:var(--gray-600);cursor:pointer;padding:2px 8px;font-size:12px;">✕</button>
+    </div>`;
+  }).join('');
+}
+
+// ── Documents required at onboarding (drawn from the doc side) ──────────
+//
+// Which document types a new hire must provide is a per-company choice
+// (Settings → "Documents required at onboarding"), stored in
+// companies.custom_vars.onboardingDocTypeIds. Until a company saves a
+// choice it defaults to Driver License and Auto Insurance where those
+// types exist. Whatever is required gets captured into the doc side
+// (credtrack_documents) exactly like a self-uploaded credential — so it
+// carries an expiration date and flows into the existing 30-day/7-day/
+// expired reminder emails, verification, and compliance percentages,
+// instead of sitting in HR as a loose file nothing ever watches.
+const HR_ONB_DEFAULT_DOC_TYPE_PATTERNS = [/driver'?s?[\s-]*licen[sc]e/i, /auto(mobile)?[\s-]*insurance/i];
+
+function hrOnbDefaultDocTypeMatch(t) {
+  return HR_ONB_DEFAULT_DOC_TYPE_PATTERNS.some(re => re.test((t && t.name) || ''));
+}
+
+// Local calendar date as YYYY-MM-DD — not toISOString(), which is UTC and
+// would call an expiration date "yesterday" for part of every evening.
+function hrOnbToday() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+// Pure. `saved` being an array — even an empty one — means the company has
+// made an explicit choice (including "require nothing"); only a company
+// that has never saved gets the defaults. Types staff aren't allowed to
+// self-upload (e.g. Background Check, which needs independent
+// verification) can never be required here, and a saved id whose type has
+// since been hidden or removed simply drops out. `appliesTo` optionally
+// narrows by the person (their discipline).
+function hrOnbResolveRequiredDocTypes(customVars, docTypeList, appliesTo) {
+  const selectable = (docTypeList || []).filter(t => t.staff_can_upload !== false);
+  const saved = customVars && customVars.onboardingDocTypeIds;
+  let chosen;
+  if (Array.isArray(saved)) {
+    const ids = new Set(saved.map(String));
+    chosen = selectable.filter(t => ids.has(String(t.id)));
+  } else {
+    chosen = selectable.filter(hrOnbDefaultDocTypeMatch);
+  }
+  return appliesTo ? chosen.filter(appliesTo) : chosen;
+}
+
+// One entry per required type for one staff member:
+//   on_file — a current (unarchived, unexpired or non-expiring) document exists
+//   expired — documents exist but none are current
+//   missing — nothing on file
+// Used by both the employee's onboarding form and the admin's employee sheet.
+async function hrOnbLoadRequiredDocStatus(staffId, discipline) {
+  const overrides = await getDocTypeOverrides(currentCompany.id);
+  const required = hrOnbResolveRequiredDocTypes(currentCompany.custom_vars, docTypes, t => {
+    if (!discipline) return true;
+    const list = effectiveDisciplines(t, overrides);
+    return list.length === 0 || list.includes(discipline);
+  });
+  if (!required.length) return [];
+  const { data: docs, error } = await sb.from('credtrack_documents')
+    .select('document_type_id, expiry_date, archived')
+    .eq('staff_id', staffId)
+    .in('document_type_id', required.map(t => t.id));
+  if (error) throw error;
+  const today = hrOnbToday();
+  return required.map(t => {
+    const mine = (docs || []).filter(d => String(d.document_type_id) === String(t.id) && !d.archived);
+    const current = mine.some(d => !d.expiry_date || d.expiry_date >= today);
+    return { type: t, state: current ? 'on_file' : (mine.length ? 'expired' : 'missing') };
+  });
+}
+
+function hrOnbToggleNoExpiry(typeId) {
+  const noExp = document.getElementById(`hrOnbReqNoExp_${typeId}`).checked;
+  const dateEl = document.getElementById(`hrOnbReqExp_${typeId}`);
+  dateEl.disabled = noExp;
+  if (noExp) dateEl.value = '';
+}
+
+// Fills the "required documents" section of the onboarding form. If the
+// list can't be loaded (a network blip) the form must NOT quietly proceed
+// as though nothing were required — that would turn a hiccup into a way
+// around the requirement — so it says so and submit refuses until a
+// refresh.
+async function initHrOnbRequiredDocs(staffRec) {
+  const box = document.getElementById('hrOnbReqDocs');
+  if (!box) return;
+  window._hrOnbReqStatus = [];
+  window._hrOnbReqLoadFailed = false;
+  if (!window._staffId) { box.style.display = 'none'; return; }
+
+  let statuses = [];
+  try {
+    statuses = await hrOnbLoadRequiredDocStatus(window._staffId, staffRec ? staffRec.discipline : null);
+  } catch (e) {
+    console.error('Could not load required onboarding documents:', e);
+    window._hrOnbReqLoadFailed = true;
+    box.style.display = 'block';
+    box.innerHTML = `<p style="font-size:13px;color:#f87171;margin:0;">We couldn't load the documents your employer requires. Please refresh the page to continue.</p>`;
+    return;
+  }
+  window._hrOnbReqStatus = statuses;
+  if (!statuses.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+
+  const items = statuses.map(s => {
+    const id = s.type.id, name = hrOnbEsc(s.type.name);
+    if (s.state === 'on_file') {
+      return `<div style="font-size:13px;color:var(--gray-600);margin-bottom:8px;">✓ <strong>${name}</strong> — already on file, nothing to add.</div>`;
+    }
+    return `<div class="form-group" style="margin-bottom:14px;">
+      <label class="field-label">${name} <span style="color:#f87171;">*</span></label>
+      ${s.state === 'expired' ? `<p style="font-size:12px;color:#f59e0b;margin:0 0 6px;">The one on file has expired — add a current one.</p>` : ''}
+      <div data-hr-attach="REQ_${id}" data-hr-attach-max="2"></div>
+      <p style="font-size:11px;color:var(--gray-400);margin:4px 0 8px;">Add the front and the back if it has two sides. Make sure the text is sharp and nothing is cut off.</p>
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+        <div>
+          <label class="field-label">Expiration date</label>
+          <input type="date" id="hrOnbReqExp_${id}" />
+        </div>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--gray-600);cursor:pointer;padding-bottom:8px;">
+          <input type="checkbox" id="hrOnbReqNoExp_${id}" onchange="hrOnbToggleNoExpiry('${id}')" /> This document doesn't expire
+        </label>
+      </div>
+    </div>`;
+  }).join('');
+
+  box.style.display = 'block';
+  box.innerHTML = `
+    <label class="field-label">Documents your employer requires</label>
+    <p style="font-size:12px;color:var(--gray-400);margin:0 0 10px;">These go straight into your credential file, and you'll get a reminder before any of them expire.</p>
+    ${items}`;
+  hrOnbInitAttachControls();
+}
+
+// Validates the required documents that still need adding. Types already
+// on file are skipped. Returns { ok:false, error } or { ok:true, items }.
+function collectHrOnbRequiredDocs() {
+  if (window._hrOnbReqLoadFailed) {
+    return { ok: false, error: "We couldn't load the documents your employer requires. Please refresh the page and try again." };
+  }
+  const today = hrOnbToday();
+  const maxYear = new Date().getFullYear() + 30;
+  const done = window._hrOnbReqUploaded || new Set();
+  const items = [];
+  for (const s of (window._hrOnbReqStatus || [])) {
+    if (s.state === 'on_file') continue;
+    const id = s.type.id, name = s.type.name;
+    if (done.has(String(id))) continue; // already sent on an earlier attempt of this same submission
+    const files = (window._hrOnbFiles[`REQ_${id}`] || []).slice();
+    if (!files.length) return { ok: false, error: `Add a photo or PDF of your ${name}.` };
+    const noExp = !!document.getElementById(`hrOnbReqNoExp_${id}`).checked;
+    let expiry = null;
+    if (!noExp) {
+      expiry = document.getElementById(`hrOnbReqExp_${id}`).value || '';
+      if (!expiry) return { ok: false, error: `Enter the expiration date shown on your ${name} (or check "doesn't expire").` };
+      if (expiry < today) return { ok: false, error: `Your ${name} shows an expiration date of ${expiry}, which has passed — please provide a current one.` };
+      if (parseInt(expiry.slice(0, 4), 10) > maxYear) return { ok: false, error: `Double-check the expiration year on your ${name} (${expiry}).` };
+    }
+    items.push({ type: s.type, files, expiry });
+  }
+  return { ok: true, items };
+}
+
+// Writes one required document into the doc side. Mirrors what the
+// staff-side uploadDoc() does — same bucket, same path shape, same
+// credtrack_documents row (front in file_url, back in file_url_2) — so it
+// is indistinguishable from a document the person uploaded themselves.
+async function hrOnbUploadRequiredDoc(item) {
+  const front = item.files[0];
+  const back = item.files[1] || null;
+  const extOf = f => ((f.name.split('.').pop() || 'jpg').toLowerCase());
+  const base = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${item.type.id}`;
+
+  const frontPath = `${base}.${extOf(front)}`;
+  const { error: frontErr } = await sb.storage.from(STORAGE_BUCKET).upload(frontPath, front, { contentType: front.type });
+  if (frontErr) throw frontErr;
+
+  let backPath = null;
+  if (back) {
+    backPath = `${base}_back.${extOf(back)}`;
+    const { error: backErr } = await sb.storage.from(STORAGE_BUCKET).upload(backPath, back, { contentType: back.type });
+    if (backErr) throw backErr;
+  }
+
+  const { error: dbErr } = await sb.from('credtrack_documents').insert({
+    company_id: currentCompany.id,
+    staff_id: window._staffId,
+    document_type_id: parseInt(item.type.id, 10),
+    label: item.type.name,
+    expiry_date: item.expiry,
+    file_url: frontPath,
+    file_name: front.name,
+    file_url_2: backPath,
+    file_name_2: back ? back.name : null,
+    notes: 'Added during onboarding',
+  });
+  if (dbErr) throw dbErr;
+}
+
 // Reads and validates the I-9 document choice. Returns { ok: false, error }
 // or { ok: true, selections: [{ list, label, files }] } — an empty
 // selections array is valid (chose to bring originals in person, or a
@@ -3548,12 +3912,12 @@ function collectHrOnbI9Selections() {
   const selections = [];
   for (const list of lists) {
     const label = document.getElementById(`hrOnbI9Doc${list}`).value;
-    const files = Array.from(document.getElementById(`hrOnbI9File${list}`).files || []);
+    const files = window._hrOnbFiles[list] || [];
     if (!label) return { ok: false, error: `Choose which List ${list} document you're providing.` };
-    if (!files.length) return { ok: false, error: `Attach a photo or PDF of your ${label}.` };
+    if (!files.length) return { ok: false, error: `Add a photo or PDF of your ${label}.` };
     const tooBig = files.find(f => f.size > I9_MAX_UPLOAD_BYTES);
     if (tooBig) return { ok: false, error: `"${tooBig.name}" is larger than 10 MB — try a smaller photo or a compressed PDF.` };
-    selections.push({ list, label, files });
+    selections.push({ list, label, files: files.slice() });
   }
   return { ok: true, selections };
 }
@@ -3582,6 +3946,12 @@ async function submitHrOnboarding() {
 
   const i9Choice = collectHrOnbI9Selections();
   if (!i9Choice.ok) { errEl.textContent = i9Choice.error; errEl.style.display = 'block'; return; }
+
+  // Documents this company requires at onboarding — all checked before
+  // anything uploads, so a missing item is one clear message up front
+  // rather than a half-finished submission.
+  const reqChoice = collectHrOnbRequiredDocs();
+  if (!reqChoice.ok) { errEl.textContent = reqChoice.error; errEl.style.display = 'block'; return; }
 
   const payload = {
     first_name: firstName,
@@ -3613,32 +3983,30 @@ async function submitHrOnboarding() {
   // status moves to 'submitted'. A failure here is non-fatal — logged,
   // not blocking — since the actual data submission (which admins can
   // always follow up on directly) matters more than the photo.
-  const dlPhotoFile = document.getElementById('hrOnbDlPhoto').files[0];
-  if (dlPhotoFile && !window._hrOnbDlUploaded) {
+  // Required documents (driver's license, auto insurance, whatever this
+  // company picked) go into the doc side as real credential documents.
+  // A failure here is fatal to the submission, for the same reason as the
+  // I-9 documents below: the employee is being told these are required,
+  // so "submitted" must never be shown while one silently didn't arrive.
+  // Nothing has been flipped to 'submitted' yet, so a retry is clean, and
+  // any type already sent is remembered so a retry doesn't send it twice.
+  window._hrOnbReqUploaded = window._hrOnbReqUploaded || new Set();
+  for (const item of reqChoice.items) {
     try {
-      const path = `${currentCompany.id}/employees/${window._hrOnboardingId}/${Date.now()}_${dlPhotoFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
-      const { error: uploadErr } = await sb.storage.from('hr-documents').upload(path, dlPhotoFile);
-      if (uploadErr) throw uploadErr;
-      await sb.from('hr_documents').insert({
-        employee_id: window._hrOnboardingId,
-        company_id: currentCompany.id,
-        template_id: null,
-        name: "Driver's License Photo",
-        storage_path: path,
-        status: 'submitted_by_employee', // distinct from 'pending_acknowledgment', which is for admin-uploaded docs the employee needs to acknowledge reading — the reverse direction here
-        created_by: currentProfile.id,
-      });
-      window._hrOnbDlUploaded = true; // a retry after a later failure shouldn't upload it a second time
+      await hrOnbUploadRequiredDoc(item);
+      window._hrOnbReqUploaded.add(String(item.type.id));
     } catch (e) {
-      console.error('Driver license photo upload failed (submission itself still proceeds):', e);
+      console.error('Required document upload failed:', e);
+      errEl.textContent = `Couldn't save your ${item.type.name} — nothing has been submitted yet. Check your connection and try again. (${e.message})`;
+      errEl.style.display = 'block';
+      return;
     }
   }
 
-  // I-9 identity/work-authorization documents. Unlike the license photo
-  // above, a failure here IS fatal to the submission: the employee just
-  // chose these specifically, and telling them "submitted" while their
-  // documents silently didn't arrive would be worse than asking them to
-  // retry. Nothing has been flipped to 'submitted' yet, so a retry is
+  // I-9 identity/work-authorization documents. A failure here is fatal
+  // to the submission: the employee just chose these specifically, and
+  // telling them "submitted" while their documents silently didn't
+  // arrive would be worse than asking them to retry. Nothing has been flipped to 'submitted' yet, so a retry is
   // clean; files already sent successfully are remembered (below) so a
   // retry doesn't send them twice.
   window._hrOnbI9Uploaded = window._hrOnbI9Uploaded || new Set();
@@ -3730,9 +4098,16 @@ async function submitHrOnboarding() {
   // itself has already succeeded at this point; a missing I-9 here
   // shouldn't read as the whole thing having failed.
   const uploadedCount = window._hrOnbI9Uploaded ? window._hrOnbI9Uploaded.size : 0;
-  const docsLine = uploadedCount
-    ? `<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">${uploadedCount} document file${uploadedCount === 1 ? '' : 's'} sent to your employer for review.</p>`
-    : '';
+  const addedNames = (window._hrOnbReqStatus || [])
+    .filter(s => window._hrOnbReqUploaded && window._hrOnbReqUploaded.has(String(s.type.id)))
+    .map(s => s.type.name);
+  const docsLine =
+    (uploadedCount
+      ? `<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">${uploadedCount} I-9 document file${uploadedCount === 1 ? '' : 's'} sent to your employer for review.</p>`
+      : '') +
+    (addedNames.length
+      ? `<p style="font-size:13px;color:var(--gray-600);margin-bottom:12px;">Added to your credential file: ${addedNames.map(hrOnbEsc).join(', ')}.</p>`
+      : '');
   let confirmHtml;
   if (generatedI9) {
     const url = URL.createObjectURL(generatedI9.blob);
@@ -3749,6 +4124,29 @@ async function submitHrOnboarding() {
   document.getElementById('hrOnboardingPanel').innerHTML = `
     <div class="panel-head"><span class="panel-title">📋 Onboarding submitted</span></div>
     <div class="panel-body">${confirmHtml}</div>`;
+
+  // Onboarding is done, so the general upload panel comes back, and any
+  // credential documents just added show up in "My documents" and the stat
+  // cards straight away instead of only after a refresh. Cosmetic — the
+  // submission has already succeeded, so a failure here is just logged.
+  setStaffUploadDeferred(false);
+  try {
+    await renderStatCards(window._staffId);
+    await loadMyDocs(window._staffId);
+  } catch (e) {
+    console.warn('Post-submit refresh of the document list failed (submission itself succeeded):', e);
+  }
+}
+
+// Swaps the general "Upload a document" panel for a short pointer to the
+// onboarding form while one is pending (deferred = true), or restores it.
+// Set explicitly both ways every time — never left sticky — since initStaff
+// can run more than once in a session.
+function setStaffUploadDeferred(deferred) {
+  const panel = document.getElementById('staffUploadPanel');
+  const note = document.getElementById('staffUploadDeferred');
+  if (panel) panel.style.display = deferred ? 'none' : '';
+  if (note) note.style.display = deferred ? 'block' : 'none';
 }
 
 async function initStaff() {
@@ -3767,12 +4165,17 @@ async function initStaff() {
   // ever finds THEIR OWN record, never anyone else's, regardless of
   // what staffId ends up being passed around client-side.
   const onboardingPanel = document.getElementById('hrOnboardingPanel');
+  if (!(onboardingPanel && window._staffId)) setStaffUploadDeferred(false);
   if (onboardingPanel && window._staffId) {
     const { data: hrRec } = await sb.from('hr_employees')
       .select('*').eq('credtrack_staff_id', window._staffId).maybeSingle();
     window._hrOnboardingId = (hrRec && hrRec.onboarding_status === 'not_started') ? hrRec.id : null;
     onboardingPanel.style.display = window._hrOnboardingId ? 'block' : 'none';
-
+    setStaffUploadDeferred(!!window._hrOnboardingId);
+    if (window._hrOnboardingId) {
+      hrOnbInitAttachControls(); // Take photo / Choose file(s) for each upload spot
+      await initHrOnbRequiredDocs(staffRec); // documents this company requires (driver's license, auto insurance, …)
+    }
     // The I-9 document section appears the moment a form is designated as
     // the I-9 (this company's own or a Selko-provided global one) — read
     // through the same hr_templates policy that already lets any member of
@@ -11156,6 +11559,7 @@ async function loadSettings() {
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
   document.getElementById('setTaskDigestInterval').value = c.custom_vars?.taskDigestIntervalDays || 7;
   document.getElementById('setOnboardingReminderInterval').value = c.custom_vars?.onboardingReminderIntervalDays || 3;
+  renderOnboardingDocTypePicklist(c);
   document.getElementById('setShowPartnerRecs').checked = c.show_partner_recommendations !== false;
 
   // Lock company name editing for non-super-admins
@@ -14478,6 +14882,30 @@ async function showHrEmployeeSheet(employeeId) {
   if (!_hrTemplatesCache) await loadHrTemplates();
   const { data: docs } = await sb.from('hr_documents').select('*, hr_templates(name)').eq('employee_id', employeeId).order('created_at', { ascending: false });
 
+  // What this company requires at onboarding, and where this person stands
+  // on each — from the doc side, since that's where those documents live.
+  // Only for employees linked to a staff record (that link is also what
+  // gives them a login to upload with in the first place). A failure just
+  // omits the block; it never blocks opening the sheet.
+  let reqDocsHtml = '';
+  if (employee.credtrack_staff_id) {
+    try {
+      const { data: linkedStaff } = await sb.from('credtrack_staff').select('discipline').eq('id', employee.credtrack_staff_id).maybeSingle();
+      const reqStatuses = await hrOnbLoadRequiredDocStatus(employee.credtrack_staff_id, linkedStaff ? linkedStaff.discipline : null);
+      if (reqStatuses.length) {
+        const look = { on_file: ['✓', '#4ade80', 'on file'], expired: ['⚠', '#f59e0b', 'expired — needs a current one'], missing: ['✗', '#f87171', 'missing'] };
+        reqDocsHtml = `
+          <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Required at onboarding</div>
+          <div style="margin-bottom:16px;">${reqStatuses.map(s => {
+            const [icon, color, text] = look[s.state];
+            return `<div style="font-size:12px;color:#fff;padding:3px 0;"><span style="color:${color};">${icon}</span> ${hrOnbEsc(s.type.name)} <span style="color:${color};font-size:11px;">— ${text}</span></div>`;
+          }).join('')}</div>`;
+      }
+    } catch (e) {
+      console.error('Required-documents status unavailable for this employee:', e);
+    }
+  }
+
   const templateOptionsHtml = (_hrTemplatesCache || []).map(t => `<option value="${t.id}">${t.name}</option>`).join('');
 
   // Three real states, not two: "ON FILE" used to be the label for
@@ -14543,6 +14971,7 @@ async function showHrEmployeeSheet(employeeId) {
         <button class="btn btn-sm btn-ghost" onclick="showUploadHrDocumentModal('${employeeId}')" style="font-size:11px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);">+ Upload for acknowledgment</button>
       </div>
       <div style="margin-bottom:16px;">${docsHtml}</div>
+      ${reqDocsHtml}
 
       <div style="border-top:1px solid rgba(255,255,255,.08);padding-top:14px;margin-top:4px;">
         ${employee.onboarding_status && employee.onboarding_status !== 'not_started' ? `
@@ -16526,12 +16955,52 @@ async function deletePayerNetwork(id) {
   await loadPayerBoard();
 }
 
+// Settings → "Documents required at onboarding". Lists every document type
+// staff may upload themselves, ticked per the company's saved choice (or
+// the defaults until it has made one).
+function renderOnboardingDocTypePicklist(company) {
+  const box = document.getElementById('setOnboardingDocTypes');
+  if (!box) return;
+  const selectable = (docTypes || []).filter(t => t.staff_can_upload !== false);
+  const chosen = new Set(hrOnbResolveRequiredDocTypes(company.custom_vars, docTypes).map(t => String(t.id)));
+  box.innerHTML = selectable.length
+    ? selectable.map(t => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.75);cursor:pointer;"><input type="checkbox" value="${t.id}" ${chosen.has(String(t.id)) ? 'checked' : ''} />${hrOnbEsc(t.name)}</label>`).join('')
+    : '<span style="font-size:12px;color:rgba(255,255,255,.4);">No document types available yet.</span>';
+  box.dataset.renderedFor = String(company.id);
+
+  const note = document.getElementById('setOnboardingDocTypesNote');
+  if (note) {
+    const usingDefaults = !Array.isArray(company.custom_vars && company.custom_vars.onboardingDocTypeIds);
+    if (usingDefaults) {
+      note.textContent = chosen.size
+        ? 'Showing the defaults (Driver License and Auto Insurance, where you have those document types). Click Save settings to lock in your choice.'
+        : 'No Driver License or Auto Insurance document type was found, so nothing is required yet. Tick the ones you want and click Save settings.';
+      note.style.display = 'block';
+    } else {
+      note.style.display = 'none';
+    }
+  }
+}
+
+// What to merge into custom_vars on save. Deliberately returns nothing
+// unless the picklist on screen was rendered for the company being saved:
+// saveCompanySettings is also called from the Credentialing tab, and after
+// a "view as" switch this panel can still be showing the PREVIOUS
+// company's ticks — saving those would silently overwrite the wrong
+// company's list, or wipe a real one with an unrendered, all-unticked box.
+function readOnboardingDocTypePicklist() {
+  const box = document.getElementById('setOnboardingDocTypes');
+  if (!box || box.dataset.renderedFor !== String(currentCompany.id)) return {};
+  return { onboardingDocTypeIds: Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map(i => Number(i.value)) };
+}
+
 async function saveCompanySettings() {
   const adminEmail = document.getElementById('setAdminEmail').value.trim();
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
   const taskDigestIntervalDays = parseInt(document.getElementById('setTaskDigestInterval').value) || 7;
   const onboardingReminderIntervalDays = parseInt(document.getElementById('setOnboardingReminderInterval').value) || 3;
+  const onboardingDocTypePart = readOnboardingDocTypePicklist(); // {} unless the picklist is showing THIS company's list — see its comment
   // Two save buttons write here now (Settings tab, and the Credentialing
   // tab's org profile fields) — both status elements always exist in the
   // DOM regardless of which tab is hidden, so update whichever one is
@@ -16543,7 +17012,7 @@ async function saveCompanySettings() {
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
   const updates = {
     admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
-    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays },
+    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays, ...onboardingDocTypePart },
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
@@ -16581,6 +17050,7 @@ async function saveCompanySettings() {
   }
 
   currentCompany = { ...currentCompany, ...updates };
+  renderOnboardingDocTypePicklist(currentCompany); // now an explicit saved choice, so the "showing defaults" note goes away
   _partnerRecsCache = null; // this save may have changed the opt-out setting or malpractice fields — refetch next time it's needed
   if (statusEl) {
     statusEl.textContent = '✓ Settings saved';
