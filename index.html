@@ -1336,6 +1336,24 @@ window.selkoSharedAuthStorage = {
           <div id="myOfacMatchesList"></div>
         </div>
 
+        <!-- Sex offender registry search — a plain outbound link to the U.S. Department of
+             Justice's NSOPW, NOT an automated check like OIG/OFAC above. Selko can't run it
+             or record that it was done (the site is a manual search form), so this panel is
+             honest about that instead of implying coverage that isn't there. The caveats sit
+             right beside the link on purpose: NSOPW's own conditions say the Department doesn't
+             guarantee accuracy or completeness and that users must verify with the jurisdiction,
+             and the search is name-based — the two things most likely to be misused. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="nsopwPanel">
+          <h2>🔎 Sex Offender Registry Search (NSOPW)</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">The U.S. Department of Justice's free national search across state, territorial and tribal sex offender registries. This one is a manual lookup — Selko can't run it for you or record that you did, so keep your own note of who you searched and when.</p>
+          <a class="btn btn-sm btn-teal" id="nsopwLink" href="https://www.nsopw.gov/search-public-sex-offender-registries" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">Open NSOPW search ↗</a>
+          <ul style="font-size:12px;color:rgba(255,255,255,.66);margin:12px 0 0;padding-left:18px;line-height:1.6;">
+            <li><strong>A name match is a lead, not confirmation.</strong> Many people share a name — open the jurisdiction's own registry from the result and compare age, aliases and photo before treating anyone as a match.</li>
+            <li><strong>No result doesn't prove there's no record.</strong> The Department doesn't guarantee its data is complete or current.</li>
+            <li>Get advice on your obligations before acting on a match. See <em>Guides &amp; resources</em> below for how to read a result.</li>
+          </ul>
+        </div>
+
         <!-- Guides & Resources — process reference material, not staff/
              company data entry. Content lives in CRED_GUIDES (a plain JS
              array) rather than being hand-written per guide here, so
@@ -13088,6 +13106,33 @@ const CRED_GUIDES = [
       <p><strong>Revalidation is required every 5 years.</strong> Missing that deadline deactivates billing privileges, and reinstatement typically costs another 60–90 days of lost billing — worth a standing reminder well before the 5-year mark.</p>
 
       <p style="color:rgba(255,255,255,.58);font-size:12px;margin-top:16px;"><em>Reflects CMS's own published enrollment guidance as of 2026. Edge cases — a prior Medicare sanction, an unusual practice arrangement, multi-state licensure — aren't covered here and are worth a direct call to the relevant Medicare Administrative Contractor (MAC) rather than guessing from a general guide.</em></p>
+    `,
+  },
+  {
+    title: 'Checking the National Sex Offender Public Website (NSOPW)',
+    subtitle: 'Free U.S. Department of Justice lookup — how to search, and how to read a result',
+    html: `
+      <p><a id="nsopwGuideLink" href="https://www.nsopw.gov/search-public-sex-offender-registries" target="_blank" rel="noopener noreferrer" style="color:var(--teal-l);font-weight:600;">Open the NSOPW search ↗</a></p>
+      <p>NSOPW is run by the U.S. Department of Justice and links the public sex offender registries of the states, U.S. territories and participating tribes into one search. It is <strong>not</strong> the FBI's National Sex Offender Registry, which is a law-enforcement-only database. Selko can't run this search or record that it was done — it's a manual lookup, so note who you checked and when.</p>
+
+      <h4>How to search</h4>
+      <ul>
+        <li>Enter a <strong>first and last name</strong>, or a <strong>zip code</strong> (up to five, separated by spaces). There's also a search by address and radius.</li>
+        <li>Results list the offender, age, aliases and address. Each result links back to the registry of the state or tribe that holds the record.</li>
+      </ul>
+
+      <h4>If a result might be your person</h4>
+      <ol>
+        <li><strong>Don't decide from the name alone.</strong> Compare the age and any aliases against what you have on file for the person.</li>
+        <li><strong>Open the record on the jurisdiction's own registry</strong> (the link in the result). That's where the photo, date of birth and offense details are, and it's the source the Department tells users to verify against.</li>
+        <li><strong>Write down what you checked</strong> — the person, the date, what came back, and how you confirmed or ruled out the match.</li>
+        <li><strong>Get advice before acting on a confirmed match</strong> — from your attorney or compliance advisor — since employment decisions based on background information can carry their own requirements.</li>
+      </ol>
+
+      <h4>If nothing comes back</h4>
+      <p>That is not proof there's no record. The Department states that it does not guarantee the accuracy, completeness or timeliness of what the registries report, and it can omit people. Registries also differ by jurisdiction. If your contracts or state rules require a full background check, this search doesn't replace it.</p>
+
+      <p style="font-size:12px;color:rgba(255,255,255,.58);">Based on NSOPW's published Conditions of Use and FAQs as of September 2026 — check the site for its current terms.</p>
     `,
   },
 ];
