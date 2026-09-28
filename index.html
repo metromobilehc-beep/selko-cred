@@ -11412,16 +11412,24 @@ async function loadSensitiveAccessLog() {
       <td style="max-width:260px;white-space:normal;font-size:12px;color:rgba(255,255,255,.66);">${r.justification || '—'}</td>
       <td style="font-size:11px;white-space:nowrap;">${r.acknowledged_at
         ? `<span style="color:rgba(255,255,255,.58);">✓ by ${r.acknowledged_by || '—'}</span>`
-        : `<button class="btn btn-sm btn-ghost" onclick="acknowledgeAccessLogEntry('${r.id}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Acknowledge</button>`}</td>
+        : (_superProfile
+            // Reviewing accesses is the COMPANY's own job (it's how they check the platform owner's
+            // access to their staff), and the database only lets that company's own admins do it —
+            // so while viewing as another company there is nothing useful to click.
+            ? `<span style="color:rgba(255,255,255,.58);" title="Only this company's own admins can mark entries reviewed">awaiting company review</span>`
+            : `<button class="btn btn-sm btn-ghost" onclick="acknowledgeAccessLogEntry('${r.id}')" style="font-size:11px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Acknowledge</button>`)}</td>
     </tr>`).join('');
 }
 
 async function acknowledgeAccessLogEntry(id) {
-  const { error } = await sb.from('sensitive_field_access_log').update({
+  const { data: changed, error } = await sb.from('sensitive_field_access_log').update({
     acknowledged_at: new Date().toISOString(),
     acknowledged_by: currentProfile.full_name || currentProfile.email,
-  }).eq('id', id).eq('company_id', currentCompany.id); // same scoping: an entry from another company can't be marked reviewed from here
+  }).eq('id', id).eq('company_id', currentCompany.id).select('id'); // same scoping: an entry from another company can't be marked reviewed from here
   if (error) { toast('Error: ' + error.message, true); return; }
+  // The database quietly changes nothing (and reports no error) for someone who isn't allowed
+  // to review — e.g. the platform owner inside another company. Don't claim success then.
+  if (!changed || !changed.length) { toast("Nothing was changed — only this company's own admins can mark an entry reviewed.", true); return; }
   toast('✓ Marked reviewed');
   await loadSensitiveAccessLog();
 }
