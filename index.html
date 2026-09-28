@@ -2353,7 +2353,9 @@ async function saveOigPreferredDay() {
   toast(`Preferred check day saved — day ${day} of each month.`);
 }
 
-// OFAC SDN sanctions check — manual trigger. Calls check-ofac-sanctions,
+// OFAC SDN sanctions check — manual trigger. Calls the ofac-sanctions Edge
+// Function (deployed under that name — an earlier draft called it
+// check-ofac-sanctions, which never existed, hence the original error),
 // stores the result, and renders matches directly (no separate history/
 // archive view yet — that's the natural next piece, matching what OIG
 // already has, not built in this pass).
@@ -2368,7 +2370,7 @@ async function runMyCompanyOfacCheck() {
   listEl.innerHTML = '';
 
   try {
-    const { data, error } = await sb.functions.invoke('check-ofac-sanctions', {
+    const { data, error } = await sb.functions.invoke('ofac-sanctions', {
       body: { company_id: companyId }
     });
     if (error) {
