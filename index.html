@@ -1660,9 +1660,12 @@ window.selkoSharedAuthStorage = {
         </div>
         <div style="margin-bottom:14px;">
           <label class="inline-label">Documents required at onboarding</label>
-          <p style="font-size:11px;color:rgba(255,255,255,.58);margin:0 0 8px;">New hires must have these on file — or upload them — before they can submit their onboarding form. They're saved as regular credential documents, so expiration reminders and verification apply. Only document types staff are allowed to upload themselves are listed.</p>
-          <div id="setOnboardingDocTypes" style="display:flex;flex-wrap:wrap;gap:6px 22px;max-height:200px;overflow-y:auto;"></div>
-          <p id="setOnboardingDocTypesNote" style="font-size:11px;color:var(--gold);margin:8px 0 0;display:none;"></p>
+          <p style="font-size:11px;color:rgba(255,255,255,.58);margin:0 0 8px;">New hires must have these on file — or upload them — before they can submit their onboarding form. They're saved as regular credential documents, so expiration reminders and verification apply. This list is separate from which documents are marked Required under Documents.</p>
+          <div id="setOnboardingDocTypes" style="display:flex;flex-wrap:wrap;gap:6px 8px;"></div>
+          <div style="margin-top:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-ghost" id="obPickOpenBtn" onclick="openOnboardingDocPicker()">Choose documents…</button>
+            <span id="setOnboardingDocTypesNote" style="font-size:11px;color:var(--gold);display:none;"></span>
+          </div>
         </div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;">
           <input type="checkbox" id="setShowPartnerRecs" checked />
@@ -11579,7 +11582,7 @@ async function loadSettings() {
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
   document.getElementById('setTaskDigestInterval').value = c.custom_vars?.taskDigestIntervalDays || 7;
   document.getElementById('setOnboardingReminderInterval').value = c.custom_vars?.onboardingReminderIntervalDays || 3;
-  renderOnboardingDocTypePicklist(c);
+  renderOnboardingDocTypeSummary(c);
   document.getElementById('setShowPartnerRecs').checked = c.show_partner_recommendations !== false;
 
   // Lock company name editing for non-super-admins
@@ -17014,43 +17017,243 @@ async function deletePayerNetwork(id) {
   await loadPayerBoard();
 }
 
-// Settings → "Documents required at onboarding". Lists every document type
-// staff may upload themselves, ticked per the company's saved choice (or
-// the defaults until it has made one).
-function renderOnboardingDocTypePicklist(company) {
+// ── Settings → "Documents required at onboarding" ────────────────────────
+//
+// The choice is a single company setting (custom_vars.onboardingDocTypeIds).
+// Settings shows a compact summary of it; a pop-up picker edits it:
+//   1. the documents usually required at HR onboarding, first — matched by
+//      name against THIS company's own document types, so only what actually
+//      exists is offered (nothing invented, nothing dead-ended);
+//   2. then everything else the company has, searchable and grouped by
+//      category, for anything unusual.
+// Saving is immediate and self-contained: its own small update, merged into
+// the freshly-read custom_vars. The Settings page's big Save button never
+// touches this list (there are no hidden inputs for it to read), so an
+// unrelated settings save can't overwrite it, and this save can't overwrite
+// other settings edited elsewhere in the meantime.
+//
+// What "typically required" means is deliberately a plain, ordered list of
+// name patterns, easy to extend. First match wins, and the order below is the
+// order they appear in the picker.
+const ONBOARDING_COMMON_DOC_PATTERNS = [
+  /driver'?s?[\s-]*licen[sc]e/i,                                                        // driver license
+  /auto(mobile)?[\s-]*insurance/i,                                                      // proof of auto insurance
+  /\b(pt|pta|ot|cota|slp|rn|lpn|cna)\b.*licen[sc]e|licen[sc]e.*\b(pt|pta|ot|cota|slp|rn|lpn|cna)\b|professional[\s-]*licen[sc]e|state[\s-]*licen[sc]e/i,  // professional license
+  /\bcpr\b|\bbls\b/i,                                                                   // CPR / BLS
+  /\btb\b|tubercul|\bppd\b/i,                                                           // TB screening
+  /immuniz|vaccin|hep(atitis)?[\s-]*b\b|\bflu\b|influenza|covid|\bmmr\b|titer/i,        // immunizations
+  /malpractice|professional[\s-]*liability/i,                                           // malpractice / liability
+  /physical|health[\s-]*(screen|assessment)|drug[\s-]*(screen|test)/i,                  // physical / screenings
+  /resume|curriculum[\s-]*vitae|\bcv\b/i,                                               // résumé / CV
+  /diploma|transcript|degree|education/i,                                               // education
+  /social[\s-]*security/i,                                                              // SS card
+  /\bw-?4\b|\bw-?9\b/i,                                                                 // tax forms
+  /reference/i,                                                                         // references
+  /\bnpi\b/i,                                                                           // NPI
+];
+
+// Pure. Splits the types a new hire could be asked for into the ones usually
+// required at onboarding (in the order above) and everything else. Types staff
+// can't upload themselves are never offered — same rule as everywhere else.
+function hrOnbSplitCommonDocTypes(types) {
+  const ranked = [], other = [];
+  (types || []).filter(t => t.staff_can_upload !== false).forEach((t, i) => {
+    const rank = ONBOARDING_COMMON_DOC_PATTERNS.findIndex(re => re.test(t.name || ''));
+    (rank === -1 ? other : ranked).push({ t, rank, i });
+  });
+  ranked.sort((a, b) => a.rank - b.rank || a.i - b.i);
+  return { common: ranked.map(x => x.t), other: other.map(x => x.t) };
+}
+
+// Pure. Groups by category in the company's own category order. Anything
+// uncategorized goes under "Other"; a category that's no longer in the company's
+// list still gets its own header (so nothing is hidden), sorted after the rest.
+function hrOnbGroupByCategory(types, categoryOrder) {
+  const groups = new Map();
+  (types || []).forEach(t => {
+    const cat = t.category || 'Other';
+    if (!groups.has(cat)) groups.set(cat, []);
+    groups.get(cat).push(t);
+  });
+  const order = (categoryOrder || []).slice();
+  if (!order.includes('Other')) order.push('Other');
+  const rank = c => { const i = order.indexOf(c); return i === -1 ? 999 : i; };
+  return Array.from(groups.keys())
+    .sort((a, b) => rank(a) - rank(b) || a.localeCompare(b))
+    .map(category => ({ category, types: groups.get(category) }));
+}
+
+// The compact view in Settings: what's required right now, as chips.
+function renderOnboardingDocTypeSummary(company) {
   const box = document.getElementById('setOnboardingDocTypes');
   if (!box) return;
-  const selectable = (docTypes || []).filter(t => t.staff_can_upload !== false);
-  const chosen = new Set(hrOnbResolveRequiredDocTypes(company.custom_vars, docTypes).map(t => String(t.id)));
-  box.innerHTML = selectable.length
-    ? selectable.map(t => `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.75);cursor:pointer;"><input type="checkbox" value="${t.id}" ${chosen.has(String(t.id)) ? 'checked' : ''} />${hrOnbEsc(t.name)}</label>`).join('')
-    : '<span style="font-size:12px;color:rgba(255,255,255,.58);">No document types available yet.</span>';
-  box.dataset.renderedFor = String(company.id);
+  const required = hrOnbResolveRequiredDocTypes(company.custom_vars, docTypes);
+  box.innerHTML = required.length
+    ? required.map(t => `<span style="display:inline-block;padding:4px 10px;border-radius:999px;background:rgba(20,184,166,.15);border:1px solid rgba(20,184,166,.45);color:#fff;font-size:12px;">${hrOnbEsc(t.name)}</span>`).join('')
+    : `<span style="font-size:12px;color:rgba(255,255,255,.58);">Nothing required — new hires won't be asked for any documents.</span>`;
 
   const note = document.getElementById('setOnboardingDocTypesNote');
   if (note) {
     const usingDefaults = !Array.isArray(company.custom_vars && company.custom_vars.onboardingDocTypeIds);
     if (usingDefaults) {
-      note.textContent = chosen.size
-        ? 'Showing the defaults (Driver License and Auto Insurance, where you have those document types). Click Save settings to lock in your choice.'
-        : 'No Driver License or Auto Insurance document type was found, so nothing is required yet. Tick the ones you want and click Save settings.';
-      note.style.display = 'block';
+      note.textContent = required.length
+        ? 'Using the defaults (Driver License and Auto Insurance, where you have those types) until you choose your own list.'
+        : 'No Driver License or Auto Insurance document type was found, so nothing is required yet — choose the documents you want.';
+      note.style.display = '';
     } else {
       note.style.display = 'none';
     }
   }
 }
 
-// What to merge into custom_vars on save. Deliberately returns nothing
-// unless the picklist on screen was rendered for the company being saved:
-// saveCompanySettings is also called from the Credentialing tab, and after
-// a "view as" switch this panel can still be showing the PREVIOUS
-// company's ticks — saving those would silently overwrite the wrong
-// company's list, or wipe a real one with an unrendered, all-unticked box.
-function readOnboardingDocTypePicklist() {
-  const box = document.getElementById('setOnboardingDocTypes');
-  if (!box || box.dataset.renderedFor !== String(currentCompany.id)) return {};
-  return { onboardingDocTypeIds: Array.from(box.querySelectorAll('input[type="checkbox"]:checked')).map(i => Number(i.value)) };
+// Persist the choice. Reads the company's current custom_vars first and merges
+// into THAT, so other settings changed elsewhere since this page loaded aren't
+// overwritten by a stale copy. Returns true on success.
+async function saveOnboardingDocSelection(ids) {
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).single();
+  if (readErr || !fresh) {
+    toast("Couldn't save — " + (readErr ? readErr.message : 'company not found'), true);
+    return false;
+  }
+  const merged = { ...(fresh.custom_vars || {}), onboardingDocTypeIds: ids };
+  const { error } = await sb.from('companies').update({ custom_vars: merged }).eq('id', currentCompany.id);
+  if (error) {
+    toast("Couldn't save — " + error.message, true);
+    return false;
+  }
+  currentCompany = { ...currentCompany, custom_vars: merged };
+  renderOnboardingDocTypeSummary(currentCompany);
+  toast('Onboarding documents saved');
+  return true;
+}
+
+// ── the pop-up picker ──
+let _obPick = null;          // { selected:Set<string>, common, groups, query } while open
+let _obPickKeyHandler = null;
+
+async function openOnboardingDocPicker() {
+  if (document.getElementById('onboardingDocPickerModal')) return;
+  const selectable = (docTypes || []).filter(t => t.staff_can_upload !== false);
+  if (!selectable.length) { toast('No document types are available yet.', true); return; }
+
+  let categoryOrder = [];
+  try {
+    const { data } = await sb.from('document_type_categories').select('name').order('sort_order');
+    categoryOrder = (data || []).map(c => c.name);
+  } catch (e) { /* no category order available — groups just sort alphabetically */ }
+
+  const { common, other } = hrOnbSplitCommonDocTypes(selectable);
+  _obPick = {
+    selected: new Set(hrOnbResolveRequiredDocTypes(currentCompany.custom_vars, docTypes).map(t => String(t.id))),
+    common,
+    groups: hrOnbGroupByCategory(other, categoryOrder),
+    query: '',
+  };
+
+  const modal = document.createElement('div');
+  modal.id = 'onboardingDocPickerModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div role="dialog" aria-modal="true" aria-labelledby="obPickTitle" style="background:var(--navy2);border-radius:14px;width:100%;max-width:560px;max-height:88vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.18);">
+      <div style="padding:20px 24px 12px;">
+        <div id="obPickTitle" style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Documents required at onboarding</div>
+        <div style="color:rgba(255,255,255,.66);font-size:13px;margin-bottom:12px;">Tick what new hires must provide. Anything already on file for them is skipped.</div>
+        <input class="inline-input" id="obPickSearch" type="text" placeholder="Search all documents…" autocomplete="off" oninput="obPickSearch(this.value)" />
+      </div>
+      <div style="padding:0 24px 8px;overflow-y:auto;flex:1;min-height:0;">
+        <div id="obPickCommonWrap">
+          <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin:8px 0 4px;">Commonly required at onboarding</div>
+          <div id="obPickCommon"></div>
+        </div>
+        <div id="obPickOtherWrap">
+          <div id="obPickOtherHead" style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin:14px 0 4px;"></div>
+          <div id="obPickOther"></div>
+        </div>
+        <div id="obPickEmpty" style="display:none;color:rgba(255,255,255,.66);font-size:13px;padding:14px 0;">No documents match your search.</div>
+      </div>
+      <div style="padding:14px 24px 20px;display:flex;align-items:center;gap:10px;border-top:1px solid rgba(255,255,255,.12);">
+        <span id="obPickCount" style="flex:1;color:rgba(255,255,255,.66);font-size:13px;"></span>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="closeOnboardingDocPicker()">Cancel</button>
+        <button type="button" class="btn btn-sm btn-teal" id="obPickSaveBtn" onclick="obPickSave()">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  _obPickKeyHandler = (e) => { if (e.key === 'Escape') closeOnboardingDocPicker(); };
+  document.addEventListener('keydown', _obPickKeyHandler);
+  obPickRender();
+}
+
+function obPickRowHtml(t, showCategory) {
+  const id = hrOnbEsc(String(t.id));
+  return `<label style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;cursor:pointer;color:#fff;font-size:14px;">
+    <input type="checkbox" data-doc-type-id="${id}" ${_obPick.selected.has(String(t.id)) ? 'checked' : ''} onchange="obPickToggle('${id}', this.checked)" style="accent-color:var(--teal);width:16px;height:16px;flex-shrink:0;" />
+    <span style="flex:1;">${hrOnbEsc(t.name)}</span>
+    ${showCategory ? `<span style="font-size:11px;color:rgba(255,255,255,.58);">${hrOnbEsc(t.category || 'Other')}</span>` : ''}
+  </label>`;
+}
+
+function obPickCountText() {
+  const n = _obPick.selected.size;
+  return n ? `${n} selected` : "Nothing selected — new hires won't be asked for any documents";
+}
+
+// Re-draws the two lists for the current search. The search box itself is
+// never re-created, so typing keeps its focus; selections live in the Set,
+// so they survive filtering.
+function obPickRender() {
+  if (!_obPick) return;
+  const q = _obPick.query.trim().toLowerCase();
+  const match = t => !q || (t.name || '').toLowerCase().includes(q) || (t.category || '').toLowerCase().includes(q);
+  const common = _obPick.common.filter(match);
+  const groups = _obPick.groups.map(g => ({ category: g.category, types: g.types.filter(match) })).filter(g => g.types.length);
+
+  document.getElementById('obPickCommonWrap').style.display = common.length ? '' : 'none';
+  document.getElementById('obPickCommon').innerHTML = common.map(t => obPickRowHtml(t, true)).join('');
+
+  document.getElementById('obPickOtherWrap').style.display = groups.length ? '' : 'none';
+  document.getElementById('obPickOtherHead').textContent = _obPick.common.length
+    ? 'More documents — add any others from your full list'
+    : 'All documents';
+  document.getElementById('obPickOther').innerHTML = groups.map(g => `
+    <div style="font-size:12px;color:rgba(255,255,255,.66);margin:10px 0 2px 8px;">${hrOnbEsc(g.category)}</div>
+    ${g.types.map(t => obPickRowHtml(t, false)).join('')}`).join('');
+
+  document.getElementById('obPickEmpty').style.display = (!common.length && !groups.length) ? 'block' : 'none';
+  document.getElementById('obPickCount').textContent = obPickCountText();
+}
+
+function obPickToggle(id, on) {
+  if (!_obPick) return;
+  if (on) _obPick.selected.add(String(id)); else _obPick.selected.delete(String(id));
+  document.getElementById('obPickCount').textContent = obPickCountText();
+}
+
+function obPickSearch(value) {
+  if (!_obPick) return;
+  _obPick.query = value || '';
+  obPickRender();
+}
+
+function closeOnboardingDocPicker() {
+  const modal = document.getElementById('onboardingDocPickerModal');
+  if (modal) modal.remove();
+  if (_obPickKeyHandler) { document.removeEventListener('keydown', _obPickKeyHandler); _obPickKeyHandler = null; }
+  _obPick = null;
+}
+
+async function obPickSave() {
+  if (!_obPick) return;
+  const btn = document.getElementById('obPickSaveBtn');
+  // ids go in as numbers when they are numeric (that's what document_type_id is
+  // everywhere else); the resolver compares as strings, so either would work
+  const ids = Array.from(_obPick.selected).map(x => (Number.isFinite(Number(x)) ? Number(x) : x));
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const ok = await saveOnboardingDocSelection(ids);
+  if (ok) {
+    closeOnboardingDocPicker();
+  } else if (btn) {
+    btn.disabled = false; btn.textContent = 'Save'; // stay open — nothing was lost, they can retry
+  }
 }
 
 async function saveCompanySettings() {
@@ -17059,7 +17262,6 @@ async function saveCompanySettings() {
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
   const taskDigestIntervalDays = parseInt(document.getElementById('setTaskDigestInterval').value) || 7;
   const onboardingReminderIntervalDays = parseInt(document.getElementById('setOnboardingReminderInterval').value) || 3;
-  const onboardingDocTypePart = readOnboardingDocTypePicklist(); // {} unless the picklist is showing THIS company's list — see its comment
   // Two save buttons write here now (Settings tab, and the Credentialing
   // tab's org profile fields) — both status elements always exist in the
   // DOM regardless of which tab is hidden, so update whichever one is
@@ -17071,7 +17273,7 @@ async function saveCompanySettings() {
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
   const updates = {
     admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
-    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays, ...onboardingDocTypePart },
+    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays },
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
@@ -17109,7 +17311,6 @@ async function saveCompanySettings() {
   }
 
   currentCompany = { ...currentCompany, ...updates };
-  renderOnboardingDocTypePicklist(currentCompany); // now an explicit saved choice, so the "showing defaults" note goes away
   _partnerRecsCache = null; // this save may have changed the opt-out setting or malpractice fields — refetch next time it's needed
   if (statusEl) {
     statusEl.textContent = '✓ Settings saved';
