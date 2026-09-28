@@ -3768,25 +3768,59 @@ function hrOnbResolveRequiredDocTypes(customVars, docTypeList, appliesTo) {
 //   expired — documents exist but none are current
 //   missing — nothing on file
 // Used by both the employee's onboarding form and the admin's employee sheet.
+//
+// WHO IS ASKED WHAT: a document type that's limited to certain disciplines
+// (e.g. PT License -> PT) is only asked of those disciplines, using the same
+// rules as the rest of the doc system (company overrides included) — so a
+// required "PT License" is never demanded of an SLP whose discipline is set.
+// A type with no discipline limit applies to everyone.
+//
+// If the person's discipline ISN'T set on their staff record we can't tell
+// whether a discipline-limited type applies. Requiring it anyway would demand
+// a document they may be unable to provide and block their submission, so those
+// types are skipped instead — and listed on the result's .skippedNoDiscipline
+// so the admin's sheet can say so, rather than quietly under-checking.
 async function hrOnbLoadRequiredDocStatus(staffId, discipline) {
   const overrides = await getDocTypeOverrides(currentCompany.id);
-  const required = hrOnbResolveRequiredDocTypes(currentCompany.custom_vars, docTypes, t => {
-    if (!discipline) return true;
-    const list = effectiveDisciplines(t, overrides);
-    return list.length === 0 || list.includes(discipline);
-  });
-  if (!required.length) return [];
+  const knownDiscipline = discipline && String(discipline).trim() ? String(discipline).trim() : null;
+  const required = [];
+  const skippedNoDiscipline = [];
+  for (const t of hrOnbResolveRequiredDocTypes(currentCompany.custom_vars, docTypes)) {
+    const limitedTo = effectiveDisciplines(t, overrides);
+    if (limitedTo.length === 0 || (knownDiscipline && limitedTo.includes(knownDiscipline))) required.push(t);
+    else if (!knownDiscipline) skippedNoDiscipline.push(t);
+  }
+  const finish = (list) => { list.skippedNoDiscipline = skippedNoDiscipline; return list; };
+  if (!required.length) return finish([]);
   const { data: docs, error } = await sb.from('credtrack_documents')
     .select('document_type_id, expiry_date, archived')
     .eq('staff_id', staffId)
     .in('document_type_id', required.map(t => t.id));
   if (error) throw error;
   const today = hrOnbToday();
-  return required.map(t => {
+  return finish(required.map(t => {
     const mine = (docs || []).filter(d => String(d.document_type_id) === String(t.id) && !d.archived);
     const current = mine.some(d => !d.expiry_date || d.expiry_date >= today);
     return { type: t, state: current ? 'on_file' : (mine.length ? 'expired' : 'missing') };
-  });
+  }));
+}
+
+// The "Required at onboarding" block on the admin's employee sheet. Pure, so
+// it can be checked on its own. Returns '' when there is nothing to show.
+function hrOnbRequiredDocsSheetHtml(statuses) {
+  const skipped = (statuses && statuses.skippedNoDiscipline) || [];
+  if (!statuses || (!statuses.length && !skipped.length)) return '';
+  const look = { on_file: ['✓', '#4ade80', 'on file'], expired: ['⚠', '#f59e0b', 'expired — needs a current one'], missing: ['✗', '#f87171', 'missing'] };
+  const rows = statuses.map(s => {
+    const [icon, color, text] = look[s.state];
+    return `<div style="font-size:12px;color:#fff;padding:3px 0;"><span style="color:${color};">${icon}</span> ${hrOnbEsc(s.type.name)} <span style="color:${color};font-size:11px;">— ${text}</span></div>`;
+  }).join('');
+  const note = skipped.length
+    ? `<div style="font-size:11px;color:#f59e0b;padding:4px 0;">⚠ No discipline is set on this person's staff record, so these weren't checked: ${skipped.map(t => hrOnbEsc(t.name)).join(', ')}. Set their discipline under Staff to include them.</div>`
+    : '';
+  return `
+    <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Required at onboarding</div>
+    <div style="margin-bottom:16px;">${rows}${note}</div>`;
 }
 
 function hrOnbToggleNoExpiry(typeId) {
@@ -5173,12 +5207,15 @@ async function autoArchiveExpiredDocs() {
 
 // ── Shared data fetch for both Pro export formats ──
 async function fetchProReportRows() {
-  const { data } = await sb.from('credtrack_documents')
-    .select('*, credtrack_staff(full_name), document_types(name, tier)')
+  const { data: rawRows } = await sb.from('credtrack_documents')
+    .select('*, credtrack_staff(full_name, active, exclude_from_compliance), document_types(name, tier)')
     .eq('company_id', currentCompany.id)
     .order('credtrack_staff(full_name)');
 
-  if (!data?.length) return null;
+  // Only pertinent documents make the report: not a hidden type (getHiddenDocTypeIds),
+  // and not a former or excluded-from-compliance person's.
+  const data = withoutInactiveOrExcludedStaffDocs(withoutHiddenDocTypes(rawRows || [], await getHiddenDocTypeIds()));
+  if (!data.length) return null;
 
   const today = new Date();
   const rows = data.map(r => {
@@ -6245,7 +6282,7 @@ async function loadExpTracker() {
   const discipline = document.getElementById('fExpDiscipline')?.value || '';
 
   let q = sb.from('credtrack_documents')
-    .select('*, credtrack_staff(full_name), document_types(name)')
+    .select('*, credtrack_staff(full_name, active, exclude_from_compliance), document_types(name)')
     .eq('company_id', currentCompany.id)
     .eq('archived', false)
     .not('expiry_date', 'is', null)
@@ -6267,7 +6304,26 @@ async function loadExpTracker() {
   }
   const { data } = await q;
 
-  let allRows = data || [];
+  // Only pertinent documents: not a hidden type (see getHiddenDocTypeIds), and not a
+  // former / excluded person's — EXCEPT when one specific person is picked in the
+  // filter. Asking for a named person is a deliberate lookup, so a former
+  // employee's documents still show when you ask for them by name.
+  const rawRows = data || [];
+  let allRows = withoutHiddenDocTypes(rawRows, await getHiddenDocTypeIds());
+  const removedByType = rawRows.length - allRows.length;
+  let removedByStaff = 0;
+  if (!emp) {
+    const before = allRows.length;
+    allRows = withoutInactiveOrExcludedStaffDocs(allRows);
+    removedByStaff = before - allRows.length;
+  }
+  // Say what isn't shown, so a smaller list here than in Documents is never a mystery.
+  const notShownNote = (removedByType || removedByStaff)
+    ? `<div style="flex-basis:100%;font-size:12px;color:rgba(255,255,255,.66);">Not shown: ${[
+        removedByStaff ? `${removedByStaff} document${removedByStaff === 1 ? '' : 's'} for former or excluded staff` : '',
+        removedByType ? `${removedByType} of a hidden type` : '',
+      ].filter(Boolean).join(' and ')}. They're still in Documents.</div>`
+    : '';
 
   // Stat bar + toggle counts, computed against the full unfiltered set so
   // they stay accurate regardless of which view is currently showing.
@@ -6286,7 +6342,7 @@ async function loadExpTracker() {
     <div class="stat-card ${expiredCount ? 'danger' : 'ok'}"><div class="stat-num">${expiredCount}</div><div class="stat-label">Expired</div></div>
     <div class="stat-card ${soonCount ? 'warn' : 'ok'}"><div class="stat-num">${soonCount}</div><div class="stat-label">Expiring within 30d</div></div>
     <div class="stat-card ok"><div class="stat-num">${currentCount}</div><div class="stat-label">Current</div></div>
-    <div class="stat-card ${complianceRate < 70 ? 'danger' : complianceRate < 90 ? 'warn' : 'ok'}"><div class="stat-num">${complianceRate}%</div><div class="stat-label">Compliant</div></div>`;
+    <div class="stat-card ${complianceRate < 70 ? 'danger' : complianceRate < 90 ? 'warn' : 'ok'}"><div class="stat-num">${complianceRate}%</div><div class="stat-label">Compliant</div></div>${notShownNote}`;
 
   let rows = withDays;
   if (expViewMode === 'attention') rows = rows.filter(r => r._days < 30);
@@ -14947,15 +15003,7 @@ async function showHrEmployeeSheet(employeeId) {
     try {
       const { data: linkedStaff } = await sb.from('credtrack_staff').select('discipline').eq('id', employee.credtrack_staff_id).maybeSingle();
       const reqStatuses = await hrOnbLoadRequiredDocStatus(employee.credtrack_staff_id, linkedStaff ? linkedStaff.discipline : null);
-      if (reqStatuses.length) {
-        const look = { on_file: ['✓', '#4ade80', 'on file'], expired: ['⚠', '#f59e0b', 'expired — needs a current one'], missing: ['✗', '#f87171', 'missing'] };
-        reqDocsHtml = `
-          <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;">Required at onboarding</div>
-          <div style="margin-bottom:16px;">${reqStatuses.map(s => {
-            const [icon, color, text] = look[s.state];
-            return `<div style="font-size:12px;color:#fff;padding:3px 0;"><span style="color:${color};">${icon}</span> ${hrOnbEsc(s.type.name)} <span style="color:${color};font-size:11px;">— ${text}</span></div>`;
-          }).join('')}</div>`;
-      }
+      reqDocsHtml = hrOnbRequiredDocsSheetHtml(reqStatuses);
     } catch (e) {
       console.error('Required-documents status unavailable for this employee:', e);
     }
@@ -17142,11 +17190,18 @@ async function openOnboardingDocPicker() {
     categoryOrder = (data || []).map(c => c.name);
   } catch (e) { /* no category order available — groups just sort alphabetically */ }
 
+  // Company-level overrides can change who a type applies to, so the "who is
+  // asked" labels have to use them, exactly as the onboarding form itself does.
+  let overrides = {};
+  try { overrides = await getDocTypeOverrides(currentCompany.id); }
+  catch (e) { /* labels fall back to each type's own setting */ }
+
   const { common, other } = hrOnbSplitCommonDocTypes(selectable);
   _obPick = {
     selected: new Set(hrOnbResolveRequiredDocTypes(currentCompany.custom_vars, docTypes).map(t => String(t.id))),
     common,
     groups: hrOnbGroupByCategory(other, categoryOrder),
+    overrides,
     query: '',
   };
 
@@ -17157,7 +17212,7 @@ async function openOnboardingDocPicker() {
     <div role="dialog" aria-modal="true" aria-labelledby="obPickTitle" style="background:var(--navy2);border-radius:14px;width:100%;max-width:560px;max-height:88vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.18);">
       <div style="padding:20px 24px 12px;">
         <div id="obPickTitle" style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Documents required at onboarding</div>
-        <div style="color:rgba(255,255,255,.66);font-size:13px;margin-bottom:12px;">Tick what new hires must provide. Anything already on file for them is skipped.</div>
+        <div style="color:rgba(255,255,255,.66);font-size:13px;margin-bottom:12px;">Tick what new hires must provide. Anything already on file for them is skipped, and a document limited to certain disciplines is only asked of those disciplines.</div>
         <input class="inline-input" id="obPickSearch" type="text" placeholder="Search all documents…" autocomplete="off" oninput="obPickSearch(this.value)" />
       </div>
       <div style="padding:0 24px 8px;overflow-y:auto;flex:1;min-height:0;">
@@ -17183,12 +17238,31 @@ async function openOnboardingDocPicker() {
   obPickRender();
 }
 
+// Who a document is asked of. A type limited to certain disciplines says which.
+// A type with NO limit is asked of everyone — normal for a driver license, but
+// for one that's named for a discipline ("PT License") it's almost certainly a
+// setting that was missed, and it would make every SLP/OT/COTA upload a PT
+// license — so that case gets a visible warning instead of silence.
+function obPickScopeHtml(t) {
+  const limitedTo = effectiveDisciplines(t, (_obPick && _obPick.overrides) || {}) || [];
+  if (limitedTo.length) {
+    return `<span title="Only asked of these disciplines" style="font-size:11px;color:rgba(255,255,255,.66);">${hrOnbEsc(limitedTo.join(', '))} only</span>`;
+  }
+  if (/\b(pt|pta|ot|cota|slp)\b/i.test(t.name || '')) {
+    return `<span title="This document isn't limited to a discipline under Documents, so every new hire will be asked for it." style="font-size:11px;color:var(--gold);">⚠ asked of ALL disciplines</span>`;
+  }
+  return '';
+}
+
 function obPickRowHtml(t, showCategory) {
   const id = hrOnbEsc(String(t.id));
   return `<label style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;cursor:pointer;color:#fff;font-size:14px;">
     <input type="checkbox" data-doc-type-id="${id}" ${_obPick.selected.has(String(t.id)) ? 'checked' : ''} onchange="obPickToggle('${id}', this.checked)" style="accent-color:var(--teal);width:16px;height:16px;flex-shrink:0;" />
     <span style="flex:1;">${hrOnbEsc(t.name)}</span>
-    ${showCategory ? `<span style="font-size:11px;color:rgba(255,255,255,.58);">${hrOnbEsc(t.category || 'Other')}</span>` : ''}
+    <span style="display:flex;align-items:center;gap:10px;">
+      ${obPickScopeHtml(t)}
+      ${showCategory ? `<span style="font-size:11px;color:rgba(255,255,255,.58);">${hrOnbEsc(t.category || 'Other')}</span>` : ''}
+    </span>
   </label>`;
 }
 
@@ -17698,6 +17772,48 @@ async function loadOverview() {
   }
 }
 
+// ── Hidden document types ────────────────────────────────────────────────
+// A company can hide a document type ("not needed here" — a W-4 tracked in
+// payroll, or a PT License for a practice made up of NPs, DOs and MDs). The
+// toggle promises "Hidden from your uploads and reports". Uploads and the
+// "missing required" calculation always honored that; the numbers computed
+// from the DOCUMENTS themselves did not — so a PT License already on file for a
+// hidden type kept counting, expiring and alerting on the Overview, the
+// Expiration tracker and the Pro report. Those now all go through these two
+// helpers so they can't drift apart again.
+//
+// Deliberately NOT applied to the Documents list (an uploaded file must never
+// become impossible to find or delete just because its type was hidden) or to
+// the audit packet.
+//
+// Read fresh each time rather than cached: it's a tiny table, and a cache would
+// have to be invalidated on every hide/unhide from several places. If the read
+// fails this returns an empty set, i.e. shows everything as before — fail open.
+async function getHiddenDocTypeIds() {
+  const { data } = await sb.from('company_hidden_document_types')
+    .select('document_type_id').eq('company_id', currentCompany.id);
+  return new Set((data || []).map(h => String(h.document_type_id)));
+}
+
+// Documents with no type at all (a custom-labelled upload) can't be hidden, so
+// they always stay.
+function withoutHiddenDocTypes(rows, hiddenIds) {
+  if (!hiddenIds || !hiddenIds.size) return rows;
+  return rows.filter(r => r.document_type_id == null || !hiddenIds.has(String(r.document_type_id)));
+}
+
+// The other half of "pertinent": documents belonging to people who are no longer
+// (or never were) part of compliance tracking. Deactivating someone only flips a
+// flag — their documents are kept on purpose (audit response, rehire eligibility) —
+// so without this, a former employee's expired documents kept inflating the Expired
+// count and crowding "Needs attention" on the Overview, the tracker and the report,
+// while the reminder emails had already stopped. Same rule the emails use: only an
+// EXPLICIT inactive / excluded flag removes a document, so a missing value can never
+// hide anyone's. Rows must carry credtrack_staff(active, exclude_from_compliance).
+function withoutInactiveOrExcludedStaffDocs(rows) {
+  return rows.filter(r => !(r.credtrack_staff && (r.credtrack_staff.active === false || r.credtrack_staff.exclude_from_compliance === true)));
+}
+
 async function loadDocumentOverviewStats() {
   // Active staff count
   const { data: staff } = await sb.from('credtrack_staff')
@@ -17714,10 +17830,14 @@ async function loadDocumentOverviewStats() {
   // keeps dragging down compliance stats and cluttering Needs Attention
   // forever, even though it's correctly tucked away everywhere else.
   const { data: docs } = await sb.from('credtrack_documents')
-    .select('id, staff_id, document_type_id, expiry_date, credtrack_staff(full_name), document_types(name)')
+    .select('id, staff_id, document_type_id, expiry_date, credtrack_staff(full_name, active, exclude_from_compliance), document_types(name)')
     .eq('company_id', currentCompany.id)
     .eq('archived', false);
-  const allDocs = docs || [];
+  // Only pertinent documents count below (numbers AND the Needs-attention list): not a
+  // type this company has hidden (getHiddenDocTypeIds), and not a former or
+  // excluded-from-compliance person's (withoutInactiveOrExcludedStaffDocs).
+  const hiddenTypeIds = await getHiddenDocTypeIds();
+  const allDocs = withoutInactiveOrExcludedStaffDocs(withoutHiddenDocTypes(docs || [], hiddenTypeIds));
   document.getElementById('ovDocCount').textContent = allDocs.length;
 
   const withDays = allDocs
@@ -17731,9 +17851,6 @@ async function loadDocumentOverviewStats() {
   // Required documents vs. what's actually on file, respecting discipline scoping
   const { data: allTypes } = await sb.from('document_types')
     .select('id, name, company_id, required_for_disciplines, is_required, tier');
-  const { data: hiddenTypeRows } = await sb.from('company_hidden_document_types')
-    .select('document_type_id').eq('company_id', currentCompany.id);
-  const hiddenTypeIds = new Set((hiddenTypeRows || []).map(h => h.document_type_id));
   const overviewOverrides = await getDocTypeOverrides(currentCompany.id);
   const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
   const applicableTypes = (allTypes || []).filter(t => {
@@ -17741,7 +17858,7 @@ async function loadDocumentOverviewStats() {
     // (set from the Selko Admin master list) — the real, deliberately
     // managed source of truth, not an inference from discipline-scoping.
     if (t.company_id === null && t.tier === 'pro' && !canUseAdvancedTypes) return false;
-    return (t.company_id === null || t.company_id === currentCompany.id) && !hiddenTypeIds.has(t.id);
+    return (t.company_id === null || t.company_id === currentCompany.id) && !hiddenTypeIds.has(String(t.id));
   });
 
   const haveDoc = new Set(allDocs.map(d => `${d.staff_id}:${d.document_type_id}`));
