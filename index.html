@@ -15856,7 +15856,8 @@ async function markHrDocumentReviewed(docId, employeeId) {
   await showHrEmployeeSheet(employeeId);
 }
 
-// Opens an uploaded document through the view-hr-document Edge Function
+// Opens an uploaded document through the view_hr_document Edge Function
+// (deployed under an underscored slug, not the hyphenated name shown on its own dashboard page — see the URL below)
 // rather than a direct storage link: the function checks this admin has
 // access to that company, writes the view to the same audit log SSN
 // reveals use, and only then returns a short-lived link. Identity
@@ -15880,7 +15881,7 @@ async function viewHrDocument(docId) {
       toast('Your session has expired — refresh the page and sign in again, then try opening the document.', true);
       return;
     }
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/view-hr-document', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/view_hr_document', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ document_id: docId }),
