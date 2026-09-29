@@ -15869,6 +15869,17 @@ async function viewHrDocument(docId) {
   const win = window.open('about:blank', '_blank');
   try {
     const { data: { session } } = await sb.auth.getSession();
+    // A stale/expired browser session comes back as session === null — reading
+    // .access_token off that throws a TypeError BEFORE any fetch happens, which
+    // used to get caught below and misreported as a network problem. No request
+    // ever reached Supabase in that case, which is exactly why it showed no
+    // server-side logs no matter how many times it happened — the real fetch was
+    // never sent at all. Caught here instead, with an honest, actionable message.
+    if (!session) {
+      if (win) win.close();
+      toast('Your session has expired — refresh the page and sign in again, then try opening the document.', true);
+      return;
+    }
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/view-hr-document', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
@@ -15885,7 +15896,12 @@ async function viewHrDocument(docId) {
     // answer" (no connection, or the service isn't reachable) — not much use to
     // whoever's reading it, so say what it means. Server-side messages (no access,
     // not found, couldn't record the access) are already clear and pass through.
-    const unreachable = e instanceof TypeError || /failed to fetch|networkerror|load failed/i.test(e.message || '');
+    // FIXED — this used to also match on `e instanceof TypeError` alone, which
+    // is true for ANY bug that reads a property off something null/undefined,
+    // not just a genuine network failure (the stale-session bug above threw
+    // exactly this kind of TypeError). Matching on the browser's actual
+    // network-failure wording instead is specific to what it claims to mean.
+    const unreachable = /failed to fetch|networkerror|load failed/i.test(e.message || '');
     toast(unreachable
       ? "Couldn't reach the document service — check your connection and try again. If it keeps happening, contact support."
       : 'Could not open document: ' + e.message, true);
