@@ -17115,9 +17115,19 @@ async function saveEnrollmentSteps(rowId, source) {
   if (step8IsYes) updates.status = 'in_network'; // see the comment above ENROLLMENT_STEPS
 
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
-  const { error } = await sb.from('staff_payer_networks').update(updates).eq('id', rowId);
+  const { data: changed, error } = await sb.from('staff_payer_networks').update(updates).eq('id', rowId).select('id');
   if (error) {
     errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+    return;
+  }
+  // Same class of bug as the full-profile save found earlier tonight: an
+  // update the access rules refuse reports NO error, only zero rows changed.
+  // Without this check, a blocked save would still say "Steps saved" (and
+  // could even fire the completion email) for a write that never happened.
+  if (!changed || !changed.length) {
+    errEl.textContent = "Nothing was saved — you may not have permission to edit this enrollment.";
     errEl.style.display = 'block';
     if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
     return;
