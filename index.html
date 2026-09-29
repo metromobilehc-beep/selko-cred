@@ -12571,12 +12571,28 @@ function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly
 
   const allDisciplines = getCompanyDisciplines();
 
+  // A super admin editing a GLOBAL type's scope used to have only one path:
+  // straight onto the shared document_types row, affecting every company on
+  // the platform — the exact mechanism behind a real incident (an urgent-care
+  // company's own disciplines showing up as the "applies to" on a shared type
+  // for a completely unrelated therapy company that had never touched it).
+  // Regular admins never had this problem — they were always scoped to a
+  // per-company override — so the fix is to give a super admin that same
+  // safe, company-scoped path as the DEFAULT action, with the platform-wide
+  // edit still available but requiring a second, explicit, named step.
+  const showPlatformChoice = isGlobal && currentProfile?.is_super_admin;
+  const warningBanner = isGlobal ? `
+    <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;color:var(--gold);">
+      ⚠ This is a Selko-wide default document type, shared by every company on the platform.${showPlatformChoice ? ' Choose below whether this change applies to just your current company or to everyone.' : ' Your choice below only scopes it for your own company — it never changes the shared default other companies see.'}
+    </div>` : '';
+
   const modal = document.createElement('div');
   modal.id = 'scopeModalCred';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">${name}</div>
+      ${warningBanner}
       <div style="color:rgba(255,255,255,.62);font-size:13px;margin-bottom:18px;">Who is this required for? Leave everything unchecked for "required for everyone" — check specific disciplines to limit it (e.g. a PT license shouldn't be required for PTAs).</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
         ${allDisciplines.map(d => `
@@ -12585,9 +12601,12 @@ function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly
             <span style="font-size:13px;font-weight:600;color:#fff;">${d}</span>
           </label>`).join('')}
       </div>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="confirmDocTypeScope(${id}, ${!!isGlobal})" style="flex:1;justify-content:center;">Save</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('scopeModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-teal" onclick="confirmDocTypeScope(${id}, ${!!isGlobal}, 'company')" style="flex:1;justify-content:center;">${showPlatformChoice ? 'Save for my company only' : 'Save'}</button>
+          <button class="btn btn-ghost" onclick="document.getElementById('scopeModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+        </div>
+        ${showPlatformChoice ? `<button class="btn btn-sm btn-ghost" onclick="confirmDocTypeScope(${id}, true, 'platform')" style="justify-content:center;color:var(--gold);border-color:rgba(245,158,11,.3);font-size:12px;">Change the platform-wide default for every company instead</button>` : ''}
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -12598,11 +12617,28 @@ function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly
 // per-company override table (unless the caller is a true super admin,
 // who edits the shared row directly); a company-owned row updates
 // document_types directly, since the company already owns it outright.
-async function confirmDocTypeScope(id, isGlobal) {
+// `scope` is 'company' (the safe default — always a per-company override,
+// never touches a shared row) or 'platform' (only reachable via the modal's
+// separate, explicitly-labeled button, and only for a true super admin on a
+// global type — the one path that DOES edit the shared row for everyone).
+// A regular admin can never pass 'platform' since the modal never offers
+// that button to them; this function also re-checks it directly rather than
+// trusting the caller, so nothing upstream can accidentally reach it either.
+async function confirmDocTypeScope(id, isGlobal, scope) {
   const checked = Array.from(document.querySelectorAll('input[name="scopeOption"]:checked')).map(el => el.value);
   const newDisciplines = checked.length ? checked : null;
 
-  if (isGlobal && !currentProfile?.is_super_admin) {
+  const editingPlatformWide = scope === 'platform' && isGlobal && currentProfile?.is_super_admin;
+
+  if (editingPlatformWide) {
+    if (!confirm(`This changes the "applies to" default for this document type for EVERY company on the platform, not just the one you're currently viewing.\n\nChange the platform-wide default anyway?`)) return;
+    const { error } = await sb.from('document_types').update({ required_for_disciplines: newDisciplines }).eq('id', id);
+    if (error) { toast('Error: ' + error.message, true); return; }
+  } else if (isGlobal) {
+    // Company-scoped, whether the caller is a regular admin (the only path
+    // they've ever had) or a super admin choosing "my company only" —
+    // exactly the same code either way, so a super admin gets the same safe
+    // default a regular admin always had.
     const { data: existing } = await sb.from('company_document_type_overrides')
       .select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
     const { error } = existing
@@ -12610,6 +12646,8 @@ async function confirmDocTypeScope(id, isGlobal) {
       : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, required_for_disciplines: newDisciplines, is_required: true });
     if (error) { toast('Error: ' + error.message, true); return; }
   } else {
+    // A company-owned (non-global) type: the company already owns this row
+    // outright, so this has always safely edited it directly — unchanged.
     const { error } = await sb.from('document_types').update({ required_for_disciplines: newDisciplines }).eq('id', id);
     if (error) { toast('Error: ' + error.message, true); return; }
   }
