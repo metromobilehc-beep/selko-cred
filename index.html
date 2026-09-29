@@ -6962,6 +6962,13 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
   // do anything with it anyway.
   const showReferencesTab = showCredDataTabs && !hidden.has('references')
     && (currentProfile?.role === 'admin' || currentProfile?.is_super_admin);
+  // Same visibility rule as the Health Care Network tab itself (line ~5097) — this is
+  // that same feature, just scoped to one person instead of the whole company, so it
+  // should appear/disappear under exactly the same conditions: Credentialing enabled,
+  // not individually hidden, and Admin/Office/Super Admin (Office has read access to
+  // the main board too, via renderPayerBoard's isOffice check further down).
+  const showNetworkTab = currentCompany.has_credentialing_addon && !hidden.has('health_care_network')
+    && (currentProfile?.role === 'admin' || currentProfile?.role === 'office' || currentProfile?.is_super_admin);
   const tabs = [
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
     ...(showCredDataTabs ? [
@@ -6971,6 +6978,7 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
       !hidden.has('malpractice') ? { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` } : null,
       !hidden.has('employment_history') ? { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` } : null,
     ].filter(Boolean) : []),
+    ...(showNetworkTab ? [{ key: 'network', label: '🩺 Network', fn: `showStaffPayerNetwork('${staffId}','${safeName}')` }] : []),
     ...(showReferencesTab ? [{ key: 'references', label: '📇 References', fn: `showProfessionalReferences('${staffId}','${safeName}')` }] : []),
     // Only appears when this person is ALSO linked to an hr_employees
     // record — most staff won't have one. Same Admin/Super-Admin-only
@@ -16941,6 +16949,45 @@ async function loadPayerBoard() {
   renderPayerBoard();
 }
 
+// Shared with the per-staff "Insurance network" profile tab (showStaffPayerNetwork)
+// below, so both places render a payer-status cell identically and can never drift
+// apart. Extracted from renderPayerBoard, no behavior change.
+const PAYER_NETWORK_BADGE_CLASS = {
+  in_network:     'badge-verified',
+  pending:        'badge-warn',
+  out_of_network: 'badge-none',
+  expired:        'badge-none',
+};
+const PAYER_NETWORK_BADGE_LABEL = {
+  in_network:     'In-network',
+  pending:        'Pending',
+  out_of_network: 'Out of network',
+  expired:        'Expired',
+};
+
+// Juan's "pizza tracker" idea, applied to payer enrollment — a
+// compact version for this table's row height, inferred entirely
+// from fields already on this table (date_submitted, date_confirmed,
+// status). Only rendered for the "in progress" states (pending/
+// in_network); out_of_network and expired are terminal states that
+// don't fit a linear progress bar, so those keep the plain badge.
+function payerNetworkStatusCell(r) {
+  if (r.status === 'out_of_network' || r.status === 'expired') {
+    return `<span class="badge ${PAYER_NETWORK_BADGE_CLASS[r.status]}">${PAYER_NETWORK_BADGE_LABEL[r.status]}</span>`;
+  }
+  const stages = [
+    { label: 'Submitted', done: !!r.date_submitted },
+    { label: 'Confirmed', done: !!r.date_confirmed },
+    { label: 'In-network', done: r.status === 'in_network' },
+  ];
+  return `<div style="display:flex;align-items:center;gap:3px;" title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}">
+    ${stages.map((st, i) => `
+      <div style="width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.08)'};color:${st.done ? '#fff' : 'rgba(255,255,255,.3)'};border:1px solid ${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};flex-shrink:0;">${st.done ? '✓' : ''}</div>
+      ${i < stages.length - 1 ? `<div style="width:10px;height:1px;background:${st.done && stages[i+1] ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
+    `).join('')}
+  </div>`;
+}
+
 function renderPayerBoard() {
   const staffTbody = document.getElementById('payerBoardStaffTbody');
   const entityTbody = document.getElementById('payerBoardEntityTbody');
@@ -16952,46 +16999,10 @@ function renderPayerBoard() {
 
   const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
 
-  const badgeClass = {
-    in_network:     'badge-verified',
-    pending:        'badge-warn',
-    out_of_network: 'badge-none',
-    expired:        'badge-none',
-  };
-  const badgeLabel = {
-    in_network:     'In-network',
-    pending:        'Pending',
-    out_of_network: 'Out of network',
-    expired:        'Expired',
-  };
-
-  // Juan's "pizza tracker" idea, applied to payer enrollment — a
-  // compact version for this table's row height, inferred entirely
-  // from fields already on this table (date_submitted, date_confirmed,
-  // status). Only rendered for the "in progress" states (pending/
-  // in_network); out_of_network and expired are terminal states that
-  // don't fit a linear progress bar, so those keep the plain badge.
-  function statusCell(r) {
-    if (r.status === 'out_of_network' || r.status === 'expired') {
-      return `<span class="badge ${badgeClass[r.status]}">${badgeLabel[r.status]}</span>`;
-    }
-    const stages = [
-      { label: 'Submitted', done: !!r.date_submitted },
-      { label: 'Confirmed', done: !!r.date_confirmed },
-      { label: 'In-network', done: r.status === 'in_network' },
-    ];
-    return `<div style="display:flex;align-items:center;gap:3px;" title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}">
-      ${stages.map((st, i) => `
-        <div style="width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.08)'};color:${st.done ? '#fff' : 'rgba(255,255,255,.3)'};border:1px solid ${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};flex-shrink:0;">${st.done ? '✓' : ''}</div>
-        ${i < stages.length - 1 ? `<div style="width:10px;height:1px;background:${st.done && stages[i+1] ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
-      `).join('')}
-    </div>`;
-  }
-
   const rowHtml = (r, nameCell) => `<tr>
     <td>${nameCell}</td>
     <td>${r.payers?.name || '—'}</td>
-    <td>${statusCell(r)}</td>
+    <td>${payerNetworkStatusCell(r)}</td>
     <td>${r.date_submitted  || '—'}</td>
     <td>${r.date_confirmed  || '—'}</td>
     <td>${r.date_in_network || '—'}</td>
@@ -17102,6 +17113,190 @@ async function deletePayerNetwork(id) {
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Record deleted');
   await loadPayerBoard();
+}
+
+// ── Per-staff "Insurance network" tab on the provider profile ──────────────
+//
+// Everything below is scoped to ONE staff member, so admins can scan who's
+// in-network at a glance right from that person's own tab, without switching
+// to the full Health Care Network board and filtering by name. It reads and
+// writes the exact same staff_payer_networks table and (staff_id, payer_id)
+// upsert key as the main board's form — this is a second, narrower way in,
+// not a separate data model. Company-wide ("entity") records are out of
+// scope here on purpose: those aren't tied to one person, so they belong on
+// the main board only.
+async function showStaffPayerNetwork(staffId, staffName) {
+  const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
+  if (existing) existing.remove();
+
+  const modal = document.createElement('div');
+  modal.id = PROVIDER_TAB_MODAL_ID;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1050;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(625px, 62.5vw, 1125px);max-height:85vh;border:1px solid rgba(255,255,255,.1);display:flex;overflow:hidden;">
+      <div style="width:150px;flex-shrink:0;padding:24px 12px;border-right:1px solid rgba(255,255,255,.1);">
+        ${renderProviderTabBar(staffId, staffName, 'network')}
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:85vh;overflow-y:auto;">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px;">${staffName}</div>
+      <div style="color:rgba(255,255,255,.58);font-size:12px;margin-bottom:14px;">Insurance network status — every payer this person has a record for, at every stage (pending, in-network, out of network, expired), so anyone opening this profile can see who they're in-network with at a glance.</div>
+
+      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:14px;margin-bottom:14px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:10px;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.62);">Payer</label>
+            <select class="inline-select" id="spnPayer"></select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.62);">Status</label>
+            <select class="inline-select" id="spnStatus">
+              <option value="pending">Pending</option>
+              <option value="in_network">In-network</option>
+              <option value="out_of_network">Out of network</option>
+              <option value="expired">Expired</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:10px;margin-bottom:10px;">
+          <input class="inline-input" type="text" id="spnConfCode" placeholder="Confirmation code" />
+          <input class="inline-input" type="text" id="spnNetworkProviderId" placeholder="Network provider ID" />
+          <input class="inline-input" type="text" id="spnGroupId" placeholder="Group ID" />
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:10px;margin-bottom:10px;">
+          <div><label style="font-size:10px;color:rgba(255,255,255,.58);">Submitted</label><input class="inline-input" type="date" id="spnSubmitted" /></div>
+          <div><label style="font-size:10px;color:rgba(255,255,255,.58);">Confirmed</label><input class="inline-input" type="date" id="spnConfirmed" /></div>
+          <div><label style="font-size:10px;color:rgba(255,255,255,.58);">In-network</label><input class="inline-input" type="date" id="spnInNetwork" /></div>
+          <div><label style="font-size:10px;color:rgba(255,255,255,.58);">Expires</label><input class="inline-input" type="date" id="spnExpiration" /></div>
+        </div>
+        <textarea id="spnNotes" placeholder="Notes" style="width:100%;min-height:36px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box;"></textarea>
+        <div id="staffPayerNetworkErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
+        <button class="btn btn-sm btn-gold" onclick="saveStaffPayerNetworkRecord('${staffId}')" style="width:100%;justify-content:center;">+ Add / update</button>
+      </div>
+
+      <div id="staffPayerNetworkList" style="overflow-y:auto;flex:1;">Loading…</div>
+      <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+
+  await loadStaffPayerNetwork(staffId);
+}
+
+async function loadStaffPayerNetwork(staffId) {
+  const payerSel = document.getElementById('spnPayer');
+  const listEl = document.getElementById('staffPayerNetworkList');
+  if (!payerSel || !listEl) return; // the tab was closed or switched before this resolved
+
+  const { data: payerData } = await sb.from('payers')
+    .select('id, name')
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
+    .order('name');
+  // hrOnbEsc is a plain HTML-escaper (built for the HR onboarding work), not
+  // anything HR-specific — reused here rather than duplicating the same
+  // handful of character replacements under a second name.
+  payerSel.innerHTML = (payerData || []).map(p => `<option value="${p.id}">${hrOnbEsc(p.name)}</option>`).join('');
+
+  const { data, error } = await sb.from('staff_payer_networks')
+    .select('*, payers(name)')
+    .eq('staff_id', staffId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    listEl.innerHTML = `<div style="color:#ff6b6b;font-size:12px;padding:14px 0;">${hrOnbEsc(error.message)}</div>`;
+    return;
+  }
+  // Cached so Edit can pull a row's full field set back into the form without
+  // a second round trip, and so a stray quote or apostrophe in a note never
+  // has to survive being embedded in an onclick attribute.
+  window._staffPayerNetworkRows = data || [];
+
+  const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
+  listEl.innerHTML = (data && data.length)
+    ? `<table style="width:100%;font-size:12px;border-collapse:collapse;">
+        <thead><tr style="text-align:left;color:rgba(255,255,255,.55);">
+          <th style="padding:6px 8px;">Payer</th><th style="padding:6px 8px;">Status</th><th style="padding:6px 8px;">Submitted</th><th style="padding:6px 8px;">Confirmed</th><th style="padding:6px 8px;">In-network</th><th style="padding:6px 8px;">Expires</th><th style="padding:6px 8px;"></th>
+        </tr></thead>
+        <tbody>
+          ${data.map(r => `<tr style="border-top:1px solid rgba(255,255,255,.08);">
+            <td style="padding:6px 8px;color:#fff;">${hrOnbEsc(r.payers?.name || '—')}</td>
+            <td style="padding:6px 8px;">${payerNetworkStatusCell(r)}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_submitted  || '—'}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_confirmed  || '—'}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_in_network || '—'}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.expiration_date || '—'}</td>
+            <td style="padding:6px 8px;"><div class="td-actions">
+              ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="fillStaffPayerNetworkForm('${r.id}')">Edit</button>
+              <button class="btn btn-sm btn-danger" onclick="deleteStaffPayerNetworkRecord('${r.id}','${staffId}')">Delete</button>`}
+            </div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`
+    : '<div style="color:rgba(255,255,255,.55);font-size:12px;padding:14px 0;">No insurance network records for this person yet.</div>';
+}
+
+// Pulls a row's full field set (from the cache loadStaffPayerNetwork just
+// filled) back into the form above, so clicking Edit on an existing record
+// and then Save updates that same row — the (staff_id, payer_id) upsert key
+// on saveStaffPayerNetworkRecord is what makes that an update rather than a
+// second row for the same payer.
+function fillStaffPayerNetworkForm(rowId) {
+  const row = (window._staffPayerNetworkRows || []).find(r => r.id === rowId);
+  if (!row) return;
+  document.getElementById('spnPayer').value = row.payer_id;
+  document.getElementById('spnStatus').value = row.status;
+  document.getElementById('spnConfCode').value = row.confirmation_code || '';
+  document.getElementById('spnNetworkProviderId').value = row.network_provider_id || '';
+  document.getElementById('spnGroupId').value = row.group_id || '';
+  document.getElementById('spnSubmitted').value = row.date_submitted || '';
+  document.getElementById('spnConfirmed').value = row.date_confirmed || '';
+  document.getElementById('spnInNetwork').value = row.date_in_network || '';
+  document.getElementById('spnExpiration').value = row.expiration_date || '';
+  document.getElementById('spnNotes').value = row.notes || '';
+}
+
+async function saveStaffPayerNetworkRecord(staffId) {
+  const errEl = document.getElementById('staffPayerNetworkErr');
+  errEl.style.display = 'none';
+  const payerId = document.getElementById('spnPayer').value;
+  if (!payerId) { errEl.textContent = 'Payer is required.'; errEl.style.display = 'block'; return; }
+
+  const status = document.getElementById('spnStatus').value;
+  const { error } = await sb.from('staff_payer_networks').upsert({
+    company_id: currentCompany.id,
+    staff_id: staffId,
+    entity_name: null, // this tab is per-staff only — see the comment above showStaffPayerNetwork
+    payer_id: payerId,
+    status,
+    date_submitted: document.getElementById('spnSubmitted').value || null,
+    date_confirmed: document.getElementById('spnConfirmed').value || null,
+    date_in_network: document.getElementById('spnInNetwork').value || null,
+    expiration_date: document.getElementById('spnExpiration').value || null,
+    confirmation_code: document.getElementById('spnConfCode').value.trim() || null,
+    network_provider_id: document.getElementById('spnNetworkProviderId').value.trim() || null,
+    group_id: document.getElementById('spnGroupId').value.trim() || null,
+    notes: document.getElementById('spnNotes').value.trim() || null,
+    verified_at: status === 'in_network' ? new Date().toISOString() : null,
+  }, { onConflict: 'staff_id,payer_id' });
+
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
+
+  ['spnConfCode','spnNetworkProviderId','spnGroupId','spnSubmitted','spnConfirmed','spnInNetwork','spnExpiration','spnNotes'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('spnStatus').value = 'pending';
+  document.getElementById('spnPayer').value = '';
+
+  toast('Network status saved');
+  await loadStaffPayerNetwork(staffId);
+}
+
+async function deleteStaffPayerNetworkRecord(id, staffId) {
+  if (!confirm('Delete this network record?')) return;
+  const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  toast('Record deleted');
+  await loadStaffPayerNetwork(staffId);
 }
 
 // ── Settings → "Documents required at onboarding" ────────────────────────
