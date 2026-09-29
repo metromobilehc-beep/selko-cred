@@ -9701,6 +9701,34 @@ function hideAddDocType() {
   document.getElementById('dtIsGlobal').checked = false;
   document.getElementById('dtErr').style.display = 'none';
 }
+// A small stoplist of generic suffix words that don't help distinguish one
+// type from another ("Certification" / "License" tells you nothing about
+// WHICH credential) — stripped before comparing, so "CPR/BLS Certification"
+// and "CPR/AED" are compared as ["cpr","bls"] vs ["cpr","aed"], sharing
+// "cpr", while "PT License" vs "PTA License" compare as ["pt"] vs ["pta"],
+// sharing nothing — the exact two outcomes that produced and would have
+// caught the real mix-up this was built from.
+const DOC_TYPE_GENERIC_WORDS = new Set(['certification', 'license', 'insurance', 'record', 'form', 'card', 'document', 'and', 'of', 'the']);
+function docTypeNameTokens(name) {
+  return (name || '')
+    .split(/[\s\/\-,]+/)
+    .map(w => w.toLowerCase().replace(/[^a-z0-9]/g, ''))
+    .filter(w => w && !DOC_TYPE_GENERIC_WORDS.has(w));
+}
+
+// Pure. Returns any existing type whose meaningful name-tokens overlap with
+// the candidate's — a soft, no-false-block signal that someone may be about
+// to create a near-duplicate of something that already applies to them
+// (their own types plus Selko-wide defaults), rather than reusing it.
+function findLikelyDuplicateDocType(candidateName, existingTypes) {
+  const candidateTokens = new Set(docTypeNameTokens(candidateName));
+  if (!candidateTokens.size) return null;
+  return (existingTypes || []).find(t => {
+    const tTokens = docTypeNameTokens(t.name);
+    return tTokens.some(w => candidateTokens.has(w));
+  }) || null;
+}
+
 async function saveDocType() {
   const name    = document.getElementById('dtName').value.trim();
   const expires = document.getElementById('dtExpires').value === 'true';
@@ -9709,6 +9737,21 @@ async function saveDocType() {
   const err     = document.getElementById('dtErr');
   err.style.display = 'none';
   if (!name) { err.textContent = 'Name is required.'; err.style.display = 'block'; return; }
+
+  // Soft warning, not a block — a name sharing a word with something that
+  // already applies to this company (their own types, plus Selko-wide
+  // defaults) is worth a second look before creating a genuine duplicate,
+  // but a real, distinct type can legitimately share a word too.
+  const likelyDup = findLikelyDuplicateDocType(name, docTypes);
+  if (likelyDup) {
+    const proceed = confirm(
+      `"${likelyDup.name}" already exists${likelyDup.company_id == null ? ' (a platform-wide default everyone can use)' : ''} and looks similar to "${name}".\n\n` +
+      `If this is meant to be the same document, use "${likelyDup.name}" instead of creating a new type — two similarly-named types for the same real credential is exactly what causes staff to be marked "missing" something they actually have on file, just filed under the other one.\n\n` +
+      `Create "${name}" as a new, separate type anyway?`
+    );
+    if (!proceed) return;
+  }
+
   const { error } = await sb.from('document_types').insert({
     name, expires, category, sort_order: 999,
     company_id: makeGlobal ? null : currentCompany.id,
@@ -17982,12 +18025,31 @@ async function openOnboardingDocPicker() {
   try { overrides = await getDocTypeOverrides(currentCompany.id); }
   catch (e) { /* labels fall back to each type's own setting */ }
 
+  // How many real, non-archived documents currently exist under each type —
+  // the single fact that would have caught the "CPR/AED vs CPR/BLS
+  // Certification" mix-up immediately: two similarly-named options, one used
+  // by nobody, look identical until you can see that. One query, counted
+  // client-side, rather than one query per type.
+  let usageCounts = new Map();
+  try {
+    const { data: usageRows } = await sb.from('credtrack_documents')
+      .select('document_type_id')
+      .eq('company_id', currentCompany.id)
+      .eq('archived', false)
+      .not('document_type_id', 'is', null);
+    for (const r of (usageRows || [])) {
+      const key = String(r.document_type_id);
+      usageCounts.set(key, (usageCounts.get(key) || 0) + 1);
+    }
+  } catch (e) { /* the picker still works without usage counts — they just won't show */ }
+
   const { common, other } = hrOnbSplitCommonDocTypes(selectable);
   _obPick = {
     selected: new Set(hrOnbResolveRequiredDocTypes(currentCompany.custom_vars, docTypes).map(t => String(t.id))),
     common,
     groups: hrOnbGroupByCategory(other, categoryOrder),
     overrides,
+    usageCounts,
     query: '',
   };
 
@@ -18040,6 +18102,24 @@ function obPickScopeHtml(t) {
   return '';
 }
 
+// Two similarly-named types (a company's own custom one, and a Selko-wide
+// default everyone can see) are otherwise indistinguishable in this list —
+// exactly what produced the CPR/AED-vs-CPR/BLS-Certification mix-up. Shows
+// which kind this is, and how many real documents currently exist under it
+// — a type nobody has ever uploaded is the clearest sign it's the wrong one
+// of two similar options, so that count is called out rather than left to
+// blend in as routine metadata.
+function obPickOriginHtml(t) {
+  const scopeLabel = t.company_id == null
+    ? `<span title="Available to every company on the platform, not just yours" style="font-size:11px;color:rgba(255,255,255,.58);">Platform-wide</span>`
+    : `<span title="Created specifically for your company" style="font-size:11px;color:rgba(255,255,255,.58);">Company</span>`;
+  const count = (_obPick.usageCounts || new Map()).get(String(t.id)) || 0;
+  const countLabel = count === 0
+    ? `<span title="No documents currently exist under this type — if a similarly-named option is used elsewhere, this one is likely the wrong pick" style="font-size:11px;color:var(--gold);">⚠ 0 on file</span>`
+    : `<span style="font-size:11px;color:rgba(255,255,255,.58);">${count} on file</span>`;
+  return `${scopeLabel}${countLabel}`;
+}
+
 function obPickRowHtml(t, showCategory) {
   const id = hrOnbEsc(String(t.id));
   return `<label style="display:flex;align-items:center;gap:10px;padding:7px 8px;border-radius:6px;cursor:pointer;color:#fff;font-size:14px;">
@@ -18047,6 +18127,7 @@ function obPickRowHtml(t, showCategory) {
     <span style="flex:1;">${hrOnbEsc(t.name)}</span>
     <span style="display:flex;align-items:center;gap:10px;">
       ${obPickScopeHtml(t)}
+      ${obPickOriginHtml(t)}
       ${showCategory ? `<span style="font-size:11px;color:rgba(255,255,255,.58);">${hrOnbEsc(t.category || 'Other')}</span>` : ''}
     </span>
   </label>`;
