@@ -16988,6 +16988,192 @@ function payerNetworkStatusCell(r) {
   </div>`;
 }
 
+// ── Provider enrollment step tracking (Juan's 8-step workflow) ────────────
+//
+// Additive to the existing staff_payer_networks.status field, never a
+// replacement — status (in_network/pending/out_of_network/expired) is what
+// the "who's in-network" quick reference and other logic already key off,
+// so it keeps meaning exactly what it always has. enrollment_steps is a new,
+// independent jsonb column tracking the finer-grained pipeline Juan wants
+// visualized. The one deliberate link between them: reaching step 8's
+// "Yes" also sets status to in_network, since that IS what enrollment
+// complete means on the existing field — without that link the two would
+// silently disagree with each other.
+//
+// Scoped to PER-STAFF enrollments only (not company-wide "entity" records)
+// — Juan's own framing was "for each provider per network", and a step-by-
+// step credentialing pipeline doesn't really describe a company-wide
+// contract the way it describes one clinician's application.
+const ENROLLMENT_STEPS = [
+  { n: 1, name: 'Initial Inquiry Submitted',  desc: "Submitted the provider's inquiry/request to join the network", options: ['Pending', 'Completed', 'Delayed'],   complete: 'Completed' },
+  { n: 2, name: 'Pre-Qualification',          desc: 'License and basic credential verification started by the network', options: ['Pending', 'Completed', 'Issues'], complete: 'Completed' },
+  { n: 3, name: 'Application Completed',      desc: "Provider's full enrollment application and documents submitted", options: ['Pending', 'Completed', 'In Progress'], complete: 'Completed' },
+  { n: 4, name: 'Credentialing in Progress',  desc: 'Network is reviewing credentials and performing background checks', options: ['Pending', 'Completed', 'In Review'], complete: 'Completed' },
+  { n: 5, name: 'Contract Sent',              desc: 'Contract sent to the provider for review/signature', options: ['Pending', 'Sent', 'Signed'], complete: 'Signed' },
+  { n: 6, name: 'System Setup',               desc: "Provider data entered into the network's systems", options: ['Pending', 'Completed'], complete: 'Completed' },
+  { n: 7, name: 'Onboarding Scheduled',        desc: 'Provider onboarding and training session planned', options: ['Pending', 'Scheduled', 'Completed'], complete: 'Completed' },
+  { n: 8, name: 'Enrollment Complete',        desc: 'Provider is fully enrolled and active in the network', options: ['No', 'Yes'], complete: 'Yes' },
+];
+
+// A fresh 8-step skeleton for an enrollment that has none yet — each step
+// starts at its own first (least-progressed) option, never at a random one.
+function defaultEnrollmentSteps() {
+  return ENROLLMENT_STEPS.map(s => ({ step: s.n, status: s.options[0], updated_at: null }));
+}
+
+// Pure. Compares a saved set of steps against a newly-edited set and returns
+// the ones that just became complete for the FIRST time — i.e. this save is
+// the moment that step's box in Juan's flowchart turned solid. A step that
+// was already complete and stays complete isn't a transition (no repeat
+// email on every unrelated edit); a step that moves BACKWARD out of
+// complete isn't one either (nothing to announce — someone correcting a
+// mistake shouldn't fire a "progress" email).
+function detectNewlyCompletedSteps(prevSteps, newSteps) {
+  const prevByStep = new Map((prevSteps || []).map(s => [s.step, s.status]));
+  return ENROLLMENT_STEPS
+    .filter(meta => {
+      const now = (newSteps.find(s => s.step === meta.n) || {}).status;
+      if (now !== meta.complete) return false;
+      return prevByStep.get(meta.n) !== meta.complete;
+    })
+    .map(meta => meta.n);
+}
+
+// The modal where an enrollment's 8 steps actually get edited, opened from
+// either the main board or the per-staff profile tab (the `source` argument
+// says which, so Save knows what to refresh afterward). Always re-fetches
+// the row fresh rather than trusting whatever list it was opened from, so
+// the "previous" values used for transition detection are the real current
+// ones, not a stale copy from a list that hasn't been reloaded.
+async function showEnrollmentStepsModal(rowId, source) {
+  const existing = document.getElementById('enrollmentStepsModal');
+  if (existing) existing.remove();
+
+  const { data: row, error } = await sb.from('staff_payer_networks')
+    .select('*, credtrack_staff(full_name), payers(name)')
+    .eq('id', rowId)
+    .maybeSingle();
+  if (error || !row) { toast('Could not load this enrollment: ' + (error?.message || 'not found'), true); return; }
+
+  const steps = row.enrollment_steps || defaultEnrollmentSteps();
+  const byN = new Map(steps.map(s => [s.step, s]));
+
+  const modal = document.createElement('div');
+  modal.id = 'enrollmentStepsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1150;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:15px;font-weight:700;margin-bottom:2px;">Enrollment steps</div>
+      <div style="color:rgba(255,255,255,.58);font-size:12px;margin-bottom:16px;">${hrOnbEsc(row.credtrack_staff?.full_name || 'Provider')} · ${hrOnbEsc(row.payers?.name || 'Payer')}</div>
+      ${ENROLLMENT_STEPS.map(meta => {
+        const cur = byN.get(meta.n);
+        return `<div style="margin-bottom:12px;">
+          <label style="font-size:11px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${meta.n}. ${hrOnbEsc(meta.name)}</label>
+          <select class="inline-select" id="estepStatus_${meta.n}" style="width:100%;">
+            ${meta.options.map(o => `<option value="${o}" ${cur && cur.status === o ? 'selected' : ''}>${o}</option>`).join('')}
+          </select>
+          ${cur && cur.updated_at ? `<div style="font-size:10px;color:rgba(255,255,255,.45);margin-top:2px;">Last changed ${new Date(cur.updated_at).toLocaleDateString()}</div>` : ''}
+        </div>`;
+      }).join('')}
+      <div id="enrollmentStepsErr" style="color:#f87171;font-size:12px;margin:6px 0 10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="enrollmentStepsSaveBtn" onclick="saveEnrollmentSteps('${rowId}','${source}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('enrollmentStepsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  // stashed for saveEnrollmentSteps to diff against, and so it doesn't need
+  // a second fetch of the same row it just loaded
+  window._enrollmentStepsPrev = steps;
+}
+
+// Saves the edited steps, links step 8 -> the existing status field (see the
+// comment above ENROLLMENT_STEPS), and fires exactly one notification email
+// per step that just became complete for the first time in this save —
+// never for a step that was already complete, never for one moving
+// backward. A notification failure is logged but never blocks the save
+// itself or shows as though the steps weren't recorded: the steps ARE
+// saved regardless of whether the email goes out.
+async function saveEnrollmentSteps(rowId, source) {
+  const errEl = document.getElementById('enrollmentStepsErr');
+  const btn = document.getElementById('enrollmentStepsSaveBtn');
+  errEl.style.display = 'none';
+
+  const prevSteps = window._enrollmentStepsPrev || [];
+  const newSteps = ENROLLMENT_STEPS.map(meta => {
+    const value = document.getElementById(`estepStatus_${meta.n}`).value;
+    const prior = prevSteps.find(s => s.step === meta.n);
+    const changed = !prior || prior.status !== value;
+    return { step: meta.n, status: value, updated_at: changed ? new Date().toISOString() : (prior ? prior.updated_at : null) };
+  });
+
+  const justCompleted = detectNewlyCompletedSteps(prevSteps, newSteps);
+
+  const updates = { enrollment_steps: newSteps };
+  const step8IsYes = newSteps.find(s => s.step === 8)?.status === 'Yes';
+  if (step8IsYes) updates.status = 'in_network'; // see the comment above ENROLLMENT_STEPS
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const { error } = await sb.from('staff_payer_networks').update(updates).eq('id', rowId);
+  if (error) {
+    errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+    return;
+  }
+
+  for (const stepNumber of justCompleted) {
+    try {
+      const { data: { session } } = await sb.auth.getSession();
+      const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/notify-enrollment-step-update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+        body: JSON.stringify({ staff_payer_network_id: rowId, step_number: stepNumber }),
+      });
+      const result = await res.json();
+      if (!res.ok || result.error) console.warn('Step-update email failed to send (the step itself is still saved):', result.error || res.status);
+    } catch (e) {
+      console.warn('Step-update email failed to send (the step itself is still saved):', e.message);
+    }
+  }
+
+  document.getElementById('enrollmentStepsModal')?.remove();
+  window._enrollmentStepsPrev = null;
+  toast(justCompleted.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
+
+  if (source === 'board') await loadPayerBoard();
+  else if (source.startsWith('profile:')) await loadStaffPayerNetwork(source.slice('profile:'.length));
+}
+
+// The compact multi-step indicator shown wherever an enrollment appears —
+// the main board's staff-mode table and the per-staff profile tab (shared,
+// so both stay identical). A dot per step: teal/filled once that step is at
+// its own "complete" value, amber for anything else non-default (Delayed,
+// Issues, In Review, In Progress — someone's actively working it or it's
+// stuck), gray for the untouched default. Falls back to the older 3-stage
+// cell for any enrollment saved before this feature existed and never
+// opened in the new editor yet (no enrollment_steps recorded).
+function enrollmentStepCell(r) {
+  if (!r.enrollment_steps) return payerNetworkStatusCell(r);
+  const stepsByN = new Map(r.enrollment_steps.map(s => [s.step, s.status]));
+  const firstIncomplete = ENROLLMENT_STEPS.find(meta => stepsByN.get(meta.n) !== meta.complete);
+  const summary = firstIncomplete
+    ? `Step ${firstIncomplete.n} of 8: ${firstIncomplete.name} (${hrOnbEsc(stepsByN.get(firstIncomplete.n) || firstIncomplete.options[0])})`
+    : 'Fully enrolled — all 8 steps complete';
+  const dots = ENROLLMENT_STEPS.map(meta => {
+    const val = stepsByN.get(meta.n) || meta.options[0];
+    const isComplete = val === meta.complete;
+    const isDefault = val === meta.options[0];
+    const color = isComplete ? 'var(--teal)' : (isDefault ? 'rgba(255,255,255,.15)' : '#f59e0b');
+    return `<div title="${meta.n}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}" style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></div>`;
+  }).join('');
+  return `<div style="display:flex;flex-direction:column;gap:3px;">
+    <div style="display:flex;gap:3px;">${dots}</div>
+    <div style="font-size:10px;color:rgba(255,255,255,.55);white-space:nowrap;">${summary}</div>
+  </div>`;
+}
+
 function renderPayerBoard() {
   const staffTbody = document.getElementById('payerBoardStaffTbody');
   const entityTbody = document.getElementById('payerBoardEntityTbody');
@@ -16999,10 +17185,15 @@ function renderPayerBoard() {
 
   const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
 
+  // Only staff-mode rows (an actual provider) get enrollment-step tracking —
+  // see the comment above ENROLLMENT_STEPS for why entity/company-wide rows
+  // don't. Both tables share this one function, so an entity row simply
+  // renders the ORIGINAL status cell and no Steps button — its column count
+  // matches its own (unmodified) thead below.
   const rowHtml = (r, nameCell) => `<tr>
     <td>${nameCell}</td>
     <td>${r.payers?.name || '—'}</td>
-    <td>${payerNetworkStatusCell(r)}</td>
+    <td>${r.credtrack_staff ? enrollmentStepCell(r) : payerNetworkStatusCell(r)}</td>
     <td>${r.date_submitted  || '—'}</td>
     <td>${r.date_confirmed  || '—'}</td>
     <td>${r.date_in_network || '—'}</td>
@@ -17012,7 +17203,9 @@ function renderPayerBoard() {
     <td>${r.group_id || '—'}</td>
     <td style="max-width:220px;white-space:normal;font-size:12px;color:rgba(255,255,255,.7);">${r.notes || '—'}</td>
     <td><div class="td-actions">
-      ${isOffice ? '<span style="font-size:12px;color:rgba(255,255,255,.55);">View only</span>' : `<button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>`}
+      ${isOffice
+        ? '<span style="font-size:12px;color:rgba(255,255,255,.55);">View only</span>'
+        : `${r.credtrack_staff ? `<button class="btn btn-sm btn-ghost" onclick="showEnrollmentStepsModal('${r.id}','board')">Steps</button>` : ''}<button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>`}
     </div></td>
   </tr>`;
 
@@ -17199,7 +17392,7 @@ async function loadStaffPayerNetwork(staffId) {
 
   const { data, error } = await sb.from('staff_payer_networks')
     .select('*, payers(name)')
-    .eq('staff_id', staffId)
+    .eq('staff_id', staffId)  // enrollment_steps comes back via '*' — no separate select needed
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -17220,13 +17413,14 @@ async function loadStaffPayerNetwork(staffId) {
         <tbody>
           ${data.map(r => `<tr style="border-top:1px solid rgba(255,255,255,.08);">
             <td style="padding:6px 8px;color:#fff;">${hrOnbEsc(r.payers?.name || '—')}</td>
-            <td style="padding:6px 8px;">${payerNetworkStatusCell(r)}</td>
+            <td style="padding:6px 8px;">${enrollmentStepCell(r)}</td>
             <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_submitted  || '—'}</td>
             <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_confirmed  || '—'}</td>
             <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_in_network || '—'}</td>
             <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.expiration_date || '—'}</td>
             <td style="padding:6px 8px;"><div class="td-actions">
               ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="fillStaffPayerNetworkForm('${r.id}')">Edit</button>
+              <button class="btn btn-sm btn-ghost" onclick="showEnrollmentStepsModal('${r.id}','profile:${staffId}')">Steps</button>
               <button class="btn btn-sm btn-danger" onclick="deleteStaffPayerNetworkRecord('${r.id}','${staffId}')">Delete</button>`}
             </div></td>
           </tr>`).join('')}
