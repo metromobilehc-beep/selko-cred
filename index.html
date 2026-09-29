@@ -189,8 +189,11 @@ window.selkoSharedAuthStorage = {
     <div class="panel" id="hrOnboardingPanel" style="display:none;border:2px solid var(--teal);">
       <div class="panel-head"><span class="panel-title">📋 Complete your onboarding</span></div>
       <div class="panel-body">
+        <div id="hrOnbWizardProgress" style="margin-bottom:16px;"></div>
+
         <p style="font-size:13px;color:var(--gray-400);margin-bottom:14px;">Your employer needs a few details to complete your employment paperwork. This only takes a few minutes, and you'll only need to do this once.</p>
 
+        <div id="hrOnbStepBasic">
         <div class="form-grid-2" style="margin-bottom:10px;">
           <div class="form-group" style="margin:0;">
             <label class="field-label">Legal first name</label>
@@ -264,6 +267,7 @@ window.selkoSharedAuthStorage = {
             <label class="field-label">Issuing state</label>
             <input type="text" id="hrOnbDlState" maxlength="2" placeholder="e.g. OK" />
           </div>
+        </div>
         </div>
         <!-- Documents this company requires at onboarding (Settings → "Documents required at
              onboarding"; defaults to Driver License + Auto Insurance). Rendered by
@@ -376,14 +380,20 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
+        <div id="hrOnbStepSign">
         <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
           <label class="field-label">Type your full legal name to sign and attest</label>
           <input type="text" id="hrOnbSignature" placeholder="Typing your name here counts as your signature" style="margin-bottom:6px;" />
           <p style="font-size:11px;color:var(--gray-400);margin:0;">By typing your name above, you attest under penalty of perjury that the information you've entered is true and correct, and that you are the person named above.</p>
         </div>
+        </div>
 
         <div id="hrOnboardingErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
-        <button class="btn btn-teal" onclick="submitHrOnboarding()" style="width:100%;justify-content:center;">Submit</button>
+        <div style="display:flex;gap:8px;">
+          <button type="button" class="btn btn-ghost" id="hrOnbWizardBackBtn" onclick="hrOnbWizardGoBack()" style="color:#fff;border-color:rgba(255,255,255,.2);display:none;">Back</button>
+          <button type="button" class="btn btn-teal" id="hrOnbWizardNextBtn" onclick="hrOnbWizardGoNext()" style="flex:1;justify-content:center;display:none;">Next</button>
+          <button class="btn btn-teal" id="hrOnbSubmitBtn" onclick="submitHrOnboarding()" style="flex:1;justify-content:center;display:none;">Submit</button>
+        </div>
       </div>
     </div>
 
@@ -4086,23 +4096,157 @@ function collectHrOnbI9Selections() {
   return { ok: true, selections };
 }
 
+// Reads and validates the Basic Info step (name + citizenship — the same
+// two things submitHrOnboarding always required). Returns { ok: false,
+// error } or { ok: true, fields }. Used by BOTH the wizard's own "Next"
+// button on that step AND submitHrOnboarding itself — one validator, not
+// a copy of the same rule kept in sync by hand in two places.
+function collectHrOnbBasicInfo() {
+  const firstName = document.getElementById('hrOnbFirstName').value.trim();
+  const lastName = document.getElementById('hrOnbLastName').value.trim();
+  const citizenship = document.getElementById('hrOnbCitizenship').value;
+
+  if (!firstName || !lastName) return { ok: false, error: 'Legal first and last name are both required.' };
+  if (!citizenship) return { ok: false, error: 'Citizenship/immigration status is required.' };
+
+  const fields = {
+    first_name: firstName,
+    last_name: lastName,
+    full_name: `${firstName} ${lastName}`,
+    other_last_names_used: document.getElementById('hrOnbOtherNames').value.trim() || null,
+    address: document.getElementById('hrOnbAddress').value.trim() || null,
+    city: document.getElementById('hrOnbCity').value.trim() || null,
+    state: document.getElementById('hrOnbState').value.trim() || null,
+    zip: document.getElementById('hrOnbZip').value.trim() || null,
+    date_of_birth: document.getElementById('hrOnbDob').value || null,
+    phone: document.getElementById('hrOnbPhone').value.trim() || null,
+    citizenship_status: citizenship,
+    driver_license_number: document.getElementById('hrOnbDlNumber').value.trim() || null,
+    driver_license_state: document.getElementById('hrOnbDlState').value.trim().toUpperCase() || null,
+  };
+  if (['permanent_resident', 'authorized_alien'].includes(citizenship)) {
+    fields.alien_registration_number = document.getElementById('hrOnbAlienNumber').value.trim() || null;
+    fields.work_authorization_expiration = document.getElementById('hrOnbWorkAuthExp').value || null;
+  }
+  return { ok: true, fields };
+}
+
+// ── The onboarding wizard: one step visible at a time ───────────────────
+//
+// Which steps exist varies per hire — Required Documents, W-4 and I-9 each
+// only apply when this company (and this person's situation) calls for
+// them, and their own init functions (initHrOnbRequiredDocs,
+// initHrOnbW4Section, initHrOnbI9Documents) already decide that by setting
+// each section's own display to 'block' or 'none' before this ever runs.
+// The wizard doesn't re-decide any of that — it just reads which sections
+// are CURRENTLY visible and arranges stepping through only those, in a
+// fixed order, with Basic Info always first and Sign always last.
+//
+// Each step's own validator (the same functions the old single-page form
+// already used) runs on "Next" — that's a per-step convenience so an error
+// shows up right where it happened rather than at the very end, and it can
+// never be the ONLY thing standing between bad data and a save: submit
+// itself still runs every one of these same validators again, unchanged,
+// as the real gate.
+const HR_ONB_WIZARD_STEP_DEFS = [
+  { id: 'hrOnbStepBasic', label: 'Basic info', validate: collectHrOnbBasicInfo, always: true },
+  { id: 'hrOnbReqDocs',   label: 'Documents',  validate: collectHrOnbRequiredDocs },
+  { id: 'hrOnbW4Section', label: 'W-4',        validate: collectHrOnbW4Selections },
+  { id: 'hrOnbI9Docs',    label: 'I-9',        validate: collectHrOnbI9Selections },
+  { id: 'hrOnbStepSign',  label: 'Sign',       validate: null, always: true },
+];
+
+window._hrOnbWizardSteps = [];
+window._hrOnbWizardIndex = 0;
+
+function initHrOnbWizard() {
+  window._hrOnbWizardSteps = HR_ONB_WIZARD_STEP_DEFS.filter(def => {
+    const el = document.getElementById(def.id);
+    return def.always || (el && el.style.display !== 'none');
+  });
+  window._hrOnbWizardIndex = 0;
+  hrOnbWizardShowCurrentStep();
+}
+
+function hrOnbWizardShowCurrentStep() {
+  const steps = window._hrOnbWizardSteps;
+  const idx = window._hrOnbWizardIndex;
+  steps.forEach((step, i) => {
+    const el = document.getElementById(step.id);
+    if (el) el.style.display = i === idx ? 'block' : 'none';
+  });
+  const backBtn = document.getElementById('hrOnbWizardBackBtn');
+  const nextBtn = document.getElementById('hrOnbWizardNextBtn');
+  const submitBtn = document.getElementById('hrOnbSubmitBtn');
+  const isLast = idx === steps.length - 1;
+  if (backBtn) backBtn.style.display = idx > 0 ? '' : 'none';
+  if (nextBtn) nextBtn.style.display = isLast ? 'none' : '';
+  if (submitBtn) submitBtn.style.display = isLast ? '' : 'none';
+  const errEl = document.getElementById('hrOnboardingErr');
+  if (errEl) errEl.style.display = 'none';
+  renderHrOnbWizardProgress();
+  document.getElementById('hrOnboardingPanel')?.scrollIntoView({ block: 'nearest' });
+}
+
+function renderHrOnbWizardProgress() {
+  const box = document.getElementById('hrOnbWizardProgress');
+  if (!box) return;
+  const steps = window._hrOnbWizardSteps;
+  const idx = window._hrOnbWizardIndex;
+  box.innerHTML = `<div style="display:flex;align-items:center;gap:4px;">
+    ${steps.map((step, i) => `
+      <div style="width:20px;height:20px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;
+        background:${i < idx ? 'var(--teal)' : (i === idx ? 'var(--teal)' : 'transparent')};
+        border:1px solid ${i <= idx ? 'var(--teal)' : 'rgba(255,255,255,.2)'};
+        color:${i <= idx ? '#fff' : 'rgba(255,255,255,.4)'};">${i < idx ? '✓' : i + 1}</div>
+      ${i < steps.length - 1 ? `<div style="flex:1;height:2px;background:${i < idx ? 'var(--teal)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
+    `).join('')}
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:10px;color:rgba(255,255,255,.5);margin-top:4px;">
+    ${steps.map((step, i) => `<span style="${i === idx ? 'color:var(--teal-l);font-weight:700;' : ''}">${hrOnbEsc(step.label)}</span>`).join('')}
+  </div>`;
+}
+
+function hrOnbWizardGoNext() {
+  const steps = window._hrOnbWizardSteps;
+  const step = steps[window._hrOnbWizardIndex];
+  const errEl = document.getElementById('hrOnboardingErr');
+  if (step.validate) {
+    const result = step.validate();
+    if (!result.ok) {
+      errEl.textContent = result.error;
+      errEl.style.display = 'block';
+      return;
+    }
+  }
+  if (window._hrOnbWizardIndex < steps.length - 1) {
+    window._hrOnbWizardIndex++;
+    hrOnbWizardShowCurrentStep();
+  }
+}
+
+function hrOnbWizardGoBack() {
+  // Going backward never re-validates — someone reviewing an earlier
+  // answer hasn't done anything wrong yet.
+  if (window._hrOnbWizardIndex > 0) {
+    window._hrOnbWizardIndex--;
+    hrOnbWizardShowCurrentStep();
+  }
+}
+
 async function submitHrOnboarding() {
   const errEl = document.getElementById('hrOnboardingErr');
   errEl.style.display = 'none';
 
-  const firstName = document.getElementById('hrOnbFirstName').value.trim();
-  const lastName = document.getElementById('hrOnbLastName').value.trim();
-  const citizenship = document.getElementById('hrOnbCitizenship').value;
-  const signature = document.getElementById('hrOnbSignature').value.trim();
+  const basicInfo = collectHrOnbBasicInfo();
+  if (!basicInfo.ok) { errEl.textContent = basicInfo.error; errEl.style.display = 'block'; return; }
 
-  if (!firstName || !lastName) { errEl.textContent = 'Legal first and last name are both required.'; errEl.style.display = 'block'; return; }
-  if (!citizenship) { errEl.textContent = 'Citizenship/immigration status is required.'; errEl.style.display = 'block'; return; }
+  const signature = document.getElementById('hrOnbSignature').value.trim();
   if (!signature) { errEl.textContent = 'Type your name to sign and submit.'; errEl.style.display = 'block'; return; }
   // A real, if imperfect, check that they typed their own name rather
   // than anything else — not a legal safeguard by itself, just catches
   // the honest mistake of skipping past this field with garbage text.
-  const fullName = `${firstName} ${lastName}`;
-  if (signature.toLowerCase().replace(/[^a-z]/g, '') !== fullName.toLowerCase().replace(/[^a-z]/g, '')) {
+  if (signature.toLowerCase().replace(/[^a-z]/g, '') !== basicInfo.fields.full_name.toLowerCase().replace(/[^a-z]/g, '')) {
     errEl.textContent = 'Your signature must match your first and last name above.';
     errEl.style.display = 'block';
     return;
@@ -4121,28 +4265,12 @@ async function submitHrOnboarding() {
   if (!reqChoice.ok) { errEl.textContent = reqChoice.error; errEl.style.display = 'block'; return; }
 
   const payload = {
-    first_name: firstName,
-    last_name: lastName,
-    full_name: fullName,
-    other_last_names_used: document.getElementById('hrOnbOtherNames').value.trim() || null,
-    address: document.getElementById('hrOnbAddress').value.trim() || null,
-    city: document.getElementById('hrOnbCity').value.trim() || null,
-    state: document.getElementById('hrOnbState').value.trim() || null,
-    zip: document.getElementById('hrOnbZip').value.trim() || null,
-    date_of_birth: document.getElementById('hrOnbDob').value || null,
-    phone: document.getElementById('hrOnbPhone').value.trim() || null,
-    citizenship_status: citizenship,
-    driver_license_number: document.getElementById('hrOnbDlNumber').value.trim() || null,
-    driver_license_state: document.getElementById('hrOnbDlState').value.trim().toUpperCase() || null,
+    ...basicInfo.fields,
     employee_attestation_signature: signature,
     employee_attested_at: new Date().toISOString(),
     onboarding_status: 'submitted',
     ...w4Choice.fields,
   };
-  if (['permanent_resident', 'authorized_alien'].includes(citizenship)) {
-    payload.alien_registration_number = document.getElementById('hrOnbAlienNumber').value.trim() || null;
-    payload.work_authorization_expiration = document.getElementById('hrOnbWorkAuthExp').value || null;
-  }
 
   // Upload the license photo BEFORE flipping onboarding_status below —
   // both the storage and hr_documents self-service INSERT policies
@@ -4231,7 +4359,7 @@ async function submitHrOnboarding() {
       const { data: currentEmployee } = await sb.from('hr_employees').select('*').eq('id', window._hrOnboardingId).single();
       const employeeForFill = { ...currentEmployee, ...payload };
       const { blob, skipped } = await fillHrTemplate(i9Template, currentCompany, employeeForFill);
-      const fileName = `I-9_${fullName.replace(/[^a-z0-9]/gi, '_')}.pdf`;
+      const fileName = `I-9_${basicInfo.fields.full_name.replace(/[^a-z0-9]/gi, '_')}.pdf`;
       generatedI9 = { blob, skipped, fileName };
       if (!window._hrOnbI9FormStored) {
         const path = `${currentCompany.id}/employees/${window._hrOnboardingId}/${Date.now()}_${fileName}`;
@@ -4362,6 +4490,10 @@ async function initStaff() {
         .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
         .limit(1);
       initHrOnbW4Section(hrRec, !!(w4Check && w4Check.length));
+
+      // Arranges whichever of the sections above actually ended up visible
+      // into one-at-a-time steps — must run AFTER all three gating calls above.
+      initHrOnbWizard();
     }
 
     // Pre-fill from whatever's already on file — matters now that
