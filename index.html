@@ -9686,6 +9686,17 @@ async function adminUploadDoc() {
 
   if (!staffId) { showAuStatus('Please select a staff member.', 'err'); return; }
   if (!typeId)  { showAuStatus('Please select a document type.', 'err'); return; }
+  // A manual record with NO file at all is a real, intended use of this form
+  // (tracking that a credential exists before a scan is available — see the
+  // "no file" count on the Documents tab). A record with only a BACK file and
+  // no front is not: it renders with just a "View back" button and no way to
+  // tell what the document even is. Both files being optional independently
+  // made that combination reachable with nothing to catch it.
+  const auFile2El = document.getElementById('auFile2') || document.getElementById('auCamera2');
+  if (!document.getElementById('auFile').files[0] && auFile2El && auFile2El.files[0]) {
+    showAuStatus('A back-of-document file needs a front file too — attach the front, or remove the back and leave both blank until you have a file.', 'err');
+    return;
+  }
 
   const docTypeForValidation = docTypes.find(d => d.id == typeId);
   if (isLicenseDocType(docTypeForValidation) && !license) {
