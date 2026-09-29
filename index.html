@@ -275,6 +275,58 @@ window.selkoSharedAuthStorage = {
              as the I-9 — see initHrOnbI9Documents. Documents chosen here are uploaded
              as part of the same submission and land on the admin's employee sheet,
              marked "awaiting review", alongside the filled-in I-9 itself. -->
+        <!-- Only shown when this company (or Selko globally) has a form designated
+             as the W-4 — see initHrOnbW4Section. A W-4 is pure form-field data
+             (unlike I-9, nothing here is a document to upload), so it reuses the
+             general mapping/fill system already built for HR forms — the only new
+             work is asking for the answers. Deliberately absent: the employee's
+             SSN. That stays behind the existing encrypted, justification-logged
+             reveal flow; the generated W-4 leaves that box blank rather than
+             stamping a decrypted SSN into an ordinary document any admin could
+             then open with no log entry. -->
+        <div id="hrOnbW4Section" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
+          <label class="field-label">Form W-4 — federal tax withholding</label>
+          <p style="font-size:12px;color:var(--gray-400);margin:0 0 10px;">Your employer will fill in your Social Security Number separately — you don't need to enter it here.</p>
+
+          <div style="margin-bottom:14px;">
+            <label style="font-size:11px;color:var(--gray-400);display:block;margin-bottom:6px;">Filing status <span style="color:#f87171;">*</span></label>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:6px;cursor:pointer;">
+              <input type="radio" name="hrOnbW4FilingStatus" value="single" /> Single, or married filing separately
+            </label>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:6px;cursor:pointer;">
+              <input type="radio" name="hrOnbW4FilingStatus" value="married" /> Married filing jointly (or qualifying surviving spouse)
+            </label>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);cursor:pointer;">
+              <input type="radio" name="hrOnbW4FilingStatus" value="head_of_household" /> Head of household
+            </label>
+          </div>
+
+          <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:14px;cursor:pointer;">
+            <input type="checkbox" id="hrOnbW4MultipleJobs" style="margin-top:2px;" />
+            I hold more than one job at a time, or my spouse also works (Step 2(c) — checking this generally withholds more accurately for multiple-income households; see the W-4 instructions if you'd rather use the worksheet instead)
+          </label>
+
+          <div class="form-grid-2" style="margin-bottom:6px;">
+            <div class="form-group">
+              <label class="field-label">Dependents — total credit amount</label>
+              <input type="number" min="0" step="1" id="hrOnbW4Dependents" placeholder="$0" />
+            </div>
+            <div class="form-group">
+              <label class="field-label">Other income (not from jobs)</label>
+              <input type="number" min="0" step="1" id="hrOnbW4OtherIncome" placeholder="$0" />
+            </div>
+            <div class="form-group">
+              <label class="field-label">Deductions (beyond the standard deduction)</label>
+              <input type="number" min="0" step="1" id="hrOnbW4Deductions" placeholder="$0" />
+            </div>
+            <div class="form-group">
+              <label class="field-label">Extra withholding per pay period</label>
+              <input type="number" min="0" step="1" id="hrOnbW4ExtraWithholding" placeholder="$0" />
+            </div>
+          </div>
+          <p style="font-size:11px;color:var(--gray-400);margin:0;">Leave any of the four amounts blank if they don't apply to you — that's the same as entering $0.</p>
+        </div>
+
         <div id="hrOnbI9Docs" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
           <label class="field-label">Documents for your Form I-9</label>
           <p style="font-size:12px;color:var(--gray-400);margin:0 0 10px;">You choose which acceptable documents to present — your employer can't require a specific one. Pick one option below. Documents must be unexpired. Your employer will still need to look at your original documents to complete Section 2 of the I-9; uploading them here just gets that review started.</p>
@@ -3544,6 +3596,27 @@ const I9_MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 // as the I-9 (company's own, or a Selko-provided global one) — so it
 // appears on the employee's side the moment an admin sets one up, with
 // no separate switch to flip. Populates the dropdowns once.
+// Same gating idea as initHrOnbI9Documents, for a form that needs no
+// document-upload machinery at all — just showing/hiding the section and
+// pre-filling it on reopen (an admin asking for corrections shouldn't mean
+// retyping answers that were already given).
+function initHrOnbW4Section(hrRec, hasTemplate) {
+  const section = document.getElementById('hrOnbW4Section');
+  if (!section) return;
+  section.style.display = hasTemplate ? 'block' : 'none';
+  if (!hasTemplate || !hrRec) return;
+
+  if (hrRec.w4_filing_status) {
+    const radio = document.querySelector(`input[name="hrOnbW4FilingStatus"][value="${hrRec.w4_filing_status}"]`);
+    if (radio) radio.checked = true;
+  }
+  document.getElementById('hrOnbW4MultipleJobs').checked = !!hrRec.w4_multiple_jobs;
+  document.getElementById('hrOnbW4Dependents').value = hrRec.w4_dependents_amount || '';
+  document.getElementById('hrOnbW4OtherIncome').value = hrRec.w4_other_income || '';
+  document.getElementById('hrOnbW4Deductions').value = hrRec.w4_deductions || '';
+  document.getElementById('hrOnbW4ExtraWithholding').value = hrRec.w4_extra_withholding || '';
+}
+
 function initHrOnbI9Documents(hrRec, hasTemplate) {
   const section = document.getElementById('hrOnbI9Docs');
   if (!section) return;
@@ -3950,6 +4023,40 @@ async function hrOnbUploadRequiredDoc(item) {
   if (dbErr) throw dbErr;
 }
 
+// Reads and validates the W-4 answers. Returns { ok: false, error } or
+// { ok: true, fields } — fields is {} when the section isn't showing at all
+// (no W-4 template designated), so submitHrOnboarding can always merge it
+// into the payload without a separate "is this company using W-4" check.
+function collectHrOnbW4Selections() {
+  const section = document.getElementById('hrOnbW4Section');
+  if (!section || section.style.display === 'none') return { ok: true, fields: {} };
+
+  const filingStatus = (document.querySelector('input[name="hrOnbW4FilingStatus"]:checked') || {}).value || '';
+  if (!filingStatus) return { ok: false, error: 'Choose a filing status for your W-4.' };
+
+  // Blank means $0, same as leaving a paper W-4 line blank — never stored as
+  // null vs 0 inconsistently, and never negative even if a script bypassed
+  // the input's own min="0".
+  const amount = (id) => {
+    const raw = document.getElementById(id).value.trim();
+    if (!raw) return 0;
+    const n = Number(raw);
+    return Number.isFinite(n) ? Math.max(0, n) : 0;
+  };
+
+  return {
+    ok: true,
+    fields: {
+      w4_filing_status: filingStatus,
+      w4_multiple_jobs: document.getElementById('hrOnbW4MultipleJobs').checked,
+      w4_dependents_amount: amount('hrOnbW4Dependents'),
+      w4_other_income: amount('hrOnbW4OtherIncome'),
+      w4_deductions: amount('hrOnbW4Deductions'),
+      w4_extra_withholding: amount('hrOnbW4ExtraWithholding'),
+    },
+  };
+}
+
 // Reads and validates the I-9 document choice. Returns { ok: false, error }
 // or { ok: true, selections: [{ list, label, files }] } — an empty
 // selections array is valid (chose to bring originals in person, or a
@@ -4004,6 +4111,9 @@ async function submitHrOnboarding() {
   const i9Choice = collectHrOnbI9Selections();
   if (!i9Choice.ok) { errEl.textContent = i9Choice.error; errEl.style.display = 'block'; return; }
 
+  const w4Choice = collectHrOnbW4Selections();
+  if (!w4Choice.ok) { errEl.textContent = w4Choice.error; errEl.style.display = 'block'; return; }
+
   // Documents this company requires at onboarding — all checked before
   // anything uploads, so a missing item is one clear message up front
   // rather than a half-finished submission.
@@ -4027,6 +4137,7 @@ async function submitHrOnboarding() {
     employee_attestation_signature: signature,
     employee_attested_at: new Date().toISOString(),
     onboarding_status: 'submitted',
+    ...w4Choice.fields,
   };
   if (['permanent_resident', 'authorized_alien'].includes(citizenship)) {
     payload.alien_registration_number = document.getElementById('hrOnbAlienNumber').value.trim() || null;
@@ -4244,6 +4355,13 @@ async function initStaff() {
         .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
         .limit(1);
       initHrOnbI9Documents(hrRec, !!(i9Check && i9Check.length));
+
+      const { data: w4Check } = await sb.from('hr_templates')
+        .select('id')
+        .eq('form_type', 'w4')
+        .or(`company_id.eq.${currentCompany.id},company_id.is.null`)
+        .limit(1);
+      initHrOnbW4Section(hrRec, !!(w4Check && w4Check.length));
     }
 
     // Pre-fill from whatever's already on file — matters now that
@@ -13787,6 +13905,19 @@ const HR_DATA_SOURCES = [
     ['company.location_1_address', 'Business address'],
     ['company.location_1_phone', 'Business phone'],
   ]},
+  // W-4 answers collected during onboarding (collectHrOnbW4Selections). No SSN
+  // source exists here on purpose — see the comment on hrOnbW4Section.
+  { group: 'W-4', options: [
+    ['employee.w4_filing_status_label', 'Filing status (Single / Married filing jointly / Head of household)'],
+    ['employee.w4_filing_status_single', 'Filing status — Single/Married filing separately (checked mark, or blank)'],
+    ['employee.w4_filing_status_married', 'Filing status — Married filing jointly (checked mark, or blank)'],
+    ['employee.w4_filing_status_hoh', 'Filing status — Head of household (checked mark, or blank)'],
+    ['employee.w4_multiple_jobs_mark', 'Step 2(c) multiple jobs checkbox (checked mark, or blank)'],
+    ['employee.w4_dependents_amount', 'Step 3 — dependents total ($, blank if $0)'],
+    ['employee.w4_other_income', 'Step 4(a) — other income ($, blank if $0)'],
+    ['employee.w4_deductions', 'Step 4(b) — deductions ($, blank if $0)'],
+    ['employee.w4_extra_withholding', 'Step 4(c) — extra withholding per period ($, blank if $0)'],
+  ]},
 ];
 
 function resolveHrDataSource(path, company, employee) {
@@ -13796,6 +13927,20 @@ function resolveHrDataSource(path, company, employee) {
     if (key === 'last_name') {
       const parts = (employee.full_name || '').trim().split(/\s+/);
       return parts.length > 1 ? parts.slice(1).join(' ') : '';
+    }
+    // W-4: a fillable PDF's filing status is usually three separate
+    // checkboxes rather than one field, so both a combined label and a
+    // per-option "mark or blank" are offered — whichever matches how the
+    // company's own form is built.
+    const HR_W4_FILING_LABELS = { single: 'Single or Married filing separately', married: 'Married filing jointly', head_of_household: 'Head of household' };
+    if (key === 'w4_filing_status_label') return HR_W4_FILING_LABELS[employee.w4_filing_status] || '';
+    if (key === 'w4_filing_status_single') return employee.w4_filing_status === 'single' ? 'X' : '';
+    if (key === 'w4_filing_status_married') return employee.w4_filing_status === 'married' ? 'X' : '';
+    if (key === 'w4_filing_status_hoh') return employee.w4_filing_status === 'head_of_household' ? 'X' : '';
+    if (key === 'w4_multiple_jobs_mark') return employee.w4_multiple_jobs ? 'X' : '';
+    if (['w4_dependents_amount', 'w4_other_income', 'w4_deductions', 'w4_extra_withholding'].includes(key)) {
+      const n = employee[key];
+      return (typeof n === 'number' && n > 0) ? `$${n.toLocaleString()}` : '';
     }
     const val = employee[key];
     return (val && HR_DATE_FIELDS.has(path)) ? fmtDate(val) : (val || '');
@@ -13824,7 +13969,27 @@ function guessHrDefaultMapping(fieldName) {
   // meant for someone else, a real bug found on an actual filled form.
   if (/preparer|translator/.test(n)) return '';
 
+  // DELIBERATE — no SSN data source exists anywhere in HR_DATA_SOURCES (see
+  // the comment on hrOnbW4Section), so this would fall through to no match
+  // regardless. Made explicit rather than left as an emergent side effect,
+  // the same way preparer/translator is above: a field asking for the
+  // employee's SSN should never be auto-guessed onto anything.
+  if (/social.*security.*number|\bssn\b/.test(n)) return '';
+
   const guesses = [
+    // W-4 — checked ahead of the generic patterns below since a few of its
+    // field names (e.g. a filing-status checkbox literally named "Single")
+    // don't share any word with the generic list and can't collide, but
+    // ordering them together keeps the whole W-4 group easy to review at once.
+    [/multiple.*jobs|step.*2.*c|2\(c\)/, 'employee.w4_multiple_jobs_mark'],
+    [/married.*filing.*jointly|qualifying.*surviving.*spouse/, 'employee.w4_filing_status_married'],
+    [/head.*of.*household/, 'employee.w4_filing_status_hoh'],
+    [/^single$|filing.*separately/, 'employee.w4_filing_status_single'],
+    [/filing.*status/, 'employee.w4_filing_status_label'],
+    [/dependents?.*amount|claim.*dependents|step.*3/, 'employee.w4_dependents_amount'],
+    [/other.*income/, 'employee.w4_other_income'],
+    [/deductions/, 'employee.w4_deductions'],
+    [/extra.*withholding|additional.*withholding/, 'employee.w4_extra_withholding'],
     [/^last.*name$|employee.*last.*name|surname/, 'employee.last_name'],
     [/^first.*name$|employee.*first.*name|given.*name/, 'employee.first_name'],
     [/full.*name|employee.*name$|^name$/, 'employee.full_name'],
