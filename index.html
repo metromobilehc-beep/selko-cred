@@ -1783,18 +1783,20 @@ window.selkoSharedAuthStorage = {
 
       <!-- Clinical disciplines — per-company, since a PT/OT staffing company
            and an urgent care clinic (MD/DO/PA/NP/RN) need completely
-           different values here -->
+           different values here. Healthcare-only: Selko Cred no longer covers
+           other verticals, so every example here should read as a clinical
+           credential, never a role from an unrelated industry. -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2 id="disciplinesPanelTitle">Professional roles</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">
-          Define the professional roles used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, MD/DO/PA/NP/RN for an urgent care clinic, or Title Agent/Escrow Officer/Notary for a title company. These appear anywhere a role is selected: adding staff, editing a staff member's role, and scoping which document types apply to which roles.
+          Define the professional roles used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, or MD/DO/PA/NP/RN for an urgent care clinic. These appear anywhere a role is selected: adding staff, editing a staff member's role, and scoping which document types apply to which roles.
         </p>
         <p style="font-size:12px;color:var(--gold);margin-bottom:14px;">
-          ⚠ Licensed or credentialed roles only (e.g. PT, RN, DO, Title Agent) — not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile, not added here as a discipline.
+          ⚠ Licensed or credentialed roles only (e.g. PT, RN, DO, LPN) — not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile, not added here as a discipline.
         </p>
         <div id="disciplinesListCred" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
         <div style="display:flex;gap:8px;margin-bottom:16px;">
-          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN, or Title Agent" style="max-width:160px;" />
+          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN, or LPN" style="max-width:160px;" />
           <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add discipline</button>
         </div>
 
@@ -10258,7 +10260,7 @@ async function addCompanyDiscipline() {
   const suspiciousWords = ['office', 'admin', 'administrator', 'clinician', 'staff', 'coordinator', 'manager', 'supervisor', 'clerk', 'receptionist'];
   if (suspiciousWords.includes(value.toLowerCase())) {
     const confirmed = confirm(
-      `"${value}" looks like a job title or access level, not a professional role (e.g. PT, RN, DO, Title Agent).\n\n` +
+      `"${value}" looks like a job title or access level, not a professional role (e.g. PT, RN, DO, LPN).\n\n` +
       `Professional roles control which document requirements apply to someone (like "PT License" only for PTs). ` +
       `Job titles and access levels are set elsewhere — under Staff Type, when editing a staff member.\n\n` +
       `Add "${value}" as a professional role anyway?`
@@ -10274,7 +10276,7 @@ async function addCompanyDiscipline() {
     // failure mode — a typo of a real code, like "DTP" instead of "DPT."
     const confirmed = confirm(
       `"${value}" isn't in the list of commonly recognized clinical role codes (PT, PTA, OT, COTA, SLP, MD, DO, NP, PA, DPM, RN, and similar).\n\n` +
-      `If this is a typo, double-check the spelling. If it's a real role — a less common clinical credential, or a non-clinical professional role like Title Agent — that's fine, just confirm to add it.\n\n` +
+      `If this is a typo, double-check the spelling. If it's a real role — a less common clinical credential not on that list — that's fine, just confirm to add it.\n\n` +
       `Add "${value}" anyway?`
     );
     if (!confirmed) return;
