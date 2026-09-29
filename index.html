@@ -1814,10 +1814,13 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
         <h2>Document types</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);margin-bottom:10px;cursor:pointer;">
-          <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
-          Show hidden types too
-        </label>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);cursor:pointer;margin:0;">
+            <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
+            Show hidden types too
+          </label>
+          <button type="button" class="btn btn-sm btn-ghost" id="docTypesExpandAllBtn" onclick="toggleAllDocTypeCategories()" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:11px;padding:3px 10px;">Expand all sections</button>
+        </div>
         <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:rgba(255,255,255,.7);line-height:1.5;"></div>
         <div class="tbl-wrap">
           <table>
@@ -12106,6 +12109,13 @@ async function loadDocTypesTable() {
   _docTypeRequiredOverrides = docTypeOverrides; // so toggleDocTypeRequired/confirmDocTypeScope know the current override state without a re-fetch
 
   const canCustomize = window._isPro || currentProfile?.is_super_admin;
+  // Keeps the button's own label truthful on every render, not just right
+  // after someone clicks it — loadDocTypesTable also re-runs after almost
+  // any edit in this screen, and the label shouldn't lag behind the actual
+  // expanded/collapsed state those re-renders restore.
+  const expandBtn = document.getElementById('docTypesExpandAllBtn');
+  if (expandBtn) expandBtn.textContent = window._docTypesAllExpanded ? 'Collapse all sections' : 'Expand all sections';
+
   const banner = document.getElementById('docTypesExplainerBanner');
   if (banner) {
     banner.innerHTML = `🔒 Locked items are built-in starting points every company gets. <strong>Required/Optional and Applies To always work, at any plan</strong> — they're core to your compliance tracking. Everything else about a locked item (name, category, self-upload) stays shared, since changing it would affect every other company too.` + (canCustomize
@@ -12181,7 +12191,7 @@ async function loadDocTypesTable() {
       // tracking rather than cosmetic customization like name/category.
       const proOnlyBlocked = isGlobal && t.tier === 'pro' && !window._isPro && !currentProfile?.is_super_admin;
       const isBackgroundCheckType = /background check/i.test(t.name);
-      return `<tr data-doctype-group="${catSlug}" style="display:none;">
+      return `<tr data-doctype-group="${catSlug}" style="display:${window._docTypesAllExpanded ? 'table-row' : 'none'};">
     <td>
       <div style="display:flex;align-items:center;gap:6px;">
         <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:13px;flex:1;padding:4px 0;${lockedForMe ? 'opacity:.5;' : ''}" 
@@ -12228,7 +12238,7 @@ async function loadDocTypesTable() {
     return `
       <tr class="doctype-category-header" data-doctype-header="${catSlug}" onclick="toggleDocTypeCategory('${catSlug}')" style="cursor:pointer;background:rgba(255,255,255,.03);">
         <td colspan="${colCount}" style="padding:8px 12px;font-weight:700;font-size:12px;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">
-          <span class="panel-chevron" style="margin-right:6px;">▸</span>${cat} <span style="font-weight:400;color:rgba(255,255,255,.58);">(${groups[cat].length})</span>
+          <span class="panel-chevron${window._docTypesAllExpanded ? ' open' : ''}" style="margin-right:6px;">▸</span>${cat} <span style="font-weight:400;color:rgba(255,255,255,.58);">(${groups[cat].length})</span>
         </td>
       </tr>${rows}`;
   }).join('');
@@ -12241,6 +12251,21 @@ function toggleDocTypeCategory(catSlug) {
   const isOpen = rows.length && rows[0].style.display !== 'none';
   rows.forEach(r => { r.style.display = isOpen ? 'none' : 'table-row'; });
   if (chevron) chevron.classList.toggle('open', !isOpen);
+}
+
+// A DOM-only pass (no re-fetch — instant, and doesn't lose scroll position
+// or any in-progress edit) that opens or closes every category at once, and
+// remembers the choice on window._docTypesAllExpanded so the NEXT render —
+// which happens after almost any edit in this table, since loadDocTypesTable
+// re-runs to reflect the change — starts back where the person left it,
+// rather than snapping every section shut again after a single edit.
+function toggleAllDocTypeCategories() {
+  window._docTypesAllExpanded = !window._docTypesAllExpanded;
+  const expand = window._docTypesAllExpanded;
+  document.querySelectorAll('tr[data-doctype-group]').forEach(r => { r.style.display = expand ? 'table-row' : 'none'; });
+  document.querySelectorAll('.doctype-category-header .panel-chevron').forEach(c => c.classList.toggle('open', expand));
+  const btn = document.getElementById('docTypesExpandAllBtn');
+  if (btn) btn.textContent = expand ? 'Collapse all sections' : 'Expand all sections';
 }
 
 let _docTypesCache = [];
