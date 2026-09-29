@@ -873,7 +873,7 @@ window.selkoSharedAuthStorage = {
             <div id="staffMoreMenu" style="display:none;position:absolute;top:36px;left:0;background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.35);min-width:200px;z-index:20;padding:4px;">
               <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('csvImportInput').click()">📁 Import staff (Excel/CSV)</button>
               <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('payrollScreenshotInput').click()">📷 Import from screenshot</button>
-              <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('addStaffCvInput').click()">📄 Import from CV</button>
+              <button class="btn-more-item" onclick="closeStaffMoreMenu();document.getElementById('addStaffCvInput').click()">📄 Import from document (CV, CAQH, roster)</button>
               <button class="btn-more-item" onclick="closeStaffMoreMenu();downloadCsvTemplate()">⬇ Download Excel template</button>
               <button class="btn-more-item" onclick="closeStaffMoreMenu();exportStaffRosterPDF()">⬇ Export PDF</button>
             </div>
@@ -7408,7 +7408,7 @@ function showFullProfileSheet(staffId) {
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span style="font-size:12px;color:rgba(255,255,255,.62);flex:1;min-width:200px;">Have their CV or resume? Import education, licenses, hospital privileges, and specialty info automatically — you'll review everything before it saves.</span>
         <input type="file" id="cvImportFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleCvImportFile('${staffId}','${s.full_name.replace(/'/g,"\\'")}')" />
-        <label for="cvImportFile" class="btn btn-sm btn-teal" style="cursor:pointer;">📄 Import from CV</label>
+        <label for="cvImportFile" class="btn btn-sm btn-teal" style="cursor:pointer;">📄 Import from document</label>
         <span id="cvImportStatus" style="font-size:11px;color:rgba(255,255,255,.58);"></span>
       </div>
 
@@ -8033,7 +8033,7 @@ function showCvImportReview(staffId, staffName, extracted) {
     <p style="font-size:11px;color:rgba(255,255,255,.55);margin:4px 0 0;">Applies to your company's Primary practice location and general fax number — only fills in fields that are currently blank, never overwrites something already on file. Creates a Primary location if you don't have one yet.</p>` : '';
 
   const pi = extracted.practitioner_info;
-  const hasPractitionerInfo = pi && (pi.license_number || pi.caqh_id || pi.npi_number || pi.discipline);
+  const hasPractitionerInfo = pi && (pi.license_number || pi.caqh_id || pi.npi_number || pi.discipline || pi.date_of_birth || pi.gender || pi.address || pi.phone);
   const practitionerRow = hasPractitionerInfo ? `
     <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
       <input type="checkbox" id="cvPractitionerCheck" checked style="margin-top:3px;" />
@@ -8042,7 +8042,11 @@ function showCvImportReview(staffId, staffName, extracted) {
         ${pi.discipline ? `Discipline: <strong>${pi.discipline}</strong><br>` : ''}
         ${pi.license_number ? `License #: <strong>${pi.license_number}</strong><br>` : ''}
         ${pi.caqh_id ? `CAQH #: <strong>${pi.caqh_id}</strong><br>` : ''}
-        ${pi.npi_number ? `NPI #: <strong>${pi.npi_number}</strong>` : ''}
+        ${pi.npi_number ? `NPI #: <strong>${pi.npi_number}</strong><br>` : ''}
+        ${pi.date_of_birth ? `Date of birth: <strong>${pi.date_of_birth}</strong><br>` : ''}
+        ${pi.gender ? `Gender: <strong>${pi.gender}</strong><br>` : ''}
+        ${(pi.address || pi.city || pi.state || pi.zip) ? `Personal address: <strong>${[pi.address, pi.city, pi.state, pi.zip].filter(Boolean).join(', ')}</strong><br>` : ''}
+        ${pi.phone ? `Personal phone: <strong>${pi.phone}</strong>` : ''}
       </div>
     </label>
     <p style="font-size:11px;color:rgba(255,255,255,.55);margin:4px 0 0;">Applies to ${staffName}'s own record — only fills in fields that are currently blank, never overwrites something already on file.</p>` : '';
@@ -8090,6 +8094,22 @@ function showCvImportReview(staffId, staffName, extracted) {
       </div>
     </div>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.55);padding:8px 0;">Nothing found.</div>';
 
+  // Nothing in the ORIGINAL CV extraction ever asked for this — a resume
+  // doesn't typically list malpractice history, but a CAQH summary reliably
+  // does, so this is a genuinely new section, not just a widened one.
+  const claimRows = (extracted.malpractice_claims || []).map((c, i) => `
+    <div style="display:flex;align-items:start;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <input type="checkbox" class="cvClaimCheck" data-idx="${i}" checked style="margin-top:5px;" />
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <select class="inline-select cvClaimField" data-idx="${i}" data-field="claim_status" style="font-size:12px;grid-column:1/3;">
+          ${['Open','Closed','Settled','Dismissed'].map(o => `<option value="${o}" ${(c.claim_status || '').toLowerCase() === o.toLowerCase() ? 'selected' : ''}>${o}</option>`).join('')}
+        </select>
+        <div><label style="font-size:10px;color:rgba(255,255,255,.58);">Filed</label><input type="date" class="inline-input cvClaimField" data-idx="${i}" data-field="date_filed" value="${c.date_filed || ''}" style="font-size:12px;width:100%;box-sizing:border-box;" /></div>
+        <div><label style="font-size:10px;color:rgba(255,255,255,.58);">Closed</label><input type="date" class="inline-input cvClaimField" data-idx="${i}" data-field="date_closed" value="${c.date_closed || ''}" style="font-size:12px;width:100%;box-sizing:border-box;" /></div>
+        <input class="inline-input cvClaimField" data-idx="${i}" data-field="description" placeholder="Description" value="${(c.description || '').replace(/"/g,'&quot;')}" style="font-size:12px;grid-column:1/3;" />
+      </div>
+    </div>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.55);padding:8px 0;">Nothing found.</div>';
+
   const empRows = (extracted.employment_history || []).map((e, i) => `
     <div style="display:flex;align-items:start;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <input type="checkbox" class="cvEmpCheck" data-idx="${i}" checked style="margin-top:5px;" />
@@ -8111,7 +8131,7 @@ function showCvImportReview(staffId, staffName, extracted) {
       </div>
     </div>`).join('') || '<div style="font-size:12px;color:rgba(255,255,255,.55);padding:8px 0;">Nothing found.</div>';
 
-  const hasSpecialtyInfo = extracted.primary_specialty || extracted.secondary_specialty || extracted.board_certified !== null;
+  const hasSpecialtyInfo = extracted.primary_specialty || extracted.secondary_specialty || extracted.board_certified === true || extracted.board_certified === false;
   const specialtyRow = hasSpecialtyInfo ? `
     <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
       <input type="checkbox" id="cvSpecialtyCheck" checked style="margin-top:3px;" />
@@ -8132,10 +8152,11 @@ function showCvImportReview(staffId, staffName, extracted) {
       ${extracted.education.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Education &amp; Training</div>${eduRows}` : ''}
       ${extracted.additional_licenses.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Additional Licenses</div>${licRows}` : ''}
       ${extracted.hospital_privileges.length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
+      ${(extracted.malpractice_claims || []).length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Malpractice Claims</div>${claimRows}` : ''}
       ${(extracted.employment_history || []).length ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Employment History</div>${empRows}` : ''}
       ${hasSpecialtyInfo ? `<div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Specialty &amp; Board Info</div>${specialtyRow}` : ''}
 
-      ${!hasCompanyInfo && !hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.employment_history || []).length && !hasSpecialtyInfo
+      ${!hasCompanyInfo && !hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.malpractice_claims || []).length && !(extracted.employment_history || []).length && !hasSpecialtyInfo
         ? '<div style="font-size:13px;color:rgba(255,255,255,.58);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:12px;margin-top:12px;display:none;"></div>
@@ -8222,6 +8243,15 @@ async function saveCvImportSelections(staffId) {
       if (pi.license_number && !current.license_number) updates.license_number = pi.license_number;
       if (pi.caqh_id && !current.caqh_id) updates.caqh_id = pi.caqh_id;
       if (pi.npi_number && !current.npi_number) updates.npi_number = pi.npi_number;
+      // Personal fields a CAQH summary reliably supplies that a resume
+      // usually doesn't — same only-if-blank rule as the three above.
+      if (pi.date_of_birth && !current.date_of_birth) updates.date_of_birth = pi.date_of_birth;
+      if (pi.gender && !current.gender) updates.gender = pi.gender;
+      if (pi.address && !current.address) updates.address = pi.address;
+      if (pi.city && !current.city) updates.city = pi.city;
+      if (pi.state && !current.state) updates.state = pi.state;
+      if (pi.zip && !current.zip) updates.zip = pi.zip;
+      if (pi.phone && !current.phone) updates.phone = pi.phone;
       if (Object.keys(updates).length) {
         const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
         if (error) throw error;
@@ -8267,6 +8297,14 @@ async function saveCvImportSelections(staffId) {
     if (privToSave.length) {
       const { error } = await sb.from('staff_hospital_privileges').insert(
         privToSave.map(p => ({ staff_id: staffId, hospital_name: p.hospital_name, address: p.address, privilege_type: p.privilege_type, start_date: p.start_date, end_date: p.end_date }))
+      );
+      if (error) throw error;
+    }
+
+    const claimsToSave = [...document.querySelectorAll('.cvClaimCheck:checked')].map(el => readEditedFields('cvClaimField', el.dataset.idx));
+    if (claimsToSave.length) {
+      const { error } = await sb.from('staff_malpractice_claims').insert(
+        claimsToSave.map(c => ({ staff_id: staffId, claim_status: c.claim_status, date_filed: c.date_filed, date_closed: c.date_closed || null, description: c.description || null }))
       );
       if (error) throw error;
     }
