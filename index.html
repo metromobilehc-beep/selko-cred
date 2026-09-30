@@ -8657,12 +8657,14 @@ async function saveFullProfileSheet(staffId) {
   const errEl = document.getElementById('fullProfileErr');
 
   const newStaffType = document.getElementById('fpStaffType').value;
+  const newFirstName = document.getElementById('fpFirstName').value.trim() || null;
+  const newLastName = document.getElementById('fpLastName').value.trim() || null;
   const updates = {
     discipline: document.getElementById('fpDiscipline').value || null,
     staff_type: newStaffType,
     middle_name: document.getElementById('fpMiddleName').value.trim() || null,
-    first_name: document.getElementById('fpFirstName').value.trim() || null,
-    last_name: document.getElementById('fpLastName').value.trim() || null,
+    first_name: newFirstName,
+    last_name: newLastName,
     date_of_birth: document.getElementById('fpDob').value || null,
     gender: document.getElementById('fpGender').value || null,
     phone: document.getElementById('fpPhone').value.trim() || null,
@@ -8704,6 +8706,17 @@ async function saveFullProfileSheet(staffId) {
     hospital_affiliation_2: document.getElementById('fpHospitalAffiliation2').value.trim() || null,
     hospital_affiliation_3: document.getElementById('fpHospitalAffiliation3').value.trim() || null,
   };
+
+  // full_name is what the staff list, dropdowns, search, and virtually
+  // everywhere else in the app actually display — first_name/last_name
+  // above only ever feed generated payer forms (see that field's own
+  // on-screen note). Nothing kept these in sync before, so changing a
+  // name here saved correctly but was invisible everywhere else. Left
+  // untouched if both are blank, rather than risk blanking out an
+  // otherwise-valid display name from an incidental partial clear.
+  if (newFirstName || newLastName) {
+    updates.full_name = [newFirstName, newLastName].filter(Boolean).join(' ');
+  }
 
   const { data: updated, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('profile_id').maybeSingle();
   if (error) {
@@ -8747,10 +8760,18 @@ async function saveFullProfileSheet(staffId) {
     }
   }
 
-  document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
-  toast('✓ Full profile updated');
+  // FOUND THE HARD WAY — this used to close the modal and toast success
+  // BEFORE refreshing staffList, leaving a real window where reopening
+  // the same profile immediately (a natural reflex right after saving)
+  // read the still-stale, pre-save data — showing a just-added NPI as
+  // blank, for instance, even though the save itself had genuinely
+  // succeeded. Reordered so the refresh finishes first: by the time the
+  // modal actually closes, staffList already reflects what was just
+  // saved, so there's no gap left to reopen into.
   await loadStaffTable();
   await renderCredentialingStaffTable();
+  document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
+  toast('✓ Full profile updated');
 }
 
 // ══ SSN — encrypted, break-glass access only ══
