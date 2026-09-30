@@ -9898,6 +9898,13 @@ async function applyNpiResult(staffId, npi) {
   document.getElementById('npiResultsModal')?.remove();
   if (error) { toast('Error saving NPI: ' + error.message, true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
+  // The lookup is opened from right next to this same input, inside the
+  // still-open profile form — without updating it directly here, the box
+  // would keep showing its old (often blank) value, and saving the rest
+  // of that same form afterward would silently overwrite the NPI just
+  // confirmed and saved above.
+  const fpNpiInput = document.getElementById('fpNpi');
+  if (fpNpiInput) fpNpiInput.value = npi;
   toast(`✓ NPI ${npi} saved and marked verified`);
   await loadStaffTable();
 }
