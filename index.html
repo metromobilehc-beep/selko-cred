@@ -9693,15 +9693,19 @@ async function confirmDisciplineCred(id) {
   // showing the correct value.
   const { data: changed, error } = await sb.from('credtrack_staff')
     .update({ discipline: newDiscipline, license_type: newDiscipline }).eq('id', id).select('id');
-  document.getElementById('disciplineModalCred').remove();
-  if (error) { toast('Error: ' + error.message, true); return; }
-  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
+  if (error) { document.getElementById('disciplineModalCred').remove(); toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { document.getElementById('disciplineModalCred').remove(); toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   await logStaffFieldChanges(id, [
     { field: 'discipline',   old: before.discipline,   new: newDiscipline },
     { field: 'license_type', old: before.license_type, new: newDiscipline },
   ]);
-  toast('Discipline updated');
+  // FOUND DURING A BROADER SWEEP — the same ordering bug fixed for the
+  // full profile save: closing the modal and showing "done" BEFORE the
+  // refresh meant reopening this same person right after could show the
+  // discipline that was just changed away from.
   await loadStaffTable();
+  document.getElementById('disciplineModalCred').remove();
+  toast('Discipline updated');
 }
 
 // Read-only summary of this person's actual Document-tracking uploads,
@@ -9779,12 +9783,22 @@ async function confirmStaffTypeCred(id, name) {
 
   const { data: updated, error } = await sb.from('credtrack_staff')
     .update({ staff_type: newType }).eq('id', id).select('profile_id').maybeSingle();
-  document.getElementById('staffTypeModalCred')?.remove();
-  if (error) { toast('Error: ' + error.message, true); return; }
+  // Nothing was actually written here, so there's no stale data risk in
+  // closing immediately — the reordering below only matters for the
+  // paths after a write genuinely succeeds.
+  if (error) { document.getElementById('staffTypeModalCred')?.remove(); toast('Error: ' + error.message, true); return; }
 
   await logStaffFieldChanges(id, [
     { field: 'staff_type', old: before.staff_type, new: newType },
   ]);
+
+  // FOUND DURING A BROADER SWEEP — same ordering bug as the full profile
+  // save and the discipline modal: every exit point below used to close
+  // this modal (and, on two of them, show "done") BEFORE refreshing
+  // staffList, leaving a window where reopening this same person right
+  // after showed the staff type they'd just changed away from. Every
+  // path now refreshes first and closes the modal last.
+  const closeModal = () => document.getElementById('staffTypeModalCred')?.remove();
 
   // If this person already has a login, their actual access level needs to
   // follow the new staff_type — otherwise an admin promotion silently does
@@ -9805,19 +9819,22 @@ async function confirmStaffTypeCred(id, name) {
       });
       const result = await res.json();
       if (result.error) {
-        toast(`${name} set to ${newType}, but access level couldn't sync: ${result.error}`, true);
         await loadStaffTable();
+        closeModal();
+        toast(`${name} set to ${newType}, but access level couldn't sync: ${result.error}`, true);
         return;
       }
     } catch (e) {
-      toast(`${name} set to ${newType}, but access level couldn't sync: ${e.message}`, true);
       await loadStaffTable();
+      closeModal();
+      toast(`${name} set to ${newType}, but access level couldn't sync: ${e.message}`, true);
       return;
     }
   }
 
-  toast(`✓ ${name} set to ${newType}`);
   await loadStaffTable();
+  closeModal();
+  toast(`✓ ${name} set to ${newType}`);
 }
 
 async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
