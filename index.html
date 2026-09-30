@@ -20713,9 +20713,9 @@ async function editCompany(id) {
           <div>
             <label class="inline-label">Plan</label>
             <select class="inline-select" id="cfg_plan">
-              <option value="standard" ${c.plan==='standard'?'selected':''}>Standard</option>
-              <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro</option>
-              <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise</option>
+              <option value="standard" ${c.plan==='standard'?'selected':''}>Standard — $49/mo</option>
+              <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro — $119/mo</option>
+              <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise — custom quote</option>
             </select>
           </div>
         </div>
@@ -20973,20 +20973,20 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
         <option value="docs" ${!c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
         ${!moduleOptionHidden ? `
-        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (Credentialing requires Document Tracking)</option>` : ''}
+        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (+$59/mo for Credentialing)</option>` : ''}
       </select>
       ${moduleOptionHidden ? `<p style="font-size:11px;color:rgba(255,255,255,.58);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:#fff;margin-bottom:14px;cursor:pointer;">
         <input type="checkbox" ${c.has_hr_addon ? 'checked' : ''} onchange="applyModalHrToggle('${companyId}','${companyName.replace(/'/g,"\\'")}', this.checked)" />
-        HR Onboarding add-on <span style="font-size:10px;color:var(--gold);margin-left:2px;">ADD-ON</span>
+        HR Onboarding add-on — $49/mo <span style="font-size:10px;color:var(--gold);margin-left:2px;">ADD-ON</span>
       </label>
 
       <label class="inline-label">Plan</label>
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
-        <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard</option>
-        <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro</option>
-        <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise</option>
+        <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard — $49/mo</option>
+        <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro — $119/mo</option>
+        <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise — custom quote</option>
       </select>
 
       ${(c.plan === 'pro' || c.plan === 'standard' || !c.plan) ? `
