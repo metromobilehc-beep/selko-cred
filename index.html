@@ -2810,8 +2810,14 @@ async function showOigCheckDetails(checkId) {
     high: '⚠ Match (NPI-confirmed)',
     medium: '⚠ Match (name + license state align)',
     low: '⚠ Possible match — name only, verify manually',
+    // Weaker than "low" on purpose — that tier means the full name matched
+    // exactly, just without state corroboration; this one means even the
+    // full name didn't match, only the last name did (the same first-name
+    // spelling-variant gap fixed in NPI lookup — Ashlee/Ashley, a maiden
+    // name, etc.), so it's flagged rather than silently reported as clear.
+    review_needed: '⚠ Review needed — last name only, first name did not match exactly',
   };
-  const confidenceColor = { high: '#f87171', medium: '#fb923c', low: '#facc15' };
+  const confidenceColor = { high: '#f87171', medium: '#fb923c', low: '#facc15', review_needed: '#94a3b8' };
   const staffList = row.checked_staff || [];
   const staffRowsHtml = staffList.length
     ? staffList
