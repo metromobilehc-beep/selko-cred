@@ -9814,6 +9814,34 @@ function findLikelyDuplicateDocType(candidateName, existingTypes) {
   }) || null;
 }
 
+// A dark, centered, in-app replacement for window.confirm() — a real
+// browser confirm() is drawn by the browser itself, not the page, so it
+// can't be repositioned, restyled, or made to match anything else here no
+// matter what CSS is applied to it. This is a genuine modal instead,
+// Promise-based so a call site can just `await` it exactly like the
+// native one, without restructuring around a callback.
+function showCustomConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', danger = false } = {}) {
+  return new Promise(resolve => {
+    document.getElementById('customConfirmModal')?.remove();
+    const modal = document.createElement('div');
+    modal.id = 'customConfirmModal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
+    modal.innerHTML = `
+      <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);">
+        <div style="color:#fff;font-size:14px;white-space:pre-wrap;line-height:1.5;margin-bottom:20px;">${hrOnbEsc(message)}</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button type="button" class="btn btn-ghost" id="customConfirmCancelBtn" style="color:#fff;border-color:rgba(255,255,255,.2);">${hrOnbEsc(cancelLabel)}</button>
+          <button type="button" class="btn ${danger ? 'btn-danger' : 'btn-teal'}" id="customConfirmOkBtn">${hrOnbEsc(okLabel)}</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const finish = (result) => { modal.remove(); resolve(result); };
+    document.getElementById('customConfirmOkBtn').onclick = () => finish(true);
+    document.getElementById('customConfirmCancelBtn').onclick = () => finish(false);
+    modal.addEventListener('click', e => { if (e.target === modal) finish(false); });
+  });
+}
+
 async function saveDocType() {
   const name    = document.getElementById('dtName').value.trim();
   const expires = document.getElementById('dtExpires').value === 'true';
@@ -9829,10 +9857,10 @@ async function saveDocType() {
   // but a real, distinct type can legitimately share a word too.
   const likelyDup = findLikelyDuplicateDocType(name, docTypes);
   if (likelyDup) {
-    const proceed = confirm(
+    const proceed = await showCustomConfirm(
       `"${likelyDup.name}" already exists${likelyDup.company_id == null ? ' (a platform-wide default everyone can use)' : ''} and looks similar to "${name}".\n\n` +
-      `If this is meant to be the same document, use "${likelyDup.name}" instead of creating a new type — two similarly-named types for the same real credential is exactly what causes staff to be marked "missing" something they actually have on file, just filed under the other one.\n\n` +
-      `Create "${name}" as a new, separate type anyway?`
+      `If this is meant to be the same document, use "${likelyDup.name}" instead of creating a new type — two similarly-named types for the same real credential is exactly what causes staff to be marked "missing" something they actually have on file, just filed under the other one.`,
+      { okLabel: 'Create anyway', cancelLabel: 'Cancel' }
     );
     if (!proceed) return;
   }
