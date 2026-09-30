@@ -2910,6 +2910,22 @@ window.addEventListener('focus', checkForAppUpdate);
 const SUPABASE_URL      = 'https://zxserlkhwkfoqiepurdr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp4c2VybGtod2tmb3FpZXB1cmRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA0NDM1NDIsImV4cCI6MjA5NjAxOTU0Mn0.cA9LJSn5t4sIbIemdQGQsdwtQFwb-6Q9xIZi48UYq34';
 const STORAGE_BUCKET    = 'compliance-documents';
+// A logo is meant to be publicly visible (the header, every tab) and has to
+// live somewhere a plain <img src> can actually load without auth — the
+// opposite of what STORAGE_BUCKET is for. Both logo upload paths used to
+// call .getPublicUrl() on STORAGE_BUCKET, which always returns a URL
+// whether the bucket is actually public or not — since that bucket holds
+// sensitive compliance documents and is correctly kept private, every logo
+// URL it produced looked valid but 403'd the moment a browser tried to
+// display it. This bucket already exists and is shared platform-wide
+// (Billing uploads into it too) — sharing a genuinely PUBLIC bucket across
+// products carries none of the isolation risk sharing a private one would,
+// so this reuses it rather than creating a redundant one. Every path Cred
+// writes is prefixed with cred/ (see CRED_LOGO_PREFIX below) so it can
+// never collide with whatever Billing or another module stores at the
+// same-looking path for the same company.
+const PUBLIC_ASSETS_BUCKET = 'public-assets';
+const CRED_LOGO_PREFIX = 'cred/logos';
 // ── EMAILJS CONFIG (same account/template used across Selko apps) ──
 const EMAILJS_SERVICE_ID  = 'service_wnhqs7e';
 const EMAILJS_TEMPLATE_ID = 'template_gq1z2x6';
@@ -18466,10 +18482,13 @@ async function saveBranding() {
     }
     try {
       const ext  = logoFile.name.split('.').pop();
-      const path = `logos/${currentCompany.id}/logo.${ext}`;
-      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
+      const path = `${CRED_LOGO_PREFIX}/${currentCompany.id}/logo.${ext}`;
+      // FIXED — logos now go to a real public bucket instead of the
+      // private compliance-documents one; see the comment on
+      // PUBLIC_ASSETS_BUCKET above.
+      const { error: stErr } = await sb.storage.from(PUBLIC_ASSETS_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
       if (stErr) throw stErr;
-      const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      const { data: { publicUrl } } = sb.storage.from(PUBLIC_ASSETS_BUCKET).getPublicUrl(path);
       logo_url = publicUrl;
     } catch(e) {
       statusEl.textContent = 'Logo upload failed: ' + e.message;
@@ -20550,10 +20569,11 @@ async function saveCompanyConfig(id) {
     }
     try {
       const ext  = logoFile.name.split('.').pop();
-      const path = `logos/${id}/logo.${ext}`;
-      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
+      const path = `${CRED_LOGO_PREFIX}/${id}/logo.${ext}`;
+      // FIXED — same bucket fix as the company's own Branding panel.
+      const { error: stErr } = await sb.storage.from(PUBLIC_ASSETS_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
       if (stErr) throw stErr;
-      const { data: { publicUrl } } = sb.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+      const { data: { publicUrl } } = sb.storage.from(PUBLIC_ASSETS_BUCKET).getPublicUrl(path);
       logo_url = publicUrl;
     } catch(e) {
       statusEl.textContent = 'Logo upload failed: ' + e.message;
