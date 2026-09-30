@@ -10119,6 +10119,79 @@ function onAuFile2Selected(input) {
   document.getElementById('auFileName2').textContent = file ? file.name : 'No file selected';
 }
 
+// Generic connector words that carry no identifying signal when matching
+// a scan-detected credential label ("Texas CPR", "AHA BLS Card") against
+// this company's own document type names — distinct from the similar
+// list built for PDF form-field names, since these are naming
+// conventions for two different kinds of thing.
+const _DOC_TYPE_STOPWORDS = new Set(['of','the','and','or','for','a','an','certificate','certification','license','card','document']);
+
+function _docTypeTokens(name) {
+  return new Set(name.toLowerCase().replace(/[\/,]/g, ' ').split(/\s+/).filter(w => w && !_DOC_TYPE_STOPWORDS.has(w)));
+}
+
+// Finds the best-matching EXISTING document type for a raw, free-text
+// label a scan detected — token/word overlap rather than requiring an
+// exact or full-substring match, since a state or issuing-organization
+// prefix on an otherwise-generic credential name ("Texas CPR" for a
+// company whose own type is just "CPR/BLS Certification") is extremely
+// common and would never match under a plain substring check. A
+// conservative floor: a wrong, confident-looking guess nobody notices to
+// correct is worse than an honest "nothing matched, please choose."
+function guessDocTypeFromDetectedLabel(detectedLabel, types) {
+  if (!detectedLabel) return null;
+  const targetWords = _docTypeTokens(detectedLabel);
+  if (!targetWords.size) return null;
+  let best = null, bestScore = 0;
+  for (const t of types) {
+    const typeWords = _docTypeTokens(t.name);
+    if (!typeWords.size) continue;
+    let intersection = 0;
+    for (const w of targetWords) if (typeWords.has(w)) intersection++;
+    const union = new Set([...targetWords, ...typeWords]).size;
+    const score = intersection / union;
+    if (score > bestScore) { bestScore = score; best = t; }
+  }
+  return (best && bestScore >= 0.15) ? best : null;
+}
+
+// Shown whenever the AI scan reports a document_type string at all —
+// even when a confident guess was found — so accepting it is always a
+// genuine, visible confirmation of what the scan actually read, not a
+// silent pre-fill the admin might never notice to double-check.
+function showAiScanTypeConfirmModal(detectedLabel, guessedType) {
+  document.getElementById('aiScanTypeConfirmModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'aiScanTypeConfirmModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const optionsHtml = docTypes.map(t => `<option value="${t.id}" ${guessedType && String(t.id) === String(guessedType.id) ? 'selected' : ''}>${hrOnbEsc(t.name)}</option>`).join('');
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Confirm the document type</div>
+      <div style="color:rgba(255,255,255,.62);font-size:13px;margin-bottom:16px;">The scan read this as <strong style="color:#fff;">"${hrOnbEsc(detectedLabel)}"</strong>${guessedType ? ` — closest match is <strong style="color:#fff;">${hrOnbEsc(guessedType.name)}</strong>, your general type for this credential.` : ', but nothing in your document types looked close enough to guess automatically.'}</div>
+      <label class="inline-label">File this under</label>
+      <select class="inline-select" id="aiScanTypeSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;">
+        <option value="">— Select type —</option>
+        ${optionsHtml}
+      </select>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="applyAiScanType()" style="flex:1;justify-content:center;">Confirm</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('aiScanTypeConfirmModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Skip — I'll pick manually</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function applyAiScanType() {
+  const typeId = document.getElementById('aiScanTypeSelect').value;
+  if (typeId) {
+    document.getElementById('auType').value = typeId;
+    onAuTypeChanged('au');
+  }
+  document.getElementById('aiScanTypeConfirmModal')?.remove();
+}
+
 async function scanCredential() {
   const file = document.getElementById('auFile').files[0];
   if (!file) { toast('Please select a file first', true); return; }
@@ -10164,14 +10237,14 @@ async function scanCredential() {
     if (e.notes) document.getElementById('auNotes').value = e.notes;
     if (e.license_number) document.getElementById('auLicense').value = e.license_number;
 
-    // Try to match document type
+    // Surfacing the detected type is always a genuine confirmation step
+    // now, not a silent pre-fill — see showAiScanTypeConfirmModal above.
+    // A wrong or state-prefixed label ("Texas CPR") getting matched to
+    // the wrong general type, or matched to nothing at all with the raw
+    // detection just discarded, was exactly the gap here before.
     if (e.document_type) {
-      const typeStr = e.document_type.toLowerCase();
-      const match = docTypes.find(d =>
-        typeStr.includes(d.name.toLowerCase()) ||
-        d.name.toLowerCase().includes(typeStr.split(' ')[0])
-      );
-      if (match) document.getElementById('auType').value = match.id;
+      const guessedType = guessDocTypeFromDetectedLabel(e.document_type, docTypes);
+      showAiScanTypeConfirmModal(e.document_type, guessedType);
     }
 
     const filled = [e.issued_date, e.expiry_date].filter(Boolean).length;
