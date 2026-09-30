@@ -1135,6 +1135,18 @@ window.selkoSharedAuthStorage = {
               <input class="inline-input" type="text" id="setMedicaidId" placeholder="If applicable" />
             </div>
             <div>
+              <label class="inline-label">Organizational Medicare number</label>
+              <input class="inline-input" type="text" id="setMedicareNumber" placeholder="If applicable" />
+            </div>
+            <div>
+              <label class="inline-label">DBA name</label>
+              <input class="inline-input" type="text" id="setDbaName" placeholder="If different from legal name" />
+            </div>
+            <div>
+              <label class="inline-label">Organization/facility type</label>
+              <input class="inline-input" type="text" id="setOrgType" placeholder="e.g. Urgent Care Clinic" />
+            </div>
+            <div>
               <label class="inline-label">Taxonomy code</label>
               <input class="inline-input" type="text" id="setTaxonomyCode" placeholder="e.g. 261QP2000X" />
             </div>
@@ -13678,19 +13690,28 @@ async function loadCredentialingTab() {
   document.getElementById('setSignatoryName').value    = c.authorized_signatory_name || '';
   document.getElementById('setSignatoryTitle').value   = c.authorized_signatory_title || '';
   document.getElementById('setSignatoryEmail').value   = c.authorized_signatory_email || '';
-  document.getElementById('setMedicareNumber').value = c.medicare_number || '';
-  document.getElementById('setDbaName').value        = c.dba_name || '';
-  document.getElementById('setOrgType').value         = c.org_type || '';
-  document.getElementById('setOrgStateLicenseNumber').value       = c.org_state_license_number || '';
-  document.getElementById('setOrgStateLicenseState').value        = c.org_state_license_state || '';
-  document.getElementById('setOrgStateRegistrationNumber').value  = c.org_state_registration_number || '';
-  document.getElementById('setOrgStateRegistrationState').value   = c.org_state_registration_state || '';
-  document.getElementById('setOrgStateCertificationNumber').value = c.org_state_certification_number || '';
-  document.getElementById('setOrgStateCertificationState').value  = c.org_state_certification_state || '';
-  document.getElementById('setOrgDeaNumber').value    = c.org_dea_number || '';
-  document.getElementById('setOrgDeaState').value     = c.org_dea_state || '';
-  document.getElementById('setOrgCliaNumber').value   = c.org_clia_number || '';
-  document.getElementById('setOrgCliaState').value    = c.org_clia_state || '';
+  // FOUND THE HARD WAY — these 13 lines used to assume every element
+  // exists and would throw on the first one that doesn't, silently
+  // aborting the rest of this function, including loadCredentialingTemplates()
+  // much further down, which is exactly what happened here: three of these
+  // fields' markup had gone missing, and the templates list disappeared as
+  // a side effect of something that had nothing to do with it. Guarded now
+  // so one missing or renamed field can never again take out everything
+  // that happens to run after it in this same function.
+  const setIfPresent = (id, value) => { const el = document.getElementById(id); if (el) el.value = value; };
+  setIfPresent('setMedicareNumber', c.medicare_number || '');
+  setIfPresent('setDbaName', c.dba_name || '');
+  setIfPresent('setOrgType', c.org_type || '');
+  setIfPresent('setOrgStateLicenseNumber', c.org_state_license_number || '');
+  setIfPresent('setOrgStateLicenseState', c.org_state_license_state || '');
+  setIfPresent('setOrgStateRegistrationNumber', c.org_state_registration_number || '');
+  setIfPresent('setOrgStateRegistrationState', c.org_state_registration_state || '');
+  setIfPresent('setOrgStateCertificationNumber', c.org_state_certification_number || '');
+  setIfPresent('setOrgStateCertificationState', c.org_state_certification_state || '');
+  setIfPresent('setOrgDeaNumber', c.org_dea_number || '');
+  setIfPresent('setOrgDeaState', c.org_dea_state || '');
+  setIfPresent('setOrgCliaNumber', c.org_clia_number || '');
+  setIfPresent('setOrgCliaState', c.org_clia_state || '');
   document.getElementById('setMalpracticeCarrier').value    = c.malpractice_carrier || '';
   document.getElementById('setMalpracticePolicy').value     = c.malpractice_policy_number || '';
   document.getElementById('setMalpracticeLimits').value     = c.malpractice_coverage_limits || '';
@@ -18601,19 +18622,22 @@ async function saveCompanySettings() {
     malpractice_coverage_limits:  document.getElementById('setMalpracticeLimits').value.trim() || null,
     malpractice_effective_date:   document.getElementById('setMalpracticeEffective').value || null,
     malpractice_expiration_date:  document.getElementById('setMalpracticeExpiration').value || null,
-    medicare_number: document.getElementById('setMedicareNumber').value.trim() || null,
-    dba_name:        document.getElementById('setDbaName').value.trim() || null,
-    org_type:        document.getElementById('setOrgType').value.trim() || null,
-    org_state_license_number:       document.getElementById('setOrgStateLicenseNumber').value.trim() || null,
-    org_state_license_state:        document.getElementById('setOrgStateLicenseState').value.trim().toUpperCase() || null,
-    org_state_registration_number:  document.getElementById('setOrgStateRegistrationNumber').value.trim() || null,
-    org_state_registration_state:   document.getElementById('setOrgStateRegistrationState').value.trim().toUpperCase() || null,
-    org_state_certification_number: document.getElementById('setOrgStateCertificationNumber').value.trim() || null,
-    org_state_certification_state:  document.getElementById('setOrgStateCertificationState').value.trim().toUpperCase() || null,
-    org_dea_number:  document.getElementById('setOrgDeaNumber').value.trim() || null,
-    org_dea_state:   document.getElementById('setOrgDeaState').value.trim().toUpperCase() || null,
-    org_clia_number: document.getElementById('setOrgCliaNumber').value.trim() || null,
-    org_clia_state:  document.getElementById('setOrgCliaState').value.trim().toUpperCase() || null,
+    // Same defensive read as the load side above — a missing element
+    // returns null here instead of throwing, so a save can't be silently
+    // aborted partway through by one absent field either.
+    medicare_number: (document.getElementById('setMedicareNumber')?.value.trim()) || null,
+    dba_name:        (document.getElementById('setDbaName')?.value.trim()) || null,
+    org_type:        (document.getElementById('setOrgType')?.value.trim()) || null,
+    org_state_license_number:       (document.getElementById('setOrgStateLicenseNumber')?.value.trim()) || null,
+    org_state_license_state:        (document.getElementById('setOrgStateLicenseState')?.value.trim().toUpperCase()) || null,
+    org_state_registration_number:  (document.getElementById('setOrgStateRegistrationNumber')?.value.trim()) || null,
+    org_state_registration_state:   (document.getElementById('setOrgStateRegistrationState')?.value.trim().toUpperCase()) || null,
+    org_state_certification_number: (document.getElementById('setOrgStateCertificationNumber')?.value.trim()) || null,
+    org_state_certification_state:  (document.getElementById('setOrgStateCertificationState')?.value.trim().toUpperCase()) || null,
+    org_dea_number:  (document.getElementById('setOrgDeaNumber')?.value.trim()) || null,
+    org_dea_state:   (document.getElementById('setOrgDeaState')?.value.trim().toUpperCase()) || null,
+    org_clia_number: (document.getElementById('setOrgCliaNumber')?.value.trim()) || null,
+    org_clia_state:  (document.getElementById('setOrgCliaState')?.value.trim().toUpperCase()) || null,
   };
   if (isSuperAdmin) {
     updates.name = document.getElementById('setCoName').value.trim();
