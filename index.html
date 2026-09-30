@@ -1193,6 +1193,49 @@ window.selkoSharedAuthStorage = {
               <label class="inline-label">Authorized signatory — email</label>
               <input class="inline-input" type="email" id="setSignatoryEmail" />
             </div>
+            <div style="grid-column:1/-1;margin:14px 0 4px;font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;">Facility-level licenses</div>
+            <div style="grid-column:1/-1;font-size:12px;color:rgba(255,255,255,.58);margin-bottom:4px;">The organization's own credentials — separate from any individual provider's own licenses.</div>
+            <div>
+              <label class="inline-label">State license — number</label>
+              <input class="inline-input" type="text" id="setOrgStateLicenseNumber" />
+            </div>
+            <div>
+              <label class="inline-label">State license — state</label>
+              <input class="inline-input" type="text" id="setOrgStateLicenseState" maxlength="2" placeholder="e.g. OK" />
+            </div>
+            <div>
+              <label class="inline-label">State registration — number</label>
+              <input class="inline-input" type="text" id="setOrgStateRegistrationNumber" />
+            </div>
+            <div>
+              <label class="inline-label">State registration — state</label>
+              <input class="inline-input" type="text" id="setOrgStateRegistrationState" maxlength="2" placeholder="e.g. OK" />
+            </div>
+            <div>
+              <label class="inline-label">State certification — number</label>
+              <input class="inline-input" type="text" id="setOrgStateCertificationNumber" />
+            </div>
+            <div>
+              <label class="inline-label">State certification — state</label>
+              <input class="inline-input" type="text" id="setOrgStateCertificationState" maxlength="2" placeholder="e.g. OK" />
+            </div>
+            <div>
+              <label class="inline-label">DEA — number</label>
+              <input class="inline-input" type="text" id="setOrgDeaNumber" />
+            </div>
+            <div>
+              <label class="inline-label">DEA — state</label>
+              <input class="inline-input" type="text" id="setOrgDeaState" maxlength="2" placeholder="e.g. OK" />
+            </div>
+            <div>
+              <label class="inline-label">CLIA — number</label>
+              <input class="inline-input" type="text" id="setOrgCliaNumber" />
+            </div>
+            <div>
+              <label class="inline-label">CLIA — state</label>
+              <input class="inline-input" type="text" id="setOrgCliaState" maxlength="2" placeholder="e.g. OK" />
+            </div>
+            <div style="grid-column:1/-1;margin:14px 0 4px;font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;">Malpractice / liability insurance</div>
             <div class="malpractice-field">
               <label class="inline-label">Malpractice insurance carrier</label>
               <input class="inline-input" type="text" id="setMalpracticeCarrier" placeholder="e.g. CNA, The Doctors Company" />
@@ -13635,6 +13678,19 @@ async function loadCredentialingTab() {
   document.getElementById('setSignatoryName').value    = c.authorized_signatory_name || '';
   document.getElementById('setSignatoryTitle').value   = c.authorized_signatory_title || '';
   document.getElementById('setSignatoryEmail').value   = c.authorized_signatory_email || '';
+  document.getElementById('setMedicareNumber').value = c.medicare_number || '';
+  document.getElementById('setDbaName').value        = c.dba_name || '';
+  document.getElementById('setOrgType').value         = c.org_type || '';
+  document.getElementById('setOrgStateLicenseNumber').value       = c.org_state_license_number || '';
+  document.getElementById('setOrgStateLicenseState').value        = c.org_state_license_state || '';
+  document.getElementById('setOrgStateRegistrationNumber').value  = c.org_state_registration_number || '';
+  document.getElementById('setOrgStateRegistrationState').value   = c.org_state_registration_state || '';
+  document.getElementById('setOrgStateCertificationNumber').value = c.org_state_certification_number || '';
+  document.getElementById('setOrgStateCertificationState').value  = c.org_state_certification_state || '';
+  document.getElementById('setOrgDeaNumber').value    = c.org_dea_number || '';
+  document.getElementById('setOrgDeaState').value     = c.org_dea_state || '';
+  document.getElementById('setOrgCliaNumber').value   = c.org_clia_number || '';
+  document.getElementById('setOrgCliaState').value    = c.org_clia_state || '';
   document.getElementById('setMalpracticeCarrier').value    = c.malpractice_carrier || '';
   document.getElementById('setMalpracticePolicy').value     = c.malpractice_policy_number || '';
   document.getElementById('setMalpracticeLimits').value     = c.malpractice_coverage_limits || '';
@@ -13814,11 +13870,24 @@ const CRED_DATA_SOURCES = [
   { group: 'Organization', options: [
     ['company.name', 'Company name (display)'],
     ['company.legal_business_name', 'Legal business name'],
+    ['company.dba_name', 'DBA name'],
+    ['company.org_type', 'Organization/facility type'],
     ['company.provider_directory_name', 'Provider directory name'],
     ['company.tax_id', 'Tax ID (EIN)'],
     ['company.org_npi', 'Organizational NPI'],
+    ['company.medicare_number', 'Organizational Medicare number'],
     ['company.medicaid_id', 'Organizational Medicaid ID'],
     ['company.taxonomy_code', 'Taxonomy code'],
+    ['company.org_state_license_number', 'Facility state license — number'],
+    ['company.org_state_license_state', 'Facility state license — state'],
+    ['company.org_state_registration_number', 'Facility state registration — number'],
+    ['company.org_state_registration_state', 'Facility state registration — state'],
+    ['company.org_state_certification_number', 'Facility state certification — number'],
+    ['company.org_state_certification_state', 'Facility state certification — state'],
+    ['company.org_dea_number', 'Facility DEA — number'],
+    ['company.org_dea_state', 'Facility DEA — state'],
+    ['company.org_clia_number', 'Facility CLIA — number'],
+    ['company.org_clia_state', 'Facility CLIA — state'],
     ['company.fax', 'General fax number'],
     ['company.group_specialty', 'Group specialty'],
     ['company.virtual_only', 'Virtual only? (Yes/No)'],
@@ -16267,13 +16336,16 @@ function guessDefaultMapping(fieldName) {
     // guess further down only catches forms that literally spell out
     // "Individual NPI", missing this common alternate phrasing.
     [/npid|\bupin\b/, 'staff.npi_number'],
-    [/legal.*business.*name/, 'company.legal_business_name'],
+    [/legal.*business.*name|legal.*name.*of.*organization|organization.*legal.*name/, 'company.legal_business_name'],
+    [/dba|doing.*business.*as/, 'company.dba_name'],
+    [/organization.*type|facility.*type|entity.*type/, 'company.org_type'],
     [/group.*practice.*name|practice.*name|directory/, 'company.provider_directory_name'],
     [/^tin$|tax.*id/, 'company.tax_id'],
-    [/group.*npi|practice.*npi/, 'company.org_npi'],
+    [/group.*npi|practice.*npi|organization.*npi|organizational.*npi/, 'company.org_npi'],
+    [/organization.*medicare|medicare.*number/, 'company.medicare_number'],
     [/medicaid/, 'company.medicaid_id'],
     [/taxonomy/, 'company.taxonomy_code'],
-    [/^fax$|general.*fax/, 'company.fax'],
+    [/fax/, 'company.fax'],
     [/^county$|^county_2$|^county_3$/, 'company.location_1_county'],
     [/primary specialty/, 'staff.primary_specialty'],
     [/secondary specialty/, 'staff.secondary_specialty'],
@@ -16290,20 +16362,21 @@ function guessDefaultMapping(fieldName) {
     [/tertiary.*(name)|(name).*tertiary/, 'company.location_3_name'],
     [/tertiary.*(address)|(address).*tertiary/, 'company.location_3_address'],
     [/tertiary.*(phone)|(phone).*tertiary/, 'company.location_3_phone'],
-    [/(service|practice).*(location.*name|name)/, 'company.location_1_name'],
-    [/(service|practice).*(location.*address|address)/, 'company.location_1_address'],
-    [/(service|practice).*(location.*phone|phone)/, 'company.location_1_phone'],
+    [/(service|practice|organization|facility).*(location.*name|name)/, 'company.location_1_name'],
+    [/(service|practice|organization|facility).*(location.*address|address)/, 'company.location_1_address'],
+    [/(service|practice|organization|facility).*(location.*phone|phone)/, 'company.location_1_phone'],
+    [/city.*state.*zip/, 'company.location_1_address'],
     [/credentialing.*contact$|contact.*name/, 'company.credentialing_contact_name'],
-    [/credentialing.*email/, 'company.credentialing_contact_email'],
-    [/credentialing.*phone/, 'company.credentialing_contact_phone'],
-    [/signatory.*name/, 'company.authorized_signatory_name'],
-    [/signatory.*title/, 'company.authorized_signatory_title'],
-    [/signatory.*email/, 'company.authorized_signatory_email'],
-    [/malpractice.*carrier|liability.*carrier|insurance.*carrier/, 'company.malpractice_carrier'],
+    [/credentialing.*email|contact.*email/, 'company.credentialing_contact_email'],
+    [/credentialing.*phone|contact.*phone/, 'company.credentialing_contact_phone'],
+    [/signatory.*name|authorized.*signer$|printed.*name.*of.*signer/, 'company.authorized_signatory_name'],
+    [/signatory.*title|signer.*title/, 'company.authorized_signatory_title'],
+    [/signatory.*email|signer.*email/, 'company.authorized_signatory_email'],
+    [/malpractice.*carrier|liability.*carrier|insurance.*carrier|current.*carrier.*name/, 'company.malpractice_carrier'],
     [/malpractice.*policy.*number|policy.*number/, 'company.malpractice_policy_number'],
-    [/malpractice.*limit|coverage.*limit/, 'company.malpractice_coverage_limits'],
-    [/malpractice.*effective|policy.*effective/, 'company.malpractice_effective_date'],
-    [/malpractice.*expir|policy.*expir|policy.*termination/, 'company.malpractice_expiration_date'],
+    [/malpractice.*limit|coverage.*limit|coverage.*amount/, 'company.malpractice_coverage_limits'],
+    [/malpractice.*effective|policy.*effective|policy.*start.*date/, 'company.malpractice_effective_date'],
+    [/malpractice.*expir|policy.*expir|policy.*termination|policy.*end.*date/, 'company.malpractice_expiration_date'],
     [/provider.*name/, 'staff.full_name'],
     [/individual.*npi/, 'staff.npi_number'],
     [/^license type$/, 'staff.additional_license_1_type'],
@@ -16411,9 +16484,70 @@ function memoryGuess(normalizedName) {
 
 // The single entry point the mapping modal actually calls: learned
 // memory first, static regex heuristics as the last-resort fallback.
+// A handful of payer facility-recredentialing PDFs (Humana's included)
+// build their license table by having Acrobat auto-detect one field per
+// table cell, gluing the ROW label directly onto the COLUMN header with
+// no separator — "State" + "DEA" -> "StateDEA", "Additional NotesInfo" +
+// "State License" -> "Additional NotesInfoState License". That's a
+// different, much more determinable shape than the free-text guessing
+// above: check whether the name ENDS with a known credential-row label,
+// then read whatever's left at the front as the column. Tried only after
+// the generic list has already had its chance, since matching on a bare
+// suffix like "dea" is specific enough to risk a wrong hit on some
+// unrelated field that happens to end the same way.
+const ORG_LICENSE_TABLE_SUFFIXES = [
+  ['state license', 'org_state_license'],
+  ['state registration', 'org_state_registration'],
+  ['state certification', 'org_state_certification'],
+  ['clia', 'org_clia'],
+  ['dea', 'org_dea'],
+];
+// A dedicated sentinel, distinct from '' — '' from this function means
+// "not part of the license-table shape at all, let the generic list have
+// its normal turn"; this means "recognized as a cell in that table, but
+// there's genuinely no data source for it (the free-text Notes column)."
+// Without that distinction, a Notes cell like "Additional NotesInfoDEA"
+// would fall through into the generic list's broad /dea/ pattern anyway —
+// found by testing this against the real field, not assumed — and get
+// silently mapped to the wrong (individual-provider) target exactly like
+// the State/Number columns almost were.
+const ORG_LICENSE_TABLE_NO_MAPPING = Symbol('no-mapping-for-this-recognized-cell');
+
+function guessOrgLicenseTableField(normalized) {
+  for (const [suffix, base] of ORG_LICENSE_TABLE_SUFFIXES) {
+    if (!normalized.endsWith(suffix)) continue;
+    const prefix = normalized.slice(0, normalized.length - suffix.length).trim();
+    // An EMPTY prefix means the field name is just the bare word itself
+    // ("DEA", "CLIA") — an ordinary individual-provider field that
+    // happens to trivially "end with" its own full name, not a cell in
+    // this table at all. Only a real, non-blank prefix (a genuine
+    // row-label glued onto a column header) counts as this shape.
+    if (!prefix) continue;
+    if (prefix === 'state') return `company.${base}_state`;
+    if (prefix === 'number') return `company.${base}_number`;
+    return ORG_LICENSE_TABLE_NO_MAPPING;
+  }
+  return ''; // not part of this table shape at all
+}
+
 function bestGuess(fieldName) {
   const normalized = normalizeFieldName(fieldName);
-  return memoryGuess(normalized) || guessDefaultMapping(fieldName);
+  const memHit = memoryGuess(normalized);
+  if (memHit) return memHit;
+  // Tried BEFORE the generic list, not after — a bare "DEA" or "CLIA"
+  // meant for an individual provider (staff.dea_number) is common enough
+  // that the generic list's broad /dea/ pattern has to stay broad, which
+  // means it would otherwise swallow "StateDEA"/"NumberDEA" too and map
+  // them to the wrong person's DEA number before this ever got a chance.
+  // guessOrgLicenseTableField only fires for its own narrow, structurally
+  // determined shape (State/Number prefix + a known credential-row
+  // suffix), so trying it first can't shadow anything the generic list
+  // was correctly handling — a bare "DEA" still falls through to it
+  // unchanged, since that alone doesn't match the State/Number prefix
+  // requirement.
+  const tableGuess = guessOrgLicenseTableField(normalized);
+  if (tableGuess === ORG_LICENSE_TABLE_NO_MAPPING) return ''; // recognized cell, deliberately no mapping — stop here, don't let the generic list grab it by coincidence
+  return tableGuess || guessDefaultMapping(fieldName);
 }
 
 // Fire-and-forget from the admin's point of view — recorded AFTER the
@@ -18467,14 +18601,35 @@ async function saveCompanySettings() {
     malpractice_coverage_limits:  document.getElementById('setMalpracticeLimits').value.trim() || null,
     malpractice_effective_date:   document.getElementById('setMalpracticeEffective').value || null,
     malpractice_expiration_date:  document.getElementById('setMalpracticeExpiration').value || null,
+    medicare_number: document.getElementById('setMedicareNumber').value.trim() || null,
+    dba_name:        document.getElementById('setDbaName').value.trim() || null,
+    org_type:        document.getElementById('setOrgType').value.trim() || null,
+    org_state_license_number:       document.getElementById('setOrgStateLicenseNumber').value.trim() || null,
+    org_state_license_state:        document.getElementById('setOrgStateLicenseState').value.trim().toUpperCase() || null,
+    org_state_registration_number:  document.getElementById('setOrgStateRegistrationNumber').value.trim() || null,
+    org_state_registration_state:   document.getElementById('setOrgStateRegistrationState').value.trim().toUpperCase() || null,
+    org_state_certification_number: document.getElementById('setOrgStateCertificationNumber').value.trim() || null,
+    org_state_certification_state:  document.getElementById('setOrgStateCertificationState').value.trim().toUpperCase() || null,
+    org_dea_number:  document.getElementById('setOrgDeaNumber').value.trim() || null,
+    org_dea_state:   document.getElementById('setOrgDeaState').value.trim().toUpperCase() || null,
+    org_clia_number: document.getElementById('setOrgCliaNumber').value.trim() || null,
+    org_clia_state:  document.getElementById('setOrgCliaState').value.trim().toUpperCase() || null,
   };
   if (isSuperAdmin) {
     updates.name = document.getElementById('setCoName').value.trim();
   }
 
-  const { error } = await sb.from('companies').update(updates).eq('id', currentCompany.id);
+  // FIXED — this used to only check for a thrown error, the same class of
+  // bug found and fixed elsewhere: an update the access rules refuse
+  // reports NO error, only zero rows changed, so a blocked save here would
+  // have shown "Settings saved" for a write that never happened.
+  const { data: changed, error } = await sb.from('companies').update(updates).eq('id', currentCompany.id).select('id');
   if (error) {
     if (statusEl) { statusEl.textContent = 'Error: ' + error.message; statusEl.className = 'up-status up-err'; statusEl.style.display = 'block'; }
+    return;
+  }
+  if (!changed || !changed.length) {
+    if (statusEl) { statusEl.textContent = "Nothing was saved — you may not have permission to edit this company's settings."; statusEl.className = 'up-status up-err'; statusEl.style.display = 'block'; }
     return;
   }
 
