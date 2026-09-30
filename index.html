@@ -165,7 +165,7 @@ window.selkoSharedAuthStorage = {
     <p style="margin-top:6px;text-align:center;">
       <a href="#" onclick="showLoginIssueModal(); return false;" style="font-size:13px;color:var(--teal);text-decoration:none;">🆘 Can't log in? Report an issue</a>
     </p>
-    <p style="margin-top:10px;font-size:12px;color:var(--gray-400);text-align:center;">Contact your administrator if you need access.</p>
+    <p style="margin-top:10px;font-size:12px;color:var(--gray-600);text-align:center;">Contact your administrator if you need access.</p>
   </div>
 </div>
 
@@ -191,9 +191,11 @@ window.selkoSharedAuthStorage = {
       <div class="panel-body">
         <div id="hrOnbWizardProgress" style="margin-bottom:16px;"></div>
 
-        <p style="font-size:13px;color:var(--gray-400);margin-bottom:14px;">Your employer needs a few details to complete your employment paperwork. This only takes a few minutes, and you'll only need to do this once.</p>
+        <p style="font-size:13px;color:var(--gray-600);margin-bottom:14px;">Your employer needs a few details to complete your employment paperwork. This only takes a few minutes, and you'll only need to do this once.</p>
 
         <div id="hrOnbStepBasic">
+        <div style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;">
+          <label class="field-label" style="margin-bottom:10px;display:block;">Personal information</label>
         <div class="form-grid-2" style="margin-bottom:10px;">
           <div class="form-group" style="margin:0;">
             <label class="field-label">Legal first name</label>
@@ -208,6 +210,9 @@ window.selkoSharedAuthStorage = {
           <label class="field-label">Other last names used (if any)</label>
           <input type="text" id="hrOnbOtherNames" placeholder="Leave blank if none" />
         </div>
+        </div>
+        <div style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;">
+          <label class="field-label" style="margin-bottom:10px;display:block;">Address &amp; contact</label>
         <div class="form-group" style="margin-bottom:10px;position:relative;">
           <label class="field-label">Home address</label>
           <input type="text" id="hrOnbAddress" placeholder="Start typing an address..." autocomplete="off" oninput="handleAddressSearch(this, 'hrOnb')" onblur="setTimeout(() => hideAddressSuggestions('hrOnb'), 200)" />
@@ -237,6 +242,9 @@ window.selkoSharedAuthStorage = {
             <input type="text" id="hrOnbPhone" oninput="formatPhoneInput(this)" />
           </div>
         </div>
+        </div>
+        <div style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;">
+          <label class="field-label" style="margin-bottom:10px;display:block;">Work eligibility</label>
         <div class="form-group" style="margin-bottom:10px;">
           <label class="field-label">Citizenship / immigration status</label>
           <select id="hrOnbCitizenship" onchange="document.getElementById('hrOnbAlienRow').style.display = ['permanent_resident','authorized_alien'].includes(this.value) ? 'grid' : 'none';">
@@ -269,11 +277,12 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
         </div>
+        </div>
         <!-- Documents this company requires at onboarding (Settings → "Documents required at
              onboarding"; defaults to Driver License + Auto Insurance). Rendered by
              initHrOnbRequiredDocs. These are saved as regular credential documents — with
              expiration dates, reminders and verification — not as loose HR files. -->
-        <div id="hrOnbReqDocs" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;"></div>
+        <div id="hrOnbReqDocs" style="display:none;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;"></div>
 
         <!-- Only shown when this company (or Selko globally) has a form designated
              as the I-9 — see initHrOnbI9Documents. Documents chosen here are uploaded
@@ -288,12 +297,12 @@ window.selkoSharedAuthStorage = {
              reveal flow; the generated W-4 leaves that box blank rather than
              stamping a decrypted SSN into an ordinary document any admin could
              then open with no log entry. -->
-        <div id="hrOnbW4Section" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
+        <div id="hrOnbW4Section" style="display:none;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;">
           <label class="field-label">Form W-4 — federal tax withholding</label>
-          <p style="font-size:12px;color:var(--gray-400);margin:0 0 10px;">Your employer will fill in your Social Security Number separately — you don't need to enter it here.</p>
+          <p style="font-size:12px;color:var(--gray-600);margin:0 0 10px;">Your employer will fill in your Social Security Number separately — you don't need to enter it here.</p>
 
           <div style="margin-bottom:14px;">
-            <label style="font-size:11px;color:var(--gray-400);display:block;margin-bottom:6px;">Filing status <span style="color:#f87171;">*</span></label>
+            <label style="font-size:11px;color:var(--gray-600);display:block;margin-bottom:6px;">Filing status <span style="color:#f87171;">*</span></label>
             <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:6px;cursor:pointer;">
               <input type="radio" name="hrOnbW4FilingStatus" value="single" /> Single, or married filing separately
             </label>
@@ -328,12 +337,12 @@ window.selkoSharedAuthStorage = {
               <input type="number" min="0" step="1" id="hrOnbW4ExtraWithholding" placeholder="$0" />
             </div>
           </div>
-          <p style="font-size:11px;color:var(--gray-400);margin:0;">Leave any of the four amounts blank if they don't apply to you — that's the same as entering $0.</p>
+          <p style="font-size:11px;color:var(--gray-600);margin:0;">Leave any of the four amounts blank if they don't apply to you — that's the same as entering $0.</p>
         </div>
 
-        <div id="hrOnbI9Docs" style="display:none;background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
+        <div id="hrOnbI9Docs" style="display:none;background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;">
           <label class="field-label">Documents for your Form I-9</label>
-          <p style="font-size:12px;color:var(--gray-400);margin:0 0 10px;">You choose which acceptable documents to present — your employer can't require a specific one. Pick one option below. Documents must be unexpired. Your employer will still need to look at your original documents to complete Section 2 of the I-9; uploading them here just gets that review started.</p>
+          <p style="font-size:12px;color:var(--gray-600);margin:0 0 10px;">You choose which acceptable documents to present — your employer can't require a specific one. Pick one option below. Documents must be unexpired. Your employer will still need to look at your original documents to complete Section 2 of the I-9; uploading them here just gets that review started.</p>
           <p id="hrOnbI9ResubmitNote" style="display:none;font-size:12px;color:var(--gray-600);margin:0 0 10px;">You've already submitted onboarding once. Only choose an option below if you need to add or replace documents.</p>
           <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--gray-600);margin-bottom:6px;cursor:pointer;">
             <input type="radio" name="hrOnbI9Option" value="A" onchange="onHrOnbI9OptionChange()" style="margin-top:3px;" />
@@ -355,7 +364,7 @@ window.selkoSharedAuthStorage = {
             </div>
             <div class="form-group" style="margin-bottom:8px;">
               <div data-hr-attach="A"></div>
-              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Add every page or part — front and back of a card, or a passport together with its I-94 if your document requires both. Take a photo (tap once per side or page) or attach a photo or PDF.</p>
+              <p style="font-size:11px;color:var(--gray-600);margin:4px 0 0;">Add every page or part — front and back of a card, or a passport together with its I-94 if your document requires both. Take a photo (tap once per side or page) or attach a photo or PDF.</p>
             </div>
           </div>
           <div id="hrOnbI9SlotB" style="display:none;">
@@ -365,7 +374,7 @@ window.selkoSharedAuthStorage = {
             </div>
             <div class="form-group" style="margin-bottom:8px;">
               <div data-hr-attach="B"></div>
-              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Add every page or part — front and back of a card, for example. If you're using your driver's license here, add it here too — the copy for your credential file is saved separately.</p>
+              <p style="font-size:11px;color:var(--gray-600);margin:4px 0 0;">Add every page or part — front and back of a card, for example. If you're using your driver's license here, add it here too — the copy for your credential file is saved separately.</p>
             </div>
           </div>
           <div id="hrOnbI9SlotC" style="display:none;">
@@ -375,17 +384,17 @@ window.selkoSharedAuthStorage = {
             </div>
             <div class="form-group" style="margin-bottom:0;">
               <div data-hr-attach="C"></div>
-              <p style="font-size:11px;color:var(--gray-400);margin:4px 0 0;">Take a photo or attach a photo or PDF.</p>
+              <p style="font-size:11px;color:var(--gray-600);margin:4px 0 0;">Take a photo or attach a photo or PDF.</p>
             </div>
           </div>
         </div>
 
         <div id="hrOnbStepSign">
-        <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
+        <div style="background:var(--gray-100);border:1px solid var(--gray-200);border-radius:8px;padding:14px;margin-bottom:14px;">
           <label class="field-label">Sign to attest</label>
           <div style="display:flex;gap:8px;margin-bottom:10px;">
             <button type="button" class="btn btn-sm btn-teal" id="hrOnbSigModeTypeBtn" onclick="hrOnbSetSignatureMode('type')">⌨️ Type</button>
-            <button type="button" class="btn btn-sm btn-ghost" id="hrOnbSigModeDrawBtn" onclick="hrOnbSetSignatureMode('draw')" style="color:#fff;border-color:rgba(255,255,255,.2);">✍️ Draw</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="hrOnbSigModeDrawBtn" onclick="hrOnbSetSignatureMode('draw')">✍️ Draw</button>
           </div>
 
           <div id="hrOnbSigTypeMode">
@@ -394,16 +403,16 @@ window.selkoSharedAuthStorage = {
 
           <div id="hrOnbSigDrawMode" style="display:none;">
             <canvas id="hrOnbSigCanvas" width="500" height="150" style="background:#fff;border:1px solid #ccc;border-radius:6px;width:100%;max-width:500px;height:150px;touch-action:none;cursor:crosshair;display:block;margin-bottom:6px;box-sizing:border-box;"></canvas>
-            <button type="button" class="btn btn-sm btn-ghost" onclick="hrOnbClearSignatureCanvas()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-bottom:6px;">Clear</button>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="hrOnbClearSignatureCanvas()" style="margin-bottom:6px;">Clear</button>
           </div>
 
-          <p style="font-size:11px;color:var(--gray-400);margin:0;">By signing above, you attest under penalty of perjury that the information you've entered is true and correct, and that you are the person named above.</p>
+          <p style="font-size:11px;color:var(--gray-600);margin:0;">By signing above, you attest under penalty of perjury that the information you've entered is true and correct, and that you are the person named above.</p>
         </div>
         </div>
 
         <div id="hrOnboardingErr" style="color:#f87171;font-size:12px;margin-bottom:10px;display:none;"></div>
         <div style="display:flex;gap:8px;">
-          <button type="button" class="btn btn-ghost" id="hrOnbWizardBackBtn" onclick="hrOnbWizardGoBack()" style="color:#fff;border-color:rgba(255,255,255,.2);display:none;">Back</button>
+          <button type="button" class="btn btn-ghost" id="hrOnbWizardBackBtn" onclick="hrOnbWizardGoBack()" style="display:none;">Back</button>
           <button type="button" class="btn btn-teal" id="hrOnbWizardNextBtn" onclick="hrOnbWizardGoNext()" style="flex:1;justify-content:center;display:none;">Next</button>
           <button class="btn btn-teal" id="hrOnbSubmitBtn" onclick="submitHrOnboarding()" style="flex:1;justify-content:center;display:none;">Submit</button>
         </div>
@@ -4357,8 +4366,13 @@ function hrOnbSetSignatureMode(mode) {
   const drawBtn = document.getElementById('hrOnbSigModeDrawBtn');
   if (typeBox) typeBox.style.display = mode === 'type' ? 'block' : 'none';
   if (drawBox) drawBox.style.display = mode === 'draw' ? 'block' : 'none';
-  if (typeBtn) { typeBtn.className = mode === 'type' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost'; typeBtn.style.cssText = mode === 'type' ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'; }
-  if (drawBtn) { drawBtn.className = mode === 'draw' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost'; drawBtn.style.cssText = mode === 'draw' ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'; }
+  // .btn-ghost's own base style (dark gray text, light gray border) is
+  // already correct for this light-themed portal on its own — no inline
+  // override needed at all. There used to be one here, copied from the
+  // dark admin theme, which made the inactive button's text and border
+  // both render nearly white-on-white.
+  if (typeBtn) { typeBtn.className = mode === 'type' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost'; typeBtn.style.cssText = ''; }
+  if (drawBtn) { drawBtn.className = mode === 'draw' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost'; drawBtn.style.cssText = ''; }
   if (mode === 'draw') hrOnbInitSignatureCanvas();
 }
 
