@@ -9841,13 +9841,13 @@ async function lookupNpi(staffId, fullName, licenseState) {
     });
     const result = await res.json();
     if (result.error) { toast('NPI lookup failed: ' + result.error, true); return; }
-    showNpiResultsModal(staffId, fullName, result.results || []);
+    showNpiResultsModal(staffId, fullName, result.results || [], result.usedLastNameOnlyFallback);
   } catch (e) {
     toast('NPI lookup failed: ' + e.message, true);
   }
 }
 
-function showNpiResultsModal(staffId, fullName, results) {
+function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallback) {
   const existing = document.getElementById('npiResultsModal');
   if (existing) existing.remove();
 
@@ -9870,6 +9870,7 @@ function showNpiResultsModal(staffId, fullName, results) {
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:480px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">NPI matches for "${fullName}"</div>
       <div style="color:rgba(255,255,255,.62);font-size:12px;margin-bottom:16px;">This is public information from the CMS NPI Registry. Click the correct match to use it — double-check name and location before selecting, since common names can return multiple results.</div>
+      ${usedLastNameOnlyFallback ? `<div style="color:var(--gold);font-size:12px;margin-bottom:16px;">No exact match on first name — showing everyone registered under "${fullName.split(' ').slice(1).join(' ')}" instead. Check first names carefully below.</div>` : ''}
       ${body}
       <button class="btn btn-ghost" onclick="document.getElementById('npiResultsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);margin-top:14px;">Cancel</button>
     </div>`;
