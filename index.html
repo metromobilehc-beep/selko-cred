@@ -8280,64 +8280,117 @@ async function saveCvImportSelections(staffId) {
       return result;
     }
 
+    // Normalizes a value for comparison — case and whitespace shouldn't make
+    // "Baylor Scott & White" and "baylor scott & white " count as different
+    // employers. Used to build a dedup key per category below.
+    const normKey = (...parts) => parts.map(p => (p ?? '').toString().trim().toLowerCase()).join('|');
+
+    // A repeat import (someone re-running the same scan, or clicking Save
+    // more than once when the first click's result wasn't obvious) used to
+    // insert a full second copy of everything checked, with nothing to tell
+    // it apart from the first. Each category below checks what's already on
+    // file for this person and only inserts entries that don't already
+    // exist under a matching key — real edits to a genuinely new entry
+    // still go through; an unedited repeat of something already there does
+    // not. Skipped counts are folded into the closing summary so it's
+    // visible that something was intentionally left out, not silently lost.
+    let skippedAsDuplicate = 0;
+
     const eduToSave = [...document.querySelectorAll('.cvEduCheck:checked')].map(el => readEditedFields('cvEduField', el.dataset.idx));
     if (eduToSave.length) {
-      const { error } = await sb.from('staff_education_training').insert(
-        eduToSave.map(e => ({ staff_id: staffId, training_type: e.training_type, specialty: e.specialty, institution: e.institution, address: e.address, program_director: e.program_director, start_date: e.start_date, end_date: e.end_date, completed: !!e.completed }))
-      );
-      if (error) throw error;
+      const { data: existingEdu } = await sb.from('staff_education_training').select('institution, training_type').eq('staff_id', staffId);
+      const existingKeys = new Set((existingEdu || []).map(r => normKey(r.institution, r.training_type)));
+      const newRows = eduToSave.filter(e => !existingKeys.has(normKey(e.institution, e.training_type)));
+      skippedAsDuplicate += eduToSave.length - newRows.length;
+      if (newRows.length) {
+        const { error } = await sb.from('staff_education_training').insert(
+          newRows.map(e => ({ staff_id: staffId, training_type: e.training_type, specialty: e.specialty, institution: e.institution, address: e.address, program_director: e.program_director, start_date: e.start_date, end_date: e.end_date, completed: !!e.completed }))
+        );
+        if (error) throw error;
+      }
     }
 
     const licToSave = [...document.querySelectorAll('.cvLicCheck:checked')].map(el => readEditedFields('cvLicField', el.dataset.idx));
     if (licToSave.length) {
-      const { error } = await sb.from('staff_additional_licenses').insert(
-        licToSave.map(l => ({ staff_id: staffId, license_type: l.license_type, license_number: l.license_number, state: l.state, original_date_of_issue: l.original_date_of_issue, expiration_date: l.expiration_date }))
-      );
-      if (error) throw error;
+      const { data: existingLic } = await sb.from('staff_additional_licenses').select('license_type, license_number, state').eq('staff_id', staffId);
+      // A real license number is the strongest match; without one, fall
+      // back to type+state so two different PT licenses in the same state
+      // aren't conflated just for both lacking a number on file.
+      const existingKeys = new Set((existingLic || []).map(r => r.license_number ? normKey(r.license_type, r.license_number) : normKey(r.license_type, 'nolic', r.state)));
+      const newRows = licToSave.filter(l => !existingKeys.has(l.license_number ? normKey(l.license_type, l.license_number) : normKey(l.license_type, 'nolic', l.state)));
+      skippedAsDuplicate += licToSave.length - newRows.length;
+      if (newRows.length) {
+        const { error } = await sb.from('staff_additional_licenses').insert(
+          newRows.map(l => ({ staff_id: staffId, license_type: l.license_type, license_number: l.license_number, state: l.state, original_date_of_issue: l.original_date_of_issue, expiration_date: l.expiration_date }))
+        );
+        if (error) throw error;
+      }
     }
 
     const privToSave = [...document.querySelectorAll('.cvPrivCheck:checked')].map(el => readEditedFields('cvPrivField', el.dataset.idx));
     if (privToSave.length) {
-      const { error } = await sb.from('staff_hospital_privileges').insert(
-        privToSave.map(p => ({ staff_id: staffId, hospital_name: p.hospital_name, address: p.address, privilege_type: p.privilege_type, start_date: p.start_date, end_date: p.end_date }))
-      );
-      if (error) throw error;
+      const { data: existingPriv } = await sb.from('staff_hospital_privileges').select('hospital_name, privilege_type').eq('staff_id', staffId);
+      const existingKeys = new Set((existingPriv || []).map(r => normKey(r.hospital_name, r.privilege_type)));
+      const newRows = privToSave.filter(p => !existingKeys.has(normKey(p.hospital_name, p.privilege_type)));
+      skippedAsDuplicate += privToSave.length - newRows.length;
+      if (newRows.length) {
+        const { error } = await sb.from('staff_hospital_privileges').insert(
+          newRows.map(p => ({ staff_id: staffId, hospital_name: p.hospital_name, address: p.address, privilege_type: p.privilege_type, start_date: p.start_date, end_date: p.end_date }))
+        );
+        if (error) throw error;
+      }
     }
 
     const claimsToSave = [...document.querySelectorAll('.cvClaimCheck:checked')].map(el => readEditedFields('cvClaimField', el.dataset.idx));
     if (claimsToSave.length) {
-      const { error } = await sb.from('staff_malpractice_claims').insert(
-        claimsToSave.map(c => ({ staff_id: staffId, claim_status: c.claim_status, date_filed: c.date_filed, date_closed: c.date_closed || null, description: c.description || null }))
-      );
-      if (error) throw error;
+      const { data: existingClaims } = await sb.from('staff_malpractice_claims').select('date_filed, claim_status').eq('staff_id', staffId);
+      const existingKeys = new Set((existingClaims || []).map(r => normKey(r.date_filed, r.claim_status)));
+      const newRows = claimsToSave.filter(c => !existingKeys.has(normKey(c.date_filed, c.claim_status)));
+      skippedAsDuplicate += claimsToSave.length - newRows.length;
+      if (newRows.length) {
+        const { error } = await sb.from('staff_malpractice_claims').insert(
+          newRows.map(c => ({ staff_id: staffId, claim_status: c.claim_status, date_filed: c.date_filed, date_closed: c.date_closed || null, description: c.description || null }))
+        );
+        if (error) throw error;
+      }
     }
 
     const empToSave = [...document.querySelectorAll('.cvEmpCheck:checked')].map(el => readEditedFields('cvEmpField', el.dataset.idx));
     if (empToSave.length) {
-      const { error } = await sb.from('staff_employment_history').insert(
-        empToSave.map(e => ({
-          staff_id: staffId,
-          employer_name: e.employer_name,
-          position_title: e.position_title,
-          address: e.address,
-          city: e.city,
-          state: e.state,
-          zip: e.zip,
-          start_date: e.start_date,
-          end_date: e.is_current ? null : e.end_date,
-          is_current: !!e.is_current,
-          supervisor_name: e.supervisor_name,
-          supervisor_phone: e.supervisor_phone,
-        }))
-      );
-      if (error) throw error;
+      const { data: existingEmp } = await sb.from('staff_employment_history').select('employer_name, start_date').eq('staff_id', staffId);
+      const existingKeys = new Set((existingEmp || []).map(r => normKey(r.employer_name, r.start_date)));
+      const newRows = empToSave.filter(e => !existingKeys.has(normKey(e.employer_name, e.start_date)));
+      skippedAsDuplicate += empToSave.length - newRows.length;
+      if (newRows.length) {
+        const { error } = await sb.from('staff_employment_history').insert(
+          newRows.map(e => ({
+            staff_id: staffId,
+            employer_name: e.employer_name,
+            position_title: e.position_title,
+            address: e.address,
+            city: e.city,
+            state: e.state,
+            zip: e.zip,
+            start_date: e.start_date,
+            end_date: e.is_current ? null : e.end_date,
+            is_current: !!e.is_current,
+            supervisor_name: e.supervisor_name,
+            supervisor_phone: e.supervisor_phone,
+          }))
+        );
+        if (error) throw error;
+      }
     }
 
     if (document.getElementById('cvSpecialtyCheck')?.checked) {
       const updates = {};
       if (extracted.primary_specialty) updates.primary_specialty = extracted.primary_specialty;
       if (extracted.secondary_specialty) updates.secondary_specialty = extracted.secondary_specialty;
-      if (extracted.board_certified !== null) updates.board_certified = extracted.board_certified;
+      // Same fix as the review screen's own display check last night — !== null
+      // is true for undefined too, so a document that never mentioned board
+      // certification at all was writing `board_certified: undefined` into the
+      // update, which the real save function overlooked at the time.
+      if (extracted.board_certified === true || extracted.board_certified === false) updates.board_certified = extracted.board_certified;
       if (extracted.board_name) updates.board_name = extracted.board_name;
       if (Object.keys(updates).length) {
         const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
@@ -8348,8 +8401,9 @@ async function saveCvImportSelections(staffId) {
 
     document.getElementById('cvImportReviewModal')?.remove();
     window._cvImportData = null;
-    if (notSaved.length) toast(`Imported the person's information, but not ${notSaved.join('; ')}.`, true);
-    else toast('✓ Imported successfully');
+    const dupNote = skippedAsDuplicate ? ` (${skippedAsDuplicate} already on file, skipped)` : '';
+    if (notSaved.length) toast(`Imported the person's information${dupNote}, but not ${notSaved.join('; ')}.`, true);
+    else toast(`✓ Imported successfully${dupNote}`);
     await loadStaffTable();
   } catch (e) {
     errEl.textContent = e.message;
