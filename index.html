@@ -382,9 +382,22 @@ window.selkoSharedAuthStorage = {
 
         <div id="hrOnbStepSign">
         <div style="background:rgba(255,255,255,.03);border-radius:8px;padding:12px;margin-bottom:14px;">
-          <label class="field-label">Type your full legal name to sign and attest</label>
-          <input type="text" id="hrOnbSignature" placeholder="Typing your name here counts as your signature" style="margin-bottom:6px;" />
-          <p style="font-size:11px;color:var(--gray-400);margin:0;">By typing your name above, you attest under penalty of perjury that the information you've entered is true and correct, and that you are the person named above.</p>
+          <label class="field-label">Sign to attest</label>
+          <div style="display:flex;gap:8px;margin-bottom:10px;">
+            <button type="button" class="btn btn-sm btn-teal" id="hrOnbSigModeTypeBtn" onclick="hrOnbSetSignatureMode('type')">⌨️ Type</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="hrOnbSigModeDrawBtn" onclick="hrOnbSetSignatureMode('draw')" style="color:#fff;border-color:rgba(255,255,255,.2);">✍️ Draw</button>
+          </div>
+
+          <div id="hrOnbSigTypeMode">
+            <input type="text" id="hrOnbSignature" placeholder="Typing your name here counts as your signature" style="margin-bottom:6px;" />
+          </div>
+
+          <div id="hrOnbSigDrawMode" style="display:none;">
+            <canvas id="hrOnbSigCanvas" width="500" height="150" style="background:#fff;border-radius:6px;width:100%;max-width:500px;height:150px;touch-action:none;cursor:crosshair;display:block;margin-bottom:6px;"></canvas>
+            <button type="button" class="btn btn-sm btn-ghost" onclick="hrOnbClearSignatureCanvas()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-bottom:6px;">Clear</button>
+          </div>
+
+          <p style="font-size:11px;color:var(--gray-400);margin:0;">By signing above, you attest under penalty of perjury that the information you've entered is true and correct, and that you are the person named above.</p>
         </div>
         </div>
 
@@ -4322,6 +4335,83 @@ function hrOnbWizardGoBack() {
   }
 }
 
+// ── Onboarding signature: type or draw ──────────────────────────────────
+//
+// Type is the original, unchanged behavior — same input, same name-match
+// check at submit. Draw is new: a real canvas signature pad, using
+// Pointer Events so mouse, touch and stylus all work through the same
+// handlers rather than separate mouse/touch code paths. Whichever mode is
+// showing when Submit is clicked is the one that's actually validated and
+// saved — switching modes doesn't clear what's in the other one, so
+// someone can flip back and forth without losing a signature they already
+// drew or typed.
+window._hrOnbSignatureMode = 'type';
+window._hrOnbSigHasDrawn = false;
+window._hrOnbSigDrawing = false;
+
+function hrOnbSetSignatureMode(mode) {
+  window._hrOnbSignatureMode = mode;
+  const typeBox = document.getElementById('hrOnbSigTypeMode');
+  const drawBox = document.getElementById('hrOnbSigDrawMode');
+  const typeBtn = document.getElementById('hrOnbSigModeTypeBtn');
+  const drawBtn = document.getElementById('hrOnbSigModeDrawBtn');
+  if (typeBox) typeBox.style.display = mode === 'type' ? 'block' : 'none';
+  if (drawBox) drawBox.style.display = mode === 'draw' ? 'block' : 'none';
+  if (typeBtn) { typeBtn.className = mode === 'type' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost'; typeBtn.style.cssText = mode === 'type' ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'; }
+  if (drawBtn) { drawBtn.className = mode === 'draw' ? 'btn btn-sm btn-teal' : 'btn btn-sm btn-ghost'; drawBtn.style.cssText = mode === 'draw' ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'; }
+  if (mode === 'draw') hrOnbInitSignatureCanvas();
+}
+
+// Wires the canvas's drawing handlers exactly once — calling this again
+// on a canvas that already has listeners would just draw the same stroke
+// twice per pointer movement, not add a second independent pad.
+window._hrOnbCanvasWired = false;
+function hrOnbInitSignatureCanvas() {
+  const canvas = document.getElementById('hrOnbSigCanvas');
+  if (!canvas || window._hrOnbCanvasWired) return;
+  window._hrOnbCanvasWired = true;
+  const ctx = canvas.getContext('2d');
+  ctx.lineWidth = 2;
+  ctx.lineCap = 'round';
+  ctx.strokeStyle = '#0f1f2e';
+
+  const pos = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    // The canvas's drawing surface (500×150) and its displayed CSS size
+    // can differ on a narrow phone screen, so pointer coordinates are
+    // scaled back into the canvas's own coordinate space — without this,
+    // a stroke drawn on a scaled-down canvas lands in the wrong place.
+    return {
+      x: (e.clientX - rect.left) * (canvas.width / rect.width),
+      y: (e.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    window._hrOnbSigDrawing = true;
+    window._hrOnbSigHasDrawn = true;
+    const p = pos(e);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y);
+    canvas.setPointerCapture(e.pointerId);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!window._hrOnbSigDrawing) return;
+    const p = pos(e);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+  });
+  const stop = () => { window._hrOnbSigDrawing = false; };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointerleave', stop);
+}
+
+function hrOnbClearSignatureCanvas() {
+  const canvas = document.getElementById('hrOnbSigCanvas');
+  if (!canvas) return;
+  canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+  window._hrOnbSigHasDrawn = false;
+}
+
 async function submitHrOnboarding() {
   const errEl = document.getElementById('hrOnboardingErr');
   errEl.style.display = 'none';
@@ -4329,15 +4419,29 @@ async function submitHrOnboarding() {
   const basicInfo = collectHrOnbBasicInfo();
   if (!basicInfo.ok) { errEl.textContent = basicInfo.error; errEl.style.display = 'block'; return; }
 
-  const signature = document.getElementById('hrOnbSignature').value.trim();
-  if (!signature) { errEl.textContent = 'Type your name to sign and submit.'; errEl.style.display = 'block'; return; }
-  // A real, if imperfect, check that they typed their own name rather
-  // than anything else — not a legal safeguard by itself, just catches
-  // the honest mistake of skipping past this field with garbage text.
-  if (signature.toLowerCase().replace(/[^a-z]/g, '') !== basicInfo.fields.full_name.toLowerCase().replace(/[^a-z]/g, '')) {
-    errEl.textContent = 'Your signature must match your first and last name above.';
-    errEl.style.display = 'block';
-    return;
+  // Whichever mode is currently showing is the one that counts — see the
+  // comment above hrOnbSetSignatureMode.
+  let signature, signatureImage = null;
+  if (window._hrOnbSignatureMode === 'draw') {
+    if (!window._hrOnbSigHasDrawn) { errEl.textContent = 'Draw your signature to sign and submit.'; errEl.style.display = 'block'; return; }
+    // The name is already known from Basic Info — a drawn signature has no
+    // text to name-match the way a typed one does, so the person's own
+    // full name is what's recorded as the signature text (what every
+    // existing report/reminder already expects to read), and the actual
+    // drawing is saved alongside it as its own image.
+    signature = basicInfo.fields.full_name;
+    signatureImage = document.getElementById('hrOnbSigCanvas').toDataURL('image/png');
+  } else {
+    signature = document.getElementById('hrOnbSignature').value.trim();
+    if (!signature) { errEl.textContent = 'Type your name to sign and submit.'; errEl.style.display = 'block'; return; }
+    // A real, if imperfect, check that they typed their own name rather
+    // than anything else — not a legal safeguard by itself, just catches
+    // the honest mistake of skipping past this field with garbage text.
+    if (signature.toLowerCase().replace(/[^a-z]/g, '') !== basicInfo.fields.full_name.toLowerCase().replace(/[^a-z]/g, '')) {
+      errEl.textContent = 'Your signature must match your first and last name above.';
+      errEl.style.display = 'block';
+      return;
+    }
   }
 
   const i9Choice = collectHrOnbI9Selections();
@@ -4355,6 +4459,7 @@ async function submitHrOnboarding() {
   const payload = {
     ...basicInfo.fields,
     employee_attestation_signature: signature,
+    employee_attestation_signature_image: signatureImage,
     employee_attested_at: new Date().toISOString(),
     onboarding_status: 'submitted',
     ...w4Choice.fields,
@@ -4474,8 +4579,22 @@ async function submitHrOnboarding() {
   // ever write onboarding_status: 'submitted' from this path, regardless
   // of what gets sent here — a second, real backstop beyond this
   // client-side code.
-  const { error } = await sb.from('hr_employees').update(payload).eq('id', window._hrOnboardingId);
+  //
+  // FOUND WHILE BUILDING THE SIGNATURE FEATURE, not something that was
+  // being looked for here specifically — this is THE final write of the
+  // whole onboarding flow, and it had the same silent-failure shape
+  // found and fixed everywhere else tonight: no way to notice a blocked
+  // update, which reports no error at all, only zero rows changed. Without
+  // this check, a refused write here would still show the full "Onboarding
+  // submitted!" confirmation screen, I-9 download included, while nothing
+  // had actually been saved.
+  const { data: changed, error } = await sb.from('hr_employees').update(payload).eq('id', window._hrOnboardingId).select('id');
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
+  if (!changed || !changed.length) {
+    errEl.textContent = "Nothing was saved — your submission may have been blocked. Please try again, and if this keeps happening, contact your employer.";
+    errEl.style.display = 'block';
+    return;
+  }
 
   // The filled I-9 was already generated (and stored for the admin)
   // above, before the status flip — this just presents it. Submission
