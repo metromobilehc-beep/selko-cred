@@ -701,7 +701,7 @@ window.selkoSharedAuthStorage = {
           </div>
           <div>
             <label class="inline-label">Document type</label>
-            <select class="inline-select" id="auType" onchange="onAuTypeChanged()">
+            <select class="inline-select" id="auType" onchange="onAuTypeChanged('au')">
               <option value="">— Select type —</option>
             </select>
           </div>
@@ -4945,11 +4945,12 @@ function onUpTypeChanged() {
   document.getElementById('upLicenseGroup').style.display = isLicenseDocType(docType) ? 'block' : 'none';
 }
 
-function onAuTypeChanged() {
-  const typeId = document.getElementById('auType').value;
+function onAuTypeChanged(prefix = 'au') {
+  const typeId = document.getElementById(`${prefix}Type`).value;
   const docType = docTypes.find(d => d.id == typeId);
   const required = isLicenseDocType(docType);
-  document.getElementById('auLicenseLabel').innerHTML = required
+  const labelEl = document.getElementById(`${prefix}LicenseLabel`);
+  if (labelEl) labelEl.innerHTML = required
     ? 'License # <span style="color:#fca5a5;">*</span>'
     : 'License #';
 }
@@ -10302,26 +10303,30 @@ function toggleAdminUpload() {
   const form = document.getElementById('adminUploadForm');
   const isHidden = form.style.display === 'none' || !form.style.display;
   form.style.display = isHidden ? 'block' : 'none';
-  if (isHidden) populateAdminUploadSelects();
+  if (isHidden) populateAdminUploadSelects('au', false);
 }
 
-function populateAdminUploadSelects() {
-  // Staff dropdown
-  const auStaff = document.getElementById('auStaff');
-  auStaff.innerHTML = '<option value="">— Select staff —</option>';
-  staffList.forEach(s => {
-    const o = document.createElement('option');
-    o.value = s.id; o.textContent = s.full_name; auStaff.appendChild(o);
-  });
+function populateAdminUploadSelects(prefix = 'au', skipStaffDropdown = false) {
+  // Staff dropdown — the profile-scoped popup already knows who this is
+  // for (presetStaffId in saveCredentialDoc), so it has no staff picker
+  // element at all to populate.
+  if (!skipStaffDropdown) {
+    const auStaff = document.getElementById(`${prefix}Staff`);
+    auStaff.innerHTML = '<option value="">— Select staff —</option>';
+    staffList.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id; o.textContent = s.full_name; auStaff.appendChild(o);
+    });
+  }
   // Doc type dropdown
-  const auType = document.getElementById('auType');
+  const auType = document.getElementById(`${prefix}Type`);
   auType.innerHTML = '<option value="">— Select type —</option>';
   docTypes.forEach(t => {
     const o = document.createElement('option');
     o.value = t.id; o.textContent = t.name; auType.appendChild(o);
   });
   // License state dropdown
-  const auLicState = document.getElementById('auLicenseState');
+  const auLicState = document.getElementById(`${prefix}LicenseState`);
   const US_STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
   auLicState.innerHTML = '';
   Object.entries(US_STATES).forEach(([code, name]) => {
@@ -10330,39 +10335,47 @@ function populateAdminUploadSelects() {
     if (code === 'OK') o.selected = true;
     auLicState.appendChild(o);
   });
-  onAuTypeChanged();
+  onAuTypeChanged(prefix);
 }
 
-async function adminUploadDoc() {
-  const staffId  = document.getElementById('auStaff').value;
-  const typeId   = document.getElementById('auType').value;
-  const issued   = document.getElementById('auIssued').value;
-  const expiry   = document.getElementById('auExpiry').value;
-  const notes    = document.getElementById('auNotes').value.trim();
-  const license  = document.getElementById('auLicense').value.trim();
-  const licState = document.getElementById('auLicenseState').value;
-  const licType  = document.getElementById('auLicenseType').value;
-  const file     = document.getElementById('auFile').files[0];
-  const statusEl = document.getElementById('auStatus');
+// The single real save path for adding a credential document — used by
+// both the main Documents tab's toolbar upload panel (prefix 'au') and
+// the per-staff "Attach a document" popup opened from inside a profile
+// (prefix 'pau', presetStaffId already known so there's no staff picker
+// to read). One function, one set of rules — front/back validation,
+// license-number requirement, auto-verification, staff license sync — so
+// a document added either way is genuinely the same thing, not two
+// similar implementations quietly free to drift apart from each other.
+async function saveCredentialDoc(prefix, presetStaffId) {
+  const staffId  = presetStaffId || document.getElementById(`${prefix}Staff`).value;
+  const typeId   = document.getElementById(`${prefix}Type`).value;
+  const issued   = document.getElementById(`${prefix}Issued`).value;
+  const expiry   = document.getElementById(`${prefix}Expiry`).value;
+  const notes    = document.getElementById(`${prefix}Notes`).value.trim();
+  const license  = document.getElementById(`${prefix}License`).value.trim();
+  const licState = document.getElementById(`${prefix}LicenseState`).value;
+  const licType  = document.getElementById(`${prefix}LicenseType`).value;
+  const file     = document.getElementById(`${prefix}File`).files[0];
+  const statusEl = document.getElementById(`${prefix}Status`);
   statusEl.style.display = 'none';
 
-  if (!staffId) { showAuStatus('Please select a staff member.', 'err'); return; }
-  if (!typeId)  { showAuStatus('Please select a document type.', 'err'); return; }
+  if (!staffId) { showAuStatus('Please select a staff member.', 'err', prefix); return; }
+  if (!typeId)  { showAuStatus('Please select a document type.', 'err', prefix); return; }
   // A manual record with NO file at all is a real, intended use of this form
   // (tracking that a credential exists before a scan is available — see the
   // "no file" count on the Documents tab). A record with only a BACK file and
   // no front is not: it renders with just a "View back" button and no way to
   // tell what the document even is. Both files being optional independently
   // made that combination reachable with nothing to catch it.
-  const auFile2El = document.getElementById('auFile2') || document.getElementById('auCamera2');
-  if (!document.getElementById('auFile').files[0] && auFile2El && auFile2El.files[0]) {
-    showAuStatus('A back-of-document file needs a front file too — attach the front, or remove the back and leave both blank until you have a file.', 'err');
+  const file2El = document.getElementById(`${prefix}File2`) || document.getElementById(`${prefix}Camera2`);
+  if (!document.getElementById(`${prefix}File`).files[0] && file2El && file2El.files[0]) {
+    showAuStatus('A back-of-document file needs a front file too — attach the front, or remove the back and leave both blank until you have a file.', 'err', prefix);
     return;
   }
 
   const docTypeForValidation = docTypes.find(d => d.id == typeId);
   if (isLicenseDocType(docTypeForValidation) && !license) {
-    showAuStatus('License number is required for this document type.', 'err');
+    showAuStatus('License number is required for this document type.', 'err', prefix);
     return;
   }
 
@@ -10374,7 +10387,7 @@ async function adminUploadDoc() {
 
     // Upload file if provided
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err'); return; }
+      if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err', prefix); return; }
       const uploadFile = await compressImageFile(file);
       const ext  = uploadFile.name.split('.').pop();
       const path = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
@@ -10386,9 +10399,9 @@ async function adminUploadDoc() {
 
     // Optional second file (e.g. back of a license/ID)
     let fileUrl2 = null, fileName2 = null;
-    const file2 = document.getElementById('auFile2').files[0] || document.getElementById('auCamera2').files[0];
+    const file2 = document.getElementById(`${prefix}File2`)?.files[0] || document.getElementById(`${prefix}Camera2`)?.files[0];
     if (file2) {
-      if (file2.size > 10 * 1024 * 1024) { showAuStatus('Back-of-document file must be under 10MB.', 'err'); return; }
+      if (file2.size > 10 * 1024 * 1024) { showAuStatus('Back-of-document file must be under 10MB.', 'err', prefix); return; }
       const uploadFile2 = await compressImageFile(file2);
       const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}_back.${ext2}`;
@@ -10425,24 +10438,116 @@ async function adminUploadDoc() {
       if (s) Object.assign(s, updates);
     }
 
-    showAuStatus('✓ Credential saved successfully.', 'ok');
+    showAuStatus('✓ Credential saved successfully.', 'ok', prefix);
     // Reset form
-    ['auStaff','auType','auIssued','auExpiry','auNotes','auLicense'].forEach(id => document.getElementById(id).value = '');
-    document.getElementById('auFile').value = '';
-    document.getElementById('auFileName').textContent = 'No file selected';
-    document.getElementById('auFile2').value = '';
-    document.getElementById('auCamera2').value = '';
-    document.getElementById('auFileName2').textContent = 'No file selected';
+    const staffIdField = presetStaffId ? [] : [`${prefix}Staff`];
+    [...staffIdField, `${prefix}Type`, `${prefix}Issued`, `${prefix}Expiry`, `${prefix}Notes`, `${prefix}License`].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+    document.getElementById(`${prefix}File`).value = '';
+    document.getElementById(`${prefix}FileName`).textContent = 'No file selected';
+    const file2Input = document.getElementById(`${prefix}File2`);
+    const camera2Input = document.getElementById(`${prefix}Camera2`);
+    if (file2Input) file2Input.value = '';
+    if (camera2Input) camera2Input.value = '';
+    const fileName2El = document.getElementById(`${prefix}FileName2`);
+    if (fileName2El) fileName2El.textContent = 'No file selected';
     toast('Credential added for ' + (staffList.find(s => s.id === staffId)?.full_name || 'staff member'));
     await checkStaffCompliance(staffId);
     await loadAdminDocs();
   } catch(e) {
-    showAuStatus('Error: ' + e.message, 'err');
+    showAuStatus('Error: ' + e.message, 'err', prefix);
   }
 }
 
-function showAuStatus(msg, type) {
-  const el = document.getElementById('auStatus');
+// The per-staff "Attach a document" popup, opened from inside a profile
+// (Additional Licenses, Education, Hospital Privileges, Malpractice
+// Claims, Employment History, Professional References). Same fields,
+// same validation, same save path (saveCredentialDoc) as the Documents
+// tab's own toolbar uploader — the staff picker is simply gone, since
+// this is already scoped to one known person, in its place. Deliberately
+// missing for now: the two AI "Scan document" buttons the toolbar
+// version has — a real, disclosed simplification given how large those
+// two functions are, not something quietly dropped.
+async function openProfileDocUpload(staffId, staffName) {
+  document.getElementById('profileDocUploadModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'profileDocUploadModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1200;display:flex;align-items:center;justify-content:center;padding:16px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:16px;font-weight:700;margin-bottom:4px;">Attach a document — ${hrOnbEsc(staffName)}</div>
+      <p style="color:rgba(255,255,255,.62);font-size:12px;margin-bottom:16px;">Saved the same way as anything added from the Documents tab — shows up there immediately, with the same expiration tracking and verification.</p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label class="inline-label">Document type</label>
+          <select class="inline-select" id="pauType" onchange="onAuTypeChanged('pau')"><option value="">— Select type —</option></select>
+        </div>
+        <div>
+          <label class="inline-label" id="pauLicenseLabel">License #</label>
+          <input class="inline-input" type="text" id="pauLicense" placeholder="e.g. OK12345" />
+        </div>
+        <div>
+          <label class="inline-label">Issued date</label>
+          <input class="inline-input" type="date" id="pauIssued" />
+        </div>
+        <div>
+          <label class="inline-label">Expiration date</label>
+          <input class="inline-input" type="date" id="pauExpiry" />
+        </div>
+        <div>
+          <label class="inline-label">License state</label>
+          <select class="inline-select" id="pauLicenseState"></select>
+        </div>
+        <div>
+          <label class="inline-label">License type</label>
+          <select class="inline-select" id="pauLicenseType">
+            <option value="">— Not specified —</option>
+            <option value="PT">PT — Physical Therapist</option>
+            <option value="PTA">PTA — Physical Therapist Assistant</option>
+            <option value="OT">OT — Occupational Therapist</option>
+            <option value="COTA">COTA — Occupational Therapy Assistant</option>
+            <option value="SLP">SLP — Speech-Language Pathologist</option>
+            <option value="RN">RN — Registered Nurse</option>
+            <option value="LPN">LPN — Licensed Practical Nurse</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+        <div>
+          <label class="inline-label">Attach file (optional)</label>
+          <input type="file" class="inline-input" id="pauFile" accept=".pdf,.jpg,.jpeg,.png" onchange="document.getElementById('pauFileName').textContent = this.files[0]?.name || 'No file selected';" />
+          <span id="pauFileName" style="font-size:11px;color:rgba(255,255,255,.55);">No file selected</span>
+        </div>
+        <div>
+          <label class="inline-label">Back of document (optional)</label>
+          <input type="file" class="inline-input" id="pauFile2" accept=".pdf,.jpg,.jpeg,.png" onchange="document.getElementById('pauFileName2').textContent = this.files[0]?.name || 'No file selected';" />
+          <span id="pauFileName2" style="font-size:11px;color:rgba(255,255,255,.55);">No file selected</span>
+        </div>
+      </div>
+      <div style="margin-bottom:6px;">
+        <label class="inline-label">Notes</label>
+        <input class="inline-input" type="text" id="pauNotes" placeholder="Optional" style="width:100%;box-sizing:border-box;" />
+      </div>
+      <div id="pauStatus" class="up-status" style="display:none;margin:10px 0;"></div>
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn btn-teal" onclick="saveCredentialDoc('pau', '${staffId}')" style="flex:1;justify-content:center;">Save document</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('profileDocUploadModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  populateAdminUploadSelects('pau', true);
+}
+
+async function adminUploadDoc() {
+  await saveCredentialDoc('au');
+}
+
+function showAuStatus(msg, type, prefix = 'au') {
+  const el = document.getElementById(`${prefix}Status`);
   el.textContent = msg;
   el.className = 'up-status ' + (type === 'ok' ? 'up-ok' : 'up-err');
   el.style.display = 'block';
@@ -10878,66 +10983,6 @@ function onAccBodySelectChanged() {
 // tighter than its sibling tabs, per Juan's explicit request — enforced
 // both by the tab's own visibility (renderProviderTabBar) and by RLS at
 // the database level, so this isn't just a UI-level restriction.
-// Shared "attach a supporting document" block, dropped into every
-// profile sub-section (licenses, education, employment history, hospital
-// privileges, malpractice claims, professional references) that adds a
-// structured record. Whatever gets uploaded here goes into the exact
-// same credtrack_documents table the main Documents tab reads from —
-// not a separate, disconnected attachment — so it shows up there too,
-// with real expiration tracking and verification, the same as anything
-// uploaded from that tab directly. A unique prefix keeps each section's
-// file input and type picker from colliding with any other section
-// that happens to be open in the same modal stack.
-function renderDocAttachInput(prefix) {
-  const options = docTypes.map(t => `<option value="${t.id}">${hrOnbEsc(t.name)}</option>`).join('');
-  return `
-    <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08);">
-      <label class="inline-label" style="font-size:11px;">Attach supporting document (optional)</label>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-        <select class="inline-select" id="${prefix}DocType" style="flex:1;min-width:160px;">
-          <option value="">— Document type —</option>
-          ${options}
-        </select>
-        <input type="file" class="inline-input" id="${prefix}DocFile" style="flex:1;min-width:160px;" />
-      </div>
-    </div>`;
-}
-
-// Uploads whatever's currently filled into the given prefix's attach-a-
-// document block, if anything — a completely normal, silent no-op when
-// nothing was filled in, since attaching a document here is always
-// optional, never required to save the record itself. staffId/label/
-// expiry come from the record that was just saved, so the resulting
-// document is indistinguishable from one added the ordinary way.
-async function uploadAttachedDoc(prefix, staffId, label, expiry) {
-  const typeSel = document.getElementById(`${prefix}DocType`);
-  const fileInput = document.getElementById(`${prefix}DocFile`);
-  const typeId = typeSel?.value;
-  const file = fileInput?.files?.[0];
-  if (!typeId || !file) return { attached: false };
-
-  const path = `${currentCompany.id}/${staffId}/${Date.now()}_${file.name}`;
-  const { error: uploadErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type });
-  if (uploadErr) return { attached: false, error: uploadErr.message };
-
-  const { data: inserted, error: dbErr } = await sb.from('credtrack_documents').insert({
-    company_id: currentCompany.id,
-    staff_id: staffId,
-    document_type_id: parseInt(typeId, 10),
-    label: label || docTypes.find(t => String(t.id) === String(typeId))?.name || 'Document',
-    expiry_date: expiry || null,
-    file_url: path,
-    file_name: file.name,
-    notes: 'Added while building out profile',
-  }).select('id');
-  if (dbErr) return { attached: false, error: dbErr.message };
-  if (!inserted || !inserted.length) return { attached: false, error: "the document record wasn't saved — you may not have permission to add documents for this person" };
-
-  if (fileInput) fileInput.value = '';
-  if (typeSel) typeSel.value = '';
-  return { attached: true };
-}
-
 async function showProfessionalReferences(staffId, staffName) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -10969,9 +11014,11 @@ async function showProfessionalReferences(staffId, staffName) {
           <input class="inline-input" type="text" id="refPhone" placeholder="Phone" oninput="formatPhoneInput(this)" />
           <input class="inline-input" type="text" id="refEmail" placeholder="Email" />
         </div>
-        ${renderDocAttachInput('ref')}
         <div id="referenceFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
-        <button class="btn btn-sm btn-teal" onclick="addProfessionalReference('${staffId}')" style="width:100%;justify-content:center;">+ Add reference</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-teal" onclick="addProfessionalReference('${staffId}')" style="flex:1;justify-content:center;">+ Add reference</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+        </div>
       </div>
 
       <div id="professionalReferencesList" style="overflow-y:auto;flex:1;">Loading...</div>
@@ -11026,11 +11073,8 @@ async function addProfessionalReference(staffId) {
   });
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
 
-  const attach = await uploadAttachedDoc('ref', staffId, `Reference — ${name}`, null);
-  if (attach.error) toast('Reference saved, but the attached document failed: ' + attach.error, true);
-
   ['refName','refTitle','refRelationship','refPhone','refEmail'].forEach(id => document.getElementById(id).value = '');
-  toast(attach.attached ? '✓ Reference and document added' : '✓ Reference added');
+  toast('✓ Reference added');
   await loadProfessionalReferences(staffId);
 }
 
@@ -11140,9 +11184,11 @@ async function showEmploymentHistory(staffId, staffName) {
         </div>
         <input class="inline-input" type="text" id="empReasonForLeaving" placeholder="Reason for leaving" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
         <input class="inline-input" type="text" id="empGapExplanation" placeholder="Gap explanation (if there's a gap before this job)" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
-        ${renderDocAttachInput('emp')}
         <div id="employmentFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
-        <button class="btn btn-sm btn-teal" onclick="addEmploymentHistory('${staffId}')" style="width:100%;justify-content:center;">+ Add employment record</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-teal" onclick="addEmploymentHistory('${staffId}')" style="flex:1;justify-content:center;">+ Add employment record</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+        </div>
       </div>
 
       <div id="employmentHistoryList" style="overflow-y:auto;flex:1;">Loading...</div>
@@ -11212,9 +11258,6 @@ async function addEmploymentHistory(staffId) {
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  const attach = await uploadAttachedDoc('emp', staffId, employerName, isCurrent ? null : (document.getElementById('empEndDate').value || null));
-  if (attach.error) toast('Employment record saved, but the attached document failed: ' + attach.error, true);
-
   ['empEmployerName','empPositionTitle','empAddress','empCity','empState','empZip','empStartDate','empEndDate',
    'empSupervisorName','empSupervisorPhone','empReasonForLeaving','empGapExplanation'].forEach(id => {
     document.getElementById(id).value = '';
@@ -11222,7 +11265,7 @@ async function addEmploymentHistory(staffId) {
   document.getElementById('empIsCurrent').checked = false;
   document.getElementById('empEndDate').disabled = false;
 
-  toast(attach.attached ? '✓ Employment record and document added' : '✓ Employment record added');
+  toast('✓ Employment record added');
   await loadEmploymentHistory(staffId);
 }
 
@@ -11266,9 +11309,11 @@ async function showAdditionalLicenses(staffId, staffName) {
             <input class="inline-input" type="date" id="alExpirationDate" />
           </div>
         </div>
-        ${renderDocAttachInput('al')}
         <div id="additionalLicenseFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
-        <button class="btn btn-sm btn-teal" onclick="addAdditionalLicense('${staffId}')" style="width:100%;justify-content:center;">+ Add license</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-teal" onclick="addAdditionalLicense('${staffId}')" style="flex:1;justify-content:center;">+ Add license</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+        </div>
       </div>
 
       <div id="additionalLicensesList" style="overflow-y:auto;flex:1;">Loading...</div>
@@ -11314,25 +11359,21 @@ async function addAdditionalLicense(staffId) {
   const licenseNumber = document.getElementById('alLicenseNumber').value.trim();
   if (!licenseType && !licenseNumber) { errEl.textContent = 'Enter at least a license type or number.'; errEl.style.display = 'block'; return; }
 
-  const expiration = document.getElementById('alExpirationDate').value || null;
   const { error } = await sb.from('staff_additional_licenses').insert({
     staff_id: staffId,
     license_type: licenseType || null,
     license_number: licenseNumber || null,
     state: document.getElementById('alState').value.trim() || null,
     original_date_of_issue: document.getElementById('alIssuedDate').value || null,
-    expiration_date: expiration,
+    expiration_date: document.getElementById('alExpirationDate').value || null,
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
-
-  const attach = await uploadAttachedDoc('al', staffId, licenseType || 'License', expiration);
-  if (attach.error) toast('License saved, but the attached document failed: ' + attach.error, true);
 
   ['alLicenseType','alLicenseNumber','alState','alIssuedDate','alExpirationDate'].forEach(id => {
     document.getElementById(id).value = '';
   });
 
-  toast(attach.attached ? '✓ License and document added' : '✓ License added');
+  toast('✓ License added');
   await loadAdditionalLicenses(staffId);
 }
 
@@ -11400,9 +11441,11 @@ async function showEducationTraining(staffId, staffName) {
             Completed
           </label>
         </div>
-        ${renderDocAttachInput('ed')}
         <div id="educationFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
-        <button class="btn btn-sm btn-teal" onclick="addEducationTraining('${staffId}')" style="width:100%;justify-content:center;">+ Add entry</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-teal" onclick="addEducationTraining('${staffId}')" style="flex:1;justify-content:center;">+ Add entry</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+        </div>
       </div>
 
       <div id="educationTrainingList" style="overflow-y:auto;flex:1;">Loading...</div>
@@ -11467,16 +11510,13 @@ async function addEducationTraining(staffId) {
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  const attach = await uploadAttachedDoc('ed', staffId, institution, document.getElementById('etEndDate').value || null);
-  if (attach.error) toast('Entry saved, but the attached document failed: ' + attach.error, true);
-
   ['etSpecialty','etInstitution','etAddress','etCity','etState','etZip','etProgramDirector','etCurrentProgramDirector','etStartDate','etEndDate'].forEach(id => {
     document.getElementById(id).value = '';
   });
   document.getElementById('etType').value = '';
   document.getElementById('etCompleted').checked = false;
 
-  toast(attach.attached ? '✓ Entry and document added' : '✓ Entry added');
+  toast('✓ Entry added');
   await loadEducationTraining(staffId);
 }
 
@@ -11528,9 +11568,11 @@ async function showHospitalPrivileges(staffId, staffName) {
             <input class="inline-input" type="date" id="hpEndDate" />
           </div>
         </div>
-        ${renderDocAttachInput('hp')}
         <div id="privilegesFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
-        <button class="btn btn-sm btn-teal" onclick="addHospitalPrivilege('${staffId}')" style="width:100%;justify-content:center;">+ Add privilege record</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-teal" onclick="addHospitalPrivilege('${staffId}')" style="flex:1;justify-content:center;">+ Add privilege record</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+        </div>
       </div>
 
       <div id="hospitalPrivilegesList" style="overflow-y:auto;flex:1;">Loading...</div>
@@ -11588,14 +11630,11 @@ async function addHospitalPrivilege(staffId) {
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  const attach = await uploadAttachedDoc('hp', staffId, hospitalName, document.getElementById('hpEndDate').value || null);
-  if (attach.error) toast('Privilege record saved, but the attached document failed: ' + attach.error, true);
-
   ['hpHospitalName','hpPrivilegeType','hpAddress','hpCity','hpState','hpZip','hpStartDate','hpEndDate'].forEach(id => {
     document.getElementById(id).value = '';
   });
 
-  toast(attach.attached ? '✓ Privilege record and document added' : '✓ Privilege record added');
+  toast('✓ Privilege record added');
   await loadHospitalPrivileges(staffId);
 }
 
@@ -11646,9 +11685,11 @@ async function showMalpracticeClaims(staffId, staffName) {
           </div>
         </div>
         <input class="inline-input" type="text" id="mcDescription" placeholder="Brief description" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
-        ${renderDocAttachInput('mc')}
         <div id="claimsFormErr" style="color:#f87171;font-size:12px;margin-bottom:8px;display:none;"></div>
-        <button class="btn btn-sm btn-teal" onclick="addMalpracticeClaim('${staffId}')" style="width:100%;justify-content:center;">+ Add claim record</button>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-sm btn-teal" onclick="addMalpracticeClaim('${staffId}')" style="flex:1;justify-content:center;">+ Add claim record</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+        </div>
       </div>
 
       <div id="malpracticeClaimsList" style="overflow-y:auto;flex:1;">Loading...</div>
@@ -11705,13 +11746,10 @@ async function addMalpracticeClaim(staffId) {
   });
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
-  const attach = await uploadAttachedDoc('mc', staffId, 'Malpractice claim', null);
-  if (attach.error) toast('Claim record saved, but the attached document failed: ' + attach.error, true);
-
   ['mcDateFiled','mcDateClosed','mcDescription'].forEach(id => { document.getElementById(id).value = ''; });
   document.getElementById('mcStatus').value = '';
 
-  toast(attach.attached ? '✓ Claim record and document added' : '✓ Claim record added');
+  toast('✓ Claim record added');
   await loadMalpracticeClaims(staffId);
 }
 
