@@ -15330,14 +15330,21 @@ async function saveHrTemplateMapping(name) {
   if (!_pendingHrTemplateFile) { errEl.textContent = 'File missing — please re-select it and try again.'; errEl.style.display = 'block'; return; }
 
   const mapping = {};
-  document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
-    if (!sel.value) return;
+  document.querySelectorAll('#templateMappingRows .template-mapping-row').forEach(row => {
+    const fieldName = row.dataset.fieldName;
+    const combineBox = row.querySelector('.template-combine-box');
+    if (combineBox && combineBox.style.display !== 'none') {
+      const template = row.querySelector('.template-combine-input')?.value?.trim() || '';
+      if (template) mapping[fieldName] = `__TEMPLATE__:${template}`;
+      return;
+    }
+    const sel = row.querySelector('.template-mapping-select');
+    if (!sel || !sel.value) return;
     if (sel.value === '__FIXED_TEXT__') {
-      const row = sel.closest('.template-mapping-row');
-      const literal = row?.querySelector('.template-fixed-text-input')?.value?.trim() || '';
-      if (literal) mapping[sel.dataset.fieldName] = `__FIXED_TEXT__:${literal}`;
+      const literal = row.querySelector('.template-fixed-text-input')?.value?.trim() || '';
+      if (literal) mapping[fieldName] = `__FIXED_TEXT__:${literal}`;
     } else {
-      mapping[sel.dataset.fieldName] = sel.value;
+      mapping[fieldName] = sel.value;
     }
   });
 
@@ -15534,6 +15541,9 @@ async function fillHrTemplate(tmpl, company, employee) {
         form.getCheckBox(pdfFieldName).uncheck();
       } else if (sourcePath.startsWith('__FIXED_TEXT__:')) {
         form.getTextField(pdfFieldName).setText(sourcePath.slice('__FIXED_TEXT__:'.length));
+      } else if (sourcePath.startsWith('__TEMPLATE__:')) {
+        const filled = resolveTemplateString(sourcePath.slice('__TEMPLATE__:'.length), resolveHrDataSource, company, employee);
+        form.getTextField(pdfFieldName).setText(filled);
       } else {
         const value = resolveHrDataSource(sourcePath, company, employee);
         const field = form.getField(pdfFieldName);
@@ -16802,6 +16812,20 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
         ${fixedOptionsHtml}
         ${optionsHtml}
       </select>
+      ${fi.isCheckbox ? '' : `<button type="button" class="btn btn-sm btn-ghost template-combine-toggle" data-field-name="${fn.replace(/"/g,'&quot;')}" onclick="toggleFieldTemplateMode('${fn.replace(/'/g,"\\'")}')" title="Combine more than one field onto this single line — e.g. City, State ZIP all on one line" style="color:#fff;border-color:rgba(255,255,255,.2);padding:6px 10px;">🔗 Combine</button>`}
+      ${fi.isCheckbox ? '' : `
+      <div class="template-combine-box" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:none;width:100%;margin-top:6px;padding:10px;background:rgba(255,255,255,.04);border-radius:6px;">
+        <input type="text" class="inline-input template-combine-input" data-field-name="${fn.replace(/"/g,'&quot;')}" placeholder="e.g. {company.location_1_city}, {company.location_1_state} {company.location_1_zip}" style="width:100%;box-sizing:border-box;margin-bottom:6px;" />
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;color:rgba(255,255,255,.55);">Insert:</span>
+          <select class="inline-select template-combine-insert" data-field-name="${fn.replace(/"/g,'&quot;')}" style="flex:1;">
+            <option value="">— Choose a field to add —</option>
+            ${optionsHtml}
+          </select>
+          <button type="button" class="btn btn-sm btn-ghost template-combine-close" data-field-name="${fn.replace(/"/g,'&quot;')}" style="color:#fff;border-color:rgba(255,255,255,.2);">Done</button>
+        </div>
+        <p style="font-size:11px;color:rgba(255,255,255,.45);margin:6px 0 0;">Anything you type stays exactly as typed — commas, spaces, line breaks. Only the parts in curly braces get replaced with a live value when the form is generated.</p>
+      </div>`}
       ${fi.isCheckbox ? '' : `<input type="text" class="inline-input template-fixed-text-input" data-field-name="${fn.replace(/"/g,'&quot;')}" placeholder="Text to always use" style="width:200px;display:none;" />`}
     </div>`;
   }).join('');
@@ -16857,11 +16881,45 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
   // learned-mapping system the way dozens of different payer forms do.
   // Fixed-value options are never guessed — they're a deliberate manual
   // choice per template, not something to infer from a field's name.
-  modal.querySelectorAll('select[data-field-name]').forEach(sel => {
+  modal.querySelectorAll('select.template-mapping-select[data-field-name]').forEach(sel => {
     const guess = guessFn(sel.dataset.fieldName);
     if (guess) sel.value = guess;
   });
   updateMappingProgress(); // reflect the guesses just applied — setting .value directly doesn't fire 'change' on its own
+
+  // "Combine multiple fields" — a field can switch from the single-select
+  // above into a small freeform template instead, so a form that puts
+  // City, State and ZIP on one shared line (rather than one PDF field
+  // per component) has somewhere to actually hold all three. Whatever's
+  // typed stays exactly as typed; only {a.data.source.key} placeholders
+  // get replaced with a live value at generation time — the "Insert"
+  // picker just appends one at the cursor so nobody has to memorize or
+  // hand-type the exact key names.
+  modal.querySelectorAll('.template-combine-toggle').forEach(btn => {
+    btn.addEventListener('click', () => toggleFieldTemplateMode(btn.dataset.fieldName));
+  });
+  modal.querySelectorAll('.template-combine-close').forEach(btn => {
+    btn.addEventListener('click', () => toggleFieldTemplateMode(btn.dataset.fieldName, false));
+  });
+  modal.querySelectorAll('.template-combine-insert').forEach(insertSel => {
+    insertSel.addEventListener('change', () => {
+      if (!insertSel.value) return;
+      const row = insertSel.closest('.template-mapping-row');
+      const input = row?.querySelector('.template-combine-input');
+      if (input) {
+        const placeholder = `{${insertSel.value}}`;
+        const pos = input.selectionStart ?? input.value.length;
+        input.value = input.value.slice(0, pos) + placeholder + input.value.slice(pos);
+        input.focus();
+        input.setSelectionRange(pos + placeholder.length, pos + placeholder.length);
+        updateMappingProgress();
+      }
+      insertSel.value = ''; // reset — this is an action, not a persistent choice, so it never stays "selected"
+    });
+  });
+  modal.querySelectorAll('.template-combine-input').forEach(input => {
+    input.addEventListener('input', updateMappingProgress);
+  });
 
   if (hasPreview) renderTemplatePreviewPages(pdfBytes, fieldPositions);
 }
@@ -16876,6 +16934,34 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
 // setting .value directly, there or in the guess step above, never
 // fires a native 'change' event on its own, so nothing updates the
 // dots or count unless this is called explicitly afterward.
+// Switches one row between its normal single-select and the freeform
+// "combine multiple fields" box. forceOn lets a caller be explicit
+// (the Done button always closes it); omitted, it just flips whichever
+// state the row is currently in.
+function toggleFieldTemplateMode(fieldName, forceOn) {
+  const row = document.querySelector(`.template-mapping-row[data-field-name="${CSS.escape(fieldName)}"]`);
+  if (!row) return;
+  const box = row.querySelector('.template-combine-box');
+  const select = row.querySelector('.template-mapping-select');
+  const textInput = row.querySelector('.template-combine-input');
+  if (!box) return;
+  const turningOn = forceOn !== undefined ? forceOn : box.style.display === 'none';
+  box.style.display = turningOn ? 'block' : 'none';
+  // Seeding from whatever the plain select already held (if anything) —
+  // someone who picked a single field, then realizes they need a second
+  // one alongside it, shouldn't have to retype what they already chose.
+  if (turningOn && textInput && !textInput.value && select?.value && !select.value.startsWith('__FIXED_')) {
+    textInput.value = `{${select.value}}`;
+  }
+  // The plain select and the combine box are two different ways of
+  // saying the same thing for one field — only one can actually be
+  // saved, so switching to Combine clears the select (a stray leftover
+  // selection there would otherwise silently win over what was just
+  // typed, at save time, with no visible sign anything was wrong).
+  if (turningOn && select) select.value = '';
+  updateMappingProgress();
+}
+
 function updateMappingProgress() {
   const modal = document.getElementById('templateMappingModal');
   if (!modal) return;
@@ -16884,7 +16970,14 @@ function updateMappingProgress() {
   allSelects.forEach(sel => {
     const row = sel.closest('.template-mapping-row');
     const dot = row?.querySelector('.template-mapping-status-dot');
-    const isMapped = !!sel.value;
+    // A row counts as mapped either the normal way (a plain single
+    // selection) or via its combine box — whichever the row is
+    // currently showing is the one that actually decides this, since
+    // switching to Combine clears the select (see toggleFieldTemplateMode).
+    const combineBox = row?.querySelector('.template-combine-box');
+    const combineInput = row?.querySelector('.template-combine-input');
+    const isCombining = combineBox && combineBox.style.display !== 'none';
+    const isMapped = isCombining ? !!combineInput?.value.trim() : !!sel.value;
     if (isMapped) mappedCount++;
     if (dot) {
       dot.style.background = isMapped ? 'var(--teal)' : 'rgba(255,255,255,.2)';
@@ -17042,19 +17135,30 @@ async function saveTemplateMapping(name) {
   const isRoster = !!_pendingRosterSheetName;
 
   const mapping = {};
-  document.querySelectorAll('#templateMappingRows select[data-field-name]').forEach(sel => {
-    if (!sel.value) return;
+  document.querySelectorAll('#templateMappingRows .template-mapping-row').forEach(row => {
+    const fieldName = row.dataset.fieldName;
+    const combineBox = row.querySelector('.template-combine-box');
+    // A row showing its combine box is judged by that box's own text,
+    // never by the (already-cleared) select next to it — see
+    // toggleFieldTemplateMode, which clears the select the moment this
+    // box opens so the two can never disagree about which one counts.
+    if (combineBox && combineBox.style.display !== 'none') {
+      const template = row.querySelector('.template-combine-input')?.value?.trim() || '';
+      if (template) mapping[fieldName] = `__TEMPLATE__:${template}`;
+      return;
+    }
+    const sel = row.querySelector('.template-mapping-select');
+    if (!sel || !sel.value) return;
     if (sel.value === '__FIXED_TEXT__') {
       // Store the admin's typed literal alongside the sentinel so
       // fillCredTemplate knows both "this is fixed" and what to fill in —
       // an empty typed value is treated the same as leaving the field
       // unmapped, since "always blank" isn't meaningfully different from
       // just not mapping it.
-      const row = sel.closest('.template-mapping-row');
-      const literal = row?.querySelector('.template-fixed-text-input')?.value?.trim() || '';
-      if (literal) mapping[sel.dataset.fieldName] = `__FIXED_TEXT__:${literal}`;
+      const literal = row.querySelector('.template-fixed-text-input')?.value?.trim() || '';
+      if (literal) mapping[fieldName] = `__FIXED_TEXT__:${literal}`;
     } else {
-      mapping[sel.dataset.fieldName] = sel.value;
+      mapping[fieldName] = sel.value;
     }
   });
 
@@ -17309,6 +17413,19 @@ async function buildCredDataForStaff(staffId, staff) {
 // longer matched the actual PDF, rather than downloading directly, so a
 // batch run can zip several of these together instead of triggering one
 // browser download per form.
+// Resolves a "__TEMPLATE__:..." mapping — free text with {a.data.source.key}
+// placeholders anywhere in it — into the final string to fill in.
+// Anything outside the braces (commas, spaces, line breaks, other literal
+// text) passes through completely unchanged; only what's inside {} gets
+// looked up and replaced, via whichever resolver the caller's own domain
+// uses (credentialing vs. HR each resolve paths differently).
+function resolveTemplateString(templateStr, resolverFn, ...resolverArgs) {
+  return templateStr.replace(/\{([a-zA-Z0-9_.]+)\}/g, (match, key) => {
+    const value = resolverFn(key, ...resolverArgs);
+    return value == null ? '' : String(value);
+  });
+}
+
 async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
   const { data: fileBlob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
   if (dlErr) throw dlErr;
@@ -17336,6 +17453,9 @@ async function fillCredTemplate(tmpl, companyWithLocations, staffWithLicenses) {
         form.getCheckBox(pdfFieldName).uncheck();
       } else if (sourcePath.startsWith('__FIXED_TEXT__:')) {
         form.getTextField(pdfFieldName).setText(sourcePath.slice('__FIXED_TEXT__:'.length));
+      } else if (sourcePath.startsWith('__TEMPLATE__:')) {
+        const filled = resolveTemplateString(sourcePath.slice('__TEMPLATE__:'.length), resolveCredDataSource, companyWithLocations, staffWithLicenses);
+        form.getTextField(pdfFieldName).setText(filled);
       } else {
         // Normal data-source mapping — resolve the live value, then fill
         // whichever kind of field this actually is. Checkboxes need
