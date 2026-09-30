@@ -1871,6 +1871,18 @@ window.selkoSharedAuthStorage = {
             <tbody id="payersTbody"></tbody>
           </table>
         </div>
+
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);">
+          <label class="inline-label">Enrollment progress emails</label>
+          <p style="color:rgba(255,255,255,.55);font-size:11px;margin:2px 0 10px;">When a provider's enrollment step is marked complete on the Health Care Network board or their profile's Network tab, who gets notified and how often.</p>
+          <select class="inline-select" id="enrollmentNotifLevel" style="max-width:300px;">
+            <option value="all">Every step completion</option>
+            <option value="completion_only">Only when fully enrolled (the last step)</option>
+            <option value="off">Off — no enrollment emails</option>
+          </select>
+          <button class="btn btn-sm btn-gold" onclick="saveEnrollmentNotifLevel()" style="margin-left:8px;">Save</button>
+          <div id="enrollmentNotifStatus" style="font-size:11px;color:var(--teal-l);margin-top:6px;display:none;"></div>
+        </div>
       </div>
 
       <div id="settingsPartnersHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
@@ -12141,6 +12153,11 @@ async function loadSettings() {
   // Payer list (add/delete management)
   await loadPayersTable();
 
+  // Enrollment progress email preference — defaults to the original,
+  // always-on behavior for any company that's never touched this setting.
+  const notifSelect = document.getElementById('enrollmentNotifLevel');
+  if (notifSelect) notifSelect.value = currentCompany.custom_vars?.enrollmentNotificationLevel || 'all';
+
   // Agency partner access — a genuine Pro/Enterprise plan advantage, not
   // just a manually-toggled add-on. has_partner_access still works as an
   // explicit override (e.g. granting it to a Standard-tier company as a
@@ -17586,6 +17603,28 @@ function detectNewlyCompletedSteps(prevSteps, newSteps) {
 // the row fresh rather than trusting whatever list it was opened from, so
 // the "previous" values used for transition detection are the real current
 // ones, not a stale copy from a list that hasn't been reloaded.
+// Company-level preference for the enrollment-step completion emails —
+// 'all' (every step, the original behavior), 'completion_only' (just the
+// final step), or 'off'. Read by saveEnrollmentSteps below to decide which
+// completed steps, if any, actually trigger the Edge Function call.
+async function saveEnrollmentNotifLevel() {
+  const level = document.getElementById('enrollmentNotifLevel').value;
+  const statusEl = document.getElementById('enrollmentNotifStatus');
+  // Re-read the company's current custom_vars fresh rather than trusting
+  // whatever's cached locally, so this can never clobber a setting saved
+  // by someone else (or by this same admin, another tab) moments ago.
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
+  if (readErr) { statusEl.textContent = 'Error: ' + readErr.message; statusEl.style.color = '#ff6b6b'; statusEl.style.display = 'block'; return; }
+  const custom_vars = { ...(fresh?.custom_vars || {}), enrollmentNotificationLevel: level };
+  const { data: changed, error } = await sb.from('companies').update({ custom_vars }).eq('id', currentCompany.id).select('id');
+  if (error) { statusEl.textContent = 'Error: ' + error.message; statusEl.style.color = '#ff6b6b'; statusEl.style.display = 'block'; return; }
+  if (!changed || !changed.length) { statusEl.textContent = "Nothing was saved — you may not have permission to edit this company's settings."; statusEl.style.color = '#ff6b6b'; statusEl.style.display = 'block'; return; }
+  currentCompany.custom_vars = custom_vars;
+  statusEl.textContent = '✓ Saved';
+  statusEl.style.color = 'var(--teal-l)';
+  statusEl.style.display = 'block';
+}
+
 async function showEnrollmentStepsModal(rowId, source) {
   const existing = document.getElementById('enrollmentStepsModal');
   if (existing) existing.remove();
@@ -17674,7 +17713,17 @@ async function saveEnrollmentSteps(rowId, source) {
     return;
   }
 
-  for (const stepNumber of justCompleted) {
+  // Filters which completed steps actually trigger an email, per the
+  // company's own preference (see saveEnrollmentNotifLevel above). Defaults
+  // to 'all' — the original, always-on behavior — for any company that's
+  // never touched this setting, so nothing changes for anyone who hasn't
+  // opted into something different.
+  const notifLevel = currentCompany.custom_vars?.enrollmentNotificationLevel || 'all';
+  const stepsToNotify = notifLevel === 'off' ? []
+    : notifLevel === 'completion_only' ? justCompleted.filter(n => n === 8)
+    : justCompleted;
+
+  for (const stepNumber of stepsToNotify) {
     try {
       const { data: { session } } = await sb.auth.getSession();
       const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/notify-enrollment-step-update', {
@@ -17691,7 +17740,7 @@ async function saveEnrollmentSteps(rowId, source) {
 
   document.getElementById('enrollmentStepsModal')?.remove();
   window._enrollmentStepsPrev = null;
-  toast(justCompleted.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
+  toast(stepsToNotify.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
 
   if (source === 'board') await loadPayerBoard();
   else if (source.startsWith('profile:')) await loadStaffPayerNetwork(source.slice('profile:'.length));
