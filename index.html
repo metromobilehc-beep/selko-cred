@@ -6200,8 +6200,9 @@ async function loadAdminDocs() {
 }
 
 async function unarchiveDoc(id) {
-  const { error } = await sb.from('credtrack_documents').update({ archived: false, archived_at: null }).eq('id', id);
+  const { data: changed, error } = await sb.from('credtrack_documents').update({ archived: false, archived_at: null }).eq('id', id).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
   toast('Moved back to active documents');
   await loadAdminDocs();
 }
@@ -6240,11 +6241,16 @@ async function saveDocDates(docId) {
   const expiry = document.getElementById('editExpiryDate').value || null;
   const errEl  = document.getElementById('editDatesErr');
 
-  const { error } = await sb.from('credtrack_documents').update({
+  const { data: changed, error } = await sb.from('credtrack_documents').update({
     issued_date: issued,
     expiry_date: expiry,
-  }).eq('id', docId);
+  }).eq('id', docId).select('id');
 
+  if (!error && (!changed || !changed.length)) {
+    errEl.textContent = "Nothing was saved — you may not have permission to edit this document.";
+    errEl.style.display = 'block';
+    return;
+  }
   if (error) {
     errEl.textContent = error.message;
     errEl.style.display = 'block';
@@ -6290,12 +6296,17 @@ async function saveDocTypeAssignment(docId) {
   const newTypeId = document.getElementById('editTypeSelect').value;
   const errEl = document.getElementById('editTypeErr');
 
-  const { error } = await sb.from('credtrack_documents').update({
+  const { data: changed, error } = await sb.from('credtrack_documents').update({
     document_type_id: newTypeId,
-  }).eq('id', docId);
+  }).eq('id', docId).select('id');
 
   if (error) {
     errEl.textContent = error.message;
+    errEl.style.display = 'block';
+    return;
+  }
+  if (!changed || !changed.length) {
+    errEl.textContent = "Nothing was saved — you may not have permission to edit this document.";
     errEl.style.display = 'block';
     return;
   }
@@ -6307,10 +6318,11 @@ async function saveDocTypeAssignment(docId) {
 }
 
 async function verifyDoc(id) {
-  const { error } = await sb.from('credtrack_documents').update({
+  const { data: changed, error } = await sb.from('credtrack_documents').update({
     verified: true, verified_by: currentProfile.full_name, verified_at: new Date().toISOString()
-  }).eq('id', id);
+  }).eq('id', id).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
   toast('Document verified');
   await loadAdminDocs();
 }
@@ -6321,10 +6333,11 @@ async function verifyDoc(id) {
 // meaningful once a document is no longer considered verified.
 async function unverifyDoc(id, staffName, typeName) {
   if (!confirm(`Unverify "${typeName}" for ${staffName}?\n\nThis is for correcting a mistake — e.g. marked verified without an actual file on file. The document will show as unverified/pending again.`)) return;
-  const { error } = await sb.from('credtrack_documents').update({
+  const { data: changed, error } = await sb.from('credtrack_documents').update({
     verified: false, verified_by: null, verified_at: null
-  }).eq('id', id);
+  }).eq('id', id).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
   toast('Document unverified');
   await loadAdminDocs();
 }
@@ -7372,8 +7385,9 @@ async function toggleExemptCheck(staffId, checkKey, makeExempt) {
     ? [...new Set([...current, checkKey])]
     : current.filter(k => k !== checkKey);
 
-  const { error } = await sb.from('credtrack_staff').update({ exempt_from_checks: updated }).eq('id', staffId);
+  const { data: changed, error } = await sb.from('credtrack_staff').update({ exempt_from_checks: updated }).eq('id', staffId).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
 
   s.exempt_from_checks = updated;
   populateExemptChecksList(s);
@@ -9329,13 +9343,14 @@ async function editStaff(id) {
   const title = prompt('Job title:', s.job_title || '');
   if (title === null) return;
 
-  const { error } = await sb.from('credtrack_staff').update({
+  const { data: changed, error } = await sb.from('credtrack_staff').update({
     full_name: name.trim() || s.full_name,
     email:     email.trim() || null,
     job_title: title.trim() || null,
-  }).eq('id', id);
+  }).eq('id', id).select('id');
 
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   toast(name + ' updated');
   await loadStaffTable();
 }
@@ -9505,10 +9520,11 @@ async function confirmDisciplineCred(id) {
   // nothing keeping them in sync, which is exactly what caused staff to
   // silently disappear from the discipline filter despite their badge
   // showing the correct value.
-  const { error } = await sb.from('credtrack_staff')
-    .update({ discipline: newDiscipline, license_type: newDiscipline }).eq('id', id);
+  const { data: changed, error } = await sb.from('credtrack_staff')
+    .update({ discipline: newDiscipline, license_type: newDiscipline }).eq('id', id).select('id');
   document.getElementById('disciplineModalCred').remove();
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   await logStaffFieldChanges(id, [
     { field: 'discipline',   old: before.discipline,   new: newDiscipline },
     { field: 'license_type', old: before.license_type, new: newDiscipline },
@@ -9634,9 +9650,10 @@ async function confirmStaffTypeCred(id, name) {
 }
 
 async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
-  const { error } = await sb.from('credtrack_staff')
-    .update({ exclude_from_compliance: !currentlyExcluded }).eq('id', staffId);
+  const { data: changed, error } = await sb.from('credtrack_staff')
+    .update({ exclude_from_compliance: !currentlyExcluded }).eq('id', staffId).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   toast(currentlyExcluded
     ? 'Back to normal compliance tracking'
     : 'Excluded from compliance tracking — won\'t show up on Missing Documents or count toward Active Staff');
@@ -9700,14 +9717,15 @@ async function applyNpiResult(staffId, npi) {
   // the verification act — recording who confirmed it and when, not
   // just the number, completes what this lookup flow was already meant
   // to do (npi_verified/_by/_at existed but were never actually set here).
-  const { error } = await sb.from('credtrack_staff').update({
+  const { data: changed, error } = await sb.from('credtrack_staff').update({
     npi_number: npi,
     npi_verified: true,
     npi_verified_by: currentProfile?.id || null,
     npi_verified_at: new Date().toISOString(),
-  }).eq('id', staffId);
+  }).eq('id', staffId).select('id');
   document.getElementById('npiResultsModal')?.remove();
   if (error) { toast('Error saving NPI: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   toast(`✓ NPI ${npi} saved and marked verified`);
   await loadStaffTable();
 }
@@ -10850,14 +10868,15 @@ function showVerifyReferenceModal(referenceId, staffId) {
 }
 
 async function submitVerifyReference(referenceId, staffId) {
-  const { error } = await sb.from('staff_professional_references').update({
+  const { data: changed, error } = await sb.from('staff_professional_references').update({
     verified: true,
     verified_at: new Date().toISOString(),
     verified_by: currentProfile.id,
     verification_method: document.getElementById('verifyMethod').value,
     verification_notes: document.getElementById('verifyNotes').value.trim() || null,
-  }).eq('id', referenceId);
+  }).eq('id', referenceId).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this reference.", true); return; }
 
   document.getElementById('verifyReferenceModal')?.remove();
   toast('✓ Reference marked verified');
