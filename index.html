@@ -543,6 +543,7 @@ window.selkoSharedAuthStorage = {
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
       <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> <span id="tabCredentialingLabel">Credentialing</span></button>
+      <button class="tab"        id="tab-compliance" onclick="switchTab('compliance')"><i class="ti ti-shield-exclamation"></i> Compliance</button>
       <button class="tab"        id="tab-hr" onclick="switchTab('hr')"><i class="ti ti-id-badge-2"></i> HR Onboarding</button>
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
@@ -1426,73 +1427,6 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
-        <!-- OIG LEIE exclusion check — company-scoped self-service version
-             of the same check available in Selko Admin. Every run emails
-             the company's admins, whether or not anything was found —
-             a "checked today, all clear" email is itself the point, so
-             admins have confidence this is actually running rather than
-             wondering whether silence means "nothing wrong" or "not
-             running at all." -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>🚫 OIG Exclusion Check</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff (who have an NPI on file) against the official OIG List of Excluded Individuals/Entities, downloaded live from oig.hhs.gov. Every run emails your admin contact(s) with the result, whether or not anything is found.</p>
-          <button class="btn btn-sm btn-teal" id="myOigRunCheckBtn" onclick="runMyCompanyOigCheck()">Run check now</button>
-          <div id="myOigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
-
-          <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
-            <label class="inline-label">Preferred day for the automatic monthly check</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <select class="inline-select" id="oigPreferredDaySelect" style="max-width:120px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option></select>
-              <button class="btn btn-sm btn-teal" onclick="saveOigPreferredDay()">Save</button>
-            </div>
-            <p style="font-size:11px;color:rgba(255,255,255,.58);margin-top:6px;">The system runs an automatic check every day and only actually checks/emails your company on this day each month — capped at 28 so it always falls on a real date, even in February.</p>
-          </div>
-          <div class="tbl-wrap">
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
-                <option value="active">Active checks</option>
-                <option value="archived">Archived</option>
-                <option value="all">All</option>
-              </select>
-            </div>
-            <table>
-              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
-              <tbody id="myOigHistoryTbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- OFAC sanctions check — same self-service pattern as OIG
-             above, using US Treasury's public SDN list instead. No
-             NPI-equivalent identifier exists for this list, so every
-             match here is name-only (medium confidence at best) —
-             worth a human reviewing before treating it as confirmed. -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>🌐 OFAC Sanctions Check</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff by name against the US Treasury's Specially Designated Nationals (SDN) list, downloaded live from treasury.gov. Unlike the OIG check, there's no ID number to corroborate against — every match here is name-only and needs a human look before acting on it.</p>
-          <button class="btn btn-sm btn-teal" id="myOfacRunCheckBtn" onclick="runMyCompanyOfacCheck()">Run check now</button>
-          <div id="myOfacCheckStatus" style="font-size:13px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
-          <div id="myOfacMatchesList"></div>
-        </div>
-
-        <!-- Sex offender registry search — a plain outbound link to the U.S. Department of
-             Justice's NSOPW, NOT an automated check like OIG/OFAC above. Selko can't run it
-             or record that it was done (the site is a manual search form), so this panel is
-             honest about that instead of implying coverage that isn't there. The caveats sit
-             right beside the link on purpose: NSOPW's own conditions say the Department doesn't
-             guarantee accuracy or completeness and that users must verify with the jurisdiction,
-             and the search is name-based — the two things most likely to be misused. -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="nsopwPanel">
-          <h2>🔎 Sex Offender Registry Search (NSOPW)</h2>
-          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">The U.S. Department of Justice's free national search across state, territorial and tribal sex offender registries. This one is a manual lookup — Selko can't run it for you or record that you did, so keep your own note of who you searched and when.</p>
-          <a class="btn btn-sm btn-teal" id="nsopwLink" href="https://www.nsopw.gov/search-public-sex-offender-registries" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">Open NSOPW search ↗</a>
-          <ul style="font-size:12px;color:rgba(255,255,255,.66);margin:12px 0 0;padding-left:18px;line-height:1.6;">
-            <li><strong>A name match is a lead, not confirmation.</strong> Many people share a name — open the jurisdiction's own registry from the result and compare age, aliases and photo before treating anyone as a match.</li>
-            <li><strong>No result doesn't prove there's no record.</strong> The Department doesn't guarantee its data is complete or current.</li>
-            <li>Get advice on your obligations before acting on a match. See <em>Guides &amp; resources</em> below for how to read a result.</li>
-          </ul>
-        </div>
-
         <!-- Guides & Resources — process reference material, not staff/
              company data entry. Content lives in CRED_GUIDES (a plain JS
              array) rather than being hand-written per guide here, so
@@ -1594,6 +1528,94 @@ window.selkoSharedAuthStorage = {
         <p style="color:rgba(255,255,255,.58);font-size:12px;">Contact Selko to add this to your plan.</p>
       </div>
     </div>
+
+      <div id="tabCompliance" style="display:none;">
+        <h1>Compliance</h1>
+        <p style="color:rgba(255,255,255,.58);font-size:13px;margin-bottom:18px;">Background and sanctions screening for your staff — moved out of Credentialing into its own home so it's easier to find and gets room to grow.</p>
+<!-- OIG LEIE exclusion check — company-scoped self-service version
+             of the same check available in Selko Admin. Every run emails
+             the company's admins, whether or not anything was found —
+             a "checked today, all clear" email is itself the point, so
+             admins have confidence this is actually running rather than
+             wondering whether silence means "nothing wrong" or "not
+             running at all." -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>🚫 OIG Exclusion Check</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff (who have an NPI on file) against the official OIG List of Excluded Individuals/Entities, downloaded live from oig.hhs.gov. Every run emails your admin contact(s) with the result, whether or not anything is found.</p>
+          <button class="btn btn-sm btn-teal" id="myOigRunCheckBtn" onclick="runMyCompanyOigCheck()">Run check now</button>
+          <div id="myOigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
+
+          <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
+            <label class="inline-label">Preferred day for the automatic monthly check</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="inline-select" id="oigPreferredDaySelect" style="max-width:120px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option></select>
+              <button class="btn btn-sm btn-teal" onclick="saveOigPreferredDay()">Save</button>
+            </div>
+            <p style="font-size:11px;color:rgba(255,255,255,.58);margin-top:6px;">The system runs an automatic check every day and only actually checks/emails your company on this day each month — capped at 28 so it always falls on a real date, even in February.</p>
+          </div>
+          <div class="tbl-wrap">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
+                <option value="active">Active checks</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <table>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
+              <tbody id="myOigHistoryTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- OFAC sanctions check — same self-service pattern as OIG
+             above, using US Treasury's public SDN list instead. No
+             NPI-equivalent identifier exists for this list, so every
+             match here is name-only (medium confidence at best) —
+             worth a human reviewing before treating it as confirmed. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>🌐 OFAC Sanctions Check</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff by name against the US Treasury's Specially Designated Nationals (SDN) list, downloaded live from treasury.gov. Unlike the OIG check, there's no ID number to corroborate against — every match here is name-only and needs a human look before acting on it.</p>
+          <button class="btn btn-sm btn-teal" id="myOfacRunCheckBtn" onclick="runMyCompanyOfacCheck()">Run check now</button>
+          <div id="myOfacCheckStatus" style="font-size:13px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
+          <div id="myOfacMatchesList"></div>
+
+          <div class="tbl-wrap">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <select class="inline-select" id="myOfacArchiveFilter" onchange="loadMyOfacHistory()" style="max-width:160px;">
+                <option value="active">Active checks</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <table>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Actions</th></tr></thead>
+              <tbody id="myOfacHistoryTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        
+      <!-- Sex offender registry search — a plain outbound link to the U.S. Department of
+             Justice's NSOPW, NOT an automated check like OIG/OFAC above. Selko can't run it
+             or record that it was done (the site is a manual search form), so this panel is
+             honest about that instead of implying coverage that isn't there. The caveats sit
+             right beside the link on purpose: NSOPW's own conditions say the Department doesn't
+             guarantee accuracy or completeness and that users must verify with the jurisdiction,
+             and the search is name-based — the two things most likely to be misused. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="nsopwPanel">
+          <h2>🔎 Sex Offender Registry Search (NSOPW)</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">The U.S. Department of Justice's free national search across state, territorial and tribal sex offender registries. This one is a manual lookup — Selko can't run it for you or record that you did, so keep your own note of who you searched and when.</p>
+          <a class="btn btn-sm btn-teal" id="nsopwLink" href="https://www.nsopw.gov/search-public-sex-offender-registries" target="_blank" rel="noopener noreferrer" style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;">Open NSOPW search ↗</a>
+          <ul style="font-size:12px;color:rgba(255,255,255,.66);margin:12px 0 0;padding-left:18px;line-height:1.6;">
+            <li><strong>A name match is a lead, not confirmation.</strong> Many people share a name — open the jurisdiction's own registry from the result and compare age, aliases and photo before treating anyone as a match.</li>
+            <li><strong>No result doesn't prove there's no record.</strong> The Department doesn't guarantee its data is complete or current.</li>
+            <li>Get advice on your obligations before acting on a match. See <em>Guides &amp; resources</em> below for how to read a result.</li>
+          </ul>
+        </div>
+
+        
+      </div>
 
     <!-- HR ONBOARDING TAB (add-on) — deliberately separate storage,
          tables, and access (Admin-only) from Credentialing above, per
@@ -2584,6 +2606,7 @@ async function runMyCompanyOfacCheck() {
     } else {
       toast('OFAC check complete — no matches found');
     }
+    await loadMyOfacHistory(); // this run just got saved above — reflect it in the history table immediately, not just the live summary
   } catch (err) {
     statusEl.textContent = '';
     toast('Error: ' + extractErrorMessage(err.message || String(err)), true);
@@ -2766,18 +2789,147 @@ async function loadOigExclusionHistory() {
 // test runs (e.g. checks fired while debugging) rather than routine
 // housekeeping — hence the confirm prompt.
 async function toggleOigCheckArchived(checkId, archived, ctx) {
-  const { error } = await sb.from('oig_exclusion_checks').update({ archived }).eq('id', checkId);
+  const { data: changed, error } = await sb.from('oig_exclusion_checks').update({ archived }).eq('id', checkId).select('id');
   if (error) { toast('Could not update: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast("Nothing was updated — you may not have permission to change this record.", true); return; }
   toast(archived ? 'Check archived' : 'Check restored');
   if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
 }
 
+async function loadMyOfacHistory() {
+  const tbody = document.getElementById('myOfacHistoryTbody');
+  if (!tbody) return;
+  const archiveFilter = document.getElementById('myOfacArchiveFilter')?.value || 'active';
+
+  let query = sb.from('ofac_sanctions_checks')
+    .select('id, checked_at, staff_checked_count, match_count, archived')
+    .eq('company_id', currentCompany.id)
+    .order('checked_at', { ascending: false })
+    .limit(25);
+  if (archiveFilter === 'active') query = query.eq('archived', false);
+  else if (archiveFilter === 'archived') query = query.eq('archived', true);
+
+  const { data, error } = await query;
+
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
+    return;
+  }
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="color:rgba(255,255,255,.58);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${new Date(r.checked_at).toLocaleString()}</td>
+      <td>${r.staff_checked_count}</td>
+      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-ghost" onclick="showOfacCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">View list</button>
+        <button class="btn btn-sm btn-ghost" onclick="toggleOfacCheckArchived('${r.id}', ${!r.archived}, 'self')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:12px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteOfacCheck('${r.id}', 'self')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:12px;">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function showOfacCheckDetails(checkId) {
+  const existing = document.getElementById('ofacDetailsModal');
+  if (existing) existing.remove();
+
+  const { data: row, error } = await sb.from('ofac_sanctions_checks')
+    .select('checked_at, staff_checked_count, match_count, matches, checked_staff, sdn_source, companies(name)')
+    .eq('id', checkId)
+    .single();
+
+  if (error || !row) {
+    toast('Could not load check details' + (error ? ': ' + error.message : ''), true);
+    return;
+  }
+
+  // Same confidence taxonomy as OIG — no NPI-equivalent identifier exists
+  // for OFAC's SDN list, so "high" (NPI-confirmed) never applies here;
+  // every match is name-based at best.
+  const matchesById = new Map((row.matches || []).map(m => [m.staff_id, m]));
+  const confidenceLabel = {
+    high: '⚠ Match (NPI-confirmed)',
+    medium: '⚠ Match (name + license state align)',
+    low: '⚠ Possible match — name only, verify manually',
+    review_needed: '⚠ Review needed — last name only, first name did not match exactly',
+  };
+  const confidenceColor = { high: '#f87171', medium: '#fb923c', low: '#facc15', review_needed: '#94a3b8' };
+  const staffList = row.checked_staff || [];
+  const staffRowsHtml = staffList.length
+    ? staffList
+        .slice()
+        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
+        .map(s => {
+          const match = matchesById.get(s.id);
+          if (!match) {
+            return `<tr>
+              <td>${s.full_name || '—'}</td>
+              <td style="color:#4ade80;">✓ Clear</td>
+            </tr>`;
+          }
+          const label = match.confidence ? confidenceLabel[match.confidence] : '⚠ Potential match';
+          const color = match.confidence ? confidenceColor[match.confidence] : '#f87171';
+          return `<tr>
+            <td>${s.full_name || '—'}</td>
+            <td style="color:${color};font-weight:700;" title="${match.detail || ''}">${label}</td>
+          </tr>`;
+        }).join('')
+    : `<tr><td colspan="2" style="color:rgba(255,255,255,.58);">This check ran before per-staff detail was captured — only the summary counts are available for it.</td></tr>`;
+
+  const modal = document.createElement('div');
+  modal.id = 'ofacDetailsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1600;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 70vw, 800px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;">
+        <div>
+          <div style="color:#fff;font-size:18px;font-weight:700;">OFAC Check Details</div>
+          <div style="color:rgba(255,255,255,.58);font-size:12px;">${row.companies ? row.companies.name : (currentCompany?.name || 'Your company')} — ${new Date(row.checked_at).toLocaleString()}</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('ofacDetailsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button>
+      </div>
+      <div style="flex:1;overflow-y:auto;padding:20px 28px;">
+        <p style="font-size:12px;color:rgba(255,255,255,.62);margin-bottom:6px;">Checked ${row.staff_checked_count} staff member(s) against the US Treasury's OFAC Specially Designated Nationals list${row.sdn_source ? ` (${row.sdn_source})` : ''}. ${row.match_count} potential match(es) found.</p>
+        ${row.match_count > 0 ? `<p style="font-size:11px;color:rgba(255,255,255,.58);margin-bottom:14px;">No NPI-equivalent identifier exists for this list — every match here is name-based at best and can easily be coincidental for common names. Treat any result as a starting point for manual review, not a confirmed match.</p>` : ''}
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Staff</th><th>Result</th></tr></thead>
+            <tbody>${staffRowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function toggleOfacCheckArchived(checkId, archived, ctx) {
+  const { data: changed, error } = await sb.from('ofac_sanctions_checks').update({ archived }).eq('id', checkId).select('id');
+  if (error) { toast('Could not update: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast("Nothing was updated — you may not have permission to change this record.", true); return; }
+  toast(archived ? 'Check archived' : 'Check restored');
+  if (ctx === 'self') await loadMyOfacHistory();
+}
+
 async function deleteOigCheck(checkId, ctx) {
   if (!confirm('Permanently delete this OIG check record? This cannot be undone.')) return;
-  const { error } = await sb.from('oig_exclusion_checks').delete().eq('id', checkId);
+  const { data: changed, error } = await sb.from('oig_exclusion_checks').delete().eq('id', checkId).select('id');
   if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast("Nothing was deleted — you may not have permission to delete this record.", true); return; }
   toast('Check deleted');
   if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
+}
+
+async function deleteOfacCheck(checkId, ctx) {
+  if (!confirm('Permanently delete this OFAC check record? This cannot be undone.')) return;
+  const { data: changed, error } = await sb.from('ofac_sanctions_checks').delete().eq('id', checkId).select('id');
+  if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast("Nothing was deleted — you may not have permission to delete this record.", true); return; }
+  toast('Check deleted');
+  if (ctx === 'self') await loadMyOfacHistory();
 }
 
 // Details pop-out for a single OIG check — shows exactly which staff
@@ -5597,6 +5749,7 @@ function updateModuleTabVisibility(company, profile) {
   // clinical-specific word regardless of audience.
   const teaserHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('credentialing_teaser');
   document.getElementById('tab-credentialing').style.display = (company.has_credentialing_addon || !teaserHidden) ? 'inline-flex' : 'none';
+  document.getElementById('tab-compliance').style.display = (company.has_credentialing_addon || !teaserHidden) ? 'inline-flex' : 'none';
   const tabLabel = document.getElementById('tabCredentialingLabel');
   if (tabLabel) tabLabel.textContent = company.credentialing_teaser_label || 'Credentialing';
 
@@ -14077,9 +14230,6 @@ async function loadCredentialingTab() {
   document.getElementById('credTemplatesPanel').style.display = 'block';
   document.getElementById('credTemplatesLock').style.display  = 'none';
 
-  document.getElementById('oigPreferredDaySelect').value = currentCompany.oig_check_preferred_day || 1;
-  await loadMyOigHistory();
-
   const c = currentCompany;
   document.getElementById('setTaxId').value  = c.tax_id || '';
   document.getElementById('setOrgNpi').value = c.org_npi || '';
@@ -14151,6 +14301,13 @@ async function loadCredentialingTab() {
   // every open of the tab, and the templates list never loaded. Template generation
   // is available to every Credentialing customer now, so there's nothing left to check.
   await loadCredentialingTemplates();
+}
+
+async function loadCompliance() {
+  const oigDaySel = document.getElementById('oigPreferredDaySelect');
+  if (oigDaySel) oigDaySel.value = currentCompany.oig_check_preferred_day || 1;
+  await loadMyOigHistory();
+  await loadMyOfacHistory();
 }
 
 // ══ GUIDES & RESOURCES — admin-facing reference material ══
@@ -19547,7 +19704,7 @@ function switchTab(tab) {
   }
 
   _activeTab = tab;
-  ['overview','docs','exp','staff','insurance','credentialing','hr','settings','super'].forEach(t => {
+  ['overview','docs','exp','staff','insurance','credentialing','compliance','hr','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
     if (panel) panel.style.display = tab === t ? 'block' : 'none';
@@ -19559,6 +19716,7 @@ function switchTab(tab) {
   if (tab === 'staff')     { loadStaffTable(); loadAllRemindersFor('staff'); }
   if (tab === 'insurance') loadInsuranceTab();
   if (tab === 'credentialing') loadCredentialingTab();
+  if (tab === 'compliance') loadCompliance();
   if (tab === 'hr')        { loadHrTab(); loadAllRemindersFor('hr_employee'); }
   if (tab === 'settings')  loadSettings();
   if (tab === 'super')     loadSuperAdmin();
