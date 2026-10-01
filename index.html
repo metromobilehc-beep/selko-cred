@@ -1806,6 +1806,31 @@ window.selkoSharedAuthStorage = {
         <div id="invErr" style="color:#f87171;font-size:14px;margin-top:8px;display:none;"></div>
       </div>
 
+      <!-- Cleanup for exactly the Kym Crane situation — an orphaned login
+           left behind when someone's email was changed via the OLD
+           (email-keyed) setup/reset path before manage-staff-login
+           existed. Deliberately its own separate, explicit tool rather
+           than automatic, since deleting the wrong login by a typo'd
+           email would actually lock someone out. -->
+      <div class="dark-panel">
+        <h2>Remove a stray login</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">For cleaning up an orphaned account left behind by an email change made before "Change login email" existed — a staff member's CURRENT, in-use login is never affected by this; it only removes whatever account sits under the email typed in below.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">
+          <div>
+            <label class="inline-label">Company</label>
+            <select class="inline-select" id="strayLoginComp"></select>
+          </div>
+          <div>
+            <label class="inline-label">Old/stray login email</label>
+            <input class="inline-input" type="email" id="strayLoginEmail" placeholder="old.email@example.com" />
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-end;">
+            <button class="btn btn-sm btn-danger" onclick="removeStrayLogin()">Remove login</button>
+          </div>
+        </div>
+        <div id="strayLoginErr" style="color:#f87171;font-size:14px;margin-top:8px;display:none;"></div>
+      </div>
+
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Platform-wide Configuration</span>
       </div>
@@ -9326,6 +9351,20 @@ function showAccountActionsMenu(staffId) {
   if (isSyntheticStaffEmail(s.email)) {
     rows.push(`<div style="font-size:13px;color:rgba(255,255,255,.58);padding:4px 0;">🔒 Login already set up with a placeholder — please update to a real email via Edit when one's available. Until then: no automated document reminders reach them, and password resets have to go through you.</div>`);
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPasswordNoEmail('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
+  } else if (s.email && s.profile_id) {
+    // FOUND AND FIXED — this used to show the same "Set up login" /
+    // "Reset password" buttons as the no-login case below, both keyed by
+    // s.email. If an admin edited this person's email first and then
+    // clicked either one, the backend found nothing under the new email
+    // and created a SECOND, orphaned account instead of updating this
+    // one — exactly what happened to Kym Crane. These two actions
+    // instead target the EXISTING account by its own profile_id, never
+    // by email lookup, so they can never create a duplicate.
+    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();showManageLoginModal('${s.id}','${esc(s.full_name)}','${s.profile_id}','${esc(s.email)}')" style="width:100%;justify-content:flex-start;">Change login email</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();reissueStaffPassword('${s.id}','${esc(s.full_name)}','${s.profile_id}','${esc(s.email)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reissue password</button>`);
+    if (currentCompany.has_credtrack) {
+      rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
+    }
   } else if (s.email) {
     rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}','${esc(s.full_name)}','${s.email}')" style="width:100%;justify-content:flex-start;">Set up login</button>`);
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPassword('${s.email}','${esc(s.full_name)}','${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
@@ -10248,6 +10287,89 @@ async function resetPassword(email, fullName, staffId) {
     toast('Reset failed: ' + e.message, true);
   }
 }
+
+// Both of the following target an EXISTING login by its own profile_id,
+// through manage-staff-login — never by email lookup. That's the whole
+// point: setupStaffLogin/resetPassword above look a person up by email,
+// so editing someone's email first and then clicking either one creates
+// a second, orphaned account instead of updating the one they already
+// have. These two can't do that — a profile_id that doesn't correspond
+// to a real account is refused outright, not treated as "create one."
+
+async function showManageLoginModal(staffId, fullName, profileId, currentEmail) {
+  document.getElementById('manageLoginModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'manageLoginModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Change login email</div>
+      <div style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">${fullName} — currently logs in as <strong>${currentEmail}</strong></div>
+      <label class="inline-label">New login email</label>
+      <input type="email" class="inline-input" id="manageLoginNewEmail" placeholder="new.email@example.com" style="width:100%;box-sizing:border-box;margin-bottom:8px;" />
+      <div id="manageLoginErr" style="color:#f87171;font-size:13px;margin-bottom:8px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="submitManageLoginEmail('${staffId}','${profileId}')" style="flex:1;">Save new email</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('manageLoginModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function submitManageLoginEmail(staffId, profileId) {
+  const newEmail = document.getElementById('manageLoginNewEmail').value.trim();
+  const errEl = document.getElementById('manageLoginErr');
+  errEl.style.display = 'none';
+  if (!newEmail) { errEl.textContent = 'Enter the new email.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/manage-staff-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ profile_id: profileId, new_email: newEmail }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+
+    // The login itself (auth account) is updated server-side — this
+    // keeps the staff record's own email column in sync with it, same
+    // as every other place that touches this field.
+    const { data: changed, error: updErr } = await sb.from('credtrack_staff').update({ email: newEmail }).eq('id', staffId).select('id');
+    if (updErr) throw updErr;
+    if (!changed || !changed.length) throw new Error("The login's email was changed, but your own staff record wasn't — you may not have permission to edit this person's record.");
+
+    document.getElementById('manageLoginModal')?.remove();
+    toast(`✓ Login email changed to ${newEmail}`);
+    await loadStaffTable();
+  } catch (e) {
+    errEl.textContent = e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function reissueStaffPassword(staffId, fullName, profileId, email) {
+  if (!confirm(`Set a new temporary password for ${fullName} (${email})?`)) return;
+  const tempPassword = generateTempPassword();
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/manage-staff-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({
+        profile_id: profileId, new_password: tempPassword, name: fullName,
+        login_url: 'https://cred.selko360.com', app_label: 'Cred',
+      }),
+    });
+    const result = await res.json();
+    if (result.error) throw new Error(result.error);
+    showTempPasswordModal(fullName, email, tempPassword, result.notification_sent, result.notification_error);
+  } catch (e) {
+    toast('Reissue failed: ' + e.message, true);
+  }
+}
+
 function proGate(action) {
   if (window._isPro) { action(); return; }
   toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
@@ -14501,6 +14623,12 @@ const STAFF_HELP = [
     html: `<p>The filter bar at the top narrows the list by person, license type, discipline, or active/inactive status — any combination at once. Filters reset when you leave and come back to this tab.</p>`,
   },
   {
+    title: 'Changing a login email or reissuing a password',
+    subtitle: 'Account & Access menu on each staff member\u2019s row',
+    html: `<p>For someone who already has a login, use <strong>Change login email</strong> or <strong>Reissue password</strong> here, not "Edit" plus a fresh setup attempt. These two update that person's existing account directly; editing their email first and then trying to "set up" or "reset" a login under the new address used to silently create a second, duplicate account instead of updating the one they already had.</p>
+      <p><strong>Set up login</strong> and the original <strong>Reset password</strong> only appear for someone who doesn't have a login yet at all.</p>`,
+  },
+  {
     title: 'NPI lookup, SSN, and CAQH credentials',
     subtitle: '',
     html: `<p>From a staff member's Full Profile:</p>
@@ -14690,7 +14818,8 @@ const SUPER_HELP = [
   {
     title: 'Company Management',
     subtitle: '',
-    html: `<p>Every company on the platform, with tools to add new ones and manage each one's plan and settings. <strong>Invite staff to any company</strong> sends a login invitation to someone at any company without needing to be logged into that company's own session first.</p>`,
+    html: `<p>Every company on the platform, with tools to add new ones and manage each one's plan and settings. <strong>Invite staff to any company</strong> sends a login invitation to someone at any company without needing to be logged into that company's own session first.</p>
+      <p><strong>Remove a stray login</strong> cleans up an orphaned account left behind by an email change made the old way, before a safe "Change login email" tool existed on the Staff tab. Only removes the exact email typed in — it never affects that person's current, in-use login, and nothing happens without typing the email and confirming.</p>`,
   },
   {
     title: 'Document type categories and templates',
@@ -21281,6 +21410,16 @@ async function loadSuperAdmin() {
     o.value = c.id; o.textContent = c.name; invComp.appendChild(o);
   });
 
+  // Same list, for the stray-login cleanup tool right below it.
+  const strayLoginComp = document.getElementById('strayLoginComp');
+  if (strayLoginComp) {
+    strayLoginComp.innerHTML = '';
+    (companies || []).forEach(c => {
+      const o = document.createElement('option');
+      o.value = c.id; o.textContent = c.name; strayLoginComp.appendChild(o);
+    });
+  }
+
   // Company cards — compact by default; full details/actions live in
   // showCompanyManageModal(), opened via the single "Manage" button.
   // Stored in a global lookup so the modal can read a company's full
@@ -22773,6 +22912,26 @@ async function superInvite() {
     document.getElementById('invName').value  = '';
     document.getElementById('invEmail').value = '';
   } catch(e) {
+    err.textContent = e.message;
+    err.style.display = 'block';
+  }
+}
+
+async function removeStrayLogin() {
+  const companyId = document.getElementById('strayLoginComp').value;
+  const email      = document.getElementById('strayLoginEmail').value.trim();
+  const err        = document.getElementById('strayLoginErr');
+  err.style.display = 'none';
+  if (!email) { err.textContent = 'Email is required.'; err.style.display = 'block'; return; }
+  if (!companyId) { err.textContent = 'Company is required.'; err.style.display = 'block'; return; }
+  if (!confirm(`Permanently remove the login account for ${email}?\n\nOnly do this for an account you've confirmed is a leftover duplicate — this cannot be undone, and it has no effect on any OTHER login, including that same person's current, in-use one.`)) return;
+
+  try {
+    const { error } = await sb.functions.invoke('delete-staff-auth', { body: { email, company_id: companyId } });
+    if (error) throw error;
+    toast(`✓ Removed the login for ${email}`);
+    document.getElementById('strayLoginEmail').value = '';
+  } catch (e) {
     err.textContent = e.message;
     err.style.display = 'block';
   }
