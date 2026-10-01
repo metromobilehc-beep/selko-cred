@@ -6407,10 +6407,10 @@ async function saveDocDates(docId) {
     return;
   }
 
-  document.getElementById('editDatesModal')?.remove();
-  toast('Dates updated');
   await loadAdminDocs();
   await loadExpTracker();
+  document.getElementById('editDatesModal')?.remove();
+  toast('Dates updated');
 }
 
 function editDocType(docId, currentTypeId) {
@@ -6461,10 +6461,10 @@ async function saveDocTypeAssignment(docId) {
     return;
   }
 
-  document.getElementById('editTypeModal')?.remove();
-  toast('Document type updated');
   await loadAdminDocs();
   await loadStaffTable();
+  document.getElementById('editTypeModal')?.remove();
+  toast('Document type updated');
 }
 
 async function verifyDoc(id) {
@@ -8221,9 +8221,9 @@ async function confirmPayrollImport() {
   );
   if (error) { errEl.textContent = 'Import failed: ' + error.message; errEl.style.display = 'block'; return; }
 
+  await loadStaffTable();
   document.getElementById('payrollImportModal').remove();
   toast(`✓ Imported ${toImport.length} staff member(s)`);
-  await loadStaffTable();
 }
 
 async function handleCvImportFile(staffId, staffName) {
@@ -8646,12 +8646,12 @@ async function saveCvImportSelections(staffId) {
       }
     }
 
+    await loadStaffTable();
     document.getElementById('cvImportReviewModal')?.remove();
     window._cvImportData = null;
     const dupNote = skippedAsDuplicate ? ` (${skippedAsDuplicate} already on file, skipped)` : '';
     if (notSaved.length) toast(`Imported the person's information${dupNote}, but not ${notSaved.join('; ')}.`, true);
     else toast(`✓ Imported successfully${dupNote}`);
-    await loadStaffTable();
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
@@ -9393,12 +9393,12 @@ async function confirmCsvImport() {
   }));
 
   const { error } = await sb.from('credtrack_staff').insert(rows);
-  document.getElementById('csvPreviewModal')?.remove();
-  if (error) { toast('Import failed: ' + error.message, true); return; }
+  if (error) { document.getElementById('csvPreviewModal')?.remove(); toast('Import failed: ' + error.message, true); return; }
 
-  toast(`✓ Imported ${rows.length} staff member${rows.length !== 1 ? 's' : ''} — set up their logins individually when ready`);
   await loadStaffTable();
   await loadAdminFilters();
+  document.getElementById('csvPreviewModal')?.remove();
+  toast(`✓ Imported ${rows.length} staff member${rows.length !== 1 ? 's' : ''} — set up their logins individually when ready`);
 }
 
 function showAddStaff() {
@@ -10995,10 +10995,10 @@ async function submitRenameDiscipline(oldName) {
     currentCompany.caqh_exempt_disciplines = updatedExempt;
   }
 
-  document.getElementById('renameDisciplineModal')?.remove();
-  toast(`✓ Renamed "${oldName}" to "${newName}" — updated ${affectedStaff?.length || 0} staff record(s)`);
   loadDisciplinesPanel();
   await loadStaffList(); // refresh in-memory staff data so every other view reflects the rename immediately
+  document.getElementById('renameDisciplineModal')?.remove();
+  toast(`✓ Renamed "${oldName}" to "${newName}" — updated ${affectedStaff?.length || 0} staff record(s)`);
 }
 
 async function removeCompanyDiscipline(discipline) {
@@ -11254,9 +11254,9 @@ async function submitVerifyReference(referenceId, staffId) {
   if (error) { toast('Error: ' + error.message, true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this reference.", true); return; }
 
+  await loadProfessionalReferences(staffId);
   document.getElementById('verifyReferenceModal')?.remove();
   toast('✓ Reference marked verified');
-  await loadProfessionalReferences(staffId);
 }
 
 async function showEmploymentHistory(staffId, staffName) {
@@ -13159,11 +13159,11 @@ async function showDocTypePartnerScopeModal(id, name, currentAgencyIds) {
 async function confirmDocTypePartnerScope(id) {
   const checked = Array.from(document.querySelectorAll('input[name="partnerScopeOption"]:checked')).map(el => el.value);
   const { error } = await sb.from('document_types').update({ partner_visible_agencies: checked.length ? checked : null }).eq('id', id);
-  document.getElementById('partnerScopeModalCred').remove();
-  if (error) { toast('Error: ' + error.message, true); return; }
-  toast(checked.length ? `Now visible only to ${checked.length} agenc${checked.length === 1 ? 'y' : 'ies'}` : 'Now visible to all partner agencies');
+  if (error) { document.getElementById('partnerScopeModalCred').remove(); toast('Error: ' + error.message, true); return; }
   await loadDocTypesTable();
   if (document.getElementById('partnerDocTypesTbody')) await loadPartnerDocTypesPanel();
+  document.getElementById('partnerScopeModalCred').remove();
+  toast(checked.length ? `Now visible only to ${checked.length} agenc${checked.length === 1 ? 'y' : 'ies'}` : 'Now visible to all partner agencies');
 }
 
 function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly) {
@@ -13257,9 +13257,9 @@ async function confirmDocTypeScope(id, isGlobal, scope) {
     if (error) { toast('Error: ' + error.message, true); return; }
   }
 
+  await loadDocTypesTable();
   document.getElementById('scopeModalCred').remove();
   toast(checked.length ? `Now required only for: ${checked.join(', ')}` : 'Now required for everyone');
-  await loadDocTypesTable();
 }
 
 async function toggleDocTypeTier(id, currentTier) {
@@ -13438,9 +13438,9 @@ async function saveEditedPayer(id) {
   }).eq('id', id);
   if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; return; }
 
+  await loadPayersTable();
   document.getElementById('editPayerModal')?.remove();
   toast('✓ Payer details updated');
-  await loadPayersTable();
 }
 
 async function loadPayersTable() {
@@ -13736,9 +13736,9 @@ async function saveAgencyAssignments(agencyId) {
     if (error) { toast('Error: ' + error.message, true); return; }
   }
 
+  await loadAgencyAssignmentsTable();
   document.getElementById('agencyAssignmentModal')?.remove();
   toast(`✓ Updated — ${toAdd.length} added, ${toRemove.length} removed`);
-  await loadAgencyAssignmentsTable();
 }
 
 async function loadPartnerUsersTable() {
@@ -13835,9 +13835,9 @@ async function saveEditPartnerUser(id) {
     return;
   }
 
+  await loadPartnerUsersTable();
   document.getElementById('editPartnerUserModal')?.remove();
   toast('Partner contact updated');
-  await loadPartnerUsersTable();
 }
 
 async function savePartnerUser() {
@@ -15635,13 +15635,13 @@ async function saveHrTemplateMapping(name) {
       }).eq('id', _editingHrTemplateId);
       if (updateErr) throw updateErr;
 
+      _hrTemplatesCache = null;
+      await loadHrTemplates();
+      await loadSuperHrTemplates();
       document.getElementById('templateMappingModal')?.remove();
       _pendingHrTemplateFile = null;
       _editingHrTemplateId = null;
       toast(`✓ "${name}" mapping updated`);
-      _hrTemplatesCache = null;
-      await loadHrTemplates();
-      await loadSuperHrTemplates();
       return;
     }
 
@@ -15665,12 +15665,12 @@ async function saveHrTemplateMapping(name) {
     const { error: insertErr } = await sb.from('hr_templates').insert(insertPayload);
     if (insertErr) throw insertErr;
 
-    document.getElementById('templateMappingModal')?.remove();
-    _pendingHrTemplateFile = null;
-    toast(`✓ "${name}" saved`);
     _hrTemplatesCache = null;
     await loadHrTemplates();
     await loadSuperHrTemplates(); // no-op if that panel isn't on screen right now (checks for its own container)
+    document.getElementById('templateMappingModal')?.remove();
+    _pendingHrTemplateFile = null;
+    toast(`✓ "${name}" saved`);
   } catch (e) {
     errEl.textContent = 'Error: ' + e.message;
     errEl.style.display = 'block';
@@ -16025,10 +16025,10 @@ async function saveHrEmployee(employeeId) {
   }
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
 
-  document.getElementById('hrEmployeeFormModal')?.remove();
-  toast(employeeId ? '✓ Employee updated' : '✓ Employee added');
   _hrEmployeesCache = null;
   await loadHrEmployees();
+  document.getElementById('hrEmployeeFormModal')?.remove();
+  toast(employeeId ? '✓ Employee updated' : '✓ Employee added');
   if (employeeId) await showHrEmployeeSheet(employeeId);
 }
 
@@ -16103,10 +16103,10 @@ async function importSelectedHrFromStaff() {
   const { error } = await sb.from('hr_employees').insert(rows);
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
 
-  document.getElementById('hrImportStaffModal')?.remove();
-  toast(`✓ Imported ${rows.length} employee${rows.length !== 1 ? 's' : ''} from the staff list`);
   _hrEmployeesCache = null;
   await loadHrEmployees();
+  document.getElementById('hrImportStaffModal')?.remove();
+  toast(`✓ Imported ${rows.length} employee${rows.length !== 1 ? 's' : ''} from the staff list`);
 }
 
 async function showHrEmployeeSheet(employeeId) {
@@ -16601,9 +16601,9 @@ async function saveReminder(recipientType, recipientId) {
   const { error } = await sb.from('staff_reminders').insert(payload);
   if (error) { errEl.textContent = 'Error: ' + error.message; errEl.style.display = 'block'; return; }
 
+  await loadAllRemindersFor(recipientType);
   document.getElementById('addReminderModal')?.remove();
   toast('✓ Reminder saved');
-  await loadAllRemindersFor(recipientType);
 }
 
 // A dedicated Reminders panel on the Staff and HR Onboarding tabs —
@@ -18451,12 +18451,12 @@ async function saveEnrollmentSteps(rowId, source) {
     }
   }
 
+  if (source === 'board') await loadPayerBoard();
+  else if (source.startsWith('profile:')) await loadStaffPayerNetwork(source.slice('profile:'.length));
+
   document.getElementById('enrollmentStepsModal')?.remove();
   window._enrollmentStepsPrev = null;
   toast(stepsToNotify.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
-
-  if (source === 'board') await loadPayerBoard();
-  else if (source.startsWith('profile:')) await loadStaffPayerNetwork(source.slice('profile:'.length));
 }
 
 // The compact multi-step indicator shown wherever an enrollment appears —
@@ -21403,9 +21403,14 @@ async function saveCompanyConfig(id) {
   statusEl.className = 'up-status up-ok';
   statusEl.style.display = 'block';
   toast('Company settings saved');
+  // The refresh now completes before the modal actually closes, not just
+  // scheduled alongside it — the 1.2s delay is a deliberate "let them see
+  // the confirmation for a moment" pause, kept as-is, but it no longer
+  // doubles as the only thing standing between closing this and the
+  // underlying data actually being current.
+  await loadSuperAdmin();
   setTimeout(() => {
     document.getElementById('companyConfigModal')?.remove();
-    loadSuperAdmin();
   }, 1200);
 }
 
@@ -21604,9 +21609,9 @@ async function softDeleteCompany(id, name) {
     }).eq('id', id);
     if (error) throw error;
 
-    toast(`${name} deleted — permanently purged in 30 days unless restored`);
-    document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
+    document.getElementById('companyManageModal')?.remove();
+    toast(`${name} deleted — permanently purged in 30 days unless restored`);
 
     // Fire-and-forget — the deletion itself already succeeded above;
     // a failure here shouldn't block or roll that back, just means the
@@ -21636,9 +21641,9 @@ async function restoreCompany(id, name) {
     }).eq('id', id);
     if (error) throw error;
 
-    toast(`${name} restored`);
-    document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
+    document.getElementById('companyManageModal')?.remove();
+    toast(`${name} restored`);
   } catch(e) {
     toast('Restore failed: ' + e.message, true);
   }
@@ -21736,13 +21741,12 @@ async function offboardCompanyNow(id, name) {
     // either way, but a failed step means some sensitive content may
     // not actually be gone yet.
     const failedSteps = Object.entries(result.expulsionResults || {}).filter(([, v]) => v !== 'ok');
-    if (failedSteps.length) {
-      toast(`Offboarded, but ${failedSteps.length} cleanup step(s) failed: ${failedSteps.map(([k]) => k).join(', ')} — check function logs.`, true);
-    } else {
-      toast(`✓ ${name} offboarded — audit trail saved, sensitive content removed. Final purge scheduled for ${new Date(result.finalPurgeScheduledFor).toLocaleDateString()}.`);
-    }
-    document.getElementById('companyManageModal')?.remove();
+    const successMsg = failedSteps.length
+      ? [`Offboarded, but ${failedSteps.length} cleanup step(s) failed: ${failedSteps.map(([k]) => k).join(', ')} — check function logs.`, true]
+      : [`✓ ${name} offboarded — audit trail saved, sensitive content removed. Final purge scheduled for ${new Date(result.finalPurgeScheduledFor).toLocaleDateString()}.`];
     await loadSuperAdmin();
+    document.getElementById('companyManageModal')?.remove();
+    toast(...successMsg);
   } catch (e) {
     toast('Offboarding failed: ' + e.message, true);
   }
@@ -21897,9 +21901,9 @@ async function purgeCompanyPermanently(id, name) {
     const { error } = await sb.from('companies').delete().eq('id', id);
     if (error) throw error;
 
-    toast(name + ' permanently purged');
-    document.getElementById('companyManageModal')?.remove();
     await loadSuperAdmin();
+    document.getElementById('companyManageModal')?.remove();
+    toast(name + ' permanently purged');
   } catch(e) {
     toast('Purge failed: ' + e.message, true);
   }
