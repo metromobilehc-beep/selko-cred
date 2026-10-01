@@ -14406,28 +14406,62 @@ const OVERVIEW_HELP = [
 
 const DOCS_HELP = [
   {
+    title: 'Active vs. Missing documents',
+    subtitle: 'The two tabs at the top',
+    html: `<ul>
+        <li><strong>Active documents</strong> — everything currently on file, the main working view described below.</li>
+        <li><strong>Missing documents</strong> — required document types with nothing on file for that person, or with an expired date. Usually the faster way to see what actually needs attention.</li>
+      </ul>`,
+  },
+  {
+    title: 'The four status filters',
+    subtitle: 'All / Needs verification / Verified / Verified, no file',
+    html: `<p>These buttons filter the table below by what state each document is actually in:</p>
+      <ul>
+        <li><strong>All</strong> — every active document, no filter.</li>
+        <li><strong>Needs verification</strong> — uploaded but not yet reviewed and confirmed by an admin.</li>
+        <li><strong>Verified</strong> — reviewed and confirmed.</li>
+        <li><strong>Verified, no file</strong> — the credential is recorded (dates, license number) and marked verified, but no actual file was attached. Common when an admin enters something directly rather than from an uploaded document.</li>
+      </ul>
+      <p>The number next to each button is a live count, so you can see at a glance how many fall into each state before even clicking.</p>`,
+  },
+  {
+    title: 'Narrowing the list further',
+    subtitle: 'The three dropdowns below the status filters',
+    html: `<ul>
+        <li><strong>Staff</strong> — show only one person's documents.</li>
+        <li><strong>Type</strong> — show only one document type (e.g. just CPR/BLS, just driver's licenses).</li>
+        <li><strong>Active / Archived / All</strong> — active documents are current; archived ones expired 3+ months ago and dropped out of day-to-day view, but are still kept and searchable here if you need to look something up.</li>
+      </ul>
+      <p>All three combine — e.g. one staff member, one document type, archived only.</p>`,
+  },
+  {
     title: 'Uploading a document',
-    subtitle: 'From either section below',
+    subtitle: '+ Upload document',
     html: `<ol>
-        <li>Click <strong>+ Upload document</strong> in the toolbar.</li>
+        <li>Click <strong>+ Upload document</strong>.</li>
         <li>Pick the staff member and the document type.</li>
-        <li>Attach a file (optional — you can also just record that a credential exists, with dates, before you have the actual file).</li>
+        <li>Attach a file (optional — you can also just record that a credential exists, with dates, before you have the actual file, which is what produces a "Verified, no file" entry).</li>
         <li>If it's a license or similarly-numbered credential, enter the license number — some types require this.</li>
         <li>Save. It's marked verified immediately, since an admin entering it directly is treated as the verification itself.</li>
       </ol>
       <p>There's also a "Scan document" option that reads a license number and dates directly off an uploaded image — review what it finds before saving, it's a starting point, not a guarantee.</p>`,
   },
   {
-    title: 'Missing documents by staff member',
-    subtitle: 'What counts as "missing" and how to fix it',
-    html: `<p>Lists every staff member with a required document type that has nothing on file, or whose existing one has expired. Sorted so the most overdue people surface first.</p>
-      <p>What counts as "required" depends on each document type's own settings (and can be scoped to specific disciplines) — see Settings → Document types if a type seems to be demanded of someone it shouldn't apply to.</p>
-      <p>Fix an entry directly from this list — click the staff member's name to jump straight to uploading what's missing for them.</p>`,
+    title: 'Adding a new document type',
+    subtitle: '+ Add document type (Pro)',
+    html: `<p>Creates a new credential type your company tracks — beyond the built-in ones like licenses or CPR cards. Once added, it can be scoped to specific disciplines (so it's only demanded of the staff it actually applies to) from Settings → Document types.</p>`,
   },
   {
-    title: 'Pro view',
-    subtitle: 'Only shown on the Pro document tier',
-    html: `<p>Adds a few things the Standard tier doesn't: a printable/exportable version of the missing-documents list, and additional filtering by document type and agency. Everything else about using it works the same way as the Standard view above.</p>`,
+    title: 'The Downloads menu',
+    subtitle: 'Five different exports, each for a different purpose',
+    html: `<ul>
+        <li><strong>Download files…</strong> — pick specific staff and download their actual uploaded document files in bulk, not just a data summary.</li>
+        <li><strong>Export CSV</strong> — exports exactly what's currently visible in the table below (whatever filters are applied) as plain data — staff, document, dates, status.</li>
+        <li><strong>Export Excel / Export PDF</strong> (Pro) — a formatted, presentation-ready report with the same information, styled and summarized rather than a raw data dump.</li>
+        <li><strong>Audit packet (single staff member)</strong> — generates one combined file for one person: every document and its verification status in one packet, built for handing to an auditor or a payer that wants a complete file for that provider.</li>
+      </ul>
+      <p>Short version: CSV/Excel/PDF export the <em>list</em> you're looking at; Download files and the audit packet give you the actual <em>documents</em> themselves.</p>`,
   },
 ];
 
