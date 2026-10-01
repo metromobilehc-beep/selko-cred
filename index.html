@@ -1620,7 +1620,7 @@ window.selkoSharedAuthStorage = {
            "Acknowledge" only adds metadata (who/when reviewed it) and
            hides it from the default view — the row itself is untouched
            and always fully visible again via the toggle below. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>🔍 Sensitive data access log</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
         <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);margin-bottom:10px;cursor:pointer;">
@@ -1636,7 +1636,7 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Document access audit log -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>📋 Access log</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Who viewed or downloaded which staff documents, and when — including agency partners. Archiving hides old entries from the view below but never deletes them — the full record stays in the database permanently.</p>
         <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
@@ -3050,7 +3050,7 @@ document.addEventListener('click', function(e) {
 });
 
 function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabCredentialing .dark-panel, #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabCredentialing .dark-panel, #tabCompliance .dark-panel, #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
     if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
     const h2 = panel.querySelector('h2');
     if (!h2) return;
