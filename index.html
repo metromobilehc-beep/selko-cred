@@ -1045,7 +1045,8 @@ window.selkoSharedAuthStorage = {
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 16px;margin-bottom:14px;">
           <div style="display:flex;flex-direction:column;gap:4px;">
             <label style="font-size:13px;color:rgba(255,255,255,.62);">Payer</label>
-            <select class="inline-select" id="pnPayer"></select>
+            <select class="inline-select" id="pnPayer" onchange="onPnPayerSelectChanged()"></select>
+            <input class="inline-input" type="text" id="pnNewPayerName" placeholder="Type the new insurance/payer name" style="display:none;margin-top:4px;" />
           </div>
           <div style="display:flex;flex-direction:column;gap:4px;">
             <label style="font-size:13px;color:rgba(255,255,255,.62);">Status</label>
@@ -18891,6 +18892,12 @@ function onPnEntitySelectChanged() {
   if (!isNew) document.getElementById('pnEntityName').value = '';
 }
 
+function onPnPayerSelectChanged() {
+  const isNew = document.getElementById('pnPayer').value === '__new_payer__';
+  document.getElementById('pnNewPayerName').style.display = isNew ? 'block' : 'none';
+  if (!isNew) document.getElementById('pnNewPayerName').value = '';
+}
+
 async function loadPayerBoard() {
   // populate staff dropdown — plain staff list now, since which mode
   // ("staff" vs "company-wide") is picked via the explicit toggle buttons
@@ -18921,7 +18928,8 @@ async function loadPayerBoard() {
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('name');
   const payerSel = document.getElementById('pnPayer');
-  payerSel.innerHTML = (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  payerSel.innerHTML = (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('') +
+    '<option value="__new_payer__">+ Add a new insurance...</option>';
   const payerFilterSel = document.getElementById('fInsurancePayer');
   payerFilterSel.innerHTML = '<option value="">All insurance</option>' +
     (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
@@ -19272,7 +19280,9 @@ async function savePayerNetwork() {
         ? document.getElementById('pnEntityName').value.trim() || null
         : entitySelectVal || null)
     : null;
-  const payerId       = document.getElementById('pnPayer').value;
+  let payerId         = document.getElementById('pnPayer').value;
+  const isNewPayer    = payerId === '__new_payer__';
+  const newPayerName  = document.getElementById('pnNewPayerName').value.trim();
   const status        = document.getElementById('pnStatus').value;
   const submitted     = document.getElementById('pnSubmitted').value  || null;
   const confirmed     = document.getElementById('pnConfirmed').value  || null;
@@ -19285,6 +19295,11 @@ async function savePayerNetwork() {
   const err           = document.getElementById('pnErr');
   err.style.display = 'none';
   if (!payerId) { err.textContent = 'Payer is required.'; err.style.display = 'block'; return; }
+  if (isNewPayer && !newPayerName) {
+    err.textContent = 'Enter the new insurance/payer name.';
+    err.style.display = 'block';
+    return;
+  }
   if (staffId === null && !entityName) {
     err.textContent = 'Please enter which company/agency this is for.';
     err.style.display = 'block';
@@ -19304,7 +19319,44 @@ async function savePayerNetwork() {
       });
   }
 
-  const { error } = await sb.from('staff_payer_networks').upsert({
+  // Same quick-add pattern as the entity field above — type a new payer
+  // name right here instead of leaving this form to add it in Settings
+  // first. Registered in the real payers table so it's immediately
+  // available everywhere else a payer gets picked from, not just this
+  // one record.
+  if (isNewPayer) {
+    const { data: createdPayer, error: payerErr } = await sb.from('payers')
+      .insert({ name: newPayerName, company_id: currentCompany.id, active: true })
+      .select('id').single();
+    if (payerErr) { err.textContent = 'Could not add the new payer: ' + payerErr.message; err.style.display = 'block'; return; }
+    payerId = createdPayer.id;
+  }
+
+  // FOUND AND FIXED — the upsert below targets staff_id+payer_id as its
+  // conflict key, which only actually works for a staff member. An
+  // entity row always has staff_id = null, and Postgres never treats two
+  // NULLs as equal for a unique constraint, so this upsert could never
+  // recognize an existing entity+payer record as a conflict — it just
+  // silently inserted a new, duplicate row every time, with no warning.
+  // This looks up the real existing row by whichever key actually
+  // applies (staff_id for a person, entity_name for a company/agency)
+  // and, if one exists, confirms with the admin before overwriting it —
+  // rather than either silently duplicating it (the old entity bug) or
+  // silently overwriting it with no warning at all (which the original
+  // upsert also did for staff, just without ever telling anyone).
+  let existingQuery = sb.from('staff_payer_networks').select('id, status').eq('payer_id', payerId).eq('company_id', currentCompany.id);
+  existingQuery = staffId ? existingQuery.eq('staff_id', staffId) : existingQuery.is('staff_id', null).eq('entity_name', entityName);
+  const { data: existing } = await existingQuery.maybeSingle();
+
+  if (existing) {
+    const who = staffId ? (staffList.find(s => s.id === staffId)?.full_name || 'This person') : entityName;
+    const payerLabel = document.getElementById('pnPayer').selectedOptions[0]?.textContent || 'this payer';
+    if (!confirm(`${who} already has a record on file for ${payerLabel} (currently "${existing.status.replace('_', ' ')}"). Update that existing record instead of creating a separate one?`)) {
+      return;
+    }
+  }
+
+  const payload = {
     company_id: currentCompany.id,
     staff_id: staffId,
     entity_name: entityName,
@@ -19319,10 +19371,18 @@ async function savePayerNetwork() {
     group_id: groupId,
     notes,
     verified_at: status === 'in_network' ? new Date().toISOString() : null,
-  }, { onConflict: 'staff_id,payer_id' });
+  };
+
+  // Update the SPECIFIC existing row by its own id when one was found
+  // (the only way to safely handle the entity case, since upsert's
+  // conflict target can't). Otherwise insert fresh — covers a genuinely
+  // new record, staff or entity alike.
+  const { error } = existing
+    ? await sb.from('staff_payer_networks').update(payload).eq('id', existing.id)
+    : await sb.from('staff_payer_networks').insert(payload);
 
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
-  toast('Network status saved');
+  toast(existing ? 'Existing network record updated' : 'Network status saved');
   document.getElementById('pnSubmitted').value  = '';
   document.getElementById('pnConfirmed').value  = '';
   document.getElementById('pnInNetwork').value  = '';
@@ -19331,7 +19391,7 @@ async function savePayerNetwork() {
   document.getElementById('pnNetworkProviderId').value = '';
   document.getElementById('pnGroupId').value    = '';
   document.getElementById('pnNotes').value      = '';
-  await loadPayerBoard();
+  await loadPayerBoard(); // also repopulates the payer dropdown, so a newly-added payer is there for next time
 }
 
 async function deletePayerNetwork(id) {
