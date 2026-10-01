@@ -206,6 +206,8 @@
   .admin-sidebar .tab i { font-size: 20px; width: 20px; text-align: center; flex-shrink: 0; }
   .admin-sidebar .tab.active { background: var(--teal); color: #fff; font-weight: 700; box-shadow: 0 2px 10px rgba(13,148,136,.35); }
   .admin-sidebar .tab:hover:not(.active) { background: rgba(255,255,255,.06); color: rgba(255,255,255,.9); }
+  /* TRIAL — section breaks grouping related tabs in the sidebar. */
+  .sidebar-section-break { height: 1px; background: rgba(255,255,255,.08); margin: 8px 10px; }
   .admin-main { flex: 1; min-width: 0; }
   /* Always visible now, not just under 900px — this is the one
      explicit, deliberate way to open the drawer, alongside hovering

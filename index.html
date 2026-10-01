@@ -108,28 +108,36 @@ window.selkoSharedAuthStorage = {
 <body>
 
 <header>
-  <button class="admin-sidebar-toggle" onclick="toggleAdminSidebar()" aria-label="Menu">
-    <i class="ti ti-menu-2"></i>
-  </button>
-  <div class="logo">
+  <!-- TRIAL: logo moved to center, search moved to the far left. The two
+       outer zones both get flex:1 so they occupy equal space regardless
+       of how much each one actually contains — that's what keeps the
+       logo genuinely centered rather than just "roughly in the middle." -->
+  <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0;">
+    <button class="admin-sidebar-toggle" onclick="toggleAdminSidebar()" aria-label="Menu">
+      <i class="ti ti-menu-2"></i>
+    </button>
+    <div id="hdrSearchWrap" style="position:relative;max-width:360px;width:100%;display:none;">
+    <input type="text" id="hdrSearchInput" placeholder="Search everything..." autocomplete="off"
+      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:7px 12px;font-size:15px;"
+      oninput="handleGlobalSearch(this.value)" onfocus="if(this.value.trim().length>=2) document.getElementById('hdrSearchResults').style.display='block';" />
+    <div id="hdrSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:10px;margin-top:6px;max-height:420px;overflow-y:auto;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4);"></div>
+    </div>
+  </div>
+  <div class="logo" style="flex-shrink:0;">
     <div class="logo-mark">SC</div>
     <div>
       <div class="logo-name">Selko Cred</div>
       <div class="logo-sub">Credential Manager</div>
     </div>
   </div>
-  <div id="hdrSearchWrap" style="position:relative;flex:1;max-width:360px;margin:0 20px;display:none;">
-    <input type="text" id="hdrSearchInput" placeholder="Search everything..." autocomplete="off"
-      style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:7px 12px;font-size:15px;"
-      oninput="handleGlobalSearch(this.value)" onfocus="if(this.value.trim().length>=2) document.getElementById('hdrSearchResults').style.display='block';" />
-    <div id="hdrSearchResults" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:10px;margin-top:6px;max-height:420px;overflow-y:auto;z-index:200;box-shadow:0 8px 24px rgba(0,0,0,.4);"></div>
-  </div>
+  <div style="flex:1;min-width:0;display:flex;justify-content:flex-end;">
   <div id="hdrRight">
     <span id="hdrUser"></span>
     <span id="hdrRole"></span>
     <button id="hdrMyCreds" onclick="toggleMyCredsView()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:14px;cursor:pointer;display:none;">My Credentials</button>
     <button id="hdrReportIssueBtn" onclick="showReportIssueModal()" style="display:none;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:14px;cursor:pointer;">🆘 Report an issue</button>
     <button id="hdrLogout" onclick="logout()">Sign out</button>
+  </div>
   </div>
 </header>
 
@@ -539,13 +547,20 @@ window.selkoSharedAuthStorage = {
     <div class="admin-sidebar-col">
     <div class="tabs admin-sidebar">
       <button class="tab active" id="tab-overview" onclick="switchTab('overview')"><i class="ti ti-layout-dashboard"></i> Overview</button>
+      <!-- TRIAL: section breaks grouping related tabs, rather than one
+           undifferentiated list — easy to drop if it doesn't read well
+           in practice. -->
+      <div class="sidebar-section-break"></div>
       <button class="tab"        id="tab-docs"     onclick="switchTab('docs')"><i class="ti ti-file-text"></i> Documents</button>
       <button class="tab"        id="tab-exp"      onclick="switchTab('exp')"><i class="ti ti-clock-exclamation"></i> Expiration tracker</button>
+      <div class="sidebar-section-break"></div>
       <button class="tab"        id="tab-staff"    onclick="switchTab('staff')"><i class="ti ti-users"></i> Staff</button>
       <button class="tab"        id="tab-credentialing" onclick="switchTab('credentialing')"><i class="ti ti-certificate"></i> <span id="tabCredentialingLabel">Credentialing</span></button>
       <button class="tab"        id="tab-compliance" onclick="switchTab('compliance')"><i class="ti ti-shield-exclamation"></i> Compliance</button>
-      <button class="tab"        id="tab-hr" onclick="switchTab('hr')"><i class="ti ti-id-badge-2"></i> HR Onboarding</button>
       <button class="tab"        id="tab-insurance" onclick="switchTab('insurance')"><i class="ti ti-shield-check"></i> Health Care Network</button>
+      <div class="sidebar-section-break"></div>
+      <button class="tab"        id="tab-hr" onclick="switchTab('hr')"><i class="ti ti-id-badge-2"></i> HR Onboarding</button>
+      <div class="sidebar-section-break"></div>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
       <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
     </div>
