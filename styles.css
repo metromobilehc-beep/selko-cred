@@ -87,12 +87,57 @@
   .screen { display: none; }
   .screen.active { display: block; }
 
-  /* LOGIN */
-  #loginScreen { min-height: calc(100vh - 56px); display: none; align-items: center; justify-content: center; padding: 32px 16px; }
+  /* LOGIN — split screen. The persistent header (menu, search, tenant
+     branding, My Credentials) is hidden while the login screen is active:
+     none of it applies to someone who hasn't signed in yet, and the
+     branding shown there could belong to a different tenant. */
+  body:has(#loginScreen.active) > header { display: none; }
+  #loginScreen { min-height: 100vh; min-height: 100dvh; display: none; align-items: stretch; padding: 0; background: var(--offwhite); }
   #loginScreen.active { display: flex; }
-  .login-card { background: #fff; border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); padding: 40px 36px; width: 100%; max-width: 400px; border: 1px solid var(--gray-200); }
-  .login-card h2 { font-size: 24px; color: var(--navy); font-weight: 700; margin-bottom: 4px; letter-spacing: -.01em; }
-  .login-card p  { color: var(--gray-600); font-size: 16px; margin-bottom: 24px; }
+
+  .login-brand {
+    flex: 0 0 46%; max-width: 640px; position: relative; overflow: hidden;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 48px 56px; color: #fff;
+    background:
+      radial-gradient(900px 500px at 12% 0%, rgba(20,184,166,.22), transparent 60%),
+      radial-gradient(700px 520px at 100% 100%, rgba(30,64,175,.35), transparent 60%),
+      var(--navy);
+  }
+  .login-brand-logo { width: 190px; height: auto; display: block; }
+  .login-brand-body { max-width: 480px; }
+  .login-def-head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; }
+  .login-def-word { font-size: 18px; font-weight: 700; color: var(--teal-ll); letter-spacing: .01em; }
+  .login-def-pos { font-size: 14px; font-style: italic; color: rgba(255,255,255,.55); }
+  .login-brand .login-def-text span { display: block; }
+  .login-brand .login-def-text { font-size: 32px; line-height: 1.2; font-weight: 700; letter-spacing: -.02em; color: #fff; margin: 0 0 20px; }
+  .login-brand .login-brand-sub { font-size: 17px; line-height: 1.55; color: rgba(255,255,255,.72); margin: 0; }
+  .login-brand-foot { font-size: 14px; color: rgba(255,255,255,.45); }
+
+  .login-form-side { flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center; padding: 32px 24px; }
+  .login-card { width: 100%; max-width: 380px; }
+  .login-mobile-logo { display: none; width: 150px; height: auto; margin: 0 0 28px; }
+  .login-card h2 { font-size: 28px; color: var(--navy); font-weight: 700; margin-bottom: 6px; letter-spacing: -.02em; }
+  .login-card .login-sub { color: var(--gray-600); font-size: 16px; margin-bottom: 28px; }
+  .login-pw-wrap { position: relative; }
+  .login-pw-wrap input { padding-right: 64px; }
+  .login-pw-toggle { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); background: none; border: none; color: var(--teal); font-size: 14px; font-weight: 600; cursor: pointer; padding: 6px 8px; border-radius: var(--radius-sm); }
+  .login-pw-toggle:hover { background: var(--gray-100); }
+  .login-links { margin-top: 18px; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; font-size: 15px; }
+  .login-links a { color: var(--teal); text-decoration: none; }
+  .login-links a:hover { text-decoration: underline; }
+  .login-links-dot { color: var(--gray-400); }
+  .login-footnote { margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--gray-200); font-size: 14px; color: var(--gray-600); text-align: center; }
+
+  @media (max-width: 900px) {
+    .login-brand { display: none; }
+    .login-mobile-logo { display: block; }
+    .login-form-side { align-items: flex-start; padding: 40px 20px; }
+  }
+  @media (max-width: 480px) {
+    .login-links { flex-direction: column; align-items: center; gap: 10px; }
+    .login-links-dot { display: none; }
+  }
 
   .form-group { margin-bottom: 16px; }
   .field-label { display: block; font-size: 14px; font-weight: 600; color: var(--gray-600); margin-bottom: 6px; }
@@ -452,7 +497,6 @@
     .form-grid-3 { grid-template-columns: 1fr; }
     .inline-grid-4 { grid-template-columns: 1fr 1fr; }
     .inline-grid-3 { grid-template-columns: 1fr; }
-    .login-card { padding: 28px 20px; }
     #ovStatsGrid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
     /* These four rules previously BLEW UP headings to 32-48px on phones
        — the exact opposite of what a mobile media query should do.

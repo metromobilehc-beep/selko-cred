@@ -154,27 +154,41 @@ window.selkoSharedAuthStorage = {
 
 <!-- LOGIN -->
 <div id="loginScreen" class="screen active">
-  <div class="login-card">
-    <h2>Sign in to Selko Cred</h2>
-    <p>Use your work email and password.</p>
-    <div id="loginAlert" class="alert alert-error"></div>
-    <div class="form-group">
-      <label class="field-label">Email</label>
-      <input type="email" id="loginEmail" placeholder="you@company.com" autocomplete="email" />
+  <aside class="login-brand" aria-hidden="false">
+    <img class="login-brand-logo" src="icons/selko-logo-white.png" alt="Selko" width="480" height="125" />
+    <div class="login-brand-body">
+      <div class="login-def-head"><span class="login-def-word">selko</span><span class="login-def-pos">noun</span></div>
+      <p class="login-def-text"><span>Clarity.</span> <span>Comprehension.</span> <span>An understandable account.</span></p>
+      <p class="login-brand-sub">Selko Cred gives you one clear view of every license, certification, and exclusion check, so nothing expires unnoticed.</p>
     </div>
-    <div class="form-group">
-      <label class="field-label">Password</label>
-      <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" />
+    <div class="login-brand-foot">Credentialing &amp; compliance for healthcare teams</div>
+  </aside>
+  <main class="login-form-side">
+    <div class="login-card">
+      <img class="login-mobile-logo" src="icons/selko-logo.png" alt="Selko" width="480" height="125" />
+      <h2>Welcome back</h2>
+      <p class="login-sub">Sign in to Selko Cred with your work email.</p>
+      <div id="loginAlert" class="alert alert-error"></div>
+      <div class="form-group">
+        <label class="field-label" for="loginEmail">Email</label>
+        <input type="email" id="loginEmail" placeholder="you@company.com" autocomplete="username" />
+      </div>
+      <div class="form-group">
+        <label class="field-label" for="loginPassword">Password</label>
+        <div class="login-pw-wrap">
+          <input type="password" id="loginPassword" placeholder="Your password" autocomplete="current-password" />
+          <button type="button" class="login-pw-toggle" id="loginPwToggle" aria-label="Show password" aria-pressed="false" onclick="toggleLoginPassword()">Show</button>
+        </div>
+      </div>
+      <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">Sign in</button>
+      <div class="login-links">
+        <a href="#" onclick="forgotPassword(); return false;">Forgot password?</a>
+        <span class="login-links-dot" aria-hidden="true">&middot;</span>
+        <a href="#" onclick="showLoginIssueModal(); return false;">Can't log in? Report an issue</a>
+      </div>
+      <p class="login-footnote">Need access? Contact your administrator.</p>
     </div>
-    <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">Sign in</button>
-    <p style="margin-top:14px;text-align:center;">
-      <a href="#" onclick="forgotPassword(); return false;" style="font-size:15px;color:var(--teal);text-decoration:none;">Forgot password?</a>
-    </p>
-    <p style="margin-top:6px;text-align:center;">
-      <a href="#" onclick="showLoginIssueModal(); return false;" style="font-size:15px;color:var(--teal);text-decoration:none;">🆘 Can't log in? Report an issue</a>
-    </p>
-    <p style="margin-top:10px;font-size:14px;color:var(--gray-600);text-align:center;">Contact your administrator if you need access.</p>
-  </div>
+  </main>
 </div>
 
 <!-- STAFF SCREEN -->
@@ -3800,6 +3814,29 @@ async function submitIssueReport() {
   toast('✓ Thanks — this has been sent to Selko\'s team');
 }
 
+function toggleLoginPassword() {
+  const inp = document.getElementById('loginPassword');
+  const btn = document.getElementById('loginPwToggle');
+  const show = inp.type === 'password';
+  inp.type = show ? 'text' : 'password';
+  btn.textContent = show ? 'Hide' : 'Show';
+  btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+  btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+}
+
+// Return the header/theme to the neutral Selko defaults. applyBranding()
+// bails out early when a company has no branding saved, so without this a
+// previous tenant's logo, name and accent colors would carry over into the
+// next login in the same tab.
+function resetBranding() {
+  const r = document.documentElement.style;
+  ['--teal', '--teal-l', '--gold'].forEach(p => r.removeProperty(p));
+  const mark = document.querySelector('.logo-mark');
+  if (mark) mark.textContent = 'SC';
+  const n = document.querySelector('.logo-name');
+  if (n) n.textContent = 'Selko Cred';
+}
+
 async function logout() {
   await sb.auth.signOut();
   currentProfile = null; currentCompany = null;
@@ -3820,6 +3857,10 @@ async function logout() {
   document.getElementById('loginPassword').value = '';
   document.getElementById('loginBtn').disabled   = false;
   document.getElementById('loginBtn').textContent = 'Sign in';
+  resetBranding();
+  const pwInp = document.getElementById('loginPassword');
+  if (pwInp && pwInp.type !== 'password') toggleLoginPassword();
+  document.getElementById('hdrMyCreds').style.display = 'none';
   showScreen('loginScreen');
 }
 
