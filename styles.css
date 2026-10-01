@@ -300,7 +300,12 @@
   }
 
   /* DARK PANEL */
-  .dark-panel { background: var(--navy); border-radius: var(--radius-lg); padding: 20px; color: #fff; margin-bottom: 16px; box-shadow: var(--shadow-dark); }
+  /* Panels used to share the exact same background color as the page
+     behind them (--navy for both), relying on margin and a faint shadow
+     alone to separate sections — not enough contrast in practice. Using
+     the lighter --navy2 plus a visible border gives each section a real,
+     defined edge instead of blurring into its neighbors and the page. */
+  .dark-panel { background: var(--navy2); border: 1px solid rgba(255,255,255,.08); border-radius: var(--radius-lg); padding: 20px; color: #fff; margin-bottom: 20px; box-shadow: var(--shadow-dark); }
   .ov-stat-card { background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.18); border-radius: var(--radius); padding: 18px 16px; text-align: center; }
   .ov-stat-num { font-size: 32px; font-weight: 800; color: #fff; line-height: 1; margin-bottom: 6px; letter-spacing: -.02em; }
   .ov-stat-label { font-size: 14px; color: rgba(255,255,255,.62); text-transform: uppercase; letter-spacing: .06em; }
