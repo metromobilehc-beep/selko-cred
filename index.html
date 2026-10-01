@@ -1707,6 +1707,88 @@ window.selkoSharedAuthStorage = {
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Management</span>
       </div>
 
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>⚡ Selko Admin — Companies</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Every company on the platform — add new ones, and manage each one's plan and settings.</p>
+        <div class="filter-bar">
+          <button class="btn btn-sm btn-teal" onclick="showAddCompany()">+ Add company</button>
+        </div>
+        <div class="inline-form" id="addCompanyForm">
+          <div class="inline-grid-4">
+            <div>
+              <label class="inline-label">Company name</label>
+              <input class="inline-input" type="text" id="coName" placeholder="Acme Home Health" />
+            </div>
+            <div>
+              <label class="inline-label">Slug</label>
+              <input class="inline-input" type="text" id="coSlug" placeholder="acme" />
+            </div>
+            <div>
+              <label class="inline-label">Plan</label>
+              <select class="inline-select" id="coPlan">
+                <option value="standard">Standard</option>
+                <option value="pro">Pro</option>
+                <option value="enterprise">Enterprise</option>
+              </select>
+            </div>
+            <div>
+              <label class="inline-label">Admin first name</label>
+              <input class="inline-input" type="text" id="coAdminFirstName" placeholder="Jane" />
+            </div>
+            <div>
+              <label class="inline-label">Admin last name</label>
+              <input class="inline-input" type="text" id="coAdminLastName" placeholder="Smith" />
+            </div>
+            <div>
+              <label class="inline-label">Admin email</label>
+              <input class="inline-input" type="email" id="coEmail" placeholder="admin@company.com" />
+            </div>
+            <div style="display:flex;gap:6px;align-items:flex-end;">
+              <button class="btn btn-sm btn-teal" onclick="saveNewCompany()">Save & invite admin</button>
+              <button class="btn btn-sm btn-ghost" onclick="hideAddCompany()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
+            </div>
+          </div>
+          <p style="font-size:11px;color:rgba(255,255,255,.58);margin-top:8px;">Fill in Admin name + email to automatically send a login the moment the company is created — leave both blank to just create the company with no admin yet (you can invite one later from the company's row).</p>
+          <div id="coErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+        </div>
+
+        <!-- Company search — filters the already-loaded list client-side,
+             matches on name or slug. No extra query needed since the full
+             company list is already in memory from loadSuperAdmin(). -->
+        <div style="margin-top:16px;margin-bottom:10px;">
+          <input type="text" id="companySearchInput" placeholder="🔍 Search companies by name..."
+            oninput="filterCompanyCards(this.value)"
+            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:10px 14px;font-size:14px;" />
+        </div>
+
+        <!-- Company cards -->
+        <div id="companyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;"></div>
+      </div>
+
+      <!-- Cross-company invite -->
+      <div class="dark-panel">
+        <h2>Invite staff to any company</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Send a login invitation to a staff member at any company on the platform, without needing to be logged into that company directly.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
+          <div>
+            <label class="inline-label">Company</label>
+            <select class="inline-select" id="invComp"></select>
+          </div>
+          <div>
+            <label class="inline-label">Full name</label>
+            <input class="inline-input" type="text" id="invName" placeholder="Jane Smith, PT" />
+          </div>
+          <div>
+            <label class="inline-label">Email</label>
+            <input class="inline-input" type="email" id="invEmail" placeholder="jane@company.com" />
+          </div>
+          <div style="display:flex;gap:6px;align-items:flex-end;">
+            <button class="btn btn-sm btn-teal" onclick="superInvite()">Send invite</button>
+          </div>
+        </div>
+        <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+      </div>
+
       
 
         
@@ -2178,87 +2260,7 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Add company -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>⚡ Selko Admin — Companies</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Every company on the platform — add new ones, and manage each one's plan and settings.</p>
-        <div class="filter-bar">
-          <button class="btn btn-sm btn-teal" onclick="showAddCompany()">+ Add company</button>
-        </div>
-        <div class="inline-form" id="addCompanyForm">
-          <div class="inline-grid-4">
-            <div>
-              <label class="inline-label">Company name</label>
-              <input class="inline-input" type="text" id="coName" placeholder="Acme Home Health" />
-            </div>
-            <div>
-              <label class="inline-label">Slug</label>
-              <input class="inline-input" type="text" id="coSlug" placeholder="acme" />
-            </div>
-            <div>
-              <label class="inline-label">Plan</label>
-              <select class="inline-select" id="coPlan">
-                <option value="standard">Standard</option>
-                <option value="pro">Pro</option>
-                <option value="enterprise">Enterprise</option>
-              </select>
-            </div>
-            <div>
-              <label class="inline-label">Admin first name</label>
-              <input class="inline-input" type="text" id="coAdminFirstName" placeholder="Jane" />
-            </div>
-            <div>
-              <label class="inline-label">Admin last name</label>
-              <input class="inline-input" type="text" id="coAdminLastName" placeholder="Smith" />
-            </div>
-            <div>
-              <label class="inline-label">Admin email</label>
-              <input class="inline-input" type="email" id="coEmail" placeholder="admin@company.com" />
-            </div>
-            <div style="display:flex;gap:6px;align-items:flex-end;">
-              <button class="btn btn-sm btn-teal" onclick="saveNewCompany()">Save & invite admin</button>
-              <button class="btn btn-sm btn-ghost" onclick="hideAddCompany()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
-            </div>
-          </div>
-          <p style="font-size:11px;color:rgba(255,255,255,.58);margin-top:8px;">Fill in Admin name + email to automatically send a login the moment the company is created — leave both blank to just create the company with no admin yet (you can invite one later from the company's row).</p>
-          <div id="coErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
-        </div>
-
-        <!-- Company search — filters the already-loaded list client-side,
-             matches on name or slug. No extra query needed since the full
-             company list is already in memory from loadSuperAdmin(). -->
-        <div style="margin-top:16px;margin-bottom:10px;">
-          <input type="text" id="companySearchInput" placeholder="🔍 Search companies by name..."
-            oninput="filterCompanyCards(this.value)"
-            style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:10px 14px;font-size:14px;" />
-        </div>
-
-        <!-- Company cards -->
-        <div id="companyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;"></div>
-      </div>
-
-      <!-- Cross-company invite -->
-      <div class="dark-panel">
-        <h2>Invite staff to any company</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Send a login invitation to a staff member at any company on the platform, without needing to be logged into that company directly.</p>
-        <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
-          <div>
-            <label class="inline-label">Company</label>
-            <select class="inline-select" id="invComp"></select>
-          </div>
-          <div>
-            <label class="inline-label">Full name</label>
-            <input class="inline-input" type="text" id="invName" placeholder="Jane Smith, PT" />
-          </div>
-          <div>
-            <label class="inline-label">Email</label>
-            <input class="inline-input" type="email" id="invEmail" placeholder="jane@company.com" />
-          </div>
-          <div style="display:flex;gap:6px;align-items:flex-end;">
-            <button class="btn btn-sm btn-teal" onclick="superInvite()">Send invite</button>
-          </div>
-        </div>
-        <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
-      </div>
+      
 
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
