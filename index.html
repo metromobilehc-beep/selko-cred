@@ -1699,6 +1699,8 @@ window.selkoSharedAuthStorage = {
 
     <!-- SUPER ADMIN TAB -->
     <div id="tabSuper" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;">Selko Admin<button class="btn btn-sm btn-ghost" style="font-size:14px;padding:7px 16px;color:#fff;border-color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;" onclick="showPageHelp(SUPER_HELP)">❓ Help</button></div>
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Platform-wide tools for Selko's own administrators — every company on the platform, shared defaults every company starts from, and cross-company support and error logs.</p>
 
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
@@ -1788,6 +1790,155 @@ window.selkoSharedAuthStorage = {
         </div>
         <div id="invErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
       </div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Platform-wide Configuration</span>
+      </div>
+
+<div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🗄 Records eligible for permanent deletion</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Company</th><th>Staff member</th><th>Document</th><th>Expired</th><th>Archived</th><th>Actions</th></tr></thead>
+            <tbody id="deletionReviewTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Document type categories — the shared grouping labels used in
+           every company's Document Types table, since global and custom
+           types sit together in one list, sorted by category. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Document type categories</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Shared across every company — the section headers in each company's Document Types table. Adding one here makes it available for anyone to file a type under, immediately.</p>
+        <div id="categoriesListSuper" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newCategoryName" placeholder="e.g. HR Documents" style="max-width:240px;" />
+          <button class="btn btn-sm btn-teal" onclick="addDocTypeCategory()">+ Add category</button>
+        </div>
+      </div>
+
+      <!-- Credentialing template categories — same shared-label pattern as
+           Document type categories above, but for payer/state groupings
+           (Optum, Texas, Oklahoma New-Hire, etc.) so Juan's growing pile
+           of forms can be filtered/grouped by whichever bucket makes
+           sense, rather than staying one flat searchable list forever. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Credentialing template categories</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Shared across every company — lets a credentialing form template be tagged by payer, state, or any other grouping you want (e.g. "Optum", "Texas", "Oklahoma New-Hire"). Adding one here makes it available to file a template under, immediately.</p>
+        <div id="credTemplateCategoriesListSuper" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;">
+          <input class="inline-input" type="text" id="newCredTemplateCategoryName" placeholder="e.g. Optum" style="max-width:240px;" />
+          <button class="btn btn-sm btn-teal" onclick="addCredTemplateCategory()">+ Add category</button>
+        </div>
+      </div>
+
+      <!-- Global HR form templates (I-9, W-4, background check authorization,
+           etc.) — Selko-provided, usable by every company with the HR
+           add-on, same as how credentialing templates work when uploaded
+           from here rather than from inside a specific company. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Global HR form templates</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Uploaded here, these are available to every company on the HR add-on — I-9, W-4, background check authorization, or anything else worth offering as a standard form rather than leaving every company to upload their own.</p>
+        <div id="superHrTemplatesList" style="margin-bottom:14px;"></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.62);">Form name</label>
+            <input class="inline-input" type="text" id="newSuperHrTemplateName" placeholder="e.g. Form I-9" style="width:240px;" />
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:11px;color:rgba(255,255,255,.62);">Fillable PDF</label>
+            <input type="file" id="newSuperHrTemplateFile" accept="application/pdf" style="color:#fff;font-size:12px;" />
+          </div>
+          <button class="btn btn-sm btn-teal" onclick="startSuperHrTemplateUpload()">+ Upload &amp; map fields</button>
+        </div>
+        <div id="superHrTemplateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
+      </div>
+
+      <!-- Platform document types (tier + global/custom management) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Platform document types</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
+            <tbody id="platformDocTypesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Support requests — user-submitted, not app-caught errors, so this
+           sits alongside the Bug Log rather than merging with it: this is
+           "a person noticed something," that one is "the app itself caught
+           an error." -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🆘 Support requests</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Submitted by users via "Report an issue" in the header, from any company.</p>
+        <div id="supportRequestsList"></div>
+      </div>
+
+      <!-- OIG LEIE exclusion check — manual trigger for now. Downloads the
+           real, official OIG exclusion list and checks active staff by
+           NPI and name. Scoped per-company via the selector, or leave
+           blank to check every company at once. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🚫 OIG Exclusion Check</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks active staff against the official OIG List of Excluded Individuals/Entities (LEIE), downloaded live from oig.hhs.gov. Manual check for now — not yet scheduled monthly.</p>
+        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
+          <select class="inline-select" id="oigCompanyFilter">
+            <option value="">All companies</option>
+          </select>
+          <select class="inline-select" id="oigArchiveFilter" onchange="loadOigExclusionHistory()" style="max-width:160px;">
+            <option value="active">Active checks</option>
+            <option value="archived">Archived</option>
+            <option value="all">All</option>
+          </select>
+          <button class="btn btn-sm btn-teal" id="oigRunCheckBtn" onclick="runOigExclusionCheck()">Run check</button>
+          <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
+        </div>
+        <div id="oigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Actions</th></tr></thead>
+            <tbody id="oigHistoryTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🐛 Bug log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Errors logged across all Selko apps that write to this table.</p>
+        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
+          <select class="inline-select" id="bugAppFilter" onchange="loadBugLog()">
+            <option value="">All apps</option>
+            <option value="cred">Cred</option>
+            <option value="comply">Comply</option>
+            <option value="billing">Billing</option>
+            <option value="hep">HEP</option>
+          </select>
+          <select class="inline-select" id="bugTypeFilter" onchange="loadBugLog()">
+            <option value="">All error types</option>
+            <option value="login_failed">Login failed</option>
+            <option value="session_restore_failed">Session restore failed</option>
+            <option value="toast">Toast (in-app error)</option>
+            <option value="window_error">Uncaught JS error</option>
+            <option value="unhandled_rejection">Unhandled rejection</option>
+          </select>
+          <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
+          <button class="btn btn-sm btn-teal" onclick="copyBugLogForClaude()">📋 Copy for Claude</button>
+          <button class="btn btn-sm btn-danger" onclick="clearBugLog()">🗑 Clear log</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th><th>IP / Device</th></tr></thead>
+            <tbody id="bugLogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    
 
       
 
@@ -2330,150 +2481,7 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🗄 Records eligible for permanent deletion</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Company</th><th>Staff member</th><th>Document</th><th>Expired</th><th>Archived</th><th>Actions</th></tr></thead>
-            <tbody id="deletionReviewTbody"></tbody>
-          </table>
-        </div>
       </div>
-
-      <!-- Document type categories — the shared grouping labels used in
-           every company's Document Types table, since global and custom
-           types sit together in one list, sorted by category. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Document type categories</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Shared across every company — the section headers in each company's Document Types table. Adding one here makes it available for anyone to file a type under, immediately.</p>
-        <div id="categoriesListSuper" style="margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;">
-          <input class="inline-input" type="text" id="newCategoryName" placeholder="e.g. HR Documents" style="max-width:240px;" />
-          <button class="btn btn-sm btn-teal" onclick="addDocTypeCategory()">+ Add category</button>
-        </div>
-      </div>
-
-      <!-- Credentialing template categories — same shared-label pattern as
-           Document type categories above, but for payer/state groupings
-           (Optum, Texas, Oklahoma New-Hire, etc.) so Juan's growing pile
-           of forms can be filtered/grouped by whichever bucket makes
-           sense, rather than staying one flat searchable list forever. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Credentialing template categories</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Shared across every company — lets a credentialing form template be tagged by payer, state, or any other grouping you want (e.g. "Optum", "Texas", "Oklahoma New-Hire"). Adding one here makes it available to file a template under, immediately.</p>
-        <div id="credTemplateCategoriesListSuper" style="margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;">
-          <input class="inline-input" type="text" id="newCredTemplateCategoryName" placeholder="e.g. Optum" style="max-width:240px;" />
-          <button class="btn btn-sm btn-teal" onclick="addCredTemplateCategory()">+ Add category</button>
-        </div>
-      </div>
-
-      <!-- Global HR form templates (I-9, W-4, background check authorization,
-           etc.) — Selko-provided, usable by every company with the HR
-           add-on, same as how credentialing templates work when uploaded
-           from here rather than from inside a specific company. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Global HR form templates</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Uploaded here, these are available to every company on the HR add-on — I-9, W-4, background check authorization, or anything else worth offering as a standard form rather than leaving every company to upload their own.</p>
-        <div id="superHrTemplatesList" style="margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;color:rgba(255,255,255,.62);">Form name</label>
-            <input class="inline-input" type="text" id="newSuperHrTemplateName" placeholder="e.g. Form I-9" style="width:240px;" />
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:11px;color:rgba(255,255,255,.62);">Fillable PDF</label>
-            <input type="file" id="newSuperHrTemplateFile" accept="application/pdf" style="color:#fff;font-size:12px;" />
-          </div>
-          <button class="btn btn-sm btn-teal" onclick="startSuperHrTemplateUpload()">+ Upload &amp; map fields</button>
-        </div>
-        <div id="superHrTemplateUploadErr" style="color:#f87171;font-size:12px;margin-top:8px;display:none;"></div>
-      </div>
-
-      <!-- Platform document types (tier + global/custom management) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Platform document types</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
-            <tbody id="platformDocTypesTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Support requests — user-submitted, not app-caught errors, so this
-           sits alongside the Bug Log rather than merging with it: this is
-           "a person noticed something," that one is "the app itself caught
-           an error." -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🆘 Support requests</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Submitted by users via "Report an issue" in the header, from any company.</p>
-        <div id="supportRequestsList"></div>
-      </div>
-
-      <!-- OIG LEIE exclusion check — manual trigger for now. Downloads the
-           real, official OIG exclusion list and checks active staff by
-           NPI and name. Scoped per-company via the selector, or leave
-           blank to check every company at once. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🚫 OIG Exclusion Check</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks active staff against the official OIG List of Excluded Individuals/Entities (LEIE), downloaded live from oig.hhs.gov. Manual check for now — not yet scheduled monthly.</p>
-        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-          <select class="inline-select" id="oigCompanyFilter">
-            <option value="">All companies</option>
-          </select>
-          <select class="inline-select" id="oigArchiveFilter" onchange="loadOigExclusionHistory()" style="max-width:160px;">
-            <option value="active">Active checks</option>
-            <option value="archived">Archived</option>
-            <option value="all">All</option>
-          </select>
-          <button class="btn btn-sm btn-teal" id="oigRunCheckBtn" onclick="runOigExclusionCheck()">Run check</button>
-          <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
-        </div>
-        <div id="oigCheckStatus" style="font-size:13px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Actions</th></tr></thead>
-            <tbody id="oigHistoryTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🐛 Bug log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Errors logged across all Selko apps that write to this table.</p>
-        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-          <select class="inline-select" id="bugAppFilter" onchange="loadBugLog()">
-            <option value="">All apps</option>
-            <option value="cred">Cred</option>
-            <option value="comply">Comply</option>
-            <option value="billing">Billing</option>
-            <option value="hep">HEP</option>
-          </select>
-          <select class="inline-select" id="bugTypeFilter" onchange="loadBugLog()">
-            <option value="">All error types</option>
-            <option value="login_failed">Login failed</option>
-            <option value="session_restore_failed">Session restore failed</option>
-            <option value="toast">Toast (in-app error)</option>
-            <option value="window_error">Uncaught JS error</option>
-            <option value="unhandled_rejection">Unhandled rejection</option>
-          </select>
-          <button class="btn btn-sm" onclick="loadBugLog()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh</button>
-          <button class="btn btn-sm btn-teal" onclick="copyBugLogForClaude()">📋 Copy for Claude</button>
-          <button class="btn btn-sm btn-danger" onclick="clearBugLog()">🗑 Clear log</button>
-        </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Time</th><th>App</th><th>Type</th><th>Message</th><th>User</th><th>Company</th><th>Context</th><th>IP / Device</th></tr></thead>
-            <tbody id="bugLogTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
 
     <!-- closes admin-main -->
     </div>
@@ -14384,7 +14392,7 @@ const OVERVIEW_HELP = [
 const DOCS_HELP = [
   {
     title: 'Uploading a document',
-    subtitle: 'From either the Active or Missing view',
+    subtitle: 'From either section below',
     html: `<ol>
         <li>Click <strong>+ Upload document</strong> in the toolbar.</li>
         <li>Pick the staff member and the document type.</li>
@@ -14395,13 +14403,16 @@ const DOCS_HELP = [
       <p>There's also a "Scan document" option that reads a license number and dates directly off an uploaded image — review what it finds before saving, it's a starting point, not a guarantee.</p>`,
   },
   {
-    title: 'Active vs. Missing',
-    subtitle: 'What the two views actually mean',
-    html: `<ul>
-        <li><strong>Active documents</strong> — everything currently on file, sorted however you filter it.</li>
-        <li><strong>Missing documents</strong> — required document types with nothing on file for that person, or with an expired date. This is usually the more useful view day-to-day.</li>
-      </ul>
-      <p>What counts as "required" depends on each document type's own settings (and can be scoped to specific disciplines) — see Settings → Document types if a type seems to be demanded of people it shouldn't apply to.</p>`,
+    title: 'Missing documents by staff member',
+    subtitle: 'What counts as "missing" and how to fix it',
+    html: `<p>Lists every staff member with a required document type that has nothing on file, or whose existing one has expired. Sorted so the most overdue people surface first.</p>
+      <p>What counts as "required" depends on each document type's own settings (and can be scoped to specific disciplines) — see Settings → Document types if a type seems to be demanded of someone it shouldn't apply to.</p>
+      <p>Fix an entry directly from this list — click the staff member's name to jump straight to uploading what's missing for them.</p>`,
+  },
+  {
+    title: 'The Pro version of this view',
+    subtitle: 'Only shown on the Pro document tier',
+    html: `<p>Adds a few things the Standard tier doesn't: a printable/exportable version of the missing-documents list, and additional filtering by document type and agency. Everything else about using it works the same way as the Standard view above.</p>`,
   },
 ];
 
@@ -14430,20 +14441,54 @@ const STAFF_HELP = [
       <p>Already have a roster elsewhere? Use <strong>Import/Export</strong> instead of adding people one at a time — it accepts a CSV with name, discipline, and whatever else you have.</p>`,
   },
   {
-    title: 'Editing someone\'s record',
+    title: 'Editing a staff record',
     subtitle: '',
     html: `<p>Click <strong>Full Profile</strong> on their row to open everything about that person in one place — licenses, education, employment history, documents, and more, organized into their own sections.</p>
       <p>For quick changes — just their discipline, staff type, or basic contact info — there are smaller edit buttons right on their row, no need to open the full profile for those.</p>`,
+  },
+  {
+    title: 'Filtering the roster',
+    subtitle: '',
+    html: `<p>The filter bar at the top narrows the list by person, license type, discipline, or active/inactive status — any combination at once. Filters reset when you leave and come back to this tab.</p>`,
+  },
+  {
+    title: 'NPI lookup, SSN, and CAQH credentials',
+    subtitle: '',
+    html: `<p>From a staff member's Full Profile:</p>
+      <ul>
+        <li><strong>Search NPI Registry</strong> looks them up against the official CMS registry — selecting a match both fills in the NPI and marks it verified, since picking a specific name-and-location match from the real registry is itself the verification.</li>
+        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is permanently logged (see Compliance → Sensitive data access log).</li>
+      </ul>`,
   },
 ];
 
 const CREDENTIALING_HELP = [
   {
-    title: 'Building out a provider\'s credentialing file',
+    title: 'Building out a provider credentialing file',
     subtitle: '',
     html: `<p>Open their <strong>Full Profile</strong>, then work through the sections: licenses, education, hospital privileges, employment history, malpractice history, and professional references. Each has its own "add" form.</p>
       <p><strong>Have their CV or a CAQH export?</strong> Use <strong>Import from document</strong> at the top of their profile instead of typing everything in by hand — it reads the file and pre-fills what it finds, but you still review and confirm before anything saves.</p>
       <p>Each "add" form also has an optional <strong>Attach document</strong> section, so the record and its proof (a license copy, a diploma, etc.) can be saved together in one step.</p>`,
+  },
+  {
+    title: 'Basic vs. Full Credentialing',
+    subtitle: 'What each tier actually includes',
+    html: `<p>Basic tracks the core provider record and documents. Full adds the deeper structured file — education, employment history, hospital privileges, malpractice history, professional references, the enrollment-step tracker, and the credentialing form-template system. If a section looks locked, it's a Full-tier feature — the comparison panel at the top of this tab lays out exactly what's included at each level.</p>`,
+  },
+  {
+    title: 'Organization credentialing profile',
+    subtitle: '',
+    html: `<p>Your own company's identifying information used to fill out payer applications automatically — legal business name, DBA, organization NPI, Medicare number, state licenses/registrations, DEA and CLIA numbers, and the contact details payers expect to see. Filled in once here, it's then available to any credentialing form template's auto-fill mapping.</p>`,
+  },
+  {
+    title: 'Organization notes and credentialing files',
+    subtitle: '',
+    html: `<p>Two general-purpose places for anything that doesn't fit a specific staff record or form: <strong>Notes</strong> for free-text internal notes about your credentialing process, and <strong>Files</strong> for documents that apply at the company level rather than to one provider.</p>`,
+  },
+  {
+    title: 'Practice locations and accreditations',
+    subtitle: '',
+    html: `<p><strong>Practice locations</strong> lists every address where your providers actually render services — payer applications often need every location listed, not just your main office. <strong>Accreditations</strong> tracks any accrediting-body certifications your organization itself holds (separate from individual staff licenses).</p>`,
   },
   {
     title: 'Payer enrollment steps',
@@ -14452,19 +14497,41 @@ const CREDENTIALING_HELP = [
       <p>Whether completing a step emails your admins is configurable in Settings — some companies want a notification at every step, others only when enrollment finishes.</p>`,
   },
   {
+    title: 'Guides & resources',
+    subtitle: '',
+    html: `<p>Reference material for specific outside processes — currently, step-by-step guidance on enrolling a provider in Medicare via PECOS, and on searching the National Sex Offender Public Website. These explain how an external process works, separate from this page's own Help button, which explains how to use Selko itself.</p>`,
+  },
+  {
     title: 'Credentialing form templates',
     subtitle: 'Auto-filling payer applications',
     html: `<p>Upload a payer's blank fillable PDF once, map its fields to your own data (a provider's license number, your company's Tax ID, etc.), and generate a filled copy for anyone in seconds afterward — no retyping the same information into every payer's own form.</p>
-      <p>A field can also <strong>combine multiple pieces of data onto one line</strong> — useful for a payer's "City, State ZIP" line, which is usually one blank, not three.</p>`,
+      <p>A field can also <strong>combine multiple pieces of data onto one line</strong> — useful for a payer's "City, State ZIP" line, which is usually one blank, not three.</p>
+      <p>The Full-tier version of this panel adds template categories and a company-wide library, so templates built once can be reused and organized rather than rebuilt per payer.</p>`,
+  },
+  {
+    title: 'Exporting your credentialing data',
+    subtitle: '',
+    html: `<p>Generates a complete export of everything tracked here — useful for your own records, switching systems, or handing a provider's full file to someone who needs it outside Selko.</p>`,
   },
 ];
 
 const COMPLIANCE_HELP = [
   {
-    title: 'Running an OIG or OFAC check',
+    title: 'Running an OIG check',
     subtitle: '',
-    html: `<p>Click <strong>Run check now</strong> in either panel. Every active staff member with the needed information on file gets checked against the respective government list, and the result is saved to that panel's own history, with Archive and Delete available on each past run.</p>
-      <p>A result isn't always a confirmed match — some are flagged for manual review (e.g. a last-name-only match, or a common name with no other corroborating detail). <strong>View list</strong> on any past check shows exactly who was checked and why each one did or didn't come back clear.</p>`,
+    html: `<p>Click <strong>Run check now</strong>. Every active staff member with an NPI on file gets checked against the official OIG List of Excluded Individuals/Entities, and the result is saved to the history table below, with Archive and Delete on each past run.</p>
+      <p>A result isn't always a confirmed match — some are flagged for manual review (e.g. a last-name-only match, or a common name with no other corroborating detail). <strong>View list</strong> on any past check shows exactly who was checked and why each one did or didn't come back clear.</p>
+      <p>There's also a monthly automatic check — set your company's preferred day for it right in this panel.</p>`,
+  },
+  {
+    title: 'Running an OFAC check',
+    subtitle: '',
+    html: `<p>Works the same way as the OIG check above, but against the US Treasury's Specially Designated Nationals list. There's no NPI-equivalent identifier for this list, so every match here is name-based at best — treat any result as a starting point for manual review, not a confirmed match.</p>`,
+  },
+  {
+    title: 'Sex Offender Registry Search (NSOPW)',
+    subtitle: '',
+    html: `<p>This one is a manual lookup, not an automated check like OIG/OFAC above — Selko can't run it for you or record that you did. Click <strong>Open NSOPW search</strong> to use the Department of Justice's own site, and keep your own note of who you searched and when. A name match is a lead, not confirmation, and no result doesn't prove there's no record — see Guides &amp; resources in the Credentialing tab for more on reading a result correctly.</p>`,
   },
   {
     title: 'The two access logs',
@@ -14488,6 +14555,11 @@ const HR_HELP = [
     subtitle: '',
     html: `<p>Works the same way as credentialing form templates — upload a blank W-4, I-9, or any other form once, map its fields, and it fills itself in for each new hire afterward.</p>`,
   },
+  {
+    title: 'HR Onboarding add-on settings',
+    subtitle: '',
+    html: `<p>Controls specific to the onboarding flow itself — which documents are required before someone's considered fully onboarded, reminder cadence for anyone stuck mid-process, and the add-on's own configuration separate from the base HR employee records above.</p>`,
+  },
 ];
 
 const INSURANCE_HELP = [
@@ -14506,19 +14578,90 @@ const INSURANCE_HELP = [
     subtitle: '',
     html: `<p>A condensed view of who's in-network with whom, built specifically for sending to someone who just needs the answer — use <strong>Email This Summary</strong> rather than screenshotting the full board.</p>`,
   },
+  {
+    title: 'Individual staff board',
+    subtitle: '',
+    html: `<p>The full network-status board, one row per staff member per payer. Filter by person or payer to narrow it down — this is the detailed view the quick reference above is summarizing.</p>`,
+  },
+  {
+    title: 'Company / agency entities board',
+    subtitle: '',
+    html: `<p>The same board as Individual staff, but scoped to company-wide or agency-level network records instead of individual providers — some payer relationships exist at the organization level rather than per-provider.</p>`,
+  },
 ];
 
 const SETTINGS_HELP = [
   {
-    title: 'Where things live in here',
+    title: 'My account',
+    subtitle: '',
+    html: `<p>Your own login — name, email, password, and how your display name appears elsewhere in the app (including baked into existing records like "License verified by [name]," so changing it doesn't rewrite history).</p>`,
+  },
+  {
+    title: 'Billing and plan',
+    subtitle: '',
+    html: `<p><strong>Billing</strong> shows your current plan and usage, with tools to change it. <strong>Standard vs. Pro — document features</strong> lays out exactly what each document-tracking tier includes, if you're deciding whether to upgrade.</p>`,
+  },
+  {
+    title: 'Company settings and branding',
+    subtitle: '',
+    html: `<p><strong>Company settings</strong> holds your company's own name, contact info, and the core details used across the platform. <strong>Branding</strong> (Pro) makes the parts your staff and partners see — emails, the header, login screen — look like your own company's instead of Selko's.</p>`,
+  },
+  {
+    title: 'Document types',
+    subtitle: '',
+    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped. <strong>Document type categories</strong> nearby groups these into organized sections rather than one long flat list.</p>`,
+  },
+  {
+    title: 'Health Care Network list and insurance entities',
+    subtitle: '',
+    html: `<p><strong>Health Care Network list</strong> is where your company's payers are managed once, rather than re-entering the same payer per provider. <strong>Company-wide insurance entities</strong> covers the company/agency-level records that show up in the Health Care Network tab's own entities board.</p>`,
+  },
+  {
+    title: 'Agency partner access',
+    subtitle: '',
+    html: `<p>Controls what outside agency partners can see — which documents, which staff, read-only access scoped to just what they need. <strong>Recommended partners</strong> and <strong>Partner recommendations</strong> nearby are about surfacing and managing those partner relationships themselves.</p>`,
+  },
+  {
+    title: 'Storage, uploads, and deletion',
     subtitle: '',
     html: `<ul>
-        <li><strong>Company settings / Branding</strong> — your own name, contact info, and making the parts your staff see look like your company's, not Selko's.</li>
-        <li><strong>Document types</strong> — the credential types your company tracks, including which disciplines each one applies to.</li>
-        <li><strong>Billing</strong> — your current plan and the tools to change it.</li>
-        <li><strong>Health Care Network list</strong> — the payers your company works with, managed once here rather than per-provider.</li>
-      </ul>
-      <p>If something feels like it should be here but isn't, it may have moved — Compliance (OIG/OFAC/background checks) and Health Care Network (payer enrollment) both used to live elsewhere and now have their own tabs.</p>`,
+        <li><strong>Storage usage</strong> — how much space your uploaded files are taking up.</li>
+        <li><strong>Recent uploads</strong> — a quick log of what's been added lately, useful for spotting something that landed in the wrong place.</li>
+        <li><strong>Records eligible for permanent deletion</strong> — anything past its retention period that can now be permanently removed. Nothing here is deleted automatically without this step.</li>
+      </ul>`,
+  },
+  {
+    title: 'Support and the bug log',
+    subtitle: '',
+    html: `<p><strong>Support requests</strong> is where to reach out if something's wrong or you need help beyond what these Help panels cover. <strong>Bug log</strong> is a running record of issues found and fixed, mostly useful if you want to see what's changed recently.</p>`,
+  },
+];
+
+const SUPER_HELP = [
+  {
+    title: 'Company Management',
+    subtitle: '',
+    html: `<p>Every company on the platform, with tools to add new ones and manage each one's plan and settings. <strong>Invite staff to any company</strong> sends a login invitation to someone at any company without needing to be logged into that company's own session first.</p>`,
+  },
+  {
+    title: 'Document type categories and templates',
+    subtitle: '',
+    html: `<p>These manage the shared defaults every company starts from, not any one company's own settings: <strong>Document type categories</strong> and <strong>Platform document types</strong> are the global labels and types available platform-wide, while <strong>Credentialing template categories</strong> and <strong>Global HR form templates</strong> are the shared library of form templates every company can draw on.</p>`,
+  },
+  {
+    title: 'Support requests',
+    subtitle: '',
+    html: `<p>Every issue submitted via "Report an issue" from any company on the platform, in one place — not scoped to a single company the way a regular admin's own view would be.</p>`,
+  },
+  {
+    title: 'Platform-wide OIG check',
+    subtitle: '',
+    html: `<p>A separate tool from the company-level OIG check in Compliance — this one can check a single company, or leave the company filter blank to check every company on the platform at once.</p>`,
+  },
+  {
+    title: 'Bug log',
+    subtitle: '',
+    html: `<p>Errors logged across every Selko app that writes to this table, not just Credentialing — useful for spotting a platform-wide pattern rather than one company's own issue.</p>`,
   },
 ];
 
