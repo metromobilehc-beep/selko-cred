@@ -2312,15 +2312,15 @@ window.selkoSharedAuthStorage = {
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Health Care Network</span>
       </div>
 
-      <!-- Company-wide insurance entities — for tracking network status at
+      <!-- Company & Agency Entities — for tracking network status at
            the office/location level (e.g. Rise Rehab) rather than tied to
            an individual staff member. A real master list, not just derived
            from existing data, so entries can be added ahead of any actual
            insurance record and renamed without breaking history. -->
       <div class="dark-panel" style="margin-bottom:16px;" id="entitiesPanelSettings">
-        <h2>Company-wide insurance entities</h2>
+        <h2>Company & Agency Entities</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
-          The offices/locations selectable as "Company-wide" on the Health Care Network tab, instead of tying network status to an individual person. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
+          The offices, locations, or agencies you can add below — each one then shows up as a "Company-wide" option when adding a network record on the Health Care Network tab, so a payer relationship can be tracked for a whole office instead of one staff member. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
         </p>
         <div id="entitiesListCred" style="margin-bottom:14px;"></div>
         <div style="display:flex;gap:8px;">
@@ -14792,7 +14792,7 @@ const SETTINGS_HELP = [
   {
     title: 'Health Care Network list and insurance entities',
     subtitle: '',
-    html: `<p><strong>Health Care Network list</strong> is where your company's payers are managed once, rather than re-entering the same payer per provider. <strong>Company-wide insurance entities</strong> covers the company/agency-level records that show up in the Health Care Network tab's own entities board.</p>`,
+    html: `<p><strong>Health Care Network list</strong> is where your company's payers are managed once, rather than re-entering the same payer per provider. <strong>Company & Agency Entities</strong> is where you add the offices, locations, or agencies themselves, so they become selectable as "Company-wide" when adding a network record on the Health Care Network tab.</p>`,
   },
   {
     title: 'Agency partner access',
@@ -18907,7 +18907,7 @@ async function loadPayerBoard() {
   setPnMode('staff');
 
   // Known entity names — a real, admin-managed list now (Settings →
-  // Company-wide insurance entities), not just derived from existing data
+  // Company & Agency Entities), not just derived from existing data
   // or hardcoded for one specific company.
   const { data: entityData } = await sb.from('company_entities')
     .select('name').eq('company_id', currentCompany.id).eq('active', true).order('name');
