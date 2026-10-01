@@ -1529,9 +1529,8 @@ window.selkoSharedAuthStorage = {
       </div>
     </div>
 
-      <div id="tabCompliance" style="display:none;">
-        <h1>Compliance</h1>
-        <p style="color:rgba(255,255,255,.58);font-size:13px;margin-bottom:18px;">Background and sanctions screening for your staff — moved out of Credentialing into its own home so it's easier to find and gets room to grow.</p>
+      <div id="tabCompliance" style="display:none;"><div id="complianceAddonSection" style="display:none;">
+
 <!-- OIG LEIE exclusion check — company-scoped self-service version
              of the same check available in Selko Admin. Every run emails
              the company's admins, whether or not anything was found —
@@ -1612,7 +1611,80 @@ window.selkoSharedAuthStorage = {
             <li><strong>No result doesn't prove there's no record.</strong> The Department doesn't guarantee its data is complete or current.</li>
             <li>Get advice on your obligations before acting on a match. See <em>Guides &amp; resources</em> below for how to read a result.</li>
           </ul>
+        </div></div>
+
+<!-- Sensitive-field access log — SSN views/entries specifically.
+           No delete action exists anywhere in this app for this table —
+           that's deliberate, so it's a genuine, tamper-resistant audit
+           trail rather than something anyone could quietly clean up.
+           "Acknowledge" only adds metadata (who/when reviewed it) and
+           hides it from the default view — the row itself is untouched
+           and always fully visible again via the toggle below. -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>🔍 Sensitive data access log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
+        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);margin-bottom:10px;cursor:pointer;">
+          <input type="checkbox" id="showAcknowledgedLog" onchange="loadSensitiveAccessLog()" />
+          Show acknowledged entries too
+        </label>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th><th>Reviewed</th></tr></thead>
+            <tbody id="sensitiveAccessLogTbody"></tbody>
+          </table>
         </div>
+      </div>
+
+      <!-- Document access audit log -->
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>📋 Access log</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Who viewed or downloaded which staff documents, and when — including agency partners. Archiving hides old entries from the view below but never deletes them — the full record stays in the database permanently.</p>
+        <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
+          <select class="filter-sel" id="fAccessLogRole" onchange="loadAccessLog()">
+            <option value="">Everyone</option>
+            <option value="partner">Agency partners only</option>
+            <option value="admin">Admins only</option>
+          </select>
+          <select class="filter-sel" id="fAccessLogAction" onchange="loadAccessLog()">
+            <option value="">View + Download</option>
+            <option value="view">View only</option>
+            <option value="download">Download only</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="showPreviewAccessLogPDF()" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Preview & Export PDF</button>
+          <button class="btn btn-sm btn-ghost" onclick="exportAccessLogCsv()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export CSV</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);cursor:pointer;">
+            <input type="checkbox" id="showArchivedAccessLog" onchange="loadAccessLog()" />
+            Show archived entries too
+          </label>
+          <span style="color:rgba(255,255,255,.55);">|</span>
+          <span style="font-size:12px;color:rgba(255,255,255,.62);">Archive entries older than</span>
+          <input type="number" id="archiveOlderThanDays" value="90" min="1" style="width:60px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:4px 8px;font-size:12px;" />
+          <span style="font-size:12px;color:rgba(255,255,255,.62);">days</span>
+          <button class="btn btn-sm btn-gold" onclick="bulkArchiveAccessLog()">Archive</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Accessed by</th><th>Staff member</th><th>Document</th><th>Action</th><th>Archived</th></tr></thead>
+            <tbody id="accessLogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- SUPER ADMIN TAB -->
+    <div id="tabSuper" style="display:none;">
+
+      <!-- Platform stats -->
+      <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
+
+      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Management</span>
+      </div>
+
+      
 
         
       </div>
@@ -2072,77 +2144,6 @@ window.selkoSharedAuthStorage = {
 
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Audit &amp; Logs</span>
-      </div>
-
-      <!-- Sensitive-field access log — SSN views/entries specifically.
-           No delete action exists anywhere in this app for this table —
-           that's deliberate, so it's a genuine, tamper-resistant audit
-           trail rather than something anyone could quietly clean up.
-           "Acknowledge" only adds metadata (who/when reviewed it) and
-           hides it from the default view — the row itself is untouched
-           and always fully visible again via the toggle below. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🔍 Sensitive data access log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
-        <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);margin-bottom:10px;cursor:pointer;">
-          <input type="checkbox" id="showAcknowledgedLog" onchange="loadSensitiveAccessLog()" />
-          Show acknowledged entries too
-        </label>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th><th>Reviewed</th></tr></thead>
-            <tbody id="sensitiveAccessLogTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- Document access audit log -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>📋 Access log</h2>
-        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:14px;">Who viewed or downloaded which staff documents, and when — including agency partners. Archiving hides old entries from the view below but never deletes them — the full record stays in the database permanently.</p>
-        <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
-          <select class="filter-sel" id="fAccessLogRole" onchange="loadAccessLog()">
-            <option value="">Everyone</option>
-            <option value="partner">Agency partners only</option>
-            <option value="admin">Admins only</option>
-          </select>
-          <select class="filter-sel" id="fAccessLogAction" onchange="loadAccessLog()">
-            <option value="">View + Download</option>
-            <option value="view">View only</option>
-            <option value="download">Download only</option>
-          </select>
-          <button class="btn btn-sm btn-ghost" onclick="showPreviewAccessLogPDF()" style="color:#fff;border-color:rgba(255,255,255,.2);">👁 Preview & Export PDF</button>
-          <button class="btn btn-sm btn-ghost" onclick="exportAccessLogCsv()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export CSV</button>
-        </div>
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.66);cursor:pointer;">
-            <input type="checkbox" id="showArchivedAccessLog" onchange="loadAccessLog()" />
-            Show archived entries too
-          </label>
-          <span style="color:rgba(255,255,255,.55);">|</span>
-          <span style="font-size:12px;color:rgba(255,255,255,.62);">Archive entries older than</span>
-          <input type="number" id="archiveOlderThanDays" value="90" min="1" style="width:60px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:4px 8px;font-size:12px;" />
-          <span style="font-size:12px;color:rgba(255,255,255,.62);">days</span>
-          <button class="btn btn-sm btn-gold" onclick="bulkArchiveAccessLog()">Archive</button>
-        </div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>When</th><th>Accessed by</th><th>Staff member</th><th>Document</th><th>Action</th><th>Archived</th></tr></thead>
-            <tbody id="accessLogTbody"></tbody>
-          </table>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- SUPER ADMIN TAB -->
-    <div id="tabSuper" style="display:none;">
-
-      <!-- Platform stats -->
-      <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
-
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
-        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Management</span>
       </div>
 
       <!-- Add company -->
@@ -5465,7 +5466,8 @@ const QUICK_ACTIONS = [
   { keywords: ['document type', 'doc type'], label: 'Document Types', sub: 'Settings tab', tab: 'settings' },
   { keywords: ['storage usage', 'storage'], label: 'Storage Usage', sub: 'Selko Admin (super admin only)', tab: 'super' },
   { keywords: ['network record', 'payer network', 'in-network', 'insurance network', 'group id'], label: 'Payer Network Records', sub: 'Health Care Network tab', tab: 'insurance' },
-  { keywords: ['sensitive access log', 'ssn log', 'audit log'], label: 'Sensitive Data Access Log', sub: 'Settings tab', tab: 'settings' },
+  { keywords: ['sensitive access log', 'ssn log', 'audit log'], label: 'Sensitive Data Access Log', sub: 'Compliance tab', tab: 'compliance' },
+  { keywords: ['access log', 'document access log', 'who viewed', 'who downloaded'], label: 'Document Access Log', sub: 'Compliance tab', tab: 'compliance' },
   { keywords: ['hospital affiliation'], label: 'Hospital Affiliations', sub: 'Per-provider — Full Profile sheet', perProvider: true },
   { keywords: ['board certification', 'board certified'], label: 'Board Certification', sub: 'Per-provider — Full Profile sheet', perProvider: true },
   { keywords: ['dea schedule', 'controlled substance', 'cds', 'csr'], label: 'DEA & Controlled Substances', sub: 'Per-provider — Full Profile sheet', perProvider: true },
@@ -5749,7 +5751,9 @@ function updateModuleTabVisibility(company, profile) {
   // clinical-specific word regardless of audience.
   const teaserHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('credentialing_teaser');
   document.getElementById('tab-credentialing').style.display = (company.has_credentialing_addon || !teaserHidden) ? 'inline-flex' : 'none';
-  document.getElementById('tab-compliance').style.display = (company.has_credentialing_addon || !teaserHidden) ? 'inline-flex' : 'none';
+  document.getElementById('tab-compliance').style.display = 'inline-flex';
+  const complianceAddonSection = document.getElementById('complianceAddonSection');
+  if (complianceAddonSection) complianceAddonSection.style.display = company.has_credentialing_addon ? 'block' : 'none';
   const tabLabel = document.getElementById('tabCredentialingLabel');
   if (tabLabel) tabLabel.textContent = company.credentialing_teaser_label || 'Credentialing';
 
@@ -12704,7 +12708,8 @@ async function loadSettings() {
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
-  loadSensitiveAccessLog();
+  // loadSensitiveAccessLog() moved to loadCompliance() — this panel now
+  // lives in the Compliance tab, not Settings.
 
   const docTypesPanel = document.getElementById('docTypesPanelSettings');
   if (docTypesPanel) docTypesPanel.style.display = c.has_credtrack ? 'block' : 'none';
@@ -12827,7 +12832,8 @@ async function loadSettings() {
     if (partnersHeader) partnersHeader.style.display = 'block';
   }
 
-  await loadAccessLog();
+  // loadAccessLog() moved to loadCompliance() — this panel now lives in
+  // the Compliance tab, not Settings.
 }
 
 async function loadDocTypesTable() {
@@ -14304,10 +14310,18 @@ async function loadCredentialingTab() {
 }
 
 async function loadCompliance() {
-  const oigDaySel = document.getElementById('oigPreferredDaySelect');
-  if (oigDaySel) oigDaySel.value = currentCompany.oig_check_preferred_day || 1;
-  await loadMyOigHistory();
-  await loadMyOfacHistory();
+  // Document/SSN access logs apply to every company regardless of the
+  // credentialing add-on, so these always load. OIG/OFAC history is
+  // specific to that add-on — skipped (not just hidden) for companies
+  // without it, rather than wastefully populating tables nobody can see.
+  await loadAccessLog();
+  await loadSensitiveAccessLog();
+  if (currentCompany.has_credentialing_addon) {
+    const oigDaySel = document.getElementById('oigPreferredDaySelect');
+    if (oigDaySel) oigDaySel.value = currentCompany.oig_check_preferred_day || 1;
+    await loadMyOigHistory();
+    await loadMyOfacHistory();
+  }
 }
 
 // ══ GUIDES & RESOURCES — admin-facing reference material ══
