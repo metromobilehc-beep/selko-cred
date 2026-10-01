@@ -564,6 +564,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- DOCUMENTS TAB -->
     <div id="tabOverview" class="dark-panel">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Overview</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">A quick snapshot of where things stand — document status, credentialing readiness, and anything that needs attention first.</p>
 
       <h2 id="ovGreeting">Overview</h2>
@@ -647,6 +648,7 @@ window.selkoSharedAuthStorage = {
 
 
     <div id="tabDocs" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Documents</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Every document on file for your staff, sorted by what's active versus what's still missing.</p>
       <div style="background:var(--navy2);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;display:inline-flex;gap:8px;margin-bottom:14px;">
         <button class="tab active" id="docsSubTab-active" onclick="setDocsSubView('active')" style="background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;">📄 Active documents</button>
@@ -845,6 +847,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- EXPIRATION TAB -->
     <div id="tabExp" class="dark-panel" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Expiration tracker</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Every license, certification, and credential with a date, sorted by how soon it expires.</p>
 
       <h2>Expiration tracker</h2>
@@ -881,6 +884,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- STAFF TAB -->
     <div id="tabStaff" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Staff</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Everyone on your roster, their credentialing status at a glance, and the tools to add, edit, or manage each person.</p>
       <div class="dark-panel">
         <h2>Staff management</h2>
@@ -985,6 +989,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- SETTINGS TAB -->
     <div id="tabInsurance" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Health Care Network</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Track which payers each provider is enrolled with, see what's missing, and manage the enrollment steps in between.</p>
       <div class="dark-panel">
         <h2>Health Care Network verification board</h2>
@@ -1122,6 +1127,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- CREDENTIALING TAB (add-on) -->
     <div id="tabCredentialing" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Credentialing</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Payer enrollment, licensing, specialty tracking, and the tools for building out a provider's full credentialing file.</p>
       <div id="credentialingContent">
         <!-- Basic vs Full comparison — mirrors the Document tracking
@@ -1544,6 +1550,7 @@ window.selkoSharedAuthStorage = {
     </div>
 
       <div id="tabCompliance" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Compliance</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Background and sanctions screening for your staff, plus the audit trail of who's accessed sensitive records and documents.</p>
 <div id="complianceAddonSection" style="display:none;">
 
@@ -1709,6 +1716,7 @@ window.selkoSharedAuthStorage = {
          tables, and access (Admin-only) from Credentialing above, per
          the I-9 segregated-file requirement. -->
     <div id="tabHr" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">HR Onboarding</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Employee records and onboarding, separate from clinical credentialing — built for anyone on payroll, not just providers.</p>
       <div id="hrContent">
         <div class="dark-panel" style="margin-bottom:16px;">
@@ -1765,6 +1773,7 @@ window.selkoSharedAuthStorage = {
     </div>
 
     <div id="tabSettings" style="display:none;">
+      <div style="font-size:20px;font-weight:700;color:#fff;margin-bottom:4px;">Settings</div>
       <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Your company's own configuration, account access, billing, and (for Selko admins) platform-wide tools.</p>
 
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
@@ -19709,7 +19718,55 @@ function toggleAdminSidebar() {
   const isOpen = drawer.classList.toggle('mobile-open');
   if (backdrop) backdrop.classList.toggle('mobile-open', isOpen);
   if (label) label.textContent = isOpen ? 'Close' : 'Menu';
+  // An explicit click always means "keep it open regardless of where the
+  // mouse goes next" — the one thing that distinguishes this from a hover
+  // peek, which is meant to close itself the moment you're not near it.
+  window._sidebarPinned = isOpen;
 }
+
+// Hovering the sidebar open/closed — now that the drawer behaves this way
+// at every width, not just under 900px. A peek (hover) auto-closes once
+// the mouse leaves the drawer itself; a pin (the explicit button, or the
+// backdrop click that closes it) is the only thing that overrides that,
+// so a deliberate click never gets silently closed out from under someone
+// just because their mouse drifted off the panel for a moment.
+window._sidebarPinned = false;
+let _sidebarHoverCloseTimer = null;
+document.addEventListener('mousemove', (e) => {
+  const drawer = document.querySelector('.admin-sidebar-col');
+  if (!drawer || window._sidebarPinned) return;
+  const isOpen = drawer.classList.contains('mobile-open');
+  if (!isOpen && e.clientX <= 15) {
+    drawer.classList.add('mobile-open');
+  }
+});
+document.addEventListener('mouseleave', () => {
+  // The mouse left the whole window (e.g. onto another monitor or a
+  // browser chrome element) — treat that the same as leaving the drawer,
+  // since there's no later "mouse re-entered the drawer" event coming.
+  const drawer = document.querySelector('.admin-sidebar-col');
+  if (drawer && !window._sidebarPinned) drawer.classList.remove('mobile-open');
+});
+
+function wireSidebarHoverClose() {
+  const drawer = document.querySelector('.admin-sidebar-col');
+  if (!drawer) return;
+  drawer.addEventListener('mouseleave', () => {
+    if (window._sidebarPinned) return;
+    clearTimeout(_sidebarHoverCloseTimer);
+    // A short delay, not an instant close — moving the mouse diagonally
+    // out through a corner of the drawer is a normal, easy thing to do
+    // by accident, and shouldn't slam the panel shut the instant the
+    // cursor technically crosses the edge.
+    _sidebarHoverCloseTimer = setTimeout(() => {
+      drawer.classList.remove('mobile-open');
+    }, 250);
+  });
+  drawer.addEventListener('mouseenter', () => {
+    clearTimeout(_sidebarHoverCloseTimer);
+  });
+}
+wireSidebarHoverClose();
 
 // Standard dropdown expectation: clicking anywhere outside the open
 // menu closes it, not just the toggle button itself. Attached once at
