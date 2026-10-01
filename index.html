@@ -564,6 +564,8 @@ window.selkoSharedAuthStorage = {
 
     <!-- DOCUMENTS TAB -->
     <div id="tabOverview" class="dark-panel">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">A quick snapshot of where things stand — document status, credentialing readiness, and anything that needs attention first.</p>
+
       <h2 id="ovGreeting">Overview</h2>
 
       <div id="ovDocumentsSection" style="display:none;">
@@ -645,6 +647,7 @@ window.selkoSharedAuthStorage = {
 
 
     <div id="tabDocs" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Every document on file for your staff, sorted by what's active versus what's still missing.</p>
       <div style="background:var(--navy2);border:1px solid rgba(255,255,255,.1);border-radius:10px;padding:8px;display:inline-flex;gap:8px;margin-bottom:14px;">
         <button class="tab active" id="docsSubTab-active" onclick="setDocsSubView('active')" style="background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;">📄 Active documents</button>
         <button class="tab" id="docsSubTab-missing" onclick="setDocsSubView('missing')" style="background:transparent;border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7);">❗ Missing documents</button>
@@ -842,7 +845,10 @@ window.selkoSharedAuthStorage = {
 
     <!-- EXPIRATION TAB -->
     <div id="tabExp" class="dark-panel" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Every license, certification, and credential with a date, sorted by how soon it expires.</p>
+
       <h2>Expiration tracker</h2>
+      <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Switch between what needs attention soon and the full list — sorted automatically by how close each item is to expiring.</p>
       <div id="expStatBar" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px;"></div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button class="tab active" id="expViewToggle-attention" onclick="setExpViewMode('attention')" style="background:var(--danger);border-color:var(--danger);">⚠ Needs attention <span id="expAttentionCount"></span></button>
@@ -875,8 +881,10 @@ window.selkoSharedAuthStorage = {
 
     <!-- STAFF TAB -->
     <div id="tabStaff" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Everyone on your roster, their credentialing status at a glance, and the tools to add, edit, or manage each person.</p>
       <div class="dark-panel">
         <h2>Staff management</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Add new staff, edit existing records, and filter the roster by discipline, license type, or status.</p>
         <div class="filter-bar">
           <select class="filter-sel" id="fStaffPerson" onchange="loadStaffTable()">
             <option value="">All staff</option>
@@ -977,6 +985,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- SETTINGS TAB -->
     <div id="tabInsurance" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Track which payers each provider is enrolled with, see what's missing, and manage the enrollment steps in between.</p>
       <div class="dark-panel">
         <h2>Health Care Network verification board</h2>
         <p style="font-size:12px;color:rgba(255,255,255,.58);">Track which staff are confirmed in-network with which payers. Manage the payer list itself under Settings.</p>
@@ -984,6 +993,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" id="pnQuickRefPanel" data-default-open="true">
         <h2>Quick reference — who's in-network</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">A condensed, shareable summary of every provider's current network status, built for sending to someone who just needs the answer, not the full detail below.</p>
         <div style="margin-bottom:12px;">
           <button class="btn btn-sm btn-teal" onclick="emailInNetworkSummary()">📧 Email This Summary</button>
         </div>
@@ -992,6 +1002,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" id="pnAddFormPanel" data-default-open="true">
         <h2>Add / update network record</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Log or update one provider's (or one company entity's) status with a specific payer, step by step through enrollment.</p>
 
         <div style="font-size:11px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Who this is for</div>
         <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -1072,6 +1083,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" id="pnStaffTablePanel" data-default-open="true">
         <h2>Individual staff</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">The full network status board, one row per staff member per payer, filterable by person or payer.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
           <select class="filter-sel" id="fInsuranceStaff" onchange="renderPayerBoard()" style="max-width:240px;">
             <option value="">All staff</option>
@@ -1090,6 +1102,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" id="pnEntityTablePanel" data-default-open="true">
         <h2>🏢 Company / agency entities</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">The same board, scoped to company-wide or agency-level network records instead of individual providers.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
           <select class="filter-sel" id="fInsuranceEntity" onchange="renderPayerBoard()" style="max-width:240px;">
             <option value="">All entities</option>
@@ -1109,6 +1122,7 @@ window.selkoSharedAuthStorage = {
 
     <!-- CREDENTIALING TAB (add-on) -->
     <div id="tabCredentialing" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Payer enrollment, licensing, specialty tracking, and the tools for building out a provider's full credentialing file.</p>
       <div id="credentialingContent">
         <!-- Basic vs Full comparison — mirrors the Document tracking
              Standard vs Pro panel in Settings, same reasoning: only shows
@@ -1529,7 +1543,9 @@ window.selkoSharedAuthStorage = {
       </div>
     </div>
 
-      <div id="tabCompliance" style="display:none;"><div id="complianceAddonSection" style="display:none;">
+      <div id="tabCompliance" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Background and sanctions screening for your staff, plus the audit trail of who's accessed sensitive records and documents.</p>
+<div id="complianceAddonSection" style="display:none;">
 
 <!-- OIG LEIE exclusion check — company-scoped self-service version
              of the same check available in Selko Admin. Every run emails
@@ -1693,9 +1709,11 @@ window.selkoSharedAuthStorage = {
          tables, and access (Admin-only) from Credentialing above, per
          the I-9 segregated-file requirement. -->
     <div id="tabHr" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Employee records and onboarding, separate from clinical credentialing — built for anyone on payroll, not just providers.</p>
       <div id="hrContent">
         <div class="dark-panel" style="margin-bottom:16px;">
           <h2>Employees</h2>
+          <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Everyone on payroll who isn't necessarily a credentialed provider — add, search, and manage their records here.</p>
           <div style="display:flex;gap:8px;margin-bottom:10px;">
             <input type="text" class="inline-input" id="hrEmployeeSearch" placeholder="🔍 Search employees..." style="flex:1;box-sizing:border-box;" oninput="loadHrEmployees()" />
             <button class="btn btn-sm btn-ghost" onclick="showImportHrFromStaffModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">↓ Import from staff list</button>
@@ -1747,6 +1765,7 @@ window.selkoSharedAuthStorage = {
     </div>
 
     <div id="tabSettings" style="display:none;">
+      <p style="color:rgba(255,255,255,.58);font-size:13px;margin:0 0 16px;">Your company's own configuration, account access, billing, and (for Selko admins) platform-wide tools.</p>
 
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
         <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Account &amp; Billing</span>
@@ -1775,6 +1794,7 @@ window.selkoSharedAuthStorage = {
            pricing can change without touching this code. -->
       <div class="dark-panel" style="margin-bottom:16px;" id="billingPanelSettings">
         <h2>Billing</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your current plan, usage, and the tools to change or manage it.</p>
         <div id="billingCurrentStatus" style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:14px;"></div>
 
         <div id="billingNewPlanPicker">
@@ -1865,6 +1885,7 @@ window.selkoSharedAuthStorage = {
       <!-- Company settings -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>Company settings</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your company's own name, contact info, and the core details used across the platform.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div>
             <label class="inline-label">Company name</label>
@@ -1911,6 +1932,7 @@ window.selkoSharedAuthStorage = {
       <!-- Branding (Pro only) -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>Branding <span id="brandingProTag" style="font-size:10px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Make the parts your staff and partners see — emails, the header, login screen — look like your own company's, not Selko's.</p>
         <div id="brandingLocked" style="display:none;">
           <p style="color:rgba(255,255,255,.66);font-size:13px;margin-bottom:14px;">Make it look like your own software, not ours — upgrade to Pro to unlock:</p>
           <ul style="color:rgba(255,255,255,.62);font-size:13px;margin:0 0 14px 18px;line-height:1.8;">
@@ -2149,6 +2171,7 @@ window.selkoSharedAuthStorage = {
       <!-- Add company -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>⚡ Selko Admin — Companies</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Every company on the platform — add new ones, and manage each one's plan and settings.</p>
         <div class="filter-bar">
           <button class="btn btn-sm btn-teal" onclick="showAddCompany()">+ Add company</button>
         </div>
@@ -2207,6 +2230,7 @@ window.selkoSharedAuthStorage = {
       <!-- Cross-company invite -->
       <div class="dark-panel">
         <h2>Invite staff to any company</h2>
+        <p style="font-size:12px;color:rgba(255,255,255,.58);margin-bottom:12px;">Send a login invitation to a staff member at any company on the platform, without needing to be logged into that company directly.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
           <div>
             <label class="inline-label">Company</label>
