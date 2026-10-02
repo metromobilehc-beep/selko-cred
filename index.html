@@ -1584,6 +1584,10 @@ window.selkoSharedAuthStorage = {
       <p style="color:rgba(255,255,255,.58);font-size:15px;margin:0 0 16px;">Background and sanctions screening for your staff, plus the audit trail of who's accessed sensitive records and documents.</p>
 <div id="complianceAddonSection" style="display:none;">
 
+<div style="margin:8px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Screening &amp; Exclusions</span>
+      </div>
+
 <!-- OIG LEIE exclusion check — company-scoped self-service version
              of the same check available in Selko Admin. Every run emails
              the company's admins, whether or not anything was found —
@@ -1665,6 +1669,10 @@ window.selkoSharedAuthStorage = {
             <li>Get advice on your obligations before acting on a match. See <em>Guides &amp; resources</em> below for how to read a result.</li>
           </ul>
         </div></div>
+
+<div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Audit &amp; Logs</span>
+      </div>
 
 <!-- Sensitive-field access log — SSN views/entries specifically.
            No delete action exists anywhere in this app for this table —
@@ -2007,7 +2015,7 @@ window.selkoSharedAuthStorage = {
       <div style="font-size:22px;font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;">HR Onboarding<button class="btn btn-sm btn-ghost" style="font-size:16px;padding:7px 16px;color:#fff;border-color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;" onclick="showPageHelp(HR_HELP)">❓ Help</button></div>
       <p style="color:rgba(255,255,255,.58);font-size:15px;margin:0 0 16px;">Employee records and onboarding, separate from clinical credentialing — built for anyone on payroll, not just providers.</p>
       <div id="hrContent">
-        <div class="dark-panel" style="margin-bottom:16px;">
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Employees</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Everyone on payroll who isn't necessarily a credentialed provider — add, search, and manage their records here.</p>
           <div style="display:flex;gap:8px;margin-bottom:10px;">
@@ -2018,7 +2026,7 @@ window.selkoSharedAuthStorage = {
           <div id="hrEmployeeList"></div>
         </div>
 
-        <div class="dark-panel" style="margin-bottom:16px;">
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>HR form templates</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">I-9, W-4, background check authorization, or your own company policy documents — mapped once, generated per employee. Background-check-authorization forms should be uploaded and checked as a standalone disclosure, never bundled with the others.</p>
           <div id="hrTemplatesList" style="margin-bottom:14px;"></div>
@@ -2040,9 +2048,9 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div class="dark-panel">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <h2 style="margin:0;">Reminders</h2>
+      <div class="dark-panel" data-default-open="true">
+        <h2>Reminders</h2>
+        <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
           <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('hr_employee')">+ New reminder</button>
         </div>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">A memo you write, emailed starting at the date/time you pick, repeating weekly until marked done.</p>
@@ -2460,13 +2468,6 @@ window.selkoSharedAuthStorage = {
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">A few partners Selko works with, in case they're useful.</p>
         <div id="partnerRecsStaticList" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
-
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
-        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Audit &amp; Logs</span>
-      </div>
-
-      <!-- Add company -->
-      
 
       <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
@@ -3148,7 +3149,7 @@ document.addEventListener('click', function(e) {
 });
 
 function initCollapsiblePanels() {
-  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabCredentialing .dark-panel, #tabCompliance .dark-panel, #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
+  document.querySelectorAll('#tabSettings .dark-panel, #tabSuper .dark-panel, #tabCredentialing .dark-panel, #tabCompliance .dark-panel, #tabHr .dark-panel:not(#hrLock), #missingDocsPanel, #missingDocsProLock, #pnQuickRefPanel, #pnAddFormPanel, #pnStaffTablePanel, #pnEntityTablePanel').forEach(panel => {
     if (panel.dataset.collapsibleInit) return; // don't re-wrap if this ever runs twice
     const h2 = panel.querySelector('h2');
     if (!h2) return;
