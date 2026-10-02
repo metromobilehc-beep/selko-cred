@@ -432,6 +432,8 @@
      dark-panel inputs, instead of falling back to gray-800 body text
      color meant for the light-background forms. */
   input.inline-input  { width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.34); background: rgba(255,255,255,.07); color: #fff; font-size: 17px; font-family: 'Inter', inherit; transition: border-color .15s, background .15s; }
+  textarea.inline-input { width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid rgba(255,255,255,.34); background: rgba(255,255,255,.07); color: #fff; font-size: 17px; font-family: 'Inter', inherit; line-height: 1.4; transition: border-color .15s, background .15s; }
+  textarea.inline-input:focus { outline: none; border-color: var(--teal); background: rgba(255,255,255,.1); }
   input.inline-input:focus { outline: none; border-color: var(--teal); background: rgba(255,255,255,.1); }
   /* Placeholder text had no explicit color at all before this — it was
      falling back to a weak browser default that read as barely-there

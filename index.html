@@ -19135,20 +19135,38 @@ function payerNetworkStatusCell(r) {
 // step credentialing pipeline doesn't really describe a company-wide
 // contract the way it describes one clinician's application.
 const ENROLLMENT_STEPS = [
-  { n: 1, name: 'Initial Inquiry Submitted',  desc: "Submitted the provider's inquiry/request to join the network", options: ['Pending', 'Completed', 'Delayed'],   complete: 'Completed' },
-  { n: 2, name: 'Pre-Qualification',          desc: 'License and basic credential verification started by the network', options: ['Pending', 'Completed', 'Issues'], complete: 'Completed' },
-  { n: 3, name: 'Application Completed',      desc: "Provider's full enrollment application and documents submitted", options: ['Pending', 'Completed', 'In Progress'], complete: 'Completed' },
-  { n: 4, name: 'Credentialing in Progress',  desc: 'Network is reviewing credentials and performing background checks', options: ['Pending', 'Completed', 'In Review'], complete: 'Completed' },
-  { n: 5, name: 'Contract Sent',              desc: 'Contract sent to the provider for review/signature', options: ['Pending', 'Sent', 'Signed'], complete: 'Signed' },
-  { n: 6, name: 'System Setup',               desc: "Provider data entered into the network's systems", options: ['Pending', 'Completed'], complete: 'Completed' },
-  { n: 7, name: 'Onboarding Scheduled',        desc: 'Provider onboarding and training session planned', options: ['Pending', 'Scheduled', 'Completed'], complete: 'Completed' },
+  { n: 1, name: 'Initial Inquiry Submitted',  desc: "Submitted the provider's inquiry/request to join the network", options: ['Not Started', 'Pending', 'Completed', 'Delayed'],   complete: 'Completed' },
+  { n: 2, name: 'Pre-Qualification',          desc: 'License and basic credential verification started by the network', options: ['Not Started', 'Pending', 'Completed', 'Issues'], complete: 'Completed' },
+  { n: 3, name: 'Application Completed',      desc: "Provider's full enrollment application and documents submitted", options: ['Not Started', 'Pending', 'Completed', 'In Progress'], complete: 'Completed' },
+  { n: 4, name: 'Credentialing in Progress',  desc: 'Network is reviewing credentials and performing background checks', options: ['Not Started', 'Pending', 'Completed', 'In Review'], complete: 'Completed' },
+  { n: 5, name: 'Contract Sent',              desc: 'Contract sent to the provider for review/signature', options: ['Not Started', 'Pending', 'Sent', 'Signed'], complete: 'Signed' },
+  { n: 6, name: 'System Setup',               desc: "Provider data entered into the network's systems", options: ['Not Started', 'Pending', 'Completed'], complete: 'Completed' },
+  { n: 7, name: 'Onboarding Scheduled',        desc: 'Provider onboarding and training session planned', options: ['Not Started', 'Pending', 'Scheduled', 'Completed'], complete: 'Completed' },
   { n: 8, name: 'Enrollment Complete',        desc: 'Provider is fully enrolled and active in the network', options: ['No', 'Yes'], complete: 'Yes' },
 ];
 
 // A fresh 8-step skeleton for an enrollment that has none yet — each step
 // starts at its own first (least-progressed) option, never at a random one.
 function defaultEnrollmentSteps() {
-  return ENROLLMENT_STEPS.map(s => ({ step: s.n, status: s.options[0], updated_at: null }));
+  return ENROLLMENT_STEPS.map(s => ({ step: s.n, status: stepUntouchedValue(s), updated_at: null }));
+}
+
+// Step workflow (Juan's remake): every step starts at "Not Started". Writing a
+// note on a step means he has done his part and is waiting — the step flips to
+// "Pending" automatically. "Completed" (or Signed / Yes) is NEVER automatic; it
+// is only ever set by hand once the work is actually finished. Step 8 stays
+// a plain No/Yes and doesn't auto-change.
+function stepUntouchedValue(meta) { return meta.n === 8 ? 'No' : 'Not Started'; }
+
+// Enrollments saved before this change used "Pending" as the starting value.
+// A step still reading Pending with no timestamp and no note was never touched
+// by anyone, so it is shown as Not Started instead of looking like work is
+// underway. (A step someone deliberately set back to Pending has a timestamp
+// and is left alone.)
+function normalizeStepStatus(meta, saved) {
+  if (!saved) return stepUntouchedValue(meta);
+  if (meta.n !== 8 && saved.status === 'Pending' && !saved.updated_at && !saved.note) return 'Not Started';
+  return saved.status;
 }
 
 // Pure. Compares a saved set of steps against a newly-edited set and returns
@@ -19214,17 +19232,25 @@ async function showEnrollmentStepsModal(rowId, source) {
   modal.id = 'enrollmentStepsModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1150;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:2px;">Enrollment steps</div>
       <div style="color:rgba(255,255,255,.58);font-size:14px;margin-bottom:16px;">${hrOnbEsc(row.credtrack_staff?.full_name || 'Provider')} · ${hrOnbEsc(row.payers?.name || 'Payer')}</div>
       ${ENROLLMENT_STEPS.map(meta => {
         const cur = byN.get(meta.n);
-        return `<div style="margin-bottom:12px;">
-          <label style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${meta.n}. ${hrOnbEsc(meta.name)}</label>
-          <select class="inline-select" id="estepStatus_${meta.n}" style="width:100%;">
-            ${meta.options.map(o => `<option value="${o}" ${cur && cur.status === o ? 'selected' : ''}>${o}</option>`).join('')}
-          </select>
-          ${cur && cur.updated_at ? `<div style="font-size:12px;color:rgba(255,255,255,.45);margin-top:2px;">Last changed ${new Date(cur.updated_at).toLocaleDateString()}</div>` : ''}
+        const val = normalizeStepStatus(meta, cur);
+        const baseHint = [
+          cur && cur.note ? [cur.note_by, cur.note_at ? new Date(cur.note_at).toLocaleDateString() : ''].filter(Boolean).join(' · ') : '',
+          cur && cur.updated_at ? 'Status changed ' + new Date(cur.updated_at).toLocaleDateString() : '',
+        ].filter(Boolean).join('  |  ');
+        return `<div style="margin-bottom:12px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
+            <label for="estepStatus_${meta.n}" title="${hrOnbEsc(meta.desc)}" style="font-size:14px;font-weight:600;color:#fff;">${meta.n}. ${hrOnbEsc(meta.name)}</label>
+            <select class="inline-select" id="estepStatus_${meta.n}" onchange="enrollStepStatusChanged(${meta.n})" style="width:150px;flex-shrink:0;">
+              ${meta.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <textarea class="inline-input" id="estepNote_${meta.n}" rows="2" maxlength="600" oninput="enrollStepNoteInput(${meta.n})" placeholder="Note: what was done, who we're waiting on…" style="width:100%;box-sizing:border-box;resize:vertical;font-size:15px;">${hrOnbEsc((cur && cur.note) || '')}</textarea>
+          <div id="estepHint_${meta.n}" data-base="${hrOnbEsc(baseHint)}" style="font-size:12px;color:rgba(255,255,255,.45);margin-top:4px;min-height:14px;">${hrOnbEsc(baseHint)}</div>
         </div>`;
       }).join('')}
       <div id="enrollmentStepsErr" style="color:#f87171;font-size:14px;margin:6px 0 10px;display:none;"></div>
@@ -19238,6 +19264,47 @@ async function showEnrollmentStepsModal(rowId, source) {
   // stashed for saveEnrollmentSteps to diff against, and so it doesn't need
   // a second fetch of the same row it just loaded
   window._enrollmentStepsPrev = steps;
+  ENROLLMENT_STEPS.forEach(m => paintEnrollStepSelect(m.n));
+}
+
+// Colors a step's dropdown by state so the whole list reads at a glance:
+// teal once complete, amber while pending/in progress, plain when untouched.
+function paintEnrollStepSelect(n) {
+  const meta = ENROLLMENT_STEPS.find(m => m.n === n);
+  const sel = document.getElementById('estepStatus_' + n);
+  if (!sel) return;
+  const v = sel.value;
+  const color = v === meta.complete ? 'var(--teal)' : (v === stepUntouchedValue(meta) ? '' : '#f59e0b');
+  sel.style.borderColor = color;
+}
+
+function enrollStepStatusChanged(n) {
+  const sel = document.getElementById('estepStatus_' + n);
+  if (sel) delete sel.dataset.auto; // a manual choice always wins over the auto-pending
+  const hint = document.getElementById('estepHint_' + n);
+  if (hint) hint.textContent = hint.dataset.base || '';
+  paintEnrollStepSelect(n);
+}
+
+// Typing a note on a Not Started step marks it Pending. It never touches a
+// step that's already anything else, and never moves anything to Completed.
+function enrollStepNoteInput(n) {
+  if (n === 8) return;
+  const meta = ENROLLMENT_STEPS.find(m => m.n === n);
+  const sel = document.getElementById('estepStatus_' + n);
+  const hint = document.getElementById('estepHint_' + n);
+  const hasText = document.getElementById('estepNote_' + n).value.trim().length > 0;
+  const untouched = stepUntouchedValue(meta);
+  if (hasText && sel.value === untouched) {
+    sel.value = 'Pending';
+    sel.dataset.auto = '1';
+    if (hint) hint.textContent = 'Marked Pending because a note was added. Set it to ' + meta.complete + ' yourself once this step is done.';
+  } else if (!hasText && sel.dataset.auto === '1' && sel.value === 'Pending') {
+    sel.value = untouched;
+    delete sel.dataset.auto;
+    if (hint) hint.textContent = hint.dataset.base || '';
+  }
+  paintEnrollStepSelect(n);
 }
 
 // Saves the edited steps, links step 8 -> the existing status field (see the
@@ -19253,11 +19320,25 @@ async function saveEnrollmentSteps(rowId, source) {
   errEl.style.display = 'none';
 
   const prevSteps = window._enrollmentStepsPrev || [];
+  const nowIso = new Date().toISOString();
   const newSteps = ENROLLMENT_STEPS.map(meta => {
-    const value = document.getElementById(`estepStatus_${meta.n}`).value;
+    let value = document.getElementById(`estepStatus_${meta.n}`).value;
+    const noteText = (document.getElementById(`estepNote_${meta.n}`).value || '').trim();
     const prior = prevSteps.find(s => s.step === meta.n);
-    const changed = !prior || prior.status !== value;
-    return { step: meta.n, status: value, updated_at: changed ? new Date().toISOString() : (prior ? prior.updated_at : null) };
+    const priorNote = (prior && prior.note) || '';
+    const noteChanged = noteText !== priorNote;
+    // Enforced here as well as live in the form, so a note can never be saved
+    // against a step still reading Not Started.
+    if (meta.n !== 8 && noteText && value === stepUntouchedValue(meta)) value = 'Pending';
+    const priorStatus = normalizeStepStatus(meta, prior);
+    const statusChanged = priorStatus !== value;
+    const out = { step: meta.n, status: value, updated_at: statusChanged ? nowIso : (prior ? prior.updated_at : null) };
+    if (noteText) {
+      out.note = noteText;
+      out.note_at = noteChanged ? nowIso : (prior.note_at || nowIso);
+      out.note_by = noteChanged ? (currentProfile?.full_name || currentProfile?.email || 'Unknown') : (prior.note_by || null);
+    }
+    return out;
   });
 
   const justCompleted = detectNewlyCompletedSteps(prevSteps, newSteps);
@@ -19328,17 +19409,20 @@ async function saveEnrollmentSteps(rowId, source) {
 // opened in the new editor yet (no enrollment_steps recorded).
 function enrollmentStepCell(r) {
   if (!r.enrollment_steps) return payerNetworkStatusCell(r);
-  const stepsByN = new Map(r.enrollment_steps.map(s => [s.step, s.status]));
-  const firstIncomplete = ENROLLMENT_STEPS.find(meta => stepsByN.get(meta.n) !== meta.complete);
+  const stepObjs = new Map(r.enrollment_steps.map(s => [s.step, s]));
+  const valueOf = meta => normalizeStepStatus(meta, stepObjs.get(meta.n));
+  const firstIncomplete = ENROLLMENT_STEPS.find(meta => valueOf(meta) !== meta.complete);
   const summary = firstIncomplete
-    ? `Step ${firstIncomplete.n} of 8: ${firstIncomplete.name} (${hrOnbEsc(stepsByN.get(firstIncomplete.n) || firstIncomplete.options[0])})`
+    ? `Step ${firstIncomplete.n} of 8: ${firstIncomplete.name} (${hrOnbEsc(valueOf(firstIncomplete))})`
     : 'Fully enrolled — all 8 steps complete';
   const dots = ENROLLMENT_STEPS.map(meta => {
-    const val = stepsByN.get(meta.n) || meta.options[0];
+    const val = valueOf(meta);
+    const note = (stepObjs.get(meta.n) || {}).note;
     const isComplete = val === meta.complete;
-    const isDefault = val === meta.options[0];
+    const isDefault = val === stepUntouchedValue(meta);
     const color = isComplete ? 'var(--teal)' : (isDefault ? 'rgba(255,255,255,.15)' : '#f59e0b');
-    return `<div title="${meta.n}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}" style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></div>`;
+    const noteTip = note ? ' — ' + hrOnbEsc(note.length > 140 ? note.slice(0, 140) + '…' : note) : '';
+    return `<div title="${meta.n}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}${noteTip}" style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></div>`;
   }).join('');
   return `<div style="display:flex;flex-direction:column;gap:3px;">
     <div style="display:flex;gap:3px;">${dots}</div>
