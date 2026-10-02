@@ -10455,7 +10455,13 @@ function docTypeNameTokens(name) {
 // (their own types plus Selko-wide defaults), rather than reusing it.
 function findLikelyDuplicateDocType(candidateName, existingTypes) {
   const candidateTokens = new Set(docTypeNameTokens(candidateName));
-  if (!candidateTokens.size) return null;
+  // A name made only of generic words (e.g. just "Insurance") has no
+  // distinctive tokens to compare, so fall back to an exact normalized match
+  // instead of silently skipping the check.
+  if (!candidateTokens.size) {
+    const c = dupCompact(candidateName);
+    return c ? (existingTypes || []).find(t => dupCompact(t.name) === c) || null : null;
+  }
   return (existingTypes || []).find(t => {
     const tTokens = docTypeNameTokens(t.name);
     return tTokens.some(w => candidateTokens.has(w));
@@ -10488,6 +10494,83 @@ function showCustomConfirm(message, { okLabel = 'OK', cancelLabel = 'Cancel', da
     document.getElementById('customConfirmCancelBtn').onclick = () => finish(false);
     modal.addEventListener('click', e => { if (e.target === modal) finish(false); });
   });
+}
+
+// ══ DUPLICATE-NAME GUARD ══
+// One shared check for every "add a named thing" form (payers, agencies,
+// company entities, and the quick-add paths inside the network form).
+// Soft by design: it WARNS and lets an admin confirm, rather than hard-
+// blocking, because a genuinely distinct record can legitimately have a
+// similar name — but it makes an accidental second "Aetna" take a
+// deliberate click instead of happening silently.
+//
+// Matching ignores case, spacing, punctuation and legal noise words
+// ("Inc", "LLC", "the", "of"), so "UnitedHealthcare" / "United Healthcare"
+// and "Aetna, Inc." / "aetna" all count as the same name. "Similar" means
+// they share the distinctive words once generic ones (health, care,
+// insurance, home...) are set aside — which is what keeps "Faith Home
+// Health" and "Rice Home Health" from flagging each other. Abbreviations
+// ("BCBS" vs "Blue Cross Blue Shield") can't be caught by any text rule.
+const DUP_NOISE_WORDS = new Set(['inc','llc','pllc','llp','corp','corporation','co','company','ltd','the','of','and','a']);
+const DUP_GENERIC_WORDS = new Set(['health','healthcare','insurance','plan','plans','care','medical','services','service','home','group','network','agency','agencies','hospital','clinic','center','centers','therapy','solutions','systems']);
+
+function dupTokens(name) {
+  return (name || '').toLowerCase().replace(/&/g, ' and ').replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/).filter(w => w && !DUP_NOISE_WORDS.has(w));
+}
+function dupCompact(name) { return dupTokens(name).join(''); }
+function dupEditDistanceAtMost1(a, b) {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
+// Pure. Returns { item, kind: 'exact' | 'similar' } for the closest existing
+// name, or null. Exact always wins over similar when both exist.
+function findDuplicateName(candidate, existing) {
+  const candCompact = dupCompact(candidate);
+  if (!candCompact) return null;
+  const candSig = new Set(dupTokens(candidate).filter(w => !DUP_GENERIC_WORDS.has(w)));
+  let similar = null;
+  for (const item of (existing || [])) {
+    const c = dupCompact(item.name);
+    if (!c) continue;
+    if (c === candCompact) return { item, kind: 'exact' };
+    if (similar) continue;
+    if (c.length >= 6 && candCompact.length >= 6 && dupEditDistanceAtMost1(c, candCompact)) { similar = { item, kind: 'similar' }; continue; }
+    const sig = new Set(dupTokens(item.name).filter(w => !DUP_GENERIC_WORDS.has(w)));
+    if (!sig.size || !candSig.size) continue;
+    const shared = [...candSig].filter(w => sig.has(w)).length;
+    if (!shared) continue;
+    const smaller = Math.min(candSig.size, sig.size);
+    const union = new Set([...candSig, ...sig]).size;
+    if (shared === smaller || shared / union >= 0.7) similar = { item, kind: 'similar' };
+  }
+  return similar;
+}
+
+// Looks up this company's existing names fresh at save time (not from a
+// cached list that may be stale), warns if one matches, and resolves to
+// true if it's fine to proceed. If the lookup itself fails it resolves
+// true — a broken check must never stop someone from saving.
+async function confirmIfDuplicateName(table, candidate, noun, excludeId = null) {
+  const cols = table === 'company_entities' ? 'id, name' : 'id, name, active';
+  const { data, error } = await sb.from(table).select(cols).eq('company_id', currentCompany.id);
+  if (error || !data) return true;
+  const pool = data.filter(r => excludeId == null || String(r.id) !== String(excludeId));
+  const hit = findDuplicateName(candidate, pool);
+  if (!hit) return true;
+  const inactive = hit.item.active === false ? ' It is currently marked inactive — reactivate that one instead of adding a new one.' : '';
+  const msg = hit.kind === 'exact'
+    ? `"${hit.item.name}" is already on your ${noun} list.${inactive}\n\nAdding it again creates a second, separate entry, and records get split between the two copies.`
+    : `"${hit.item.name}" is already on your ${noun} list and looks like the same one as "${candidate}".${inactive}\n\nIf they are the same, use the existing entry. Two entries for one real ${noun} split its records and make staff look like they're missing something they actually have.`;
+  return showCustomConfirm(msg, { okLabel: hit.kind === 'exact' ? 'Add duplicate anyway' : 'Add anyway', cancelLabel: 'Cancel' });
 }
 
 async function saveDocType() {
@@ -11414,6 +11497,7 @@ async function addCompanyEntity() {
   const input = document.getElementById('newEntityInput');
   const name = input.value.trim();
   if (!name) return;
+  if (!(await confirmIfDuplicateName('company_entities', name, 'entity'))) return;
 
   const { error } = await sb.from('company_entities').insert({ company_id: currentCompany.id, name });
   if (error) {
@@ -11429,6 +11513,7 @@ async function renameCompanyEntity(id, currentName) {
   const newName = prompt(`Rename "${currentName}" to:`, currentName);
   if (!newName || !newName.trim() || newName.trim() === currentName) return;
   const trimmed = newName.trim();
+  if (!(await confirmIfDuplicateName('company_entities', trimmed, 'entity', id))) return;
 
   const { error } = await sb.from('company_entities').update({ name: trimmed }).eq('id', id);
   if (error) {
@@ -13755,6 +13840,7 @@ async function savePayer() {
   const err    = document.getElementById('payerErr');
   err.style.display = 'none';
   if (!name) { err.textContent = 'Payer name is required.'; err.style.display = 'block'; return; }
+  if (!(await confirmIfDuplicateName('payers', name, 'insurance/payer'))) return;
   const { error } = await sb.from('payers').insert({ name, company_id: currentCompany.id, active: true });
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
   toast('Payer "' + name + '" added');
@@ -13892,6 +13978,7 @@ async function saveCredtrackAgency() {
   const err    = document.getElementById('agencyErr');
   err.style.display = 'none';
   if (!name) { err.textContent = 'Agency name is required.'; err.style.display = 'block'; return; }
+  if (!(await confirmIfDuplicateName('credtrack_agencies', name, 'agency'))) return;
   const { error } = await sb.from('credtrack_agencies').insert({ name, company_id: currentCompany.id, active: true });
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
   toast('Agency "' + name + '" added');
@@ -13903,6 +13990,7 @@ async function saveCredtrackAgency() {
 async function updateCredtrackAgencyName(id, name) {
   const trimmed = name.trim();
   if (!trimmed) { toast('Agency name cannot be empty', true); await loadCredtrackAgencies(); return; }
+  if (!(await confirmIfDuplicateName('credtrack_agencies', trimmed, 'agency', id))) { await loadCredtrackAgencies(); return; }
   const { error } = await sb.from('credtrack_agencies').update({ name: trimmed }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Agency name updated');
@@ -19352,6 +19440,11 @@ async function savePayerNetwork() {
   // this one record, invisible to the Settings management panel and not
   // offered as an option for future entries.
   if (entitySelectVal === '__new_entity__' && entityName) {
+    if (!(await confirmIfDuplicateName('company_entities', entityName, 'entity'))) {
+      err.textContent = 'Not added. Pick the existing entity from the list instead.';
+      err.style.display = 'block';
+      return;
+    }
     await sb.from('company_entities').insert({ company_id: currentCompany.id, name: entityName })
       .then(({ error: insertErr }) => {
         // Ignore a duplicate-name conflict — it just means this name
@@ -19366,6 +19459,11 @@ async function savePayerNetwork() {
   // available everywhere else a payer gets picked from, not just this
   // one record.
   if (isNewPayer) {
+    if (!(await confirmIfDuplicateName('payers', newPayerName, 'insurance/payer'))) {
+      err.textContent = 'Not added. Pick the existing insurance from the dropdown instead.';
+      err.style.display = 'block';
+      return;
+    }
     const { data: createdPayer, error: payerErr } = await sb.from('payers')
       .insert({ name: newPayerName, company_id: currentCompany.id, active: true })
       .select('id').single();
