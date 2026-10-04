@@ -633,6 +633,8 @@ window.selkoSharedAuthStorage = {
       <div style="font-size:22px;font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;">Overview<button class="btn btn-sm btn-ghost" style="font-size:16px;padding:7px 16px;color:#fff;border-color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;" onclick="showPageHelp(OVERVIEW_HELP)">❓ Help</button></div>
       <p style="color:rgba(255,255,255,.58);font-size:15px;margin:0 0 16px;">A quick snapshot of where things stand — document status, credentialing readiness, and anything that needs attention first.</p>
 
+      <div id="gettingStartedPanel"></div>
+
       <h2 id="ovGreeting">Overview</h2>
 
       <div id="ovDocumentsSection" style="display:none;">
@@ -2079,9 +2081,19 @@ window.selkoSharedAuthStorage = {
     <div id="tabSettings" style="display:none;">
       <div style="font-size:22px;font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;">Settings<button class="btn btn-sm btn-ghost" style="font-size:16px;padding:7px 16px;color:#fff;border-color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;" onclick="showPageHelp(SETTINGS_HELP)">❓ Help</button></div>
       <p style="color:rgba(255,255,255,.58);font-size:15px;margin:0 0 16px;">Your company's own configuration, account access, billing, and (for Selko admins) platform-wide tools.</p>
+      <div id="settingsJumpBar" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 6px;">
+        <span style="font-size:13px;color:rgba(255,255,255,.55);">Jump to:</span>
+        <button type="button" class="chip-btn" data-target="settingsGrp_account" onclick="jumpToSettingsGroup('settingsGrp_account')">Account &amp; Billing</button>
+        <button type="button" class="chip-btn" data-target="settingsGrp_company" onclick="jumpToSettingsGroup('settingsGrp_company')">Company Profile</button>
+        <button type="button" class="chip-btn" data-target="settingsGrp_setup" onclick="jumpToSettingsGroup('settingsGrp_setup')">Professional Setup</button>
+        <button type="button" class="chip-btn" data-target="hcnSectionHeader" onclick="jumpToSettingsGroup('hcnSectionHeader')">Health Care Network</button>
+        <button type="button" class="chip-btn" data-target="settingsPartnersHeader" onclick="jumpToSettingsGroup('settingsPartnersHeader')">Partners</button>
+        <button type="button" class="chip-btn" data-target="settingsGrp_system" onclick="jumpToSettingsGroup('settingsGrp_system')">Platform &amp; System</button>
+      </div>
 
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div id="settingsGrp_account" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Account &amp; Billing</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Your own login name, your plan, and what you pay.</div>
       </div>
 
       <!-- Own display name — shown in the header, and baked as a plain
@@ -2191,12 +2203,13 @@ window.selkoSharedAuthStorage = {
         <p id="proComparisonUpgradeNote" style="font-size:14px;color:rgba(255,255,255,.58);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
       </div>
 
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div id="settingsGrp_company" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Profile</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Your company name, the email that receives alerts, reminder timing and branding. Set once; it applies everywhere.</div>
       </div>
 
       <!-- Company settings -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="companySettingsPanel">
         <h2>Company settings</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your company's own name, contact info, and the core details used across the platform.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
@@ -2283,8 +2296,9 @@ window.selkoSharedAuthStorage = {
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
       </div>
 
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div id="settingsGrp_setup" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Professional Setup</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">The roles (PT, RN, MD…) and document types your staff are tracked against. Start with Professional roles, then Document types.</div>
       </div>
 
       <!-- Clinical disciplines — per-company, since a PT/OT staffing company
@@ -2292,7 +2306,7 @@ window.selkoSharedAuthStorage = {
            different values here. Healthcare-only: Selko Cred no longer covers
            other verticals, so every example here should read as a clinical
            credential, never a role from an unrelated industry. -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="rolesPanelSettings">
         <h2 id="disciplinesPanelTitle">Professional roles</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
           Define the professional roles used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, or MD/DO/PA/NP/RN for an urgent care clinic. These appear anywhere a role is selected: adding staff, editing a staff member's role, and scoping which document types apply to which roles.
@@ -2359,8 +2373,9 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div id="hcnSectionHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div id="hcnSectionHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Health Care Network</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">The insurances and agencies you work with. This feeds the Health Care Network tab.</div>
       </div>
 
       <!-- Company & Agency Entities — for tracking network status at
@@ -2412,8 +2427,9 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div id="settingsPartnersHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div id="settingsPartnersHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Give referral partners read-only access to their own staff's verified documents.</div>
       </div>
 
       <!-- Standard-tier teaser — shown instead of the real panel below when
@@ -2498,8 +2514,9 @@ window.selkoSharedAuthStorage = {
         <div id="partnerRecsStaticList" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
 
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
-        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
+      <div id="settingsGrp_recs" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
+        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Recommendations</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Optional referral links shown where you'd actually need them, such as an empty malpractice field.</div>
       </div>
 
       <!-- Partner recommendations — contextual referral links (malpractice
@@ -2535,8 +2552,9 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div id="settingsGrp_system" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Platform &amp; System</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Storage your company is using and the most recent uploads.</div>
       </div>
 
       <!-- Storage usage — per company, so it's actually useful for
@@ -20782,12 +20800,197 @@ function switchTab(tab) {
   if (tab === 'credentialing') loadCredentialingTab();
   if (tab === 'compliance') loadCompliance();
   if (tab === 'hr')        { loadHrTab(); loadAllRemindersFor('hr_employee'); }
-  if (tab === 'settings')  loadSettings();
+  if (tab === 'settings')  { loadSettings(); setTimeout(refreshSettingsJumpBar, 600); }
   if (tab === 'super')     loadSuperAdmin();
+}
+
+// ── Getting-started checklist (Overview) ────────────────────────────────
+// A short, ordered "what to do first" list for admins. Every step except one
+// checks itself off from real data, so it can't drift out of date or ask
+// someone to confirm something the app can already see. The one manual step
+// (reviewing document types) has no data signal of its own unless the company
+// has already changed something there, so it also auto-completes in that case.
+// Hidden automatically once everything is done; can also be hidden by hand,
+// and brought back from the Overview.
+//
+// State lives in companies.custom_vars.gettingStarted so it's per company (the
+// admin team shares it) and needs no database change.
+const GETTING_STARTED_STEPS = [
+  { id: 'settings', title: 'Confirm your company settings',
+    why: 'Set the admin email that receives expiry and compliance alerts.',
+    go: ['settings', 'companySettingsPanel'], goLabel: 'Open settings',
+    needs: () => true, auto: () => ((currentCompany.admin_emails || []).filter(Boolean).length > 0) },
+  { id: 'roles', title: 'Set your professional roles',
+    why: 'Roles (PT, RN, MD…) decide which documents and credentials each person needs.',
+    go: ['settings', 'rolesPanelSettings'], goLabel: 'Open roles',
+    needs: () => true, auto: () => ((currentCompany.available_disciplines || []).length > 0) },
+  { id: 'staff', title: 'Add your staff',
+    why: 'Add people one at a time or import a spreadsheet. Everything else builds on this.',
+    go: ['staff'], goLabel: 'Go to Staff',
+    needs: () => true, auto: c => c.activeStaff > 0 },
+  { id: 'doctypes', title: 'Review your document types',
+    why: 'Choose which documents are Required and who they apply to. Click the badges in the table to change them.',
+    go: ['settings', 'docTypesPanelSettings'], goLabel: 'Open document types',
+    needs: () => !!currentCompany.has_credtrack, auto: c => c.docTypesConfigured, manual: true },
+  { id: 'firstdoc', title: 'Upload a first document',
+    why: 'See how a document shows up as on file, expiring or missing.',
+    go: ['docs'], goLabel: 'Go to Documents',
+    needs: () => !!currentCompany.has_credtrack, auto: c => c.docCount > 0 },
+  { id: 'login', title: 'Give someone a login',
+    why: 'Staff can then upload their own documents and see what they are still missing.',
+    go: ['staff'], goLabel: 'Go to Staff',
+    needs: () => true, auto: c => c.withLogin > 0 },
+  { id: 'provider', title: 'Complete a provider profile',
+    why: 'NPI, license, CAQH and DEA details power credentialing and expiry alerts.',
+    go: ['credentialing'], goLabel: 'Go to Credentialing',
+    needs: () => !!currentCompany.has_credentialing_addon, auto: c => c.withNpi > 0 },
+  { id: 'oig', title: 'Run your first exclusion check',
+    why: 'Screens staff against the federal exclusion list so you find a problem before an auditor does.',
+    go: ['compliance'], goLabel: 'Go to Compliance',
+    needs: () => !!currentCompany.has_credentialing_addon, auto: c => c.oigChecks > 0 },
+];
+
+// Pure — decides what each step looks like given the facts gathered about the
+// company. Kept separate from the queries so it can be checked on its own.
+function evaluateGettingStarted(ctx, state) {
+  const done = (state && state.done) || {};
+  const steps = GETTING_STARTED_STEPS.filter(s => s.needs()).map(s => ({
+    ...s, complete: !!(done[s.id] || s.auto(ctx)),
+  }));
+  return { steps, doneCount: steps.filter(s => s.complete).length, total: steps.length };
+}
+
+async function gatherGettingStartedContext() {
+  const cid = currentCompany.id;
+  const count = q => q.then(r => (r && !r.error && typeof r.count === 'number') ? r.count : 0, () => 0);
+  const head = { count: 'exact', head: true };
+  const staff = () => sb.from('credtrack_staff').select('id', head).eq('company_id', cid);
+  const [activeStaff, withLogin, withNpi, docCount, overrides, hidden, custom, oigChecks] = await Promise.all([
+    count(staff().eq('active', true)),
+    count(staff().eq('active', true).not('profile_id', 'is', null)),
+    count(staff().eq('active', true).not('npi_number', 'is', null).neq('npi_number', '')),
+    currentCompany.has_credtrack ? count(sb.from('credtrack_documents').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
+    currentCompany.has_credtrack ? count(sb.from('company_document_type_overrides').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
+    currentCompany.has_credtrack ? count(sb.from('company_hidden_document_types').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
+    currentCompany.has_credtrack ? count(sb.from('document_types').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
+    currentCompany.has_credentialing_addon ? count(sb.from('oig_exclusion_checks').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
+  ]);
+  return { activeStaff, withLogin, withNpi, docCount, oigChecks, docTypesConfigured: (overrides + hidden + custom) > 0 };
+}
+
+async function renderGettingStarted() {
+  const host = document.getElementById('gettingStartedPanel');
+  if (!host) return;
+  host.innerHTML = '';
+  // Admins only — office users can't change settings, and staff never see Overview.
+  if (!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin))) return;
+
+  const state = (currentCompany.custom_vars && currentCompany.custom_vars.gettingStarted) || {};
+  const ctx = await gatherGettingStartedContext();
+  const { steps, doneCount, total } = evaluateGettingStarted(ctx, state);
+  if (!total) return;
+
+  const allDone = doneCount === total;
+  if (state.hidden || allDone) {
+    // Nothing to nag about. If it was hidden by hand (and isn't finished),
+    // leave a quiet way back.
+    if (state.hidden && !allDone) {
+      host.innerHTML = `<div style="margin:0 0 14px;font-size:14px;"><a href="#" onclick="setGettingStartedHidden(false); return false;" style="color:var(--teal-l);">Show the getting-started checklist (${doneCount} of ${total} done)</a></div>`;
+    }
+    return;
+  }
+
+  const pct = Math.round((doneCount / total) * 100);
+  const firstOpen = steps.find(s => !s.complete);
+  host.innerHTML = `
+    <div id="gettingStartedCard" style="background:rgba(20,184,166,.07);border:1px solid rgba(20,184,166,.3);border-radius:12px;padding:18px 20px;margin:0 0 20px;">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;">
+        <div>
+          <div style="font-size:18px;font-weight:700;color:#fff;">Getting started</div>
+          <div style="font-size:14px;color:rgba(255,255,255,.62);margin-top:2px;">${doneCount} of ${total} done. Work through these in order. Each button takes you straight to the right place.</div>
+        </div>
+        <button class="btn btn-sm btn-ghost" onclick="setGettingStartedHidden(true)" style="color:#fff;border-color:rgba(255,255,255,.2);flex-shrink:0;">Hide</button>
+      </div>
+      <div style="height:6px;background:rgba(255,255,255,.1);border-radius:3px;margin:14px 0 8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--teal);"></div></div>
+      ${steps.map((s, i) => {
+        const isNext = firstOpen && s.id === firstOpen.id;
+        return `<div data-gs-step="${s.id}" style="display:flex;align-items:center;gap:12px;padding:10px 0;border-top:1px solid rgba(255,255,255,.07);${s.complete ? 'opacity:.6;' : ''}">
+          <div style="width:24px;height:24px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;${s.complete ? 'background:var(--teal);color:#fff;' : 'border:2px solid rgba(255,255,255,.3);color:rgba(255,255,255,.6);'}">${s.complete ? '✓' : i + 1}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:15px;font-weight:600;color:#fff;${s.complete ? 'text-decoration:line-through;' : ''}">${s.title}</div>
+            ${s.complete ? '' : `<div style="font-size:13px;color:rgba(255,255,255,.58);margin-top:1px;">${s.why}</div>`}
+          </div>
+          ${s.complete ? '' : `<div style="display:flex;gap:6px;flex-shrink:0;">
+            ${s.manual ? `<button class="btn btn-sm btn-ghost" onclick="markGettingStartedStepDone('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Mark done</button>` : ''}
+            <button class="btn btn-sm ${isNext ? 'btn-teal' : 'btn-ghost'}" onclick="goToPanel('${s.go[0]}', ${s.go[1] ? `'${s.go[1]}'` : 'null'})" style="${isNext ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}">${s.goLabel}</button>
+          </div>`}
+        </div>`;
+      }).join('')}
+    </div>`;
+}
+
+async function setGettingStartedHidden(hidden) {
+  if (await saveGettingStarted({ hidden })) renderGettingStarted();
+}
+async function markGettingStartedStepDone(stepId) {
+  if (await saveGettingStarted({ done: { [stepId]: true } })) renderGettingStarted();
+}
+async function saveGettingStarted(patch) {
+  // Re-read custom_vars first so this can never overwrite a different setting
+  // saved a moment ago (same approach as the other per-company settings).
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
+  if (readErr) { toast('Error: ' + readErr.message, true); return false; }
+  const cv = { ...((fresh && fresh.custom_vars) || {}) };
+  const cur = cv.gettingStarted || {};
+  cv.gettingStarted = { ...cur, ...patch, done: { ...(cur.done || {}), ...(patch.done || {}) } };
+  const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
+  if (error) { toast('Error: ' + error.message, true); return false; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this company's settings.", true); return false; }
+  currentCompany.custom_vars = cv;
+  return true;
+}
+
+// Takes someone to a specific panel, not just a tab: switches tab, opens the
+// panel if it's collapsed, scrolls it into view and briefly highlights it, so
+// "open the document types" lands on the document types.
+// Hides any "Jump to" chip whose section isn't shown for this company or role
+// (e.g. Health Care Network without the Credentialing add-on), so no chip ever
+// leads nowhere.
+function refreshSettingsJumpBar() {
+  document.querySelectorAll('#settingsJumpBar .chip-btn').forEach(btn => {
+    const t = document.getElementById(btn.dataset.target);
+    btn.style.display = (t && getComputedStyle(t).display !== 'none') ? '' : 'none';
+  });
+}
+
+function jumpToSettingsGroup(id) {
+  const el = document.getElementById(id);
+  if (!el || getComputedStyle(el).display === 'none') { toast("That section isn't available for your plan or role.", true); return; }
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  el.classList.add('flash-highlight');
+  setTimeout(() => el.classList.remove('flash-highlight'), 2000);
+}
+
+function goToPanel(tab, targetId) {
+  switchTab(tab);
+  if (!targetId) return;
+  setTimeout(() => {
+    const el = document.getElementById(targetId);
+    if (!el) return;
+    const body = el.querySelector(':scope > .panel-body');
+    if (body && body.style.display === 'none') {
+      const head = el.querySelector(':scope > h2');
+      if (head) head.click();
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    el.classList.add('flash-highlight');
+    setTimeout(() => el.classList.remove('flash-highlight'), 2400);
+  }, 300);
 }
 
 async function loadOverview() {
   document.getElementById('ovGreeting').textContent = `Overview — ${currentCompany?.name || ''}`;
+  renderGettingStarted().catch(e => console.warn('Getting-started checklist failed to render:', e));
 
   document.getElementById('ovDocumentsSection').style.display = currentCompany.has_credtrack ? 'block' : 'none';
   document.getElementById('ovCredentialingSection').style.display = currentCompany.has_credentialing_addon ? 'block' : 'none';
