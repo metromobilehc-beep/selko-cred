@@ -2369,7 +2369,7 @@ window.selkoSharedAuthStorage = {
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">A short checklist on your Overview that walks a new admin through setup: company settings, roles, staff, document types, a first upload, logins, a provider profile and a first exclusion check. It ticks steps off by itself from what you've actually done.</p>
         <div id="gettingStartedSettingsStatus" style="font-size:14px;color:rgba(255,255,255,.78);margin-bottom:12px;"></div>
         <div id="gettingStartedSettingsButtons" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
-        <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px;line-height:1.5;">Reset clears anything you marked done by hand and shows the checklist again. Steps that are done in your real data (staff added, documents uploaded, a provider with an NPI, an exclusion check run) stay checked, because they are done.</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px;line-height:1.5;">Hiding removes it from your Overview completely, and this page is where you bring it back. Reset clears anything you marked done by hand and shows the checklist again. Steps that are done in your real data (staff added, documents uploaded, a provider with an NPI, an exclusion check run) stay checked, because they are done.</div>
       </div>
 
       <div id="settingsGrp_setup" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
@@ -22235,8 +22235,13 @@ async function renderGettingStarted() {
   if (!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin))) return;
 
   const state = (currentCompany.custom_vars && currentCompany.custom_vars.gettingStarted) || {};
-  // Opt-in. Until an admin turns it on there is only a small link, and no
-  // queries are run for it.
+  // Hidden on purpose (the admin pressed Hide): show NOTHING on the Overview.
+  // Settings > Getting-started checklist is the way back. Before, a small "Show
+  // the getting-started checklist" link stayed behind, which looked like the
+  // hide hadn't worked.
+  if (state.enabled === false) return;
+  // Never chosen either way: just a small link so the option can be discovered.
+  // No queries are run for it.
   if (state.enabled !== true) {
     host.innerHTML = `<div style="margin:0 0 14px;font-size:14px;"><a href="#" onclick="setGettingStartedEnabled(true); return false;" style="color:var(--teal-l);">Show the getting-started checklist</a> <span style="color:rgba(255,255,255,.45);">(a short list of what to set up first)</span></div>`;
     return;
@@ -22295,8 +22300,11 @@ async function loadGettingStartedSettings() {
   const btnEl = document.getElementById('gettingStartedSettingsButtons');
   const state = (currentCompany.custom_vars && currentCompany.custom_vars.gettingStarted) || {};
   const enabled = state.enabled === true;
+  const neverChose = state.enabled === undefined || state.enabled === null;   // never turned on or hidden
   const manualCount = Object.values(state.done || {}).filter(Boolean).length;
-  if (!enabled) {
+  if (neverChose) {
+    statusEl.innerHTML = 'The checklist is <strong>off</strong>. Your Overview shows a small link that offers to turn it on.';
+  } else if (!enabled) {
     statusEl.innerHTML = 'The checklist is <strong>hidden</strong>' + (manualCount ? ` (${manualCount} ${manualCount === 1 ? 'step' : 'steps'} marked done by hand are remembered)` : '') + '.';
   } else {
     statusEl.textContent = 'Checking your progress…';
@@ -22310,6 +22318,7 @@ async function loadGettingStartedSettings() {
   }
   btnEl.innerHTML = `
     <button class="btn btn-sm ${enabled ? 'btn-ghost' : 'btn-teal'}" onclick="setGettingStartedEnabled(${!enabled})" ${enabled ? 'style="color:#fff;border-color:rgba(255,255,255,.2);"' : ''}>${enabled ? 'Hide it' : 'Show it on my Overview'}</button>
+    ${neverChose ? `<button class="btn btn-sm btn-ghost" onclick="setGettingStartedEnabled(false)" style="color:#fff;border-color:rgba(255,255,255,.2);">Remove the link from my Overview</button>` : ''}
     <button class="btn btn-sm btn-ghost" onclick="resetGettingStarted()" style="color:#fff;border-color:rgba(255,255,255,.2);">↺ Reset the checklist</button>
     ${enabled ? `<button class="btn btn-sm btn-ghost" onclick="switchTab('overview')" style="color:#fff;border-color:rgba(255,255,255,.2);">View it on Overview</button>` : ''}`;
 }
