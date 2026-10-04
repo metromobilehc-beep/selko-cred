@@ -1944,7 +1944,7 @@ window.selkoSharedAuthStorage = {
            etc.) — Selko-provided, usable by every company with the HR
            add-on, same as how credentialing templates work when uploaded
            from here rather than from inside a specific company. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" id="superHrTemplatesPanel">
         <h2>Global HR form templates</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Uploaded here, these are available to every company on the HR add-on — I-9, W-4, background check authorization, or anything else worth offering as a standard form rather than leaving every company to upload their own.</p>
         <div id="superHrTemplatesList" style="margin-bottom:14px;"></div>
@@ -2301,12 +2301,12 @@ window.selkoSharedAuthStorage = {
             <label class="inline-label">Task digest — remind every (days)</label>
             <input class="inline-input" type="number" id="setTaskDigestInterval" value="7" min="1" max="90" />
           </div>
-          <div>
+          <div id="setOnboardingReminderWrap">
             <label class="inline-label">Onboarding reminder — nag unfinished new hires every (days)</label>
             <input class="inline-input" type="number" id="setOnboardingReminderInterval" value="3" min="1" max="30" />
           </div>
         </div>
-        <div style="margin-bottom:14px;">
+        <div style="margin-bottom:14px;" id="setOnboardingDocsWrap">
           <label class="inline-label">Documents required at onboarding</label>
           <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 8px;">New hires must have these on file — or upload them — before they can submit their onboarding form. They're saved as regular credential documents, so expiration reminders and verification apply. This list is separate from which documents are marked Required under Documents.</p>
           <div id="setOnboardingDocTypes" style="display:flex;flex-wrap:wrap;gap:6px 8px;"></div>
@@ -5100,8 +5100,9 @@ async function initStaff() {
   // ever finds THEIR OWN record, never anyone else's, regardless of
   // what staffId ends up being passed around client-side.
   const onboardingPanel = document.getElementById('hrOnboardingPanel');
-  if (!(onboardingPanel && window._staffId)) setStaffUploadDeferred(false);
-  if (onboardingPanel && window._staffId) {
+  if (onboardingPanel && !hrVisible()) { onboardingPanel.style.display = 'none'; window._hrOnboardingId = null; }   // HR is developer-only
+  if (!(onboardingPanel && window._staffId && hrVisible())) setStaffUploadDeferred(false);
+  if (onboardingPanel && window._staffId && hrVisible()) {
     const { data: hrRec } = await sb.from('hr_employees')
       .select('*').eq('credtrack_staff_id', window._staffId).maybeSingle();
     window._hrOnboardingId = (hrRec && hrRec.onboarding_status === 'not_started') ? hrRec.id : null;
@@ -5800,12 +5801,12 @@ async function performGlobalSearch(query) {
     // credentialing templates all launched without ever being wired
     // into global search, so none of it was findable this way despite
     // being fully usable everywhere else in the app.
-    currentCompany.has_hr_addon
+    (currentCompany.has_hr_addon && hrVisible())
       ? sb.from('hr_employees').select('id, full_name, position, email').eq('company_id', companyId)
           .or(`full_name.ilike.${like},position.ilike.${like},email.ilike.${like}`).limit(6)
       : Promise.resolve({ data: [] }),
 
-    currentCompany.has_hr_addon
+    (currentCompany.has_hr_addon && hrVisible())
       ? sb.from('hr_documents').select('id, employee_id, name, hr_employees(full_name)').eq('company_id', companyId)
           .ilike('name', like).limit(6)
       : Promise.resolve({ data: [] }),
@@ -5919,6 +5920,8 @@ function renderGlobalSearchResults(results, query, quickActions) {
       onclick: `showHrEmployeeSheet('${d.employee_id}')`,
     }))));
   }
+  // Reminders for an HR employee (not a credentialed staff member) are HR data too.
+  if (results.reminders?.length && !hrVisible()) results.reminders = results.reminders.filter(r => r.staff_id);
   if (results.reminders?.length) {
     sections.push(renderSearchSection('⏰ Reminders', results.reminders.map(r => ({
       label: r.message.length > 60 ? r.message.slice(0, 60) + '…' : r.message,
@@ -6006,10 +6009,28 @@ function updateModuleTabVisibility(company, profile) {
   const tabLabel = document.getElementById('tabCredentialingLabel');
   if (tabLabel) tabLabel.textContent = company.credentialing_teaser_label || 'Credentialing';
 
-  // Same always-visible-as-upsell-teaser pattern as Credentialing above —
-  // the tab itself is always shown; loadHrTab()'s own gate on
-  // window._hasHrAddon is what actually locks the content behind it.
-  document.getElementById('tab-hr').style.display = 'inline-flex';
+  // HR is developer-only for now (see hrVisible). No upsell teaser.
+  applyHrVisibility();
+}
+
+// ── HR Onboarding is not released yet ───────────────────────────────────────
+// Only a profile the platform owner has flagged hr_preview (the developer) sees
+// ANY of the HR module: the tab, its search results, the HR shortcut on a staff
+// profile, the onboarding page staff would see, the two onboarding settings, and
+// the Selko Admin HR controls. Everyone else sees nothing, with no teaser or
+// "contact Selko" screen. A signed-in user cannot grant themselves the flag
+// (the database refuses). If the flag column isn't installed yet, nobody sees HR.
+function hrVisible() {
+  return !!(currentProfile && currentProfile.hr_preview === true);
+}
+
+function applyHrVisibility() {
+  const show = hrVisible();
+  const set = (id, on, shown) => { const el = document.getElementById(id); if (el) el.style.display = on ? shown : 'none'; };
+  set('tab-hr', show, 'inline-flex');
+  set('setOnboardingReminderWrap', show, '');
+  set('setOnboardingDocsWrap', show, '');
+  set('superHrTemplatesPanel', show, '');
 }
 
 function updateProFeatureButtons() {
@@ -7462,7 +7483,7 @@ async function loadStaffTable() {
   // record — lets renderProviderTabBar show/hide the "HR" tab
   // synchronously on every click, rather than an async fetch per tab
   // switch. Only relevant for companies with the HR add-on at all.
-  if (currentCompany.has_hr_addon) {
+  if (currentCompany.has_hr_addon && hrVisible()) {
     const { data: hrLinks } = await sb.from('hr_employees')
       .select('id, credtrack_staff_id')
       .eq('company_id', currentCompany.id)
@@ -7896,7 +7917,7 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
     // tables/storage stay completely separate — this is purely a
     // navigation shortcut, not a data merge, which is the whole reason
     // I-9's legally-required file segregation is untouched by this.
-    ...((window._staffHrLinkMap?.has(staffId) && (currentProfile?.role === 'admin' || currentProfile?.is_super_admin))
+    ...((hrVisible() && window._staffHrLinkMap?.has(staffId) && (currentProfile?.role === 'admin' || currentProfile?.is_super_admin))
       ? [{ key: 'hr', label: '🪪 HR', fn: `showHrEmployeeSheet('${window._staffHrLinkMap.get(staffId)}')` }]
       : []),
     { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
@@ -8842,8 +8863,19 @@ function showCvImportReview(staffId, staffName, extracted) {
     else state = piNorm(key, cur) === piNorm(key, docVal) ? 'same' : 'differs';
     const show = v => isBool ? (v === true ? 'Yes' : 'No') : String(v ?? '');
     const attrs = `data-key="${key}" data-src="${src}" data-label="${label}"`;
+    // A life-support or similar CERTIFICATION (ACLS, BLS, CPR...) is not a specialty. If one is
+    // sitting in a specialty field (on the profile, or read from the document) say so, and
+    // never tick "Save" for a certification by default. Nothing is ever replaced unless ticked.
+    const CERT_LIKE = /\b(ACLS|BLS|PALS|CPR|AED|NRP|ATLS|TNCC|ENPC|first aid|life support|cardiac life|cardiovascular life)\b/i;
+    const isSpecialtyField = key === 'primary_specialty' || key === 'secondary_specialty';
+    const docIsCert = isSpecialtyField && CERT_LIKE.test(String(docVal));
+    const curIsCert = isSpecialtyField && CERT_LIKE.test(String(cur ?? ''));
+    const certNote = docIsCert
+      ? `<div style="font-size:12px;color:#fbbf24;">This looks like a certification (like ACLS or BLS), not a specialty, so it is not ticked. Certifications belong in Documents.</div>`
+      : (curIsCert && state === 'differs'
+        ? `<div style="font-size:12px;color:#fbbf24;">What's on file looks like a certification, not a specialty, so it is probably a mistake. Tick Replace to correct it.</div>` : '');
     const control = state === 'new'
-      ? `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#4ade80;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" ${attrs} data-mode="new" checked /> Save (blank on file)</label>`
+      ? `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#4ade80;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" ${attrs} data-mode="new" ${docIsCert ? '' : 'checked'} /> Save (blank on file)</label>`
       : state === 'same'
         ? `<span style="font-size:13px;color:rgba(255,255,255,.5);white-space:nowrap;">Already matches</span>`
         : `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#f59e0b;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" ${attrs} data-mode="replace" /> Replace what's on file</label>`;
@@ -8851,6 +8883,7 @@ function showCvImportReview(staffId, staffName, extracted) {
       <div style="min-width:0;font-size:14px;color:#fff;">
         <div>${label}: <strong>${hrOnbEsc(show(docVal))}</strong></div>
         ${state === 'differs' ? `<div style="font-size:12px;color:#f59e0b;">On file: ${hrOnbEsc(show(cur))}</div>` : ''}
+        ${certNote}
       </div>
       ${control}
     </div>`;
@@ -8944,8 +8977,9 @@ function showCvImportReview(staffId, staffName, extracted) {
         <input class="inline-input cvEmpField" data-idx="${i}" data-field="city" placeholder="City" value="${(e.city || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
         <input class="inline-input cvEmpField" data-idx="${i}" data-field="state" placeholder="State" value="${(e.state || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
         <input class="inline-input cvEmpField" data-idx="${i}" data-field="zip" placeholder="Zip" value="${(e.zip || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
-        <div><label style="font-size:12px;color:rgba(255,255,255,.58);">Start</label><input type="date" class="inline-input cvEmpField" data-idx="${i}" data-field="start_date" value="${e.start_date || ''}" style="font-size:14px;width:100%;" /></div>
+        <div><label style="font-size:12px;color:rgba(255,255,255,.58);">Start</label><input type="date" class="inline-input cvEmpField" data-idx="${i}" data-field="start_date" value="${e.start_date || ''}" style="font-size:14px;width:100%;${e.start_date ? '' : 'border-color:#f87171;'}" /></div>
         <div><label style="font-size:12px;color:rgba(255,255,255,.58);">End</label><input type="date" class="inline-input cvEmpField" data-idx="${i}" data-field="end_date" value="${e.end_date || ''}" style="font-size:14px;width:100%;" /></div>
+        ${e.start_date ? '' : '<div style="grid-column:1/3;font-size:12px;color:#f87171;">No start date was found in the document. A start date is required: enter it, or untick this entry.</div>'}
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.66);grid-column:1/3;">
           <input type="checkbox" class="cvEmpField" data-idx="${i}" data-field="is_current" ${e.is_current ? 'checked' : ''} /> Current position
         </label>
@@ -9029,12 +9063,70 @@ function cvSaveStep(text) {
   if (status) status.textContent = text;
 }
 
+// The same required fields the manual "Add" forms insist on. Checked for every
+// ticked row BEFORE anything is written, so a row the database would refuse
+// (a missing start date, say) is caught up front with the exact row named,
+// instead of failing halfway and leaving the profile partly updated.
+function validateCvImportSelections() {
+  const read = (cls, idx) => {
+    const o = {};
+    document.querySelectorAll(`.${cls}[data-idx="${idx}"]`).forEach(inp => { o[inp.dataset.field] = inp.type === 'checkbox' ? inp.checked : (inp.value.trim() || null); });
+    return o;
+  };
+  const SECTIONS = [
+    { name: 'Employment history', check: 'cvEmpCheck',    field: 'cvEmpField',    who: r => r.employer_name,   rules: [['employer_name', 'an employer name'], ['start_date', 'a start date']] },
+    { name: 'Education & training', check: 'cvEduCheck',  field: 'cvEduField',    who: r => r.institution,     rules: [['training_type', 'a type'], ['institution', 'an institution']] },
+    { name: 'Hospital privileges', check: 'cvPrivCheck',  field: 'cvPrivField',   who: r => r.hospital_name,   rules: [['hospital_name', 'a hospital name']] },
+    { name: 'Malpractice claims', check: 'cvClaimCheck',  field: 'cvClaimField',  who: r => r.claim_status,    rules: [['claim_status', 'a status'], ['date_filed', 'a date filed']] },
+    { name: 'Professional references', check: 'cvRefCheck', field: 'cvRefField',  who: r => r.reference_name,  rules: [['reference_name', 'a name']] },
+  ];
+  const problems = [];
+  SECTIONS.forEach(sec => {
+    document.querySelectorAll(`.${sec.check}:checked`).forEach(box => {
+      const idx = box.dataset.idx;
+      const row = read(sec.field, idx);
+      sec.rules.forEach(([key, label]) => {
+        if (!row[key]) problems.push({ section: sec.name, who: sec.who(row) || '(unnamed entry)', missing: label, selector: `.${sec.field}[data-idx="${idx}"][data-field="${key}"]` });
+      });
+    });
+  });
+  // Additional licenses: a type OR a number is enough (same rule as the manual form).
+  document.querySelectorAll('.cvLicCheck:checked').forEach(box => {
+    const row = read('cvLicField', box.dataset.idx);
+    if (!row.license_type && !row.license_number) problems.push({ section: 'Additional licenses', who: row.state || '(unnamed entry)', missing: 'a license type or number', selector: `.cvLicField[data-idx="${box.dataset.idx}"][data-field="license_type"]` });
+  });
+  return problems;
+}
+
+// Turns a database "required value missing" refusal into plain words.
+function friendlyImportError(e) {
+  const msg = (e && e.message) || String(e);
+  const m = msg.match(/null value in column "(\w+)" of relation "(\w+)"/);
+  if (!m) return msg;
+  const WHAT = { staff_employment_history: 'employment history', staff_education_training: 'education', staff_additional_licenses: 'additional license',
+                 staff_hospital_privileges: 'hospital privilege', staff_malpractice_claims: 'malpractice claim', staff_professional_references: 'professional reference' };
+  return `An entry in ${WHAT[m[2]] || m[2].replace(/_/g, ' ')} is missing a required value (${m[1].replace(/_/g, ' ')}). Fill it in, or untick that entry, and save again.`;
+}
+
 async function saveCvImportSelections(staffId) {
   if (window._cvSaving) return;                 // already saving: ignore a second click
   const errEl = document.getElementById('cvImportSaveErr');
   errEl.style.display = 'none';
   const extracted = window._cvImportData;
   if (!extracted) return;
+
+  // Check every ticked row first. If anything is missing, write NOTHING.
+  document.querySelectorAll('#cvImportReviewModal input, #cvImportReviewModal select').forEach(el => { el.style.outline = ''; });
+  const problems = validateCvImportSelections();
+  if (problems.length) {
+    problems.forEach(p => { const el = document.querySelector(p.selector); if (el) { el.style.outline = '2px solid #f87171'; } });
+    const first = document.querySelector(problems[0].selector);
+    if (first) { first.scrollIntoView({ block: 'center', behavior: 'smooth' }); first.focus({ preventScroll: true }); }
+    errEl.innerHTML = `<strong>Nothing was saved.</strong> ${problems.length === 1 ? 'One entry needs' : problems.length + ' entries need'} attention. Fill in what's missing, or untick the entry:<ul style="margin:6px 0 0 18px;padding:0;">${problems.slice(0, 8).map(p => `<li>${hrOnbEsc(p.section)}: <strong>${hrOnbEsc(p.who)}</strong> needs ${hrOnbEsc(p.missing)}</li>`).join('')}${problems.length > 8 ? `<li>…and ${problems.length - 8} more</li>` : ''}</ul>`;
+    errEl.style.display = 'block';
+    return;
+  }
+
   ensureImportBusyStyles();
   cvSaveBusy(true, 'Starting…');
   const staffName = (staffList.find(s => s.id === staffId) || {}).full_name || 'this person';
@@ -9139,6 +9231,7 @@ async function saveCvImportSelections(staffId) {
         if (error) throw error;
         if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so nothing was imported.");
         await logStaffFieldChanges(staffId, Object.keys(updates).map(f => ({ field: f, old: current[f], new: updates[f] })));
+        Object.assign(current, updates);      // so a retry after a later failure sees these as already saved
         saved.push(...labels);
       }
     }
@@ -9347,7 +9440,7 @@ async function saveCvImportSelections(staffId) {
     }
   } catch (e) {
     cvSaveBusy(false);
-    errEl.textContent = e.message + (saved.length ? ` Already saved before this error: ${saved.join(', ')}.` : '');
+    errEl.textContent = friendlyImportError(e) + (saved.length ? ` Already saved before this error: ${saved.join(', ')}.` : '');
     errEl.style.display = 'block';
   } finally {
     window._cvSaving = false;
@@ -13837,6 +13930,7 @@ async function loadSettings() {
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
   document.getElementById('setTaskDigestInterval').value = c.custom_vars?.taskDigestIntervalDays || 7;
   document.getElementById('setOnboardingReminderInterval').value = c.custom_vars?.onboardingReminderIntervalDays || 3;
+  applyHrVisibility();
   renderOnboardingDocTypeSummary(c);
   document.getElementById('setShowPartnerRecs').checked = c.show_partner_recommendations !== false;
 
@@ -22112,6 +22206,7 @@ document.addEventListener('click', (e) => {
 });
 
 function switchTab(tab) {
+  if (tab === 'hr' && !hrVisible()) tab = 'overview';   // HR is developer-only: any route to it lands on Overview
   // Collapse the mobile menu back down once a screen is actually
   // picked — harmless no-op on desktop, where .admin-sidebar-col is
   // never in the open/closed state to begin with.
@@ -23600,7 +23695,7 @@ function showCompanyManageModal(companyId) {
     <span class="flag-pill ${c.has_credtrack ? 'flag-on' : 'flag-off'}">CredTrack ${c.has_credtrack ? '\u2713' : '\u2715'}</span>
     <span class="flag-pill ${c.branding_enabled ? 'flag-on' : 'flag-off'}">Branding ${c.branding_enabled ? '\u2713' : '\u2715'}</span>
     <span class="flag-pill ${c.has_credentialing_addon ? 'flag-on' : 'flag-off'}">Credentialing ${c.has_credentialing_addon ? '\u2713' : '\u2715'}</span>
-    <span class="flag-pill ${c.has_hr_addon ? 'flag-on' : 'flag-off'}">HR Onboarding ${c.has_hr_addon ? '\u2713' : '\u2715'}</span>
+    ${hrVisible() ? `<span class="flag-pill ${c.has_hr_addon ? 'flag-on' : 'flag-off'}">HR Onboarding ${c.has_hr_addon ? '\u2713' : '\u2715'}</span>` : ''}
     <span class="flag-pill ${c.active ? 'flag-on' : 'flag-off'}">${c.active ? 'Active' : 'Inactive'}</span>
     ${c.deleted_at ? `<span class="flag-pill" style="background:#7f1d1d;color:#fca5a5;">\ud83d\uddd1 Deleted \u2014 purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d</span>` : ''}
   `;
@@ -24376,10 +24471,10 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       </select>
       ${moduleOptionHidden ? `<p style="font-size:13px;color:rgba(255,255,255,.58);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
-      <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;margin-bottom:14px;cursor:pointer;">
+      ${hrVisible() ? `<label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;margin-bottom:14px;cursor:pointer;">
         <input type="checkbox" ${c.has_hr_addon ? 'checked' : ''} onchange="applyModalHrToggle('${companyId}','${companyName.replace(/'/g,"\\'")}', this.checked)" />
         HR Onboarding add-on — $49/mo <span style="font-size:12px;color:var(--gold);margin-left:2px;">ADD-ON</span>
-      </label>
+      </label>` : ''}
 
       <label class="inline-label">Plan</label>
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
