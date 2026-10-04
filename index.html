@@ -8618,22 +8618,53 @@ function showCvImportReview(staffId, staffName, extracted) {
 
   const pi = extracted.practitioner_info;
   const hasPractitionerInfo = pi && (pi.license_number || pi.caqh_id || pi.npi_number || pi.discipline || pi.date_of_birth || pi.gender || pi.address || pi.phone);
-  const practitionerRow = hasPractitionerInfo ? `
-    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
-      <input type="checkbox" id="cvPractitionerCheck" checked style="margin-top:3px;" />
-      <div style="font-size:14px;color:#fff;">
-        ${pi.name ? `Matched name on document: <strong>${pi.name}</strong><br>` : ''}
-        ${pi.discipline ? `Discipline: <strong>${pi.discipline}</strong><br>` : ''}
-        ${pi.license_number ? `License #: <strong>${pi.license_number}</strong><br>` : ''}
-        ${pi.caqh_id ? `CAQH #: <strong>${pi.caqh_id}</strong><br>` : ''}
-        ${pi.npi_number ? `NPI #: <strong>${pi.npi_number}</strong><br>` : ''}
-        ${pi.date_of_birth ? `Date of birth: <strong>${pi.date_of_birth}</strong><br>` : ''}
-        ${pi.gender ? `Gender: <strong>${pi.gender}</strong><br>` : ''}
-        ${(pi.address || pi.city || pi.state || pi.zip) ? `Personal address: <strong>${[pi.address, pi.city, pi.state, pi.zip].filter(Boolean).join(', ')}</strong><br>` : ''}
-        ${pi.phone ? `Personal phone: <strong>${pi.phone}</strong>` : ''}
+
+  // Each field is compared with what's ALREADY on this person's profile, so the
+  // screen says honestly what Save will do with it. Previously every field was
+  // shown as "found" under one tick-box, but anything already filled in was
+  // silently left alone and the result still read "Imported successfully",
+  // which looked like the import had found the data and then not saved it.
+  const currentStaff = staffList.find(s => s.id === staffId) || {};
+  const piNorm = (k, v) => k === 'phone' ? String(v ?? '').replace(/\D/g, '') : String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const PI_FIELDS = [
+    { keys: ['license_number'], label: 'License #' },
+    { keys: ['caqh_id'], label: 'CAQH #' },
+    { keys: ['npi_number'], label: 'NPI #' },
+    { keys: ['date_of_birth'], label: 'Date of birth' },
+    { keys: ['gender'], label: 'Gender' },
+    { keys: ['address', 'city', 'state', 'zip'], label: 'Personal address' },
+    { keys: ['phone'], label: 'Personal phone' },
+  ];
+  const piRows = !hasPractitionerInfo ? '' : PI_FIELDS.map(f => {
+    const docKeys = f.keys.filter(k => pi[k]);
+    if (!docKeys.length) return '';
+    const docText = docKeys.map(k => pi[k]).join(', ');
+    const curText = f.keys.map(k => currentStaff[k]).filter(Boolean).join(', ');
+    const isBlank = docKeys.every(k => !currentStaff[k]);
+    const isSame = docKeys.every(k => piNorm(k, currentStaff[k]) === piNorm(k, pi[k]));
+    const state = isBlank ? 'new' : (isSame ? 'same' : 'differs');
+    const control = state === 'new'
+      ? `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#4ade80;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" data-keys="${f.keys.join(',')}" data-label="${f.label}" data-mode="new" checked /> Save (blank on file)</label>`
+      : state === 'same'
+        ? `<span style="font-size:13px;color:rgba(255,255,255,.5);white-space:nowrap;">Already matches</span>`
+        : `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#f59e0b;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" data-keys="${f.keys.join(',')}" data-label="${f.label}" data-mode="replace" /> Replace what's on file</label>`;
+    return `<div class="cvPiRow" data-state="${state}" data-label="${f.label}" data-current="${hrOnbEsc(curText)}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <div style="min-width:0;font-size:14px;color:#fff;">
+        <div>${f.label}: <strong>${hrOnbEsc(docText)}</strong></div>
+        ${state === 'differs' ? `<div style="font-size:12px;color:#f59e0b;">On file: ${hrOnbEsc(curText)}</div>` : ''}
       </div>
-    </label>
-    <p style="font-size:13px;color:rgba(255,255,255,.55);margin:4px 0 0;">Applies to ${staffName}'s own record — only fills in fields that are currently blank, never overwrites something already on file.</p>` : '';
+      ${control}
+    </div>`;
+  }).join('');
+  // Guard against the wrong person's document: the name the AI read must
+  // share the last name of the profile being updated.
+  const lastNameOf = s => String(s || '').toLowerCase().replace(/[,.].*$/, '').trim().split(/\s+/).pop();
+  const nameMismatch = pi && pi.name && lastNameOf(staffName) && !String(pi.name).toLowerCase().includes(lastNameOf(staffName));
+  const practitionerRow = hasPractitionerInfo ? `
+    ${nameMismatch ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px;color:#fbbf24;">This document is for <strong>${hrOnbEsc(pi.name)}</strong>, but you're updating <strong>${hrOnbEsc(staffName)}</strong>. Check it's the right file before saving.</div>` : ''}
+    ${pi.name || pi.discipline ? `<div style="font-size:13px;color:rgba(255,255,255,.62);margin-bottom:4px;">${pi.name ? `Name on document: <strong style="color:#fff;">${hrOnbEsc(pi.name)}</strong>` : ''}${pi.name && pi.discipline ? ' · ' : ''}${pi.discipline ? `Discipline: <strong style="color:#fff;">${hrOnbEsc(pi.discipline)}</strong>` : ''}</div>` : ''}
+    ${piRows}
+    <p style="font-size:13px;color:rgba(255,255,255,.55);margin:6px 0 0;">Blank fields on ${hrOnbEsc(staffName)}'s profile fill in automatically. Where the document disagrees with what's already on file, nothing changes unless you tick Replace.</p>` : '';
 
   const eduRows = extracted.education.map((e, i) => `
     <div style="display:flex;align-items:start;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
@@ -8760,12 +8791,25 @@ async function saveCvImportSelections(staffId) {
   errEl.style.display = 'none';
   const extracted = window._cvImportData;
   if (!extracted) return;
+  const staffName = (staffList.find(s => s.id === staffId) || {}).full_name || 'this person';
 
   // Company-level details (practice location, fax) can be refused for an account that may edit
   // people but not the company itself. That must not throw away the PERSON's education, licenses
   // and the rest of what was just reviewed — but it also must not vanish silently. So those steps
   // are attempted on their own, and anything the database wouldn't take is reported at the end.
   const notSaved = [];
+  const saved = [];            // what was actually written, for the closing summary
+  let companyWrote = false;
+
+  // Snapshot what the person's-info section looked like BEFORE anything is
+  // written, so the summary can say what was left alone and why.
+  const leftAlone = [];
+  document.querySelectorAll('.cvPiRow').forEach(row => {
+    const check = row.querySelector('.cvPiCheck');
+    if (row.dataset.state === 'same') leftAlone.push(`${row.dataset.label} (already matches)`);
+    else if (check && !check.checked && row.dataset.state === 'differs') leftAlone.push(`${row.dataset.label} (profile has "${row.dataset.current}", not replaced)`);
+    else if (check && !check.checked) leftAlone.push(`${row.dataset.label} (unticked)`);
+  });
 
   try {
     if (document.getElementById('cvCompanyCheck')?.checked && extracted.company_info) {
@@ -8787,6 +8831,7 @@ async function saveCvImportSelections(staffId) {
           const { data: changed, error } = await sb.from('company_locations').update(locUpdates).eq('id', primary.id).select('id');
           if (error) throw error;
           if (!changed || !changed.length) throw new Error('no permission to edit company details');
+          companyWrote = true;
         }
       } else if (ci.address || ci.facility_name) {
         // No location on file at all yet — create one as Primary, same as
@@ -8803,6 +8848,7 @@ async function saveCvImportSelections(staffId) {
           sort_order: 0,
         });
         if (error) throw error;
+        companyWrote = true;
       }
 
       if (ci.fax && !currentCompany.fax) {
@@ -8810,36 +8856,33 @@ async function saveCvImportSelections(staffId) {
         if (error) throw error;
         if (!changed || !changed.length) throw new Error('no permission to edit company details');
         currentCompany.fax = ci.fax;
+        companyWrote = true;
       }
      } catch (companyErr) {
       notSaved.push(`the company's practice location / fax (${companyErr.message})`);
      }
     }
 
-    if (document.getElementById('cvPractitionerCheck')?.checked && extracted.practitioner_info) {
+    if (extracted.practitioner_info) {
       const pi = extracted.practitioner_info;
       const current = staffList.find(s => s.id === staffId) || {};
-      // Only fill in what's currently blank — never overwrite a value
-      // that's already on file, since the scan could be wrong and this
-      // isn't the kind of field a human is reviewing character-by-character
-      // the way they would a full profile edit.
+      // Only fields ticked in the review are written. A "Save" (blank on file)
+      // tick fills blanks only; a "Replace" tick overwrites what's there.
       const updates = {};
-      if (pi.license_number && !current.license_number) updates.license_number = pi.license_number;
-      if (pi.caqh_id && !current.caqh_id) updates.caqh_id = pi.caqh_id;
-      if (pi.npi_number && !current.npi_number) updates.npi_number = pi.npi_number;
-      // Personal fields a CAQH summary reliably supplies that a resume
-      // usually doesn't — same only-if-blank rule as the three above.
-      if (pi.date_of_birth && !current.date_of_birth) updates.date_of_birth = pi.date_of_birth;
-      if (pi.gender && !current.gender) updates.gender = pi.gender;
-      if (pi.address && !current.address) updates.address = pi.address;
-      if (pi.city && !current.city) updates.city = pi.city;
-      if (pi.state && !current.state) updates.state = pi.state;
-      if (pi.zip && !current.zip) updates.zip = pi.zip;
-      if (pi.phone && !current.phone) updates.phone = pi.phone;
+      const labels = [];
+      document.querySelectorAll('.cvPiCheck:checked').forEach(el => {
+        const replace = el.dataset.mode === 'replace';
+        let wrote = false;
+        el.dataset.keys.split(',').forEach(k => {
+          if (pi[k] && (replace || !current[k])) { updates[k] = pi[k]; wrote = true; }
+        });
+        if (wrote) labels.push(el.dataset.label + (replace ? ' (replaced)' : ''));
+      });
       if (Object.keys(updates).length) {
         const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
         if (error) throw error;
         if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so nothing was imported.");
+        saved.push(...labels);
       }
     }
 
@@ -8888,6 +8931,7 @@ async function saveCvImportSelections(staffId) {
           newRows.map(e => ({ staff_id: staffId, training_type: e.training_type, specialty: e.specialty, institution: e.institution, address: e.address, program_director: e.program_director, start_date: e.start_date, end_date: e.end_date, completed: !!e.completed }))
         );
         if (error) throw error;
+        saved.push(newRows.length + ' education entr' + (newRows.length === 1 ? 'y' : 'ies'));
       }
     }
 
@@ -8905,6 +8949,7 @@ async function saveCvImportSelections(staffId) {
           newRows.map(l => ({ staff_id: staffId, license_type: l.license_type, license_number: l.license_number, state: l.state, original_date_of_issue: l.original_date_of_issue, expiration_date: l.expiration_date }))
         );
         if (error) throw error;
+        saved.push(newRows.length + ' additional license' + (newRows.length === 1 ? '' : 's'));
       }
     }
 
@@ -8919,6 +8964,7 @@ async function saveCvImportSelections(staffId) {
           newRows.map(p => ({ staff_id: staffId, hospital_name: p.hospital_name, address: p.address, privilege_type: p.privilege_type, start_date: p.start_date, end_date: p.end_date }))
         );
         if (error) throw error;
+        saved.push(newRows.length + ' hospital privilege' + (newRows.length === 1 ? '' : 's'));
       }
     }
 
@@ -8933,6 +8979,7 @@ async function saveCvImportSelections(staffId) {
           newRows.map(c => ({ staff_id: staffId, claim_status: c.claim_status, date_filed: c.date_filed, date_closed: c.date_closed || null, description: c.description || null }))
         );
         if (error) throw error;
+        saved.push(newRows.length + ' malpractice claim' + (newRows.length === 1 ? '' : 's'));
       }
     }
 
@@ -8960,6 +9007,7 @@ async function saveCvImportSelections(staffId) {
           }))
         );
         if (error) throw error;
+        saved.push(newRows.length + (newRows.length === 1 ? ' employment entry' : ' employment entries'));
       }
     }
 
@@ -8977,17 +9025,53 @@ async function saveCvImportSelections(staffId) {
         const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
         if (error) throw error;
         if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so the specialty wasn't saved.");
+        saved.push('specialty / board info');
       }
     }
 
+    if (companyWrote) saved.push("company practice location / fax");
+
+    // Nothing written at all: say so, instead of closing with a success message.
+    if (!saved.length) {
+      errEl.style.background = 'rgba(245,158,11,.12)';
+      errEl.style.border = '1px solid rgba(245,158,11,.4)';
+      errEl.style.borderRadius = '8px';
+      errEl.style.padding = '8px 10px';
+      errEl.style.color = '#fbbf24';
+      errEl.textContent = 'Nothing was saved. ' + (skippedAsDuplicate || leftAlone.length
+        ? 'Everything ticked is already on file, or you unticked what was left.'
+        : 'No boxes are ticked.') + ' To overwrite a value that differs, tick Replace next to it.';
+      errEl.style.display = 'block';
+      return;
+    }
+
     await loadStaffTable();
-    document.getElementById('cvImportReviewModal')?.remove();
     window._cvImportData = null;
-    const dupNote = skippedAsDuplicate ? ` (${skippedAsDuplicate} already on file, skipped)` : '';
-    if (notSaved.length) toast(`Imported the person's information${dupNote}, but not ${notSaved.join('; ')}.`, true);
-    else toast(`✓ Imported successfully${dupNote}`);
+    // The profile sheet this import was started from still shows the OLD values,
+    // and its own Save button writes whatever is on screen — so saving it
+    // afterwards would put the old values back over the import. Rebuild it from
+    // the freshly loaded record.
+    const sheetWasOpen = !!document.getElementById(PROVIDER_TAB_MODAL_ID);
+    if (sheetWasOpen) showFullProfileSheet(staffId);
+
+    const card = document.querySelector('#cvImportReviewModal > div');
+    if (card) {
+      const list = (items, color) => items.map(t => `<li style="margin:3px 0;color:${color};">${hrOnbEsc(t)}</li>`).join('');
+      const skipped = [];
+      if (skippedAsDuplicate) skipped.push(`${skippedAsDuplicate} entr${skippedAsDuplicate === 1 ? 'y' : 'ies'} already on file (not added again)`);
+      skipped.push(...leftAlone);
+      card.innerHTML = `
+        <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:12px;">Import finished</div>
+        <div style="font-size:13px;font-weight:700;color:#4ade80;text-transform:uppercase;margin-bottom:4px;">Saved to ${hrOnbEsc(staffName)}'s profile</div>
+        <ul style="margin:0 0 14px;padding-left:18px;font-size:14px;">${list(saved, '#fff')}</ul>
+        ${skipped.length ? `<div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin-bottom:4px;">Left as it was</div><ul style="margin:0 0 14px;padding-left:18px;font-size:14px;">${list(skipped, 'rgba(255,255,255,.66)')}</ul>` : ''}
+        ${notSaved.length ? `<div style="font-size:13px;font-weight:700;color:#f87171;text-transform:uppercase;margin-bottom:4px;">Could not save</div><ul style="margin:0 0 14px;padding-left:18px;font-size:14px;">${list(notSaved, '#f87171')}</ul>` : ''}
+        <button class="btn btn-teal" onclick="document.getElementById('cvImportReviewModal').remove()" style="width:100%;justify-content:center;">Done</button>`;
+    } else {
+      toast('Imported: ' + saved.join(', '));
+    }
   } catch (e) {
-    errEl.textContent = e.message;
+    errEl.textContent = e.message + (saved.length ? ` Already saved before this error: ${saved.join(', ')}.` : '');
     errEl.style.display = 'block';
   }
 }
