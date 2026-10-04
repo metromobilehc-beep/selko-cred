@@ -1694,7 +1694,7 @@ window.selkoSharedAuthStorage = {
            and always fully visible again via the toggle below. -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>🔍 Sensitive data access log</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here: who, when, and why. Acknowledging an entry marks it reviewed and hides it from the default view. Once an entry has been reviewed, one of your company's own admins can delete it. Unreviewed entries can't be deleted, Selko staff can never delete your entries, and every deletion is itself recorded permanently in the history below.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here: who, when, and why. Acknowledging an entry marks it reviewed and hides it from the default view. Once an entry has been reviewed, one of your company's own admins can delete it. Unreviewed entries can't be deleted from here (removing a staff member also removes their entries, and that is recorded below too), Selko staff can never delete your entries, and every deletion is itself recorded permanently in the history below.</p>
         <div id="sensitiveLogDeleteBar" style="display:none;margin-bottom:10px;">
           <button class="btn btn-sm btn-ghost" onclick="showDeleteSensitiveLogModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">🗑 Delete reviewed entries…</button>
         </div>
@@ -2362,6 +2362,14 @@ window.selkoSharedAuthStorage = {
           <button class="btn btn-sm btn-teal" onclick="saveBranding()">Save branding</button>
         </div>
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="gettingStartedSettingsPanel">
+        <h2>Getting-started checklist</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">A short checklist on your Overview that walks a new admin through setup: company settings, roles, staff, document types, a first upload, logins, a provider profile and a first exclusion check. It ticks steps off by itself from what you've actually done.</p>
+        <div id="gettingStartedSettingsStatus" style="font-size:14px;color:rgba(255,255,255,.78);margin-bottom:12px;"></div>
+        <div id="gettingStartedSettingsButtons" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+        <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px;line-height:1.5;">Reset clears anything you marked done by hand and shows the checklist again. Steps that are done in your real data (staff added, documents uploaded, a provider with an NPI, an exclusion check run) stay checked, because they are done.</div>
       </div>
 
       <div id="settingsGrp_setup" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
@@ -13771,6 +13779,7 @@ async function loadSettings() {
   loadEntitiesPanel();
   loadSupportAccessPanel();
   loadSensitiveAlertsPanel();
+  loadGettingStartedSettings();
   // loadSensitiveAccessLog() moved to loadCompliance() — this panel now
   // lives in the Compliance tab, not Settings.
 
@@ -22272,19 +22281,63 @@ async function renderGettingStarted() {
 }
 
 async function setGettingStartedEnabled(enabled) {
-  if (await saveGettingStarted({ enabled })) renderGettingStarted();
+  if (await saveGettingStarted({ enabled })) { renderGettingStarted(); loadGettingStartedSettings(); }
+}
+
+// Settings > Getting-started checklist. Same admin-only rule as the Overview.
+async function loadGettingStartedSettings() {
+  const panel = document.getElementById('gettingStartedSettingsPanel');
+  if (!panel) return;
+  const allowed = !!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin));
+  panel.style.display = allowed ? '' : 'none';
+  if (!allowed) return;
+  const statusEl = document.getElementById('gettingStartedSettingsStatus');
+  const btnEl = document.getElementById('gettingStartedSettingsButtons');
+  const state = (currentCompany.custom_vars && currentCompany.custom_vars.gettingStarted) || {};
+  const enabled = state.enabled === true;
+  const manualCount = Object.values(state.done || {}).filter(Boolean).length;
+  if (!enabled) {
+    statusEl.innerHTML = 'The checklist is <strong>hidden</strong>' + (manualCount ? ` (${manualCount} ${manualCount === 1 ? 'step' : 'steps'} marked done by hand are remembered)` : '') + '.';
+  } else {
+    statusEl.textContent = 'Checking your progress…';
+    try {
+      const ctx = await gatherGettingStartedContext();
+      const { doneCount, total } = evaluateGettingStarted(ctx, state);
+      statusEl.innerHTML = `The checklist is <strong>shown on your Overview</strong>: ${doneCount} of ${total} steps done${manualCount ? `, ${manualCount} marked done by hand` : ''}.`;
+    } catch (e) {
+      statusEl.innerHTML = 'The checklist is <strong>shown on your Overview</strong>.';
+    }
+  }
+  btnEl.innerHTML = `
+    <button class="btn btn-sm ${enabled ? 'btn-ghost' : 'btn-teal'}" onclick="setGettingStartedEnabled(${!enabled})" ${enabled ? 'style="color:#fff;border-color:rgba(255,255,255,.2);"' : ''}>${enabled ? 'Hide it' : 'Show it on my Overview'}</button>
+    <button class="btn btn-sm btn-ghost" onclick="resetGettingStarted()" style="color:#fff;border-color:rgba(255,255,255,.2);">↺ Reset the checklist</button>
+    ${enabled ? `<button class="btn btn-sm btn-ghost" onclick="switchTab('overview')" style="color:#fff;border-color:rgba(255,255,255,.2);">View it on Overview</button>` : ''}`;
+}
+
+async function resetGettingStarted() {
+  const ok = await showCustomConfirm(
+    'Reset the getting-started checklist?\n\nAnything you marked done by hand is cleared and the checklist is shown on your Overview again. Steps that are done in your real data (staff added, documents uploaded, and so on) stay checked.',
+    { okLabel: 'Reset checklist', cancelLabel: 'Cancel' });
+  if (!ok) return;
+  // Replace the whole saved state (a normal save merges, which could never clear a step).
+  if (!(await saveGettingStarted({ enabled: true, done: {} }, { replace: true }))) return;
+  toast('Checklist reset. It is showing on your Overview again.');
+  renderGettingStarted();
+  loadGettingStartedSettings();
 }
 async function markGettingStartedStepDone(stepId) {
-  if (await saveGettingStarted({ done: { [stepId]: true } })) renderGettingStarted();
+  if (await saveGettingStarted({ done: { [stepId]: true } })) { renderGettingStarted(); loadGettingStartedSettings(); }
 }
-async function saveGettingStarted(patch) {
+async function saveGettingStarted(patch, opts = {}) {
   // Re-read custom_vars first so this can never overwrite a different setting
   // saved a moment ago (same approach as the other per-company settings).
   const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
   if (readErr) { toast('Error: ' + readErr.message, true); return false; }
   const cv = { ...((fresh && fresh.custom_vars) || {}) };
   const cur = cv.gettingStarted || {};
-  cv.gettingStarted = { ...cur, ...patch, done: { ...(cur.done || {}), ...(patch.done || {}) } };
+  cv.gettingStarted = opts.replace
+    ? { ...patch, done: { ...(patch.done || {}) } }                                                   // reset: start clean
+    : { ...cur, ...patch, done: { ...(cur.done || {}), ...(patch.done || {}) } };                      // normal: merge
   const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
   if (error) { toast('Error: ' + error.message, true); return false; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this company's settings.", true); return false; }
