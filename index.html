@@ -1119,7 +1119,7 @@ window.selkoSharedAuthStorage = {
         </div>
 
         <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:16px;margin-bottom:14px;">
-          <label style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:4px;">Notes</label>
+          <label style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:4px;">Notes <span style="color:rgba(255,255,255,.45);">(saving replaces the note shown on the board; the earlier wording is kept in Notes &amp; history)</span></label>
           <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:15px;box-sizing:border-box;"></textarea>
         </div>
 
@@ -1129,7 +1129,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" id="pnStaffTablePanel" data-default-open="true">
         <h2>Individual staff</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">The full network status board, one row per staff member per payer, filterable by person or payer.</p>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">The full network status board, one row per staff member per payer, filterable by person or payer. Every note and change is kept permanently: use <strong>📝 Notes &amp; history</strong> on a row, or <button class="btn btn-sm btn-ghost" onclick="showAllEnrollmentHistory()" style="font-size:12px;padding:2px 8px;color:#fff;border-color:rgba(255,255,255,.2);">📜 All enrollment history</button> for everything, including deleted records.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
           <select class="filter-sel" id="fInsuranceStaff" onchange="renderPayerBoard()" style="max-width:240px;">
             <option value="">All staff</option>
@@ -15715,6 +15715,16 @@ const OVERVIEW_HELP = [
         <li>This page is meant as a starting point, not a workspace — click through to the tab that matches whatever the number is telling you (e.g. a high "Missing Documents" count sends you to Documents → Missing).</li>
       </ul>`,
   },
+  {
+    title: 'The getting-started checklist',
+    subtitle: 'Optional, for new admins',
+    html: `<p>A short checklist at the top of Overview that walks through setup: company settings, roles, staff, document types, a first upload, a login, a provider profile and a first exclusion check. It ticks steps off by itself from what is really in your account. Only <strong>Review your document types</strong> has a <strong>Mark done</strong> button, because there is nothing in your data to tell whether you have reviewed them.</p>
+      <ul>
+        <li>Turn it on with the link at the top of Overview. Admins only.</li>
+        <li><strong>Hide</strong> removes it from Overview completely. Bring it back from <strong>Settings &gt; Getting-started checklist</strong>.</li>
+        <li><strong>Reset</strong> (in Settings) clears anything you marked done by hand and shows the checklist again. Steps that are done in your real data stay checked, because they are done. Resetting never changes your staff, documents or any other records.</li>
+      </ul>`,
+  },
 ];
 
 const DOCS_HELP = [
@@ -15824,8 +15834,34 @@ const STAFF_HELP = [
     subtitle: '',
     html: `<p>From a staff member's Full Profile:</p>
       <ul>
-        <li><strong>Search NPI Registry</strong> looks them up against the official CMS registry — selecting a match both fills in the NPI and marks it verified, since picking a specific name-and-location match from the real registry is itself the verification.</li>
-        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is logged (see Compliance → Sensitive data access log).</li>
+        <li><strong>License state</strong> is a dropdown, and a license number can't be saved without one. It stays blank until you choose it, so a provider is never silently marked as Oklahoma.</li>
+        <li><strong>Search NPI Registry</strong> first asks which state to search, pre-set to the profile's license state. Results say which state was searched and offer <strong>Search all states</strong> or <strong>Change state</strong>. A provider who lives in one state but is licensed in another is found by choosing the license state. Selecting a match fills in the NPI and marks it verified, since picking a specific name-and-location match from the official CMS registry is itself the verification.</li>
+        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is logged (see Compliance &gt; Sensitive data access log). Your admins can also be emailed each time (see Settings &gt; Sensitive data alerts).</li>
+      </ul>`,
+  },
+  {
+    title: 'Importing from a CAQH profile, CV or roster',
+    subtitle: 'Import from document',
+    html: `<p>On a provider's Full Profile choose <strong>Import from document</strong> and pick a PDF or image. The same option is in the Add staff member menu for a brand-new person.</p>
+      <ul>
+        <li><strong>Reading the document</strong> takes a few seconds to a minute or two. A panel shows the time and the stage, and you can <strong>Cancel</strong> it. It stops by itself after 2 minutes.</li>
+        <li><strong>Review before anything is saved.</strong> Nothing is written until you press Save selected. Every row can be edited, and unticked rows are left out.</li>
+        <li><strong>Profile details</strong> (birth date, address, license, DEA, board certification and so on) each say what Save will do: <em>Save (blank on file)</em> is ticked by default, <em>Already matches</em> needs nothing, and <em>Replace what's on file</em> is <strong>unticked</strong>. Nothing already on the profile is overwritten unless you tick Replace. DEA details are only imported for prescribing roles.</li>
+        <li><strong>Other sections</strong>: education, additional licenses, hospital privileges, malpractice claims, employment history and professional references. Entries already on file are skipped, so importing the same document twice doesn't duplicate anything.</li>
+        <li><strong>Required fields:</strong> employment needs an employer and a start date, education a type and an institution, privileges a hospital name, claims a status and a date filed, references a name, and a license a type or number. If a ticked entry is missing one, <strong>nothing is saved</strong> and the entry is named and outlined. Fill it in or untick it.</li>
+        <li>A <strong>certification</strong> such as ACLS or BLS in a specialty field is flagged and not saved by default. Certifications belong in Documents.</li>
+        <li>Social Security numbers are never read from a document.</li>
+      </ul>
+      <p>The document is read by AI, so check what it found against the original before you save.</p>`,
+  },
+  {
+    title: 'Clearing a provider profile',
+    subtitle: 'Admins only',
+    html: `<p>At the bottom of the Info tab in a provider's Full Profile, <strong>Clear this profile…</strong> erases the personal and license details (license, NPI and its verification, CAQH, DEA, state controlled-substance registration, board and specialty, birth date, gender, phone and address, citizenship, supervising physician and hospital affiliations). It keeps the name, discipline, role, login, active status, documents, files, notes, enrollments and the stored SSN.</p>
+      <ul>
+        <li>You can also choose to delete the optional lists (licenses, education, privileges, claims, employment history, references). Empty lists are greyed out.</li>
+        <li>You have to type <strong>CLEAR</strong> to confirm. There is no Undo, but every value that was cleared is kept in the person's Edit history.</li>
+        <li>Office logins can't clear a profile.</li>
       </ul>`,
   },
 ];
@@ -15860,9 +15896,15 @@ const CREDENTIALING_HELP = [
   },
   {
     title: 'Payer enrollment steps',
-    subtitle: '',
-    html: `<p>Each provider–payer pair has its own 8-step enrollment tracker (Initial Inquiry through Enrollment Complete). Click <strong>Steps</strong> on any row in the Health Care Network tab to update where a specific enrollment actually stands.</p>
-      <p>Whether completing a step emails your admins is configurable in Settings — some companies want a notification at every step, others only when enrollment finishes.</p>`,
+    subtitle: '4 steps, each with its own date',
+    html: `<p>Each provider–payer pair has its own 4-step enrollment tracker: <strong>1 Initial Inquiry Submitted</strong>, <strong>2 Application Completed</strong>, <strong>3 Credentialing in Progress</strong> and <strong>4 Enrollment Complete</strong>. Click <strong>Steps</strong> on any row in the Health Care Network tab to update where a specific enrollment stands.</p>
+      <ul>
+        <li>Each step has a status and a <strong>date</strong>. The date is set to today when you change the status. If you type a different date it stays as you typed it, and a step that is Not Started has no date.</li>
+        <li>Hover a step's dot on the board to see its date.</li>
+        <li>Marking <strong>Enrollment Complete</strong> as Yes also sets the provider to In-Network. Switching it back to No does not undo that, so change the network status on the record if you need to.</li>
+        <li>Enrollments that were tracked with the older, longer list keep their progress.</li>
+      </ul>
+      <p>Whether completing a step emails your admins is configurable in Settings. Some companies want a notification at every step, others only when enrollment finishes.</p>`,
   },
   {
     title: 'Guides & resources',
@@ -15902,11 +15944,13 @@ const COMPLIANCE_HELP = [
     html: `<p>This one is a manual lookup, not an automated check like OIG/OFAC above — Selko can't run it for you or record that you did. Click <strong>Open NSOPW search</strong> to use the Department of Justice's own site, and keep your own note of who you searched and when. A name match is a lead, not confirmation, and no result doesn't prove there's no record — see Guides &amp; resources in the Credentialing tab for more on reading a result correctly.</p>`,
   },
   {
-    title: 'The two access logs',
-    subtitle: '',
+    title: 'The access logs',
+    subtitle: 'Who looked at what',
     html: `<ul>
-        <li><strong>Sensitive data access log</strong> — every time anyone views or enters a Social Security Number, logged permanently. Once an entry has been reviewed, your company's own admins (never Selko staff) can delete it, and every deletion is recorded permanently in the deletion history under the log.</li>
-        <li><strong>Access log</strong> — who viewed or downloaded which documents, including agency partners, with filters and an exportable PDF/CSV.</li>
+        <li><strong>Sensitive data access log</strong>: every time anyone views or enters a Social Security number or a CAQH login, with who, when and the reason they gave. <strong>Acknowledge</strong> marks an entry reviewed and hides it from the default view (tick <em>Show acknowledged entries</em> to see it again).</li>
+        <li><strong>Deleting reviewed entries</strong>: only an admin of your own company can delete entries, and only ones already reviewed. Use <strong>Delete reviewed entries…</strong> for everything older than a number of days, or <strong>Delete</strong> on a single reviewed row. You give a reason and type DELETE. Selko staff can never delete your entries. Every deletion is recorded permanently in the <strong>Deletion history</strong> under the log (who, when, how many, which dates and the reason), and that record can't be edited or removed. Removing a staff member also removes their entries, and that shows up in the history too.</li>
+        <li><strong>Access log</strong>: who viewed or downloaded which documents, including agency partners, with filters and an exportable PDF or CSV. Archiving hides old entries but never deletes them.</li>
+        <li><strong>Selko platform access</strong>: whenever someone from the Selko team opens your account, looks at a tab or changes anything in it, it is recorded here with their name, the time and what they did. Entries can't be edited or deleted in the app, and you can export them as a CSV. Your own admins' activity isn't listed here.</li>
       </ul>`,
   },
 ];
@@ -15940,6 +15984,20 @@ const INSURANCE_HELP = [
         <li>Save — it appears immediately in the board below, filterable by staff or payer.</li>
       </ol>
       <p>Need to track the step-by-step enrollment process for one provider–payer pair, not just the end status? Use <strong>Steps</strong> on that row — see the Credentialing tab's help for more on how that works.</p>`,
+  },
+  {
+    title: 'Notes and history (kept permanently)',
+    subtitle: 'In case an enrollment is ever disputed',
+    html: `<p>Every enrollment keeps a permanent record of what was done and said. Click <strong>📝 Notes &amp; history</strong> on a row, or <strong>📜 All enrollment history</strong> above the table for everything.</p>
+      <ul>
+        <li><strong>Add a note</strong> any time (a call, a reference number, a letter). Admins add notes. Office users can read them.</li>
+        <li><strong>Revise</strong> a note to correct it. The old wording is kept as an archived note.</li>
+        <li><strong>Archive</strong> a note to move it out of the way. It is never deleted: tick <em>Show archived notes</em> to see it again, with who archived it, when and why.</li>
+        <li><strong>Record changes</strong> are written automatically: every change to the status, dates, confirmation code, provider or group ID, and every step's status, date and note, with who made it and when. Tick <em>Show record changes</em> to see them.</li>
+        <li>If an enrollment record is <strong>deleted</strong>, all of its notes and changes stay, together with a final copy of how the record looked.</li>
+        <li><strong>Export everything (CSV)</strong> produces the full trail for one enrollment, or for the whole company, to hand to an insurer or agency.</li>
+      </ul>
+      <p>Editing the Notes box in the Add / update form still works. It replaces the note shown on the board, and the earlier wording is kept in the history.</p>`,
   },
   {
     title: 'Quick reference summary',
@@ -15977,7 +16035,12 @@ const SETTINGS_HELP = [
   {
     title: 'Document types',
     subtitle: '',
-    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped. <strong>Document type categories</strong> nearby groups these into organized sections rather than one long flat list.</p>`,
+    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped. <strong>Document type categories</strong> nearby groups these into organized sections rather than one long flat list.</p>
+      <ul>
+        <li>The box above the table explains the columns. Click a badge to change it: <strong>Required / Optional</strong>, <strong>Applies to</strong> (which roles), <strong>Self-upload</strong> (whether staff can upload it themselves) and <strong>Hide</strong> (take it off your list).</li>
+        <li><strong>+ Add document type</strong> (Pro plan) creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
+        <li>The agency-partner <strong>Visible / Hidden</strong> setting can't be changed for built-in types. They show a lock.</li>
+      </ul>`,
   },
   {
     title: 'Health Care Network list and insurance entities',
@@ -15988,6 +16051,42 @@ const SETTINGS_HELP = [
     title: 'Agency partner access',
     subtitle: '',
     html: `<p>Controls what outside agency partners can see — which documents, which staff, read-only access scoped to just what they need. <strong>Recommended partners</strong> and <strong>Partner recommendations</strong> nearby are about surfacing and managing those partner relationships themselves.</p>`,
+  },
+  {
+    title: 'Payers, agencies and entities: duplicates and "In use"',
+    subtitle: '',
+    html: `<ul>
+        <li>Adding a payer, agency or company entity that matches one you already have is stopped with a message. A very similar name asks whether it is really the same one, with <strong>Add anyway</strong> if it isn't. If the match is a deactivated one, you are told to reactivate it instead.</li>
+        <li>The <strong>In use</strong> column shows how many records depend on each one (staff, entity and in-network records). <em>Not used</em> means it is safe to delete. Deleting something in use shows the real counts first and warns you before the records are removed.</li>
+      </ul>`,
+  },
+  {
+    title: 'Selko support access',
+    subtitle: 'Settings > Privacy & Access',
+    html: `<p>You decide whether Selko support can open your account to help you, what they can do and for how long.</p>
+      <ul>
+        <li><strong>Require my permission</strong> (recommended) means support has to ask first. If you turn it off, support can open your account without asking, though every visit is still recorded under Compliance &gt; Selko platform access. Only an admin of your company can change this.</li>
+        <li><strong>Allow access</strong>: choose <em>View only</em> (they can look but not change anything) or <em>View and help</em> (they can also make changes), and how long: 1 hour up to 7 days. Add a note about what you need help with.</li>
+        <li><strong>Requests</strong>: when support asks, you see a banner on Overview and the request in this panel. You choose Allow (with your own level and duration, which can be less than they asked for) or Deny.</li>
+        <li><strong>End access now</strong> stops it immediately. Access also ends by itself at the time shown, and the History table keeps every request, approval, denial and expiry.</li>
+        <li>Without your permission, support can still see platform basics such as your plan and how many staff and documents you have, but not your records.</li>
+      </ul>`,
+  },
+  {
+    title: 'Sensitive data alerts',
+    subtitle: 'Settings > Privacy & Access',
+    html: `<p>Emails to your admins when someone views or enters a staff member's Social Security number or CAQH login, so you always know.</p>
+      <ul>
+        <li>Each email says who did it, what it was, whose record and when, plus the reason they gave. <strong>It never includes the sensitive information itself</strong>, and the subject line never contains a name.</li>
+        <li>Choose what you're told about: Social Security numbers and CAQH logins (the default), the same plus changes to personal and license details (birth date, address, phone, license, NPI, DEA), or nothing. Detail changes are bundled into one email a day, and nobody is emailed about their own profile edits. Social Security and CAQH views go to everyone, including the person who did it.</li>
+        <li>Every admin of your company gets them. You can add up to 5 extra addresses.</li>
+        <li><strong>Send me a test email</strong> checks your email is working. <strong>Recent alerts</strong> lists the latest ones and whether each was emailed. Emails go out within about 5 minutes.</li>
+      </ul>`,
+  },
+  {
+    title: 'Getting-started checklist',
+    subtitle: 'Settings > Getting-started checklist',
+    html: `<p>Shows, hides or resets the setup checklist on your Overview. Reset clears anything you marked done by hand and shows it again, and steps that are done in your real data stay checked. It never changes your staff, documents or any other records. See the Overview help for what the checklist covers.</p>`,
   },
   {
     title: 'Storage, uploads, and deletion',
@@ -16011,6 +16110,18 @@ const SUPER_HELP = [
     subtitle: '',
     html: `<p>Every company on the platform, with tools to add new ones and manage each one's plan and settings. <strong>Invite staff to any company</strong> sends a login invitation to someone at any company without needing to be logged into that company's own session first.</p>
       <p><strong>Remove a stray login</strong> cleans up an orphaned account left behind by an email change made the old way, before a safe "Change login email" tool existed on the Staff tab. Only removes the exact email typed in — it never affects that person's current, in-use login, and nothing happens without typing the email and confirming.</p>`,
+  },
+  {
+    title: 'Support access (permission to open a company)',
+    subtitle: '',
+    html: `<p>A company can require its own permission before you open it with <strong>View as Admin</strong>. Each company card says where it stands:</p>
+      <ul>
+        <li><strong>Support: open</strong>: the company hasn't turned the requirement on, so you can open it. Every visit is still logged for them.</li>
+        <li><strong>Support: permission needed</strong>: ask first. View as Admin shows a request form where you choose view only or view and help and say why. Their admin approves it from Settings.</li>
+        <li><strong>Support: request pending</strong>: they haven't answered yet. Sending again updates the same request.</li>
+        <li><strong>Support: view only / view + help until …</strong>: you're allowed in until that time. The banner shows the level and end time, and you're returned here automatically when it ends.</li>
+      </ul>
+      <p>Without permission you can still manage plan, modules, billing, support requests and staff and document counts, but not their records. Under view only, changes are refused. Everything you open, view or change is recorded in the company's Compliance tab, and you can't change their permission setting.</p>`,
   },
   {
     title: 'Document type categories and templates',
@@ -20251,6 +20362,23 @@ async function loadPayerBoard() {
 
   renderQuickRef(data || []);
 
+  // How many notes and changes each enrollment has on record (drives the Notes
+  // & history button). If the history table isn't installed yet this stays null
+  // and the board looks exactly as it did before.
+  _enrollmentHistoryCounts = null;
+  try {
+    const { data: hist, error: histErr } = await sb.from('enrollment_history')
+      .select('network_id, kind, archived_at').eq('company_id', currentCompany.id).limit(20000);
+    if (!histErr && hist) {
+      _enrollmentHistoryCounts = {};
+      hist.forEach(e => {
+        const c = (_enrollmentHistoryCounts[e.network_id] ||= { active: 0, archived: 0, changes: 0 });
+        if (e.kind === 'note') (e.archived_at ? c.archived++ : c.active++);
+        else if (e.kind === 'change') c.changes++;
+      });
+    }
+  } catch (e) { /* history not available yet */ }
+
   _lastPayerBoardData = data || [];
   _lastPayerBoardError = error;
   renderPayerBoard();
@@ -20667,6 +20795,251 @@ function enrollmentStepCell(r) {
   </div>`;
 }
 
+let _enrollmentHistoryCounts = null;   // { networkId: {active, archived, changes} } or null when history isn't installed
+
+// The Notes cell on both boards: the current note, plus a button into the full
+// notes & history for that enrollment (every note, archived notes, every change).
+function enrollmentNotesCell(r) {
+  const note = r.notes ? hrOnbEsc(r.notes) : '—';
+  if (!_enrollmentHistoryCounts) return note;
+  const c = _enrollmentHistoryCounts[r.id] || { active: 0, archived: 0, changes: 0 };
+  const total = c.active + c.archived + c.changes;
+  return `${note}<div style="margin-top:4px;"><button class="btn btn-sm btn-ghost" onclick="showEnrollmentHistoryModal('${r.id}')" style="font-size:12px;padding:2px 8px;color:#fff;border-color:rgba(255,255,255,.2);white-space:nowrap;">📝 Notes &amp; history${total ? ` (${total})` : ''}</button></div>`;
+}
+
+// ── Enrollment notes & history ──────────────────────────────────────────────
+// A permanent trail for each payer enrollment, kept so it can be produced if an
+// agency or insurer disputes an enrollment. The DATABASE records every change to
+// the record (status, dates, codes, steps, who and when) and keeps the old
+// wording whenever a note is edited; notes are added, revised or archived here.
+// Nothing is ever overwritten or deleted, and it survives deleting the record.
+const ENROLL_FIELD_LABELS = {
+  status: 'Status', date_submitted: 'Submitted date', date_confirmed: 'Confirmed date', date_in_network: 'In-network date',
+  expiration_date: 'Expiration date', confirmation_code: 'Confirmation code', network_provider_id: 'Provider ID', group_id: 'Group ID',
+  notes: 'Note on the board',
+};
+function enrollFieldLabel(f) {
+  const m = /^step:(\d+):(status|date|note)$/.exec(f || '');
+  if (m) {
+    const n = parseInt(m[1], 10);
+    const meta = ENROLLMENT_STEPS.find(s => s.n === n);
+    const part = { status: 'status', date: 'date', note: 'note' }[m[2]];
+    return meta ? `Step ${stepDisplayNumber(meta)} (${meta.name}) ${part}` : `Older step ${n} ${part}`;
+  }
+  if (f === 'enrollment_steps') return 'Steps';
+  return ENROLL_FIELD_LABELS[f] || String(f || '').replace(/_/g, ' ');
+}
+function enrollValue(f, v) {
+  if (v === null || v === undefined || v === '') return '(blank)';
+  if (f === 'status') return PAYER_NETWORK_BADGE_LABEL[v] || String(v).replace(/_/g, ' ');
+  if (f === 'enrollment_steps' && Array.isArray(v)) return v.map(s => `Step ${s.step}: ${s.status || '—'}${s.date ? ' ' + s.date : ''}${s.note ? ' (' + s.note + ')' : ''}`).join('; ') || '(none)';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+// One line per field, as plain text (also used for the CSV).
+function enrollChangeLines(entry) {
+  const list = Array.isArray(entry.changes) ? entry.changes : [];
+  return list.map(c => {
+    if (entry.kind === 'created') return `${enrollFieldLabel(c.f)}: ${enrollValue(c.f, c.n)}`;
+    if (entry.kind === 'deleted') return `${enrollFieldLabel(c.f)}: ${enrollValue(c.f, c.o)}`;
+    return `${enrollFieldLabel(c.f)}: ${enrollValue(c.f, c.o)} → ${enrollValue(c.f, c.n)}`;
+  });
+}
+const ENROLL_KIND_LABEL = { note: 'Note', change: 'Change', created: 'Record created', deleted: 'Record deleted' };
+
+function enrollEntryHtml(e, canWrite, byId) {
+  const when = new Date(e.created_at).toLocaleString();
+  const who = hrOnbEsc(e.created_by_name || 'Unknown');
+  const kindBadge = e.kind === 'note'
+    ? `<span class="badge ${e.archived_at ? 'badge-none' : 'badge-ok'}">${e.archived_at ? 'Archived note' : 'Note'}</span>`
+    : `<span class="badge ${e.kind === 'deleted' ? 'badge-warn' : 'badge-none'}">${ENROLL_KIND_LABEL[e.kind] || e.kind}</span>`;
+  let body = '';
+  if (e.kind === 'note') {
+    body = `<div style="font-size:15px;color:#fff;white-space:pre-wrap;${e.archived_at ? 'opacity:.7;' : ''}">${hrOnbEsc(e.note || '')}</div>`;
+    if (e.replaces_id) {
+      const prev = byId && byId[e.replaces_id];
+      body += `<div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">Revises an earlier note${prev ? ` from ${new Date(prev.created_at).toLocaleDateString()}` : ''}.</div>`;
+    }
+    if (e.archived_at) body += `<div style="font-size:12px;color:#fbbf24;margin-top:2px;">Archived ${new Date(e.archived_at).toLocaleString()} by ${hrOnbEsc(e.archived_by_name || 'Unknown')}${e.archive_reason ? ' · ' + hrOnbEsc(e.archive_reason) : ''}</div>`;
+    else if (canWrite) body += `<div style="margin-top:6px;display:flex;gap:6px;">
+        <button class="btn btn-sm btn-ghost" onclick="enrollStartRevise('${e.id}')" style="font-size:12px;padding:2px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Revise</button>
+        <button class="btn btn-sm btn-ghost" onclick="enrollStartArchive('${e.id}')" style="font-size:12px;padding:2px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Archive</button></div>
+        <div id="enrollEdit_${e.id}"></div>`;
+  } else {
+    const lines = enrollChangeLines(e);
+    body = lines.length ? `<ul style="margin:4px 0 0 18px;padding:0;font-size:14px;color:rgba(255,255,255,.78);">${lines.map(l => `<li>${hrOnbEsc(l)}</li>`).join('')}</ul>` : '';
+  }
+  return `<div style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);">
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:rgba(255,255,255,.6);">${kindBadge}<span>${when}</span><span>· ${who}</span></div>${body}</div>`;
+}
+
+async function showEnrollmentHistoryModal(networkId) {
+  document.getElementById('enrollHistModal')?.remove();
+  const row = (_lastPayerBoardData || []).find(r => r.id === networkId) || (window._staffPayerNetworkRows || []).find(r => r.id === networkId) || {};
+  const label = `${row.credtrack_staff?.full_name || row.entity_name || 'Enrollment'} · ${row.payers?.name || ''}`.trim();
+  const modal = document.createElement('div');
+  modal.id = 'enrollHistModal';
+  modal.dataset.network = networkId;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1250;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:100%;max-width:640px;max-height:90vh;border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-shrink:0;">
+      <div><div style="color:#fff;font-size:18px;font-weight:700;">Notes &amp; history</div><div style="font-size:14px;color:rgba(255,255,255,.62);">${hrOnbEsc(label)}</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('enrollHistModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button>
+    </div>
+    <div id="enrollHistBody" style="padding:14px 22px;overflow-y:auto;flex:1;">Loading…</div></div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+  await loadEnrollmentHistoryModal(networkId);
+}
+
+async function loadEnrollmentHistoryModal(networkId) {
+  const body = document.getElementById('enrollHistBody');
+  if (!body) return;
+  const showArchived = document.getElementById('enrollShowArchived')?.checked ?? false;
+  const showChanges = document.getElementById('enrollShowChanges')?.checked ?? false;
+  const draft = document.getElementById('enrollNewNote')?.value || '';
+  const { data, error } = await sb.from('enrollment_history').select('*').eq('network_id', networkId).order('created_at', { ascending: false });
+  if (error) { body.innerHTML = `<div style="color:#f87171;font-size:14px;">${hrOnbEsc(error.message)}</div>`; return; }
+  const all = data || [];
+  const byId = Object.fromEntries(all.map(e => [e.id, e]));
+  window._enrollEntries = byId;
+  const canWrite = currentProfile?.role === 'admin' && !_superProfile;
+  const nActive = all.filter(e => e.kind === 'note' && !e.archived_at).length;
+  const nArch = all.filter(e => e.kind === 'note' && e.archived_at).length;
+  const nChg = all.filter(e => e.kind !== 'note').length;
+  const shown = all.filter(e => e.kind === 'note' ? (showArchived || !e.archived_at) : showChanges);
+  body.innerHTML = `
+    ${canWrite ? `<label class="inline-label" for="enrollNewNote">Add a note</label>
+      <textarea class="inline-input" id="enrollNewNote" rows="2" maxlength="4000" placeholder="e.g. Called Curative rep, ref #4411, effective date confirmed" style="width:100%;box-sizing:border-box;margin-bottom:6px;">${hrOnbEsc(draft)}</textarea>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><button class="btn btn-sm btn-teal" id="enrollAddBtn" onclick="enrollAddNote('${networkId}')">Add note</button>
+      <span id="enrollErr" style="color:#f87171;font-size:13px;"></span></div>
+      <div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:10px;">Notes are never overwritten or deleted. Revising a note keeps the old wording, and archiving only moves it out of the way.</div>`
+      : `<div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;">View only. An admin of this company adds and archives notes.</div>`}
+    <div style="display:flex;gap:14px;flex-wrap:wrap;align-items:center;margin-bottom:6px;">
+      <label style="font-size:14px;color:rgba(255,255,255,.7);cursor:pointer;"><input type="checkbox" id="enrollShowArchived" ${showArchived ? 'checked' : ''} onchange="loadEnrollmentHistoryModal('${networkId}')" /> Show archived notes (${nArch})</label>
+      <label style="font-size:14px;color:rgba(255,255,255,.7);cursor:pointer;"><input type="checkbox" id="enrollShowChanges" ${showChanges ? 'checked' : ''} onchange="loadEnrollmentHistoryModal('${networkId}')" /> Show record changes (${nChg})</label>
+      <button class="btn btn-sm btn-ghost" onclick="exportEnrollmentHistoryCsv('${networkId}')" style="margin-left:auto;color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export everything (CSV)</button>
+    </div>
+    ${shown.length ? shown.map(e => enrollEntryHtml(e, canWrite, byId)).join('') : `<div style="font-size:14px;color:rgba(255,255,255,.55);padding:14px 0;">${nActive ? '' : 'No active notes. '}${nArch || nChg ? 'Tick the boxes above to see archived notes and record changes.' : 'Nothing recorded yet.'}</div>`}`;
+}
+
+async function enrollRefresh(networkId) {
+  await loadEnrollmentHistoryModal(networkId);
+  if (typeof loadPayerBoard === 'function' && document.getElementById('payerBoardStaffTbody')) loadPayerBoard();
+  if (window._staffPayerNetworkRows && typeof loadStaffPayerNetwork === 'function' && document.getElementById('staffPayerNetworkList')) {
+    const sid = (window._staffPayerNetworkRows[0] || {}).staff_id; if (sid) loadStaffPayerNetwork(sid);
+  }
+}
+async function enrollAddNote(networkId) {
+  const ta = document.getElementById('enrollNewNote'); const errEl = document.getElementById('enrollErr'); const btn = document.getElementById('enrollAddBtn');
+  const text = (ta.value || '').trim();
+  if (!text) { errEl.textContent = 'Write the note first.'; return; }
+  errEl.textContent = ''; btn.disabled = true;
+  const { error } = await sb.rpc('add_enrollment_note', { p_network: networkId, p_note: text });
+  btn.disabled = false;
+  if (error) { errEl.textContent = error.message; return; }
+  ta.value = '';
+  toast('Note added');
+  await enrollRefresh(networkId);
+}
+function enrollStartRevise(entryId) {
+  const host = document.getElementById('enrollEdit_' + entryId); if (!host) return;
+  const entry = (window._enrollEntries || {})[entryId];
+  host.innerHTML = `<textarea class="inline-input" id="enrollRevText_${entryId}" rows="2" maxlength="4000" style="width:100%;box-sizing:border-box;margin-top:6px;"></textarea>
+    <div style="display:flex;gap:6px;margin-top:4px;align-items:center;"><button class="btn btn-sm btn-teal" onclick="enrollSubmitRevise('${entryId}')">Save revision</button>
+    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('enrollEdit_${entryId}').innerHTML=''" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    <span id="enrollEditErr_${entryId}" style="color:#f87171;font-size:13px;"></span></div>
+    <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">The current wording is kept in the history as an archived note.</div>`;
+  document.getElementById('enrollRevText_' + entryId).value = (entry && entry.note) || '';
+}
+async function enrollSubmitRevise(entryId) {
+  const text = (document.getElementById('enrollRevText_' + entryId).value || '').trim();
+  const errEl = document.getElementById('enrollEditErr_' + entryId);
+  if (!text) { errEl.textContent = 'A note can\'t be blank. Archive it instead.'; return; }
+  const { error } = await sb.rpc('revise_enrollment_note', { p_entry: entryId, p_note: text });
+  if (error) { errEl.textContent = error.message; return; }
+  toast('Note revised. The earlier wording is kept as an archived note.');
+  await enrollRefresh(document.getElementById('enrollHistModal').dataset.network);
+}
+function enrollStartArchive(entryId) {
+  const host = document.getElementById('enrollEdit_' + entryId); if (!host) return;
+  host.innerHTML = `<input class="inline-input" type="text" id="enrollArchReason_${entryId}" maxlength="500" placeholder="Why? (optional)" style="width:100%;box-sizing:border-box;margin-top:6px;" />
+    <div style="display:flex;gap:6px;margin-top:4px;align-items:center;"><button class="btn btn-sm btn-gold" onclick="enrollSubmitArchive('${entryId}')">Archive this note</button>
+    <button class="btn btn-sm btn-ghost" onclick="document.getElementById('enrollEdit_${entryId}').innerHTML=''" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    <span id="enrollEditErr_${entryId}" style="color:#f87171;font-size:13px;"></span></div>
+    <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;">It stays on record. Tick "Show archived notes" to see it again.</div>`;
+}
+async function enrollSubmitArchive(entryId) {
+  const reason = (document.getElementById('enrollArchReason_' + entryId).value || '').trim();
+  const { error } = await sb.rpc('archive_enrollment_note', { p_entry: entryId, p_reason: reason || null });
+  if (error) { document.getElementById('enrollEditErr_' + entryId).textContent = error.message; return; }
+  toast('Note archived. It is still on record.');
+  await enrollRefresh(document.getElementById('enrollHistModal').dataset.network);
+}
+
+// Everything on record, as a spreadsheet: every note (active and archived),
+// every change, and any deleted record's final state. For one enrollment, or
+// (no id) for the whole company including enrollments that were deleted.
+async function exportEnrollmentHistoryCsv(networkId) {
+  let q = sb.from('enrollment_history').select('*').eq('company_id', currentCompany.id).order('created_at', { ascending: true }).limit(50000);
+  if (networkId) q = q.eq('network_id', networkId);
+  const { data, error } = await q;
+  if (error) { toast('Export failed: ' + error.message, true); return; }
+  if (!data?.length) { toast('Nothing to export yet', true); return; }
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  let csv = 'Date/Time,Person or entity,Payer,Type,Detail,Status,By,Archived on,Archived by,Archive reason,Enrollment record deleted\n';
+  const deletedIds = new Set(data.filter(e => e.kind === 'deleted').map(e => e.network_id));
+  data.forEach(e => {
+    const detail = e.kind === 'note' ? e.note : enrollChangeLines(e).join(' | ');
+    csv += [new Date(e.created_at).toLocaleString(), e.staff_name || e.entity_name || '', e.payer_name || '', ENROLL_KIND_LABEL[e.kind] || e.kind, detail,
+      e.kind === 'note' ? (e.archived_at ? 'Archived' : 'Active') : '', e.created_by_name || '',
+      e.archived_at ? new Date(e.archived_at).toLocaleString() : '', e.archived_by_name || '', e.archive_reason || '', deletedIds.has(e.network_id) ? 'Yes' : ''].map(esc).join(',') + '\n';
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `enrollment-history-${(currentCompany.name || 'company').replace(/\s+/g, '-')}-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+// Company-wide view: every enrollment's trail, including ones that were deleted.
+async function showAllEnrollmentHistory() {
+  document.getElementById('enrollAllModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'enrollAllModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1250;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:100%;max-width:760px;max-height:90vh;border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:18px 22px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-shrink:0;">
+      <div><div style="color:#fff;font-size:18px;font-weight:700;">Enrollment history</div><div style="font-size:14px;color:rgba(255,255,255,.62);">Every note and change across all enrollments, including deleted ones</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('enrollAllModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button></div>
+    <div style="padding:12px 22px;display:flex;gap:8px;flex-wrap:wrap;border-bottom:1px solid rgba(255,255,255,.08);flex-shrink:0;">
+      <input class="inline-input" id="enrollAllSearch" type="text" placeholder="Search a person, payer or wording…" oninput="renderAllEnrollmentHistory()" style="flex:1;min-width:200px;" />
+      <label style="font-size:14px;color:rgba(255,255,255,.7);align-self:center;cursor:pointer;"><input type="checkbox" id="enrollAllArchived" onchange="renderAllEnrollmentHistory()" /> Archived notes</label>
+      <label style="font-size:14px;color:rgba(255,255,255,.7);align-self:center;cursor:pointer;"><input type="checkbox" id="enrollAllChanges" checked onchange="renderAllEnrollmentHistory()" /> Changes</label>
+      <button class="btn btn-sm btn-ghost" onclick="exportEnrollmentHistoryCsv()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export all (CSV)</button></div>
+    <div id="enrollAllBody" style="padding:6px 22px 14px;overflow-y:auto;flex:1;">Loading…</div></div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+  const { data, error } = await sb.from('enrollment_history').select('*').eq('company_id', currentCompany.id).order('created_at', { ascending: false }).limit(2000);
+  if (error) { document.getElementById('enrollAllBody').innerHTML = `<div style="color:#f87171;font-size:14px;padding:12px 0;">${hrOnbEsc(error.message)}</div>`; return; }
+  window._enrollAll = data || [];
+  renderAllEnrollmentHistory();
+}
+function renderAllEnrollmentHistory() {
+  const body = document.getElementById('enrollAllBody'); if (!body) return;
+  const term = (document.getElementById('enrollAllSearch')?.value || '').trim().toLowerCase();
+  const showArch = document.getElementById('enrollAllArchived')?.checked;
+  const showChg = document.getElementById('enrollAllChanges')?.checked;
+  const all = window._enrollAll || [];
+  const byId = Object.fromEntries(all.map(e => [e.id, e]));
+  const deleted = new Set(all.filter(e => e.kind === 'deleted').map(e => e.network_id));
+  const rows = all.filter(e => (e.kind === 'note' ? (showArch || !e.archived_at) : showChg))
+    .filter(e => !term || [e.staff_name, e.entity_name, e.payer_name, e.note, e.created_by_name, ...enrollChangeLines(e)].join(' ').toLowerCase().includes(term));
+  body.innerHTML = rows.length ? rows.map(e => `<div style="padding-top:8px;"><div style="font-size:14px;color:#fff;font-weight:600;">${hrOnbEsc(e.staff_name || e.entity_name || 'Company-wide')} · ${hrOnbEsc(e.payer_name || '')}${deleted.has(e.network_id) ? ' <span class="badge badge-warn">record deleted</span>' : ''}</div>${enrollEntryHtml(e, false, byId)}</div>`).join('')
+    : '<div style="font-size:14px;color:rgba(255,255,255,.55);padding:14px 0;">Nothing matches.</div>';
+}
+
 function renderPayerBoard() {
   const staffTbody = document.getElementById('payerBoardStaffTbody');
   const entityTbody = document.getElementById('payerBoardEntityTbody');
@@ -20694,7 +21067,7 @@ function renderPayerBoard() {
     <td>${r.confirmation_code || '—'}</td>
     <td>${r.network_provider_id || '—'}</td>
     <td>${r.group_id || '—'}</td>
-    <td style="max-width:220px;white-space:normal;font-size:14px;color:rgba(255,255,255,.7);">${r.notes || '—'}</td>
+    <td style="max-width:220px;white-space:normal;font-size:14px;color:rgba(255,255,255,.7);">${enrollmentNotesCell(r)}</td>
     <td><div class="td-actions">
       ${isOffice
         ? '<span style="font-size:14px;color:rgba(255,255,255,.55);">View only</span>'
@@ -20856,7 +21229,7 @@ async function savePayerNetwork() {
 }
 
 async function deletePayerNetwork(id) {
-  if (!confirm('Delete this network record?')) return;
+  if (!confirm('Delete this network record?\n\nIts notes and change history are kept permanently under Enrollment history, together with a final copy of the record.')) return;
   const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Record deleted');
@@ -20958,6 +21331,12 @@ async function loadStaffPayerNetwork(staffId) {
   // a second round trip, and so a stray quote or apostrophe in a note never
   // has to survive being embedded in an onclick attribute.
   window._staffPayerNetworkRows = data || [];
+  // Is enrollment history installed, and how much is there for this person?
+  window._staffEnrollHist = null;
+  try {
+    const { data: hist, error: hErr } = await sb.from('enrollment_history').select('network_id, kind, archived_at').eq('staff_id', staffId).limit(5000);
+    if (!hErr && hist) { window._staffEnrollHist = {}; hist.forEach(e => { window._staffEnrollHist[e.network_id] = (window._staffEnrollHist[e.network_id] || 0) + 1; }); }
+  } catch (e) { /* not installed yet */ }
 
   const isOffice = currentProfile?.role === 'office' && !currentProfile?.is_super_admin;
   listEl.innerHTML = (data && data.length)
@@ -20974,6 +21353,7 @@ async function loadStaffPayerNetwork(staffId) {
             <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_in_network || '—'}</td>
             <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.expiration_date || '—'}</td>
             <td style="padding:6px 8px;"><div class="td-actions">
+              ${window._staffEnrollHist ? `<button class="btn btn-sm btn-ghost" onclick="showEnrollmentHistoryModal('${r.id}')">📝 Notes &amp; history${window._staffEnrollHist[r.id] ? ` (${window._staffEnrollHist[r.id]})` : ''}</button>` : ''}
               ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="fillStaffPayerNetworkForm('${r.id}')">Edit</button>
               <button class="btn btn-sm btn-ghost" onclick="showEnrollmentStepsModal('${r.id}','profile:${staffId}')">Steps</button>
               <button class="btn btn-sm btn-danger" onclick="deleteStaffPayerNetworkRecord('${r.id}','${staffId}')">Delete</button>`}
@@ -21041,7 +21421,7 @@ async function saveStaffPayerNetworkRecord(staffId) {
 }
 
 async function deleteStaffPayerNetworkRecord(id, staffId) {
-  if (!confirm('Delete this network record?')) return;
+  if (!confirm('Delete this network record?\n\nIts notes and change history are kept permanently under Enrollment history, together with a final copy of the record.')) return;
   const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast('Record deleted');
@@ -24787,6 +25167,9 @@ async function purgeCompanyPermanently(id, name) {
         ['staff_malpractice_claims', () => sb.from('staff_malpractice_claims').delete().in('staff_id', staffIds)],
       ] : []),
       ['credtrack_staff', () => sb.from('credtrack_staff').delete().eq('company_id', id)],
+      // Enrollment history has no foreign key (it outlives deleted records on purpose), so a
+      // purged company's history is removed here. Skipped quietly if it isn't installed.
+      ['enrollment_history', () => sb.rpc('purge_enrollment_history', { p_company: id }).then(r => (r.error && /could not find|does not exist|schema cache/i.test(r.error.message)) ? { error: null } : r)],
       ['credtrack_agencies', () => sb.from('credtrack_agencies').delete().eq('company_id', id)],
       ['payers', () => sb.from('payers').delete().eq('company_id', id)],
       ['document_types', () => sb.from('document_types').delete().eq('company_id', id)],
