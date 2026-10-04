@@ -578,7 +578,7 @@ window.selkoSharedAuthStorage = {
   <div class="page">
     <!-- View as Admin banner -->
     <div id="viewAsBanner" style="display:none;background:#92400e;border:1px solid #f59e0b;border-radius:8px;padding:10px 16px;margin-bottom:16px;display:none;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-      <span style="color:#fcd34d;font-size:15px;font-weight:700;">⚡ Viewing as Admin — <span id="viewAsName"></span></span>
+      <span style="color:#fcd34d;font-size:15px;font-weight:700;">⚡ Viewing as Admin — <span id="viewAsName"></span> <span id="viewAsAccessInfo" style="font-weight:600;font-size:14px;color:#fde68a;"></span></span>
       <button class="btn btn-sm" onclick="exitViewAsAdmin()" style="background:#f59e0b;color:#1c1917;font-weight:700;">Exit to Selko Admin</button>
     </div>
 
@@ -633,6 +633,7 @@ window.selkoSharedAuthStorage = {
       <div style="font-size:22px;font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;">Overview<button class="btn btn-sm btn-ghost" style="font-size:16px;padding:7px 16px;color:#fff;border-color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;" onclick="showPageHelp(OVERVIEW_HELP)">❓ Help</button></div>
       <p style="color:rgba(255,255,255,.58);font-size:15px;margin:0 0 16px;">A quick snapshot of where things stand — document status, credentialing readiness, and anything that needs attention first.</p>
 
+      <div id="supportRequestBanner"></div>
       <div id="gettingStartedPanel"></div>
 
       <h2 id="ovGreeting">Overview</h2>
@@ -2104,6 +2105,7 @@ window.selkoSharedAuthStorage = {
       <div id="settingsJumpBar" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 6px;">
         <span style="font-size:13px;color:rgba(255,255,255,.55);">Jump to:</span>
         <button type="button" class="chip-btn" data-target="settingsGrp_account" onclick="jumpToSettingsGroup('settingsGrp_account')">Account &amp; Billing</button>
+        <button type="button" class="chip-btn" data-target="settingsGrp_support" onclick="jumpToSettingsGroup('settingsGrp_support')">Support Access</button>
         <button type="button" class="chip-btn" data-target="settingsGrp_company" onclick="jumpToSettingsGroup('settingsGrp_company')">Company Profile</button>
         <button type="button" class="chip-btn" data-target="settingsGrp_setup" onclick="jumpToSettingsGroup('settingsGrp_setup')">Professional Setup</button>
         <button type="button" class="chip-btn" data-target="hcnSectionHeader" onclick="jumpToSettingsGroup('hcnSectionHeader')">Health Care Network</button>
@@ -2221,6 +2223,27 @@ window.selkoSharedAuthStorage = {
           </table>
         </div>
         <p id="proComparisonUpgradeNote" style="font-size:14px;color:rgba(255,255,255,.58);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
+      </div>
+
+      <div id="settingsGrp_support" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
+        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Support Access</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Decide whether Selko support can open your account to help you, what they can do, and for how long.</div>
+      </div>
+
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="supportAccessPanel">
+        <h2>Selko support access</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko platform access.</p>
+        <div id="supportAccessStatus"></div>
+        <div id="supportAccessRequests"></div>
+        <div id="supportAccessGrantForm"></div>
+        <div id="supportAccessConsentRow" style="margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);"></div>
+        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin:16px 0 6px;">History</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>What</th><th>Level</th><th>Status</th><th>Ends</th></tr></thead>
+            <tbody id="supportAccessHistoryTbody"></tbody>
+          </table>
+        </div>
       </div>
 
       <div id="settingsGrp_company" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
@@ -13422,6 +13445,7 @@ async function loadSettings() {
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
+  loadSupportAccessPanel();
   // loadSensitiveAccessLog() moved to loadCompliance() — this panel now
   // lives in the Compliance tab, not Settings.
 
@@ -21175,7 +21199,245 @@ async function logPlatformEvent(companyId, event, area, detail) {
   }
 }
 
+// ── Selko support access: the company's side (Settings) ────────────────────
+const SUPPORT_DURATIONS = [[1, '1 hour'], [4, '4 hours'], [24, '24 hours'], [72, '3 days'], [168, '7 days']];
+
+function supportGrantState(g) {
+  if (g.status === 'active') return (g.revoked_at || new Date(g.expires_at).getTime() <= Date.now()) ? 'expired' : 'active';
+  return g.status;   // requested | denied | revoked
+}
+const fmtSupportDate = d => d ? new Date(d).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
+
+async function loadSupportAccessPanel() {
+  const statusEl = document.getElementById('supportAccessStatus');
+  if (!statusEl) return;
+  const canChange = currentProfile?.role === 'admin' && !_superProfile;   // a super admin viewing a company must not change ITS settings
+  const { data: grants, error } = await sb.from('support_access_grants').select('*')
+    .eq('company_id', currentCompany.id).order('created_at', { ascending: false }).limit(50);
+  if (error) {
+    statusEl.innerHTML = `<div style="font-size:14px;color:rgba(255,255,255,.55);">Support access settings aren't available yet.</div>`;
+    ['supportAccessRequests', 'supportAccessGrantForm', 'supportAccessConsentRow'].forEach(id => { const e = document.getElementById(id); if (e) e.innerHTML = ''; });
+    document.getElementById('supportAccessHistoryTbody').innerHTML = '';
+    return;
+  }
+  const required = currentCompany.support_consent_required !== false;
+  const list = grants || [];
+  const active = list.filter(g => supportGrantState(g) === 'active')
+    .sort((a, b) => (b.scope === 'edit') - (a.scope === 'edit') || new Date(b.expires_at) - new Date(a.expires_at));
+  const pending = list.filter(g => g.status === 'requested');
+
+  // 1. current state, in plain words
+  if (!required) {
+    statusEl.innerHTML = `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;font-size:14px;color:#fbbf24;">Right now Selko support can open your account <strong>without asking</strong>. Every visit is still recorded under Compliance &gt; Selko platform access. Turn on "Require my permission" below to change that.</div>`;
+  } else if (active.length) {
+    statusEl.innerHTML = active.map(g => `<div style="background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div style="font-size:14px;color:#fff;"><strong style="color:#4ade80;">Selko support can access your account</strong> until ${fmtSupportDate(g.expires_at)}<div style="font-size:13px;color:rgba(255,255,255,.62);">${g.scope === 'edit' ? 'View and help: they can also make changes' : 'View only: they can look but not change anything'}${g.decided_by_name ? ' · allowed by ' + hrOnbEsc(g.decided_by_name) : ''}${g.note ? ' · “' + hrOnbEsc(g.note) + '”' : ''}</div></div>
+      ${canChange ? `<button class="btn btn-sm btn-danger" onclick="revokeSupportAccessGrant('${g.id}')">End access now</button>` : ''}
+    </div>`).join('');
+  } else {
+    statusEl.innerHTML = `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:10px 12px;font-size:14px;color:rgba(255,255,255,.78);">Selko support <strong>cannot</strong> open your account right now. If you'd like their help, allow access below.</div>`;
+  }
+
+  // 2. requests waiting for an answer
+  const reqEl = document.getElementById('supportAccessRequests');
+  reqEl.innerHTML = pending.length ? `<div style="font-size:13px;font-weight:700;color:#fbbf24;text-transform:uppercase;margin:14px 0 6px;">Waiting for your answer</div>` + pending.map(r => `
+    <div style="border:1px solid rgba(245,158,11,.4);background:rgba(245,158,11,.06);border-radius:8px;padding:10px 12px;margin-bottom:8px;">
+      <div style="font-size:14px;color:#fff;"><strong>${hrOnbEsc(r.requested_by_name || 'Selko support')}</strong> asked to ${r.scope === 'edit' ? 'view <em>and make changes in</em>' : 'view'} your account <span style="color:rgba(255,255,255,.5);">· ${fmtSupportDate(r.requested_at)}</span></div>
+      ${r.request_note ? `<div style="font-size:14px;color:rgba(255,255,255,.7);margin:4px 0;">“${hrOnbEsc(r.request_note)}”</div>` : ''}
+      ${canChange ? `<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+        <select class="inline-select" id="supportRespScope_${r.id}" style="width:auto;"><option value="view">${SUPPORT_SCOPE_LABEL.view}</option><option value="edit" ${r.scope === 'edit' ? '' : ''}>${SUPPORT_SCOPE_LABEL.edit}</option></select>
+        <select class="inline-select" id="supportRespHours_${r.id}" style="width:auto;">${SUPPORT_DURATIONS.map(([h, l]) => `<option value="${h}" ${h === 24 ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <button class="btn btn-sm btn-teal" onclick="answerSupportRequest('${r.id}', true)">Allow</button>
+        <button class="btn btn-sm btn-ghost" onclick="answerSupportRequest('${r.id}', false)" style="color:#fff;border-color:rgba(255,255,255,.2);">Deny</button>
+      </div>` : ''}
+    </div>`).join('') : '';
+
+  // 3. allow access proactively
+  const formEl = document.getElementById('supportAccessGrantForm');
+  formEl.innerHTML = (required && canChange) ? `
+    <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin:14px 0 6px;">Allow access</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+      <div><label class="inline-label" for="supportGrantScope">They can</label>
+        <select class="inline-select" id="supportGrantScope" style="width:auto;"><option value="view">${SUPPORT_SCOPE_LABEL.view}</option><option value="edit">${SUPPORT_SCOPE_LABEL.edit}</option></select></div>
+      <div><label class="inline-label" for="supportGrantHours">For</label>
+        <select class="inline-select" id="supportGrantHours" style="width:auto;">${SUPPORT_DURATIONS.map(([h, l]) => `<option value="${h}" ${h === 24 ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div style="flex:1;min-width:200px;"><label class="inline-label" for="supportGrantNote">What do you need help with? (optional)</label>
+        <input class="inline-input" type="text" id="supportGrantNote" maxlength="500" placeholder="e.g. Help cleaning up duplicate payers" /></div>
+      <button class="btn btn-sm btn-teal" onclick="grantSupportAccessNow()">Allow access</button>
+    </div>` : '';
+
+  // 4. the requirement itself
+  document.getElementById('supportAccessConsentRow').innerHTML = canChange ? `
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:#fff;cursor:pointer;">
+      <input type="checkbox" id="supportConsentToggle" ${required ? 'checked' : ''} onchange="setSupportConsentRequired(this.checked)" style="margin-top:3px;" />
+      <span><strong>Require my permission</strong> before Selko support can open my account<div style="font-size:13px;color:rgba(255,255,255,.55);">Recommended. Only an admin of this company can change this setting.</div></span>
+    </label>` : `<div style="font-size:13px;color:rgba(255,255,255,.5);">Only an admin of this company can change these settings.</div>`;
+
+  // 5. history
+  const stateBadge = { active: '<span class="badge badge-ok">Active</span>', expired: '<span class="badge badge-none">Expired</span>', requested: '<span class="badge badge-warn">Waiting</span>', denied: '<span class="badge badge-none">Denied</span>', revoked: '<span class="badge badge-none">Ended early</span>' };
+  document.getElementById('supportAccessHistoryTbody').innerHTML = list.length ? list.map(g => {
+    const st = supportGrantState(g);
+    const what = g.status === 'requested' || g.status === 'denied'
+      ? `${hrOnbEsc(g.requested_by_name || 'Selko support')} asked${g.request_note ? ': “' + hrOnbEsc(g.request_note) + '”' : ''}${g.status === 'denied' && g.decided_by_name ? ' · denied by ' + hrOnbEsc(g.decided_by_name) : ''}`
+      : `Allowed by ${hrOnbEsc(g.decided_by_name || 'an admin')}${g.note ? ': “' + hrOnbEsc(g.note) + '”' : ''}${g.revoked_by_name ? ' · ended by ' + hrOnbEsc(g.revoked_by_name) : ''}`;
+    return `<tr><td style="font-size:14px;color:rgba(255,255,255,.62);white-space:nowrap;">${fmtSupportDate(g.created_at)}</td><td style="font-size:14px;">${what}</td>
+      <td style="font-size:14px;">${g.scope === 'edit' ? 'View + help' : 'View only'}</td><td>${stateBadge[st] || st}</td>
+      <td style="font-size:14px;color:rgba(255,255,255,.62);white-space:nowrap;">${g.revoked_at ? fmtSupportDate(g.revoked_at) : fmtSupportDate(g.expires_at)}</td></tr>`;
+  }).join('') : `<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.55);padding:16px;">No support access has been requested or given.</td></tr>`;
+}
+
+async function grantSupportAccessNow() {
+  const scope = document.getElementById('supportGrantScope').value;
+  const hours = parseInt(document.getElementById('supportGrantHours').value, 10);
+  const note = document.getElementById('supportGrantNote').value.trim();
+  const label = SUPPORT_DURATIONS.find(d => d[0] === hours)?.[1] || hours + ' hours';
+  const ok = await showCustomConfirm(
+    `Allow Selko support to ${scope === 'edit' ? 'view your account and make changes in it' : 'view your account (they will not be able to change anything)'} for ${label}?\n\nEvery visit and change is recorded under Compliance > Selko platform access, and you can end access at any time.`,
+    { okLabel: 'Allow access', cancelLabel: 'Cancel' });
+  if (!ok) return;
+  const { error } = await sb.rpc('grant_support_access', { p_scope: scope, p_hours: hours, p_note: note || null });
+  if (error) { toast('Could not allow access: ' + error.message, true); return; }
+  toast('Selko support can now access your account for ' + label);
+  loadSupportAccessPanel();
+}
+
+async function answerSupportRequest(requestId, approve) {
+  const scope = document.getElementById(`supportRespScope_${requestId}`)?.value || 'view';
+  const hours = parseInt(document.getElementById(`supportRespHours_${requestId}`)?.value || '24', 10);
+  const { error } = await sb.rpc('respond_support_access', { p_request: requestId, p_approve: approve, p_hours: hours, p_scope: scope });
+  if (error) { toast('Could not answer the request: ' + error.message, true); return; }
+  toast(approve ? 'Access allowed' : 'Request denied');
+  loadSupportAccessPanel();
+  renderSupportRequestBanner().catch(() => {});
+}
+
+async function revokeSupportAccessGrant(grantId) {
+  const ok = await showCustomConfirm('End Selko support\'s access to your account now?', { okLabel: 'End access', cancelLabel: 'Cancel', danger: true });
+  if (!ok) return;
+  const { error } = await sb.rpc('revoke_support_access', { p_grant: grantId });
+  if (error) { toast('Could not end access: ' + error.message, true); return; }
+  toast('Access ended');
+  loadSupportAccessPanel();
+}
+
+async function setSupportConsentRequired(required) {
+  const box = document.getElementById('supportConsentToggle');
+  if (!required) {
+    const ok = await showCustomConfirm('Let Selko support open your account without asking first?\n\nEvery visit and change will still be recorded in Compliance > Selko platform access, but you will no longer approve each visit.', { okLabel: 'Stop requiring permission', cancelLabel: 'Keep requiring it', danger: true });
+    if (!ok) { if (box) box.checked = true; return; }
+  }
+  const { data: changed, error } = await sb.from('companies').update({ support_consent_required: required }).eq('id', currentCompany.id).select('id');
+  if (error || !changed || !changed.length) {
+    if (box) box.checked = !required;
+    toast(error ? error.message : 'Nothing was saved. Only a company admin can change this.', true);
+    return;
+  }
+  currentCompany.support_consent_required = required;
+  toast(required ? 'Selko support now needs your permission' : 'Selko support can open your account without asking');
+  loadSupportAccessPanel();
+}
+
+// A reminder on the Overview when support has asked and nobody has answered yet.
+async function renderSupportRequestBanner() {
+  const host = document.getElementById('supportRequestBanner');
+  if (!host) return;
+  host.innerHTML = '';
+  if (currentProfile?.role !== 'admin' || _superProfile) return;
+  const { data, error } = await sb.from('support_access_grants').select('id, requested_by_name, scope, request_note, requested_at')
+    .eq('company_id', currentCompany.id).eq('status', 'requested').order('requested_at', { ascending: false });
+  if (error || !data || !data.length) return;
+  const r = data[0];
+  host.innerHTML = `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.45);border-radius:10px;padding:12px 14px;margin:0 0 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+    <div style="font-size:14px;color:#fff;"><strong>${hrOnbEsc(r.requested_by_name || 'Selko support')}</strong> is asking to ${r.scope === 'edit' ? 'view and help in' : 'view'} your account${data.length > 1 ? ` (${data.length} requests)` : ''}.${r.request_note ? `<div style="font-size:13px;color:rgba(255,255,255,.7);">“${hrOnbEsc(r.request_note)}”</div>` : ''}</div>
+    <button class="btn btn-sm btn-gold" onclick="goToPanel('settings','supportAccessPanel')">Review request</button></div>`;
+}
+
+
+// ── Selko support access: permission from the company ──────────────────────
+// A company can require its permission before Selko support opens it. The
+// database enforces that (restrictive access rules on the company's data
+// tables), so these screens only explain it and let support ask. If the
+// permission functions aren't installed yet, nothing here blocks anything.
+const SUPPORT_SCOPE_LABEL = { view: 'View only', edit: 'View and help (can make changes)' };
+
+async function getSupportAccessStatus(companyId) {
+  try {
+    const { data, error } = await sb.rpc('support_access_status', { p_company: companyId });
+    if (error) { console.warn('Support access status unavailable:', error.message); return null; }
+    return data || null;
+  } catch (e) { console.warn('Support access status unavailable:', e.message); return null; }
+}
+
+function showSupportAccessGate(companyId, companyName, access) {
+  document.getElementById('supportAccessGateModal')?.remove();
+  const pending = access && access.pending_request_id;
+  const modal = document.createElement('div');
+  modal.id = 'supportAccessGateModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1250;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:460px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:6px;">${hrOnbEsc(companyName)} needs to allow access</div>
+      <div style="color:rgba(255,255,255,.66);font-size:14px;line-height:1.5;margin-bottom:14px;">This company requires its permission before Selko support can open its account. Send a request and an admin there can approve it from their Settings, choosing the level and how long it lasts.</div>
+      ${pending ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:8px 10px;margin-bottom:12px;font-size:14px;color:#fbbf24;">You already asked ${new Date(access.pending_requested_at).toLocaleString()}. Still waiting on their admin. Sending again just updates that request.</div>` : ''}
+      <label class="inline-label" for="supportGateScope">What do you need to do?</label>
+      <select class="inline-select" id="supportGateScope" style="margin-bottom:10px;">
+        <option value="view">${SUPPORT_SCOPE_LABEL.view}</option>
+        <option value="edit">${SUPPORT_SCOPE_LABEL.edit}</option>
+      </select>
+      <label class="inline-label" for="supportGateNote">Why? (they will see this)</label>
+      <textarea class="inline-input" id="supportGateNote" rows="3" maxlength="500" placeholder="e.g. Helping fix a duplicate payer" style="width:100%;box-sizing:border-box;margin-bottom:12px;"></textarea>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="supportGateSend" onclick="sendSupportAccessRequest('${companyId}')" style="flex:1;justify-content:center;">${pending ? 'Update request' : 'Send request'}</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('supportAccessGateModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function sendSupportAccessRequest(companyId) {
+  const scope = document.getElementById('supportGateScope').value;
+  const note = document.getElementById('supportGateNote').value.trim();
+  const btn = document.getElementById('supportGateSend');
+  btn.disabled = true;
+  const { error } = await sb.rpc('request_support_access', { p_company: companyId, p_scope: scope, p_note: note || null });
+  btn.disabled = false;
+  if (error) { toast('Could not send the request: ' + error.message, true); return; }
+  document.getElementById('supportAccessGateModal')?.remove();
+  toast('Request sent. Their admin can approve it from Settings > Support access.');
+  loadSuperAdmin();   // refresh the access labels on the company cards
+}
+
+function describeSupportAccess(access) {
+  if (!access || !access.consent_required) return '';
+  const until = access.expires_at ? new Date(access.expires_at) : null;
+  return `${access.scope === 'edit' ? 'View and help' : 'View only'}${until ? ' · allowed until ' + until.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : ''}${access.granted_by ? ' by ' + access.granted_by : ''}`;
+}
+
+function startSupportAccessTimer(access) {
+  if (window._supportAccessTimer) { clearInterval(window._supportAccessTimer); window._supportAccessTimer = null; }
+  if (!access || !access.consent_required || !access.expires_at) return;
+  const end = new Date(access.expires_at).getTime();
+  window._supportAccessTimer = setInterval(async () => {
+    if (Date.now() >= end) {
+      clearInterval(window._supportAccessTimer); window._supportAccessTimer = null;
+      if (_superProfile) await exitViewAsAdmin();
+      toast("That company's support access has ended, so you've been returned to Selko Admin.", true);   // after the exit, so this is the message left on screen
+    }
+  }, 15000);
+}
+
 async function viewAsAdmin(companyId, companyName) {
+  // Ask first. If the company requires permission and hasn't given it, stop here
+  // and offer to request it. (If the permission functions aren't installed, this
+  // returns nothing and the view opens exactly as before.)
+  const access = await getSupportAccessStatus(companyId);
+  if (access && !access.own_company && access.consent_required && !access.allowed_read) {
+    showSupportAccessGate(companyId, companyName, access);
+    return;
+  }
+  window._supportAccess = (access && !access.own_company && access.consent_required) ? access : null;
+
   // These mark "we are viewing as someone" — other code keys off them (global HR
   // template uploads, whether the company name is editable, ...). They used to be
   // set BEFORE the company lookup and never undone when it came back empty, so a
@@ -21218,7 +21480,10 @@ async function viewAsAdmin(companyId, companyName) {
   document.getElementById('tab-super').style.display = 'none';
 
   window._platformViewedTabs = new Set();   // one "viewed this tab" entry per tab per visit, not one per click
-  logPlatformEvent(companyId, 'session_start', 'View as Admin', `Opened ${companyName} as admin`);
+  const accessNote = describeSupportAccess(window._supportAccess);
+  document.getElementById('viewAsAccessInfo').textContent = accessNote ? '· ' + accessNote : '';
+  startSupportAccessTimer(window._supportAccess);
+  logPlatformEvent(companyId, 'session_start', 'View as Admin', `Opened ${companyName} as admin${accessNote ? ' (' + accessNote + ')' : ''}`);
 
   switchTab('overview');
   toast('Now viewing ' + companyName);
@@ -21227,6 +21492,9 @@ async function viewAsAdmin(companyId, companyName) {
 async function exitViewAsAdmin() {
   if (currentCompany && currentCompany.id) logPlatformEvent(currentCompany.id, 'session_end', 'View as Admin', `Left ${currentCompany.name || 'the account'}`);
   window._platformViewedTabs = null;
+  if (window._supportAccessTimer) { clearInterval(window._supportAccessTimer); window._supportAccessTimer = null; }
+  window._supportAccess = null;
+  const accessInfoEl = document.getElementById('viewAsAccessInfo'); if (accessInfoEl) accessInfoEl.textContent = '';
   currentProfile = { ..._superProfile };
   currentCompany = { ..._superCompany };
   window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
@@ -21624,6 +21892,7 @@ function goToPanel(tab, targetId) {
 
 async function loadOverview() {
   document.getElementById('ovGreeting').textContent = `Overview — ${currentCompany?.name || ''}`;
+  renderSupportRequestBanner().catch(e => console.warn('Support request banner failed:', e));
   renderGettingStarted().catch(e => console.warn('Getting-started checklist failed to render:', e));
 
   document.getElementById('ovDocumentsSection').style.display = currentCompany.has_credtrack ? 'block' : 'none';
@@ -22667,8 +22936,18 @@ async function loadSuperAdmin() {
   await loadRecentUploads();
   await loadStorageUsage(); // defined, but was never actually being called anywhere — real, standalone gap, not something tonight's changes caused
   const { data: companies } = await sb.from('companies').select('*').order('name');
-  const { data: allStaff }  = await sb.from('credtrack_staff').select('company_id');
-  const { data: allDocs }   = await sb.from('credtrack_documents').select('company_id');
+  // Counts come from a counts-only function so they keep working for companies
+  // that require permission (the old direct reads would now come back empty for
+  // them). Falls back to the direct reads if the function isn't installed yet.
+  let allStaff = null, allDocs = null, platformCounts = null;
+  const countsRes = await sb.rpc('platform_company_counts');
+  if (!countsRes.error && Array.isArray(countsRes.data)) platformCounts = countsRes.data;
+  else {
+    allStaff = (await sb.from('credtrack_staff').select('company_id')).data;
+    allDocs  = (await sb.from('credtrack_documents').select('company_id')).data;
+  }
+  // Who has allowed support in, and who has been asked and not answered.
+  const { data: supportGrants } = await sb.from('support_access_grants').select('company_id, status, scope, expires_at, revoked_at, requested_by_name');
 
   // Juan is the only restricted (non-Stephen/Evan) super admin right
   // now — a quick toggle here beats hand-writing a SQL array update
@@ -22681,8 +22960,21 @@ async function loadSuperAdmin() {
 
   // Staff and doc counts per company
   const staffCounts = {}, docCounts = {};
-  (allStaff || []).forEach(s => { staffCounts[s.company_id] = (staffCounts[s.company_id] || 0) + 1; });
-  (allDocs  || []).forEach(d => { docCounts[d.company_id]   = (docCounts[d.company_id]   || 0) + 1; });
+  if (platformCounts) platformCounts.forEach(r => { staffCounts[r.company_id] = Number(r.staff_count); docCounts[r.company_id] = Number(r.doc_count); });
+  else {
+    (allStaff || []).forEach(s => { staffCounts[s.company_id] = (staffCounts[s.company_id] || 0) + 1; });
+    (allDocs  || []).forEach(d => { docCounts[d.company_id]   = (docCounts[d.company_id]   || 0) + 1; });
+  }
+  const supportLabel = c => {
+    if (!('support_consent_required' in c)) return '';           // permission feature not installed yet
+    if (c.support_consent_required === false) return `<span title="This company has not turned on 'require permission', so support can open it without asking. Every visit is still logged." style="color:rgba(255,255,255,.5);">Support: open</span>`;
+    const now = Date.now();
+    const active = (supportGrants || []).filter(g => g.company_id === c.id && g.status === 'active' && !g.revoked_at && new Date(g.expires_at).getTime() > now)
+      .sort((a, b) => (b.scope === 'edit') - (a.scope === 'edit') || new Date(b.expires_at) - new Date(a.expires_at))[0];
+    if (active) return `<span style="color:#4ade80;" title="Allowed until ${new Date(active.expires_at).toLocaleString()}">Support: ${active.scope === 'edit' ? 'view + help' : 'view only'} until ${new Date(active.expires_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>`;
+    if ((supportGrants || []).some(g => g.company_id === c.id && g.status === 'requested')) return `<span style="color:#fbbf24;">Support: request pending</span>`;
+    return `<span style="color:#f87171;" title="Their admin has to allow access before you can open it.">Support: permission needed</span>`;
+  };
 
   // Platform stats
   document.getElementById('superStats').innerHTML = `
@@ -22747,6 +23039,7 @@ async function loadSuperAdmin() {
         <span>${staff} staff</span>
         <span>${docs} docs</span>
       </div>
+      ${supportLabel(c) ? `<div style="font-size:13px;margin:-2px 0 8px;">${supportLabel(c)}</div>` : ''}
 
       ${window._juanProfileId ? `
       <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:rgba(255,255,255,.66);margin-bottom:8px;cursor:pointer;">
