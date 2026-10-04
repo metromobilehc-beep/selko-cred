@@ -506,3 +506,10 @@
        desktop sizes (22px page titles, 15px panel titles, etc.) on
        small screens instead of overflowing them. */
   }
+
+  /* Document types table: small "click to change" hints under the column
+     headings of the columns that are actually buttons, and a subtle ⇄ on the
+     badges that toggle when clicked. */
+  .th-hint { display: block; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; color: rgba(255,255,255,.5); margin-top: 1px; white-space: nowrap; }
+  .toggle-glyph { font-size: 12px; opacity: .65; margin-left: 2px; }
+  #docTypesTbody .badge[onclick]:hover { filter: brightness(1.25); }

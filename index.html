@@ -2336,10 +2336,23 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
         <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.7);line-height:1.5;"></div>
+        <div id="docTypesHowTo" style="background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.72);line-height:1.55;">
+          <div style="font-weight:700;color:#fff;margin-bottom:4px;">How to use this table <span style="font-weight:400;color:rgba(255,255,255,.55);">— the badges with a ⇄ are buttons: click one to change it.</span></div>
+          <ul style="margin:0;padding-left:18px;">
+            <li><strong>Required / Optional</strong> — click the badge to flip it. <em>Required</em> types count toward each person's compliance rate and show as "missing" until a document is uploaded. <em>Optional</em> types are still tracked, but don't affect the rate.</li>
+            <li><strong>Applies To</strong> — shows for Required types. Click it to choose which disciplines must have the document (the default is Everyone).</li>
+            <li><strong>Self-upload</strong> — click to switch between <em>Allowed</em> (staff can upload it themselves) and <em>Admin only</em>. Built-in types marked 🔒 can't be switched here; use <strong>Duplicate</strong> to get your own editable copy.</li>
+            <li><strong>Hide for us</strong> — removes a type from your lists without deleting it. Tick "Show hidden types too" above to bring it back.</li>
+          </ul>
+        </div>
         <div class="tbl-wrap">
           <table>
             <thead><tr>
-              <th>Name</th><th>Expires</th><th>Required</th><th>Applies To</th><th>Self-upload</th><th>Actions</th>
+              <th>Name</th><th>Expires</th>
+              <th>Required<span class="th-hint">click to change</span></th>
+              <th>Applies To<span class="th-hint">click to choose</span></th>
+              <th>Self-upload<span class="th-hint">click to switch</span></th>
+              <th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
@@ -13290,7 +13303,7 @@ async function loadDocTypesTable() {
     <td>
       <span class="badge ${isReq ? 'badge-warn' : 'badge-none'}" style="${proOnlyBlocked ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}" 
         onclick="toggleDocTypeRequired(${t.id}, ${isReq}, ${isGlobal}, ${isGlobal && t.tier === 'pro'})" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to toggle — works at any plan tier, even for built-in defaults'}">
-        ${isReq ? 'Required' : 'Optional'}${proOnlyBlocked ? ' 🔒' : ''}
+        ${isReq ? 'Required' : 'Optional'}${proOnlyBlocked ? ' 🔒' : ' <span class="toggle-glyph">⇄</span>'}
       </span>
     </td>
     <td>
@@ -13302,7 +13315,7 @@ async function loadDocTypesTable() {
     <td>
       <span class="badge ${t.staff_can_upload === false ? 'badge-none' : 'badge-ok'}" style="${lockedForMe ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}"
         onclick="toggleDocTypeStaffUpload(${t.id}, ${t.staff_can_upload !== false})" title="${lockedForMe ? lockTitle : 'Click to toggle whether staff can upload this themselves'}">
-        ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}${lockedForMe ? ' 🔒' : ''}
+        ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}${lockedForMe ? ' 🔒' : ' <span class="toggle-glyph">⇄</span>'}
       </span>
     </td>
     <td><div class="td-actions" style="gap:4px;">
