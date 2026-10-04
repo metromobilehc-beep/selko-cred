@@ -1743,6 +1743,26 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
+      <!-- Selko platform access: what Selko super admins did inside THIS company -->
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="platformAccessPanel">
+        <h2>🛡 Selko platform access</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">When someone from the Selko platform team opens your account, looks at it, or changes anything in it, it's recorded here automatically: who, when and what. Entries can't be edited or deleted in the app. Documents they open or download also appear in the Access log above. Your own admins' activity isn't listed here.</p>
+        <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
+          <select class="filter-sel" id="fPlatformLogKind" onchange="_paginationState.platformAccessLog = 1; loadPlatformAccessLog()">
+            <option value="">Everything</option>
+            <option value="access">Opened and viewed</option>
+            <option value="changes">Changes only</option>
+          </select>
+          <button class="btn btn-sm btn-ghost" onclick="exportPlatformAccessLogCsv()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Export CSV</button>
+        </div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>Who</th><th>What happened</th></tr></thead>
+            <tbody id="platformAccessLogTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
     </div>
 
     <!-- SUPER ADMIN TAB -->
@@ -15129,6 +15149,83 @@ async function loadCredentialingTab() {
   await loadCredentialingTemplates();
 }
 
+// ── Selko platform access panel (Compliance) ───────────────────────────────
+const PLATFORM_RECORD_NAMES = {
+  companies: 'company settings', profiles: 'user account', company_locations: 'practice location',
+  company_accreditations: 'accreditation', company_entities: 'entity', credtrack_staff: 'staff record',
+  credtrack_documents: 'document', credtrack_staff_agencies: 'agency assignment', credtrack_agencies: 'agency',
+  agency_partner_users: 'partner login', credtrack_staff_intake_extras: 'intake details', document_types: 'document type',
+  company_hidden_document_types: 'hidden document type', company_document_type_overrides: 'document type setting',
+  payers: 'payer', staff_payer_networks: 'insurance record', staff_education_training: 'education entry',
+  staff_additional_licenses: 'license', staff_hospital_privileges: 'hospital privilege', staff_malpractice_claims: 'malpractice claim',
+  staff_employment_history: 'employment entry', staff_professional_references: 'reference', staff_caqh_credentials: 'saved CAQH login',
+  staff_reminders: 'reminder', credentialing_files: 'file', credentialing_notes: 'note', hr_employees: 'HR employee',
+};
+
+function describePlatformEntry(r) {
+  const what = PLATFORM_RECORD_NAMES[r.table_name] || (r.table_name || 'record').replace(/_/g, ' ');
+  const name = r.record_label ? ` “${r.record_label}”` : '';
+  const fields = (r.changed_fields || []).map(f => f.replace(/_/g, ' ')).join(', ');
+  switch (r.event) {
+    case 'session_start': return 'Opened your account (View as Admin)';
+    case 'session_end':   return 'Left your account';
+    case 'view':          return `Viewed the ${r.area || 'a'} tab`;
+    case 'insert':        return `Added a ${what}${name}`;
+    case 'delete':        return `Deleted a ${what}${name}`;
+    case 'update':        return `Changed a ${what}${name}${fields ? ' — ' + fields : ''}`;
+    default:              return r.event;
+  }
+}
+
+async function fetchPlatformAccessLog(limit) {
+  const kind = document.getElementById('fPlatformLogKind')?.value || '';
+  let q = sb.from('platform_access_log').select('*').eq('company_id', currentCompany.id)
+    .order('created_at', { ascending: false }).limit(limit);
+  if (kind === 'access') q = q.in('event', ['session_start', 'session_end', 'view']);
+  if (kind === 'changes') q = q.in('event', ['insert', 'update', 'delete']);
+  return q;
+}
+
+async function loadPlatformAccessLog() {
+  const tbody = document.getElementById('platformAccessLogTbody');
+  if (!tbody) return;
+  const { data, error } = await fetchPlatformAccessLog(2000);
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">Platform access log isn't available yet${currentProfile?.is_super_admin ? ' (has the database migration been run?)' : ''}.</td></tr>`;
+    return;
+  }
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No Selko platform activity recorded for your account.</td></tr>`;
+    return;
+  }
+  const { pageItems, currentPage, totalPages, totalCount } = paginateItems(data, 'platformAccessLog', 25);
+  const isChange = e => e === 'insert' || e === 'update' || e === 'delete';
+  tbody.innerHTML = pageItems.map(r => `<tr>
+    <td style="font-size:14px;color:rgba(255,255,255,.62);white-space:nowrap;">${new Date(r.created_at).toLocaleString()}</td>
+    <td>${hrOnbEsc(r.actor_name || 'Selko admin')}<div style="font-size:12px;color:rgba(255,255,255,.5);">${hrOnbEsc(r.actor_email || '')}</div></td>
+    <td><span class="badge ${isChange(r.event) ? 'badge-warn' : 'badge-ok'}">${isChange(r.event) ? 'Change' : 'Access'}</span> ${hrOnbEsc(describePlatformEntry(r))}</td>
+  </tr>`).join('') + (totalPages > 1 ? `<tr><td colspan="3" style="padding:0;">${renderPaginationControls('platformAccessLog', currentPage, totalPages, totalCount, 'loadPlatformAccessLog')}</td></tr>` : '');
+}
+
+async function exportPlatformAccessLogCsv() {
+  const { data, error } = await fetchPlatformAccessLog(10000);
+  if (error) { toast('Export failed: ' + error.message, true); return; }
+  if (!data?.length) { toast('Nothing to export', true); return; }
+  const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  let csv = 'Date/Time,Who,Email,Type,What happened,Table,Fields changed\n';
+  data.forEach(r => {
+    csv += [new Date(r.created_at).toLocaleString(), r.actor_name, r.actor_email,
+      (r.event === 'insert' || r.event === 'update' || r.event === 'delete') ? 'Change' : 'Access',
+      describePlatformEntry(r), r.table_name || '', (r.changed_fields || []).join('; ')].map(esc).join(',') + '\n';
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `selko-platform-access-${currentCompany.name || 'company'}-${new Date().toISOString().slice(0, 10)}.csv`.replace(/\s+/g, '-');
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
 async function loadCompliance() {
   // Document/SSN access logs apply to every company regardless of the
   // credentialing add-on, so these always load. OIG/OFAC history is
@@ -15136,6 +15233,7 @@ async function loadCompliance() {
   // without it, rather than wastefully populating tables nobody can see.
   await loadAccessLog();
   await loadSensitiveAccessLog();
+  await loadPlatformAccessLog();
   if (currentCompany.has_credentialing_addon) {
     const oigDaySel = document.getElementById('oigPreferredDaySelect');
     if (oigDaySel) oigDaySel.value = currentCompany.oig_check_preferred_day || 1;
@@ -21058,6 +21156,25 @@ async function showSuperAdminQuickSwitch(profile, currentCompanyRow) {
   document.body.appendChild(modal);
 }
 
+// ── Selko platform access log ──────────────────────────────────────────────
+// When a super admin works inside a company that isn't their own, that company
+// gets a record of it (Compliance > Selko platform access). Data CHANGES are
+// recorded by the database itself, so they can't be skipped by any screen in
+// this app. What the database can't see — a super admin merely OPENING an
+// account or looking at a tab — is recorded here through the logging function.
+// The database ignores the call for anyone who isn't a super admin and for a
+// super admin's own company, so it's safe to call unconditionally. If logging
+// ever fails the view still opens; the failure is noted in the console.
+async function logPlatformEvent(companyId, event, area, detail) {
+  try {
+    if (!companyId) return;
+    const { error } = await sb.rpc('log_platform_admin_event', { p_company_id: companyId, p_event: event, p_area: area || null, p_detail: detail || null });
+    if (error) console.warn('Platform access log entry could not be written:', error.message);
+  } catch (e) {
+    console.warn('Platform access log entry could not be written:', e.message);
+  }
+}
+
 async function viewAsAdmin(companyId, companyName) {
   // These mark "we are viewing as someone" — other code keys off them (global HR
   // template uploads, whether the company name is editable, ...). They used to be
@@ -21100,11 +21217,16 @@ async function viewAsAdmin(companyId, companyName) {
   document.getElementById('viewAsName').textContent = companyName;
   document.getElementById('tab-super').style.display = 'none';
 
+  window._platformViewedTabs = new Set();   // one "viewed this tab" entry per tab per visit, not one per click
+  logPlatformEvent(companyId, 'session_start', 'View as Admin', `Opened ${companyName} as admin`);
+
   switchTab('overview');
   toast('Now viewing ' + companyName);
 }
 
 async function exitViewAsAdmin() {
+  if (currentCompany && currentCompany.id) logPlatformEvent(currentCompany.id, 'session_end', 'View as Admin', `Left ${currentCompany.name || 'the account'}`);
+  window._platformViewedTabs = null;
   currentProfile = { ..._superProfile };
   currentCompany = { ..._superCompany };
   window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
@@ -21286,6 +21408,15 @@ function switchTab(tab) {
   }
 
   _activeTab = tab;
+  if (_superProfile && currentCompany && currentCompany.id && tab !== 'super') {
+    const tabNames = { overview: 'Overview', docs: 'Documents', exp: 'Expiration tracker', staff: 'Staff', insurance: 'Health Care Network', credentialing: 'Credentialing', compliance: 'Compliance', hr: 'HR', settings: 'Settings' };
+    if (!window._platformViewedTabs) window._platformViewedTabs = new Set();
+    const seenKey = currentCompany.id + ':' + tab;
+    if (!window._platformViewedTabs.has(seenKey)) {
+      window._platformViewedTabs.add(seenKey);
+      logPlatformEvent(currentCompany.id, 'view', tabNames[tab] || tab);
+    }
+  }
   ['overview','docs','exp','staff','insurance','credentialing','compliance','hr','settings','super'].forEach(t => {
     const panel = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
     const btn   = document.getElementById('tab-' + t);
