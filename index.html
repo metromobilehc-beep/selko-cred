@@ -2105,7 +2105,7 @@ window.selkoSharedAuthStorage = {
       <div id="settingsJumpBar" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 6px;">
         <span style="font-size:13px;color:rgba(255,255,255,.55);">Jump to:</span>
         <button type="button" class="chip-btn" data-target="settingsGrp_account" onclick="jumpToSettingsGroup('settingsGrp_account')">Account &amp; Billing</button>
-        <button type="button" class="chip-btn" data-target="settingsGrp_support" onclick="jumpToSettingsGroup('settingsGrp_support')">Support Access</button>
+        <button type="button" class="chip-btn" data-target="settingsGrp_support" onclick="jumpToSettingsGroup('settingsGrp_support')">Privacy &amp; Access</button>
         <button type="button" class="chip-btn" data-target="settingsGrp_company" onclick="jumpToSettingsGroup('settingsGrp_company')">Company Profile</button>
         <button type="button" class="chip-btn" data-target="settingsGrp_setup" onclick="jumpToSettingsGroup('settingsGrp_setup')">Professional Setup</button>
         <button type="button" class="chip-btn" data-target="hcnSectionHeader" onclick="jumpToSettingsGroup('hcnSectionHeader')">Health Care Network</button>
@@ -2226,8 +2226,8 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <div id="settingsGrp_support" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
-        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Support Access</span>
-        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Decide whether Selko support can open your account to help you, what they can do, and for how long.</div>
+        <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Privacy &amp; Access</span>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Decide whether Selko support can open your account, and who is emailed when sensitive staff information is viewed or changed.</div>
       </div>
 
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="supportAccessPanel">
@@ -2242,6 +2242,19 @@ window.selkoSharedAuthStorage = {
           <table>
             <thead><tr><th>When</th><th>What</th><th>Level</th><th>Status</th><th>Ends</th></tr></thead>
             <tbody id="supportAccessHistoryTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="sensitiveAlertsPanel">
+        <h2>Sensitive data alerts</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Get an email whenever someone views or enters a staff member's Social Security number or CAQH login, so you always know. The email says who, what and when, and never includes the sensitive information itself.</p>
+        <div id="sensitiveAlertsForm"></div>
+        <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin:16px 0 6px;">Recent alerts</div>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>When</th><th>What happened</th><th>By</th><th>Email</th></tr></thead>
+            <tbody id="sensitiveAlertsTbody"></tbody>
           </table>
         </div>
       </div>
@@ -8829,6 +8842,26 @@ function showCvImportReview(staffId, staffName, extracted) {
       </div>
     </div>`).join('') || '<div style="font-size:14px;color:rgba(255,255,255,.55);padding:8px 0;">Nothing found.</div>';
 
+  // Professional references (a CAQH summary lists them with name, title and
+  // contact details). Each is editable before it is saved, and the relationship
+  // is limited to the three values the References tab itself offers.
+  const REF_RELATIONSHIPS = ['Direct supervisor', 'Peer / colleague', 'Other'];
+  const refList = extracted.professional_references || [];
+  const refRows = refList.map((r, i) => `
+    <div style="display:flex;align-items:start;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <input type="checkbox" class="cvRefCheck" data-idx="${i}" checked style="margin-top:5px;" />
+      <div style="flex:1;display:grid;grid-template-columns:1fr 1fr;gap:6px;">
+        <input class="inline-input cvRefField" data-idx="${i}" data-field="reference_name" placeholder="Reference name" value="${(r.reference_name || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
+        <input class="inline-input cvRefField" data-idx="${i}" data-field="reference_title" placeholder="Title / specialty" value="${(r.reference_title || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
+        <select class="inline-select cvRefField" data-idx="${i}" data-field="relationship" style="font-size:14px;grid-column:1/3;">
+          <option value="">Relationship, not stated</option>
+          ${REF_RELATIONSHIPS.map(o => `<option value="${o}" ${r.relationship === o ? 'selected' : ''}>${o}</option>`).join('')}
+        </select>
+        <input class="inline-input cvRefField" data-idx="${i}" data-field="phone" placeholder="Phone" value="${(r.phone || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
+        <input class="inline-input cvRefField" data-idx="${i}" data-field="email" placeholder="Email" value="${(r.email || '').replace(/"/g,'&quot;')}" style="font-size:14px;" />
+      </div>
+    </div>`).join('');
+
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Review what was found for ${staffName}</div>
@@ -8841,8 +8874,9 @@ function showCvImportReview(staffId, staffName, extracted) {
       ${extracted.hospital_privileges.length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
       ${(extracted.malpractice_claims || []).length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Malpractice Claims</div>${claimRows}` : ''}
       ${(extracted.employment_history || []).length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Employment History</div>${empRows}` : ''}
+      ${refList.length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Professional References</div>${refRows}` : ''}
 
-      ${!hasCompanyInfo && !hasPiRows && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.malpractice_claims || []).length && !(extracted.employment_history || []).length
+      ${!hasCompanyInfo && !hasPiRows && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.malpractice_claims || []).length && !(extracted.employment_history || []).length && !refList.length
         ? '<div style="font-size:15px;color:rgba(255,255,255,.58);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:14px;margin-top:12px;display:none;"></div>
@@ -9088,6 +9122,34 @@ async function saveCvImportSelections(staffId) {
         );
         if (error) throw error;
         saved.push(newRows.length + (newRows.length === 1 ? ' employment entry' : ' employment entries'));
+      }
+    }
+
+    const refsToSave = [...document.querySelectorAll('.cvRefCheck:checked')].map(el => readEditedFields('cvRefField', el.dataset.idx)).filter(r => r.reference_name);
+    if (refsToSave.length) {
+      const { data: existingRefs } = await sb.from('staff_professional_references').select('reference_name, email, phone').eq('staff_id', staffId);
+      const digits = v => String(v ?? '').replace(/\D/g, '');
+      // Already on file = same name AND the same email or phone (or neither side has any contact detail to compare).
+      const isOnFile = r => (existingRefs || []).some(x => normKey(x.reference_name) === normKey(r.reference_name)
+        && ((normKey(x.email) && normKey(x.email) === normKey(r.email))
+         || (digits(x.phone) && digits(x.phone) === digits(r.phone))
+         || (!normKey(x.email) && !digits(x.phone) && !normKey(r.email) && !digits(r.phone))));
+      const newRefs = refsToSave.filter(r => !isOnFile(r));
+      skippedAsDuplicate += refsToSave.length - newRefs.length;
+      if (newRefs.length) {
+        const { error } = await sb.from('staff_professional_references').insert(
+          newRefs.map(r => ({
+            staff_id: staffId,
+            company_id: currentCompany.id,
+            reference_name: r.reference_name,
+            reference_title: r.reference_title || null,
+            relationship: r.relationship || null,
+            phone: r.phone || null,
+            email: r.email || null,
+          }))
+        );
+        if (error) throw error;
+        saved.push(newRefs.length + (newRefs.length === 1 ? ' professional reference' : ' professional references'));
       }
     }
 
@@ -13446,6 +13508,7 @@ async function loadSettings() {
   loadDisciplinesPanel();
   loadEntitiesPanel();
   loadSupportAccessPanel();
+  loadSensitiveAlertsPanel();
   // loadSensitiveAccessLog() moved to loadCompliance() — this panel now
   // lives in the Compliance tab, not Settings.
 
@@ -21196,6 +21259,120 @@ async function logPlatformEvent(companyId, event, area, detail) {
     if (error) console.warn('Platform access log entry could not be written:', error.message);
   } catch (e) {
     console.warn('Platform access log entry could not be written:', e.message);
+  }
+}
+
+// ── Sensitive data alerts (Settings) ──────────────────────────────────────
+// Who is emailed when someone views or enters a staff member's SSN / CAQH
+// login, and (optionally) when personal or license details change. The alerts
+// themselves are queued by the database and emailed by the
+// send-sensitive-activity-alerts function; this panel only holds the company's
+// choices (companies.custom_vars.sensitiveAlerts) and shows what was sent.
+const SENSITIVE_ALERT_LEVELS = {
+  secrets: 'Social Security numbers and CAQH logins: when they are viewed or entered',
+  all: 'The above, plus changes to personal and license details (birth date, address, phone, license, NPI, DEA)',
+  off: 'Off: do not email me about sensitive data',
+};
+const ALERT_EMAIL_RE = /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/;
+
+function parseAlertEmails(text) {
+  const parts = String(text || '').split(/[\s,;]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+  const bad = parts.filter(p => !ALERT_EMAIL_RE.test(p));
+  return { emails: [...new Set(parts.filter(p => ALERT_EMAIL_RE.test(p)))], bad };
+}
+
+function describeSensitiveAlert(a) {
+  const who = hrOnbEsc(a.subject_name || 'a staff member');
+  if (a.category === 'secret_read') return `Viewed the ${hrOnbEsc(a.field_label || 'sensitive data')} of ${who}`;
+  if (a.category === 'secret_write') return `Entered or updated the ${hrOnbEsc(a.field_label || 'sensitive data')} of ${who}`;
+  return `Changed ${hrOnbEsc((a.fields || []).join(', ') || 'profile details')} on ${who}'s profile`;
+}
+
+async function loadSensitiveAlertsPanel() {
+  const formEl = document.getElementById('sensitiveAlertsForm');
+  if (!formEl) return;
+  const canChange = currentProfile?.role === 'admin' && !_superProfile;
+  const prefs = (currentCompany.custom_vars && currentCompany.custom_vars.sensitiveAlerts) || {};
+  const level = prefs.level || 'secrets';
+  const extra = (prefs.extra_emails || []).join(', ');
+
+  const { data, error } = await sb.from('staff_activity_alerts').select('*')
+    .eq('company_id', currentCompany.id).order('created_at', { ascending: false }).limit(20);
+  const tbody = document.getElementById('sensitiveAlertsTbody');
+  if (error) {
+    formEl.innerHTML = `<div style="font-size:14px;color:rgba(255,255,255,.55);">Sensitive data alerts aren't available yet.</div>`;
+    tbody.innerHTML = '';
+    return;
+  }
+
+  formEl.innerHTML = canChange ? `
+    <label class="inline-label" for="sensitiveAlertLevel">Email me about</label>
+    <select class="inline-select" id="sensitiveAlertLevel" style="margin-bottom:12px;">
+      ${Object.entries(SENSITIVE_ALERT_LEVELS).map(([k, v]) => `<option value="${k}" ${k === level ? 'selected' : ''}>${v}</option>`).join('')}
+    </select>
+    <label class="inline-label" for="sensitiveAlertEmails">Also send to (optional, up to 5 addresses, separated by commas)</label>
+    <input class="inline-input" type="text" id="sensitiveAlertEmails" value="${hrOnbEsc(extra)}" placeholder="e.g. owner@yourcompany.com, compliance@yourcompany.com" style="margin-bottom:6px;" />
+    <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;">Every admin of your company is always included. Profile-detail changes are bundled into one email a day. Someone is never emailed about their own profile edits, but Social Security and CAQH views always go to everyone, including the person who did it.</div>
+    <div id="sensitiveAlertErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-sm btn-teal" onclick="saveSensitiveAlertSettings()">Save</button>
+      <button class="btn btn-sm btn-ghost" id="sensitiveAlertTestBtn" onclick="sendSensitiveAlertTest()" style="color:#fff;border-color:rgba(255,255,255,.2);">Send me a test email</button>
+    </div>` : `<div style="font-size:14px;color:rgba(255,255,255,.7);">Currently: <strong>${hrOnbEsc(SENSITIVE_ALERT_LEVELS[level] || level)}</strong>${extra ? `<br>Also sent to: ${hrOnbEsc(extra)}` : ''}<div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;">Only an admin of this company can change these settings.</div></div>`;
+
+  const status = a => {
+    if (a.email_status === 'sent') return `<span class="badge badge-ok">Emailed</span> <span style="font-size:12px;color:rgba(255,255,255,.5);">${fmtSupportDate(a.emailed_at)}</span>`;
+    if (a.email_status === 'failed') return `<span class="badge badge-warn" title="${hrOnbEsc(a.email_error || '')}">Could not send</span>`;
+    if (a.email_status === 'skipped') return `<span class="badge badge-none" title="${hrOnbEsc(a.email_error || '')}">Not emailed</span> <span style="font-size:12px;color:rgba(255,255,255,.5);">${hrOnbEsc(a.email_error || '')}</span>`;
+    return `<span class="badge badge-none">Waiting to send</span>`;
+  };
+  tbody.innerHTML = (data && data.length) ? data.map(a => `<tr>
+      <td style="font-size:14px;color:rgba(255,255,255,.62);white-space:nowrap;">${fmtSupportDate(a.created_at)}</td>
+      <td style="font-size:14px;">${describeSensitiveAlert(a)}${a.justification ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Reason: “${hrOnbEsc(a.justification)}”</div>` : ''}</td>
+      <td style="font-size:14px;">${hrOnbEsc(a.actor_name || 'Unknown')}${a.actor_is_platform ? ' <span class="badge badge-warn">Selko support</span>' : ''}</td>
+      <td>${status(a)}</td></tr>`).join('')
+    : `<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:16px;">Nothing yet. Alerts appear here when someone views or enters a Social Security number or CAQH login.</td></tr>`;
+}
+
+async function saveSensitiveAlertSettings() {
+  const errEl = document.getElementById('sensitiveAlertErr');
+  errEl.style.display = 'none';
+  const level = document.getElementById('sensitiveAlertLevel').value;
+  const { emails, bad } = parseAlertEmails(document.getElementById('sensitiveAlertEmails').value);
+  if (bad.length) { errEl.textContent = `These don't look like email addresses: ${bad.join(', ')}`; errEl.style.display = 'block'; return; }
+  if (emails.length > 5) { errEl.textContent = 'Please use 5 extra addresses or fewer.'; errEl.style.display = 'block'; return; }
+  if (level === 'off') {
+    const ok = await showCustomConfirm('Stop emailing about sensitive staff data?\n\nViews and changes are still recorded in Compliance, but no one will be told by email.', { okLabel: 'Turn alerts off', cancelLabel: 'Keep them on', danger: true });
+    if (!ok) return;
+  }
+  // Re-read custom_vars first so this can't overwrite another setting saved a moment ago.
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
+  if (readErr) { toast('Error: ' + readErr.message, true); return; }
+  const cv = { ...((fresh && fresh.custom_vars) || {}), sensitiveAlerts: { level, extra_emails: emails } };
+  const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
+  if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved. Only a company admin can change this.", true); return; }
+  currentCompany.custom_vars = cv;
+  toast(level === 'off' ? 'Sensitive data alerts are off' : 'Alert settings saved');
+  loadSensitiveAlertsPanel();
+}
+
+async function sendSensitiveAlertTest() {
+  const btn = document.getElementById('sensitiveAlertTestBtn');
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Sending…';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/send-sensitive-activity-alerts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify({ action: 'test' }),
+    });
+    const result = await res.json();
+    if (!res.ok || result.error) throw new Error(result.error || 'Could not send the test.');
+    toast(`Test email sent to ${result.sent_to}. Real alerts go to ${result.alert_recipients} ${result.alert_recipients === 1 ? 'person' : 'people'}.`);
+  } catch (e) {
+    toast('Test email failed: ' + e.message, true);
+  } finally {
+    btn.disabled = false; btn.textContent = label;
   }
 }
 
