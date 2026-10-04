@@ -1694,7 +1694,10 @@ window.selkoSharedAuthStorage = {
            and always fully visible again via the toggle below. -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
         <h2>🔍 Sensitive data access log</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here permanently — who, when, and why. There is no way to delete entries from this log — acknowledging one only marks it reviewed and hides it from the default view below; it's still permanently in the record.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here: who, when, and why. Acknowledging an entry marks it reviewed and hides it from the default view. Once an entry has been reviewed, one of your company's own admins can delete it. Unreviewed entries can't be deleted, Selko staff can never delete your entries, and every deletion is itself recorded permanently in the history below.</p>
+        <div id="sensitiveLogDeleteBar" style="display:none;margin-bottom:10px;">
+          <button class="btn btn-sm btn-ghost" onclick="showDeleteSensitiveLogModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">🗑 Delete reviewed entries…</button>
+        </div>
         <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:rgba(255,255,255,.66);margin-bottom:10px;cursor:pointer;">
           <input type="checkbox" id="showAcknowledgedLog" onchange="loadSensitiveAccessLog()" />
           Show acknowledged entries too
@@ -1704,6 +1707,15 @@ window.selkoSharedAuthStorage = {
             <thead><tr><th>When</th><th>Staff member</th><th>Action</th><th>By</th><th>Reason given</th><th>Reviewed</th></tr></thead>
             <tbody id="sensitiveAccessLogTbody"></tbody>
           </table>
+        </div>
+        <div id="sensitiveLogDeletionsWrap" style="display:none;">
+          <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin:18px 0 6px;">Deletion history <span style="font-weight:400;text-transform:none;">(permanent, can't be edited or removed)</span></div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>When</th><th>Deleted by</th><th>Entries</th><th>Covering</th><th>Reason</th></tr></thead>
+              <tbody id="sensitiveLogDeletionsTbody"></tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -8442,7 +8454,8 @@ async function handleAddStaffCvFile(input) {
   showAddStaff(); // make sure the form is open so the pre-filled name/discipline is visible
 
   const statusEl = document.getElementById('addStaffCvStatus');
-  statusEl.textContent = 'Reading document with AI — this takes a few seconds…';
+  statusEl.textContent = '';
+  const busy = startImportBusy('Reading document');
 
   try {
     const base64 = await new Promise((resolve, reject) => {
@@ -8460,6 +8473,7 @@ async function handleAddStaffCvFile(input) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ fileBase64: base64, mediaType, fileName: file.name }),
+      signal: busy.signal,
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
@@ -8485,11 +8499,13 @@ async function handleAddStaffCvFile(input) {
     }
 
     window._pendingAddStaffCvData = result.extracted;
-    input.value = '';
     statusEl.textContent = pi?.name ? '✓ Name/discipline pre-filled — review, then Save to import the rest' : '✓ Read — review the form below, then Save to import the rest';
   } catch (e) {
     statusEl.textContent = '';
-    toast('Import failed: ' + e.message, true);
+    toast(importFailureMessage(e, busy), e.name !== 'AbortError' || busy.timedOut());
+  } finally {
+    busy.stop();
+    input.value = '';
   }
 }
 
@@ -8622,13 +8638,99 @@ async function confirmPayrollImport() {
   toast(`✓ Imported ${toImport.length} staff member(s)`);
 }
 
+// ── Import progress indicator ───────────────────────────────────────────────
+// Reading a document takes the AI anywhere from a few seconds to over a minute,
+// and until now the only sign anything was happening was a small line of grey
+// text next to the button. This puts a full-screen "working" panel up the moment
+// a file is chosen, with a spinner, a running clock and wording that follows how
+// long it has been. There is no real percentage to report (the AI call is one
+// request), so the bar is deliberately a moving "working" bar, never a fake
+// fill. It can be cancelled, and it gives up after a couple of minutes with a
+// plain message instead of spinning forever.
+const IMPORT_PHASES = [
+  [0,   'Uploading the document…'],
+  [4,   'Reading the document…'],
+  [14,  'Finding licenses, education, privileges and references…'],
+  [40,  'Still working. Long or scanned documents can take a minute or two…'],
+  [90,  'Taking longer than usual. Hang on, it will stop by itself at 2 minutes…'],
+];
+
+function ensureImportBusyStyles() {
+  if (document.getElementById('importBusyStyles')) return;
+  const st = document.createElement('style');
+  st.id = 'importBusyStyles';
+  st.textContent = `
+    @keyframes importSpin { to { transform: rotate(360deg); } }
+    @keyframes importSlide { 0% { left: -40%; } 100% { left: 100%; } }
+    .import-spinner { width: 42px; height: 42px; border-radius: 50%; border: 4px solid rgba(255,255,255,.15); border-top-color: var(--teal, #14b8a6); animation: importSpin .9s linear infinite; margin: 0 auto 14px; }
+    .import-spinner-sm { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 2px solid rgba(255,255,255,.35); border-top-color: #fff; animation: importSpin .8s linear infinite; vertical-align: -2px; margin-right: 6px; }
+    .import-bar { position: relative; height: 5px; background: rgba(255,255,255,.1); border-radius: 3px; overflow: hidden; margin: 14px 0 6px; }
+    .import-bar > span { position: absolute; top: 0; bottom: 0; width: 40%; background: var(--teal, #14b8a6); border-radius: 3px; animation: importSlide 1.4s ease-in-out infinite; }
+    @media (prefers-reduced-motion: reduce) { .import-spinner, .import-spinner-sm, .import-bar > span { animation-duration: 3s; } }`;
+  document.head.appendChild(st);
+}
+
+// Returns { signal, stop(), timedOut() }. Pass signal to fetch(); call stop() in a finally.
+function startImportBusy(title) {
+  ensureImportBusyStyles();
+  document.getElementById('importBusyOverlay')?.remove();
+  const controller = new AbortController();
+  const started = Date.now();
+  let timedOut = false;
+  const overlay = document.createElement('div');
+  overlay.id = 'importBusyOverlay';
+  overlay.setAttribute('role', 'status');
+  overlay.setAttribute('aria-live', 'polite');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1400;display:flex;align-items:center;justify-content:center;padding:20px;';
+  overlay.innerHTML = `
+    <div style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:28px 26px;width:100%;max-width:400px;text-align:center;">
+      <div class="import-spinner"></div>
+      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;" id="importBusyTitle"></div>
+      <div id="importBusyPhase" style="color:rgba(255,255,255,.72);font-size:14px;line-height:1.5;min-height:42px;"></div>
+      <div class="import-bar"><span></span></div>
+      <div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;color:rgba(255,255,255,.5);">
+        <span>Usually 10–40 seconds</span><span id="importBusyClock">0:00</span>
+      </div>
+      <button class="btn btn-sm btn-ghost" id="importBusyCancel" style="margin-top:16px;color:#fff;border-color:rgba(255,255,255,.25);">Cancel</button>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#importBusyTitle').textContent = title;
+  overlay.querySelector('#importBusyCancel').onclick = () => controller.abort();
+
+  const tick = () => {
+    const secs = Math.floor((Date.now() - started) / 1000);
+    const phase = [...IMPORT_PHASES].reverse().find(p => secs >= p[0]);
+    const phaseEl = overlay.querySelector('#importBusyPhase');
+    const clockEl = overlay.querySelector('#importBusyClock');
+    if (phaseEl && phase) phaseEl.textContent = phase[1];
+    if (clockEl) clockEl.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+  };
+  tick();
+  const interval = setInterval(tick, 1000);
+  const limitMs = window.__importTimeoutMs || 120000;
+  const limit = setTimeout(() => { timedOut = true; controller.abort(); }, limitMs);
+  return {
+    signal: controller.signal,
+    timedOut: () => timedOut,
+    stop() { clearInterval(interval); clearTimeout(limit); overlay.remove(); },
+  };
+}
+
+// One place that turns whatever went wrong into a message a person can act on.
+function importFailureMessage(e, busy) {
+  if (busy && busy.timedOut()) return 'The document took too long to read (over 2 minutes). Try a smaller file, or split a long one into parts.';
+  if (e && e.name === 'AbortError') return 'Import cancelled.';
+  return 'Import failed: ' + (e && e.message ? e.message : e);
+}
+
 async function handleCvImportFile(staffId, staffName) {
   const fileInput = document.getElementById('cvImportFile');
   const file = fileInput.files[0];
   if (!file) return;
 
   const statusEl = document.getElementById('cvImportStatus');
-  statusEl.textContent = 'Reading document with AI — this takes a few seconds…';
+  statusEl.textContent = '';
+  const busy = startImportBusy(`Reading document for ${staffName}`);
 
   try {
     const base64 = await new Promise((resolve, reject) => {
@@ -8646,16 +8748,19 @@ async function handleCvImportFile(staffId, staffName) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ fileBase64: base64, mediaType, fileName: file.name }),
+      signal: busy.signal,
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
 
-    statusEl.textContent = '';
-    fileInput.value = '';
+    busy.stop();
     showCvImportReview(staffId, staffName, result.extracted);
   } catch (e) {
-    statusEl.textContent = '';
-    toast('Import failed: ' + e.message, true);
+    busy.stop();
+    toast(importFailureMessage(e, busy), e.name !== 'AbortError' || busy.timedOut());
+  } finally {
+    busy.stop();
+    fileInput.value = '';   // so the same file can be chosen again after a failure or a cancel
   }
 }
 
@@ -8880,9 +8985,10 @@ function showCvImportReview(staffId, staffName, extracted) {
         ? '<div style="font-size:15px;color:rgba(255,255,255,.58);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:14px;margin-top:12px;display:none;"></div>
+      <div id="cvImportSaveStatus" role="status" aria-live="polite" style="display:none;font-size:14px;color:rgba(255,255,255,.72);margin-top:12px;"></div>
       <div style="display:flex;gap:8px;margin-top:16px;">
-        <button class="btn btn-teal" onclick="saveCvImportSelections('${staffId}')" style="flex:1;justify-content:center;">Save selected</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('cvImportReviewModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+        <button class="btn btn-teal" id="cvImportSaveBtn" onclick="saveCvImportSelections('${staffId}')" style="flex:1;justify-content:center;">Save selected</button>
+        <button class="btn btn-ghost" id="cvImportCancelBtn" onclick="document.getElementById('cvImportReviewModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -8891,11 +8997,38 @@ function showCvImportReview(staffId, staffName, extracted) {
   window._cvImportData = extracted;
 }
 
+// While a Save is running: the button shows a spinner and cannot be pressed
+// again (a second click used to start a second save at the same time), Cancel
+// is locked, and a line under the buttons says which part is being written.
+function cvSaveBusy(on, text) {
+  const btn = document.getElementById('cvImportSaveBtn');
+  const cancel = document.getElementById('cvImportCancelBtn');
+  const status = document.getElementById('cvImportSaveStatus');
+  window._cvSaving = !!on;
+  if (btn) {
+    btn.disabled = !!on;
+    if (!btn.dataset.label) btn.dataset.label = btn.textContent;
+    btn.innerHTML = on ? '<span class="import-spinner-sm"></span>Saving…' : hrOnbEsc(btn.dataset.label);
+  }
+  if (cancel) cancel.disabled = !!on;
+  if (status) {
+    status.style.display = on ? 'block' : 'none';
+    if (on && text) status.textContent = text;
+  }
+}
+function cvSaveStep(text) {
+  const status = document.getElementById('cvImportSaveStatus');
+  if (status) status.textContent = text;
+}
+
 async function saveCvImportSelections(staffId) {
+  if (window._cvSaving) return;                 // already saving: ignore a second click
   const errEl = document.getElementById('cvImportSaveErr');
   errEl.style.display = 'none';
   const extracted = window._cvImportData;
   if (!extracted) return;
+  ensureImportBusyStyles();
+  cvSaveBusy(true, 'Starting…');
   const staffName = (staffList.find(s => s.id === staffId) || {}).full_name || 'this person';
 
   // Company-level details (practice location, fax) can be refused for an account that may edit
@@ -8918,6 +9051,7 @@ async function saveCvImportSelections(staffId) {
 
   try {
     if (document.getElementById('cvCompanyCheck')?.checked && extracted.company_info) {
+     cvSaveStep('Saving the practice location…');
      try {
       const ci = extracted.company_info;
       const locations = await getOrderedCompanyLocations(currentCompany.id);
@@ -8971,6 +9105,7 @@ async function saveCvImportSelections(staffId) {
     {
       // Every profile field ticked in the review is written here: a "Save
       // (blank on file)" tick fills a blank, a "Replace" tick overwrites.
+      cvSaveStep('Saving profile details…');
       const pi = extracted.practitioner_info || {};
       const current = staffList.find(s => s.id === staffId) || {};
       const toIso = v => {
@@ -9036,6 +9171,7 @@ async function saveCvImportSelections(staffId) {
 
     const eduToSave = [...document.querySelectorAll('.cvEduCheck:checked')].map(el => readEditedFields('cvEduField', el.dataset.idx));
     if (eduToSave.length) {
+      cvSaveStep(`Saving education and training (${eduToSave.length})…`);
       const { data: existingEdu } = await sb.from('staff_education_training').select('institution, training_type').eq('staff_id', staffId);
       const existingKeys = new Set((existingEdu || []).map(r => normKey(r.institution, r.training_type)));
       const newRows = eduToSave.filter(e => !existingKeys.has(normKey(e.institution, e.training_type)));
@@ -9051,6 +9187,7 @@ async function saveCvImportSelections(staffId) {
 
     const licToSave = [...document.querySelectorAll('.cvLicCheck:checked')].map(el => readEditedFields('cvLicField', el.dataset.idx));
     if (licToSave.length) {
+      cvSaveStep(`Saving additional licenses (${licToSave.length})…`);
       const { data: existingLic } = await sb.from('staff_additional_licenses').select('license_type, license_number, state').eq('staff_id', staffId);
       // A real license number is the strongest match; without one, fall
       // back to type+state so two different PT licenses in the same state
@@ -9069,6 +9206,7 @@ async function saveCvImportSelections(staffId) {
 
     const privToSave = [...document.querySelectorAll('.cvPrivCheck:checked')].map(el => readEditedFields('cvPrivField', el.dataset.idx));
     if (privToSave.length) {
+      cvSaveStep(`Saving hospital privileges (${privToSave.length})…`);
       const { data: existingPriv } = await sb.from('staff_hospital_privileges').select('hospital_name, privilege_type').eq('staff_id', staffId);
       const existingKeys = new Set((existingPriv || []).map(r => normKey(r.hospital_name, r.privilege_type)));
       const newRows = privToSave.filter(p => !existingKeys.has(normKey(p.hospital_name, p.privilege_type)));
@@ -9084,6 +9222,7 @@ async function saveCvImportSelections(staffId) {
 
     const claimsToSave = [...document.querySelectorAll('.cvClaimCheck:checked')].map(el => readEditedFields('cvClaimField', el.dataset.idx));
     if (claimsToSave.length) {
+      cvSaveStep(`Saving malpractice claims (${claimsToSave.length})…`);
       const { data: existingClaims } = await sb.from('staff_malpractice_claims').select('date_filed, claim_status').eq('staff_id', staffId);
       const existingKeys = new Set((existingClaims || []).map(r => normKey(r.date_filed, r.claim_status)));
       const newRows = claimsToSave.filter(c => !existingKeys.has(normKey(c.date_filed, c.claim_status)));
@@ -9099,6 +9238,7 @@ async function saveCvImportSelections(staffId) {
 
     const empToSave = [...document.querySelectorAll('.cvEmpCheck:checked')].map(el => readEditedFields('cvEmpField', el.dataset.idx));
     if (empToSave.length) {
+      cvSaveStep(`Saving employment history (${empToSave.length})…`);
       const { data: existingEmp } = await sb.from('staff_employment_history').select('employer_name, start_date').eq('staff_id', staffId);
       const existingKeys = new Set((existingEmp || []).map(r => normKey(r.employer_name, r.start_date)));
       const newRows = empToSave.filter(e => !existingKeys.has(normKey(e.employer_name, e.start_date)));
@@ -9127,6 +9267,7 @@ async function saveCvImportSelections(staffId) {
 
     const refsToSave = [...document.querySelectorAll('.cvRefCheck:checked')].map(el => readEditedFields('cvRefField', el.dataset.idx)).filter(r => r.reference_name);
     if (refsToSave.length) {
+      cvSaveStep(`Saving professional references (${refsToSave.length})…`);
       const { data: existingRefs } = await sb.from('staff_professional_references').select('reference_name, email, phone').eq('staff_id', staffId);
       const digits = v => String(v ?? '').replace(/\D/g, '');
       // Already on file = same name AND the same email or phone (or neither side has any contact detail to compare).
@@ -9162,6 +9303,7 @@ async function saveCvImportSelections(staffId) {
       errEl.style.borderRadius = '8px';
       errEl.style.padding = '8px 10px';
       errEl.style.color = '#fbbf24';
+      cvSaveBusy(false);
       errEl.textContent = 'Nothing was saved. ' + (skippedAsDuplicate || leftAlone.length
         ? 'Everything ticked is already on file, or you unticked what was left.'
         : 'No boxes are ticked.') + ' To overwrite a value that differs, tick Replace next to it.';
@@ -9169,6 +9311,7 @@ async function saveCvImportSelections(staffId) {
       return;
     }
 
+    cvSaveStep('Refreshing the profile…');
     await loadStaffTable();
     window._cvImportData = null;
     // The profile sheet this import was started from still shows the OLD values,
@@ -9195,8 +9338,11 @@ async function saveCvImportSelections(staffId) {
       toast('Imported: ' + saved.join(', '));
     }
   } catch (e) {
+    cvSaveBusy(false);
     errEl.textContent = e.message + (saved.length ? ` Already saved before this error: ${saved.join(', ')}.` : '');
     errEl.style.display = 'block';
+  } finally {
+    window._cvSaving = false;
   }
 }
 
@@ -9452,7 +9598,7 @@ function showRevealSsnPrompt(staffId) {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;">Why do you need to view this SSN?</div>
-      <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">This access — including your reason — is permanently logged and cannot be deleted.</p>
+      <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">This access, including your reason, is logged. Only your company's own admins can remove an entry, and only after it has been reviewed. Every removal is itself recorded permanently.</p>
       <textarea id="ssnJustification" placeholder="e.g. Completing a payer credentialing application that requires it" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:15px;margin-bottom:10px;box-sizing:border-box;"></textarea>
       <div id="ssnRevealErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div id="ssnRevealValue" style="display:none;background:rgba(255,255,255,.05);border-radius:6px;padding:14px;text-align:center;font-size:22px;letter-spacing:2px;color:#fff;font-weight:700;margin-bottom:12px;"></div>
@@ -9587,7 +9733,7 @@ function showRevealCaqhCredPrompt(staffId) {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;">Why do you need to view this CAQH login?</div>
-      <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">This access — including your reason — is permanently logged and cannot be deleted.</p>
+      <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">This access, including your reason, is logged. Only your company's own admins can remove an entry, and only after it has been reviewed. Every removal is itself recorded permanently.</p>
       <textarea id="caqhCredJustification" placeholder="e.g. Updating this provider's CAQH profile before a payer credentialing deadline" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:15px;margin-bottom:10px;box-sizing:border-box;"></textarea>
       <div id="caqhCredRevealErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div id="caqhCredRevealValue" style="display:none;background:rgba(255,255,255,.05);border-radius:6px;padding:14px;font-size:15px;color:#fff;margin-bottom:12px;"></div>
@@ -13286,6 +13432,122 @@ async function removeCompanyAccreditation(id, name) {
   toast(`Removed ${name}`);
 }
 
+// ── Deleting reviewed entries from the Sensitive data access log ───────────
+// Allowed only for an admin of THIS company (never for Selko staff viewing it),
+// only for entries that were already reviewed, and every deletion is recorded
+// permanently by the database (see "Deletion history"). The database enforces
+// all of this; the screen just makes it hard to do by accident.
+function canDeleteSensitiveLog() { return currentProfile?.role === 'admin' && !_superProfile; }
+
+const SENSITIVE_FIELD_LABELS = { ssn: 'Social Security number', caqh_credentials: 'CAQH login' };
+
+function showDeleteSensitiveLogModal(entryId, entryLabel) {
+  if (!canDeleteSensitiveLog()) { toast("Only an admin of this company can delete log entries.", true); return; }
+  document.getElementById('deleteSensLogModal')?.remove();
+  const single = !!entryId;
+  const modal = document.createElement('div');
+  modal.id = 'deleteSensLogModal';
+  modal.dataset.entryId = entryId || '';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1250;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;border:1px solid rgba(248,113,113,.4);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${single ? 'Delete this log entry' : 'Delete reviewed log entries'}</div>
+      <div style="color:#fca5a5;font-size:14px;margin-bottom:12px;">This can't be undone. The deletion itself is recorded permanently.</div>
+      ${single
+        ? `<div style="font-size:14px;color:#fff;background:rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;margin-bottom:12px;">${hrOnbEsc(entryLabel || 'This entry')}</div>`
+        : `<label class="inline-label" for="sensLogDelDays">Delete reviewed entries older than</label>
+           <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+             <input class="inline-input" type="number" id="sensLogDelDays" min="0" value="90" style="width:90px;" oninput="previewDeleteSensitiveLog()" /> <span style="font-size:14px;color:rgba(255,255,255,.7);">days (0 = every reviewed entry)</span>
+           </div>
+           <div id="sensLogDelPreview" style="font-size:14px;color:#fbbf24;margin-bottom:12px;">Counting…</div>`}
+      <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;">Only entries you've already acknowledged can be deleted. Entries nobody has reviewed yet stay until they are.</div>
+      <label class="inline-label" for="sensLogDelReason">Why are you deleting? (kept in the deletion history)</label>
+      <textarea class="inline-input" id="sensLogDelReason" rows="2" maxlength="500" oninput="syncDeleteSensLogButton()" placeholder="e.g. Quarterly cleanup of reviewed entries" style="width:100%;box-sizing:border-box;margin-bottom:12px;"></textarea>
+      <label class="inline-label" for="sensLogDelConfirm">Type <strong>DELETE</strong> to confirm</label>
+      <input class="inline-input" type="text" id="sensLogDelConfirm" autocomplete="off" oninput="syncDeleteSensLogButton()" style="margin-bottom:12px;" />
+      <div id="sensLogDelErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-danger" id="sensLogDelBtn" disabled onclick="confirmDeleteSensitiveLog()" style="flex:1;justify-content:center;">${single ? 'Delete entry' : 'Delete entries'}</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('deleteSensLogModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  if (!single) previewDeleteSensitiveLog();
+}
+
+// How many entries the current choice would remove, asked of the database so
+// the number is real, not a guess.
+async function previewDeleteSensitiveLog() {
+  const el = document.getElementById('sensLogDelPreview');
+  const daysEl = document.getElementById('sensLogDelDays');
+  if (!el || !daysEl) return;
+  const days = parseInt(daysEl.value, 10);
+  if (isNaN(days) || days < 0) { el.textContent = 'Enter a number of days (0 or more).'; window._sensLogDelCount = 0; syncDeleteSensLogButton(); return; }
+  const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+  const { count, error } = await sb.from('sensitive_field_access_log').select('id', { count: 'exact', head: true })
+    .eq('company_id', currentCompany.id).not('acknowledged_at', 'is', null).lt('accessed_at', cutoff);
+  if (!document.getElementById('sensLogDelPreview')) return;
+  window._sensLogDelCount = error ? 0 : (count || 0);
+  el.textContent = error ? 'Could not count entries: ' + error.message
+    : (count ? `${count} reviewed ${count === 1 ? 'entry' : 'entries'} will be deleted.` : 'No reviewed entries match.');
+  syncDeleteSensLogButton();
+}
+
+function syncDeleteSensLogButton() {
+  const modal = document.getElementById('deleteSensLogModal');
+  const btn = document.getElementById('sensLogDelBtn');
+  if (!modal || !btn) return;
+  const single = !!modal.dataset.entryId;
+  const reasonOk = document.getElementById('sensLogDelReason').value.trim().length >= 5;
+  const typedOk = document.getElementById('sensLogDelConfirm').value.trim() === 'DELETE';
+  const hasTargets = single || (window._sensLogDelCount || 0) > 0;
+  btn.disabled = !(reasonOk && typedOk && hasTargets);
+}
+
+async function confirmDeleteSensitiveLog() {
+  const modal = document.getElementById('deleteSensLogModal');
+  if (!modal) return;
+  const errEl = document.getElementById('sensLogDelErr');
+  const btn = document.getElementById('sensLogDelBtn');
+  errEl.style.display = 'none';
+  const entryId = modal.dataset.entryId;
+  const reason = document.getElementById('sensLogDelReason').value.trim();
+  const days = entryId ? null : parseInt(document.getElementById('sensLogDelDays').value, 10);
+  btn.disabled = true; const label = btn.textContent; btn.textContent = 'Deleting…';
+  const { data, error } = await sb.rpc('delete_sensitive_access_log', {
+    p_company: currentCompany.id,
+    p_ids: entryId ? [entryId] : null,
+    p_older_than_days: entryId ? null : days,
+    p_reason: reason,
+  });
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; btn.textContent = label; btn.disabled = false; return; }
+  modal.remove();
+  toast(data ? `Deleted ${data} log ${data === 1 ? 'entry' : 'entries'}. The deletion is recorded in the history.` : 'Nothing matched, so nothing was deleted.', !data);
+  await loadSensitiveAccessLog();
+  await loadSensitiveLogDeletions();
+}
+
+async function loadSensitiveLogDeletions() {
+  const wrap = document.getElementById('sensitiveLogDeletionsWrap');
+  const tbody = document.getElementById('sensitiveLogDeletionsTbody');
+  const bar = document.getElementById('sensitiveLogDeleteBar');
+  if (bar) bar.style.display = canDeleteSensitiveLog() ? 'block' : 'none';
+  if (!wrap || !tbody) return;
+  const { data, error } = await sb.from('sensitive_log_deletions').select('*')
+    .eq('company_id', currentCompany.id).order('deleted_at', { ascending: false }).limit(50);
+  if (error || !data) { wrap.style.display = 'none'; if (bar) bar.style.display = 'none'; return; }   // not installed yet
+  wrap.style.display = data.length || canDeleteSensitiveLog() ? 'block' : 'none';
+  const short = d => d ? new Date(d).toLocaleDateString() : '';
+  tbody.innerHTML = data.length ? data.map(r => `<tr>
+      <td style="font-size:14px;color:rgba(255,255,255,.62);white-space:nowrap;">${fmtSupportDate(r.deleted_at)}</td>
+      <td style="font-size:14px;">${hrOnbEsc(r.deleted_by_name || 'Unknown')}</td>
+      <td style="font-size:14px;">${r.entry_count}</td>
+      <td style="font-size:14px;">${hrOnbEsc((r.fields || []).map(f => SENSITIVE_FIELD_LABELS[f] || f).join(', ') || '—')}<div style="font-size:12px;color:rgba(255,255,255,.5);">${short(r.oldest_entry)}${r.newest_entry && short(r.newest_entry) !== short(r.oldest_entry) ? ' to ' + short(r.newest_entry) : ''}</div></td>
+      <td style="font-size:14px;">${r.reason ? hrOnbEsc(r.reason) : '<span style="color:rgba(255,255,255,.5);">Not from the Delete screen</span>'}${r.via === 'other' ? '<div style="font-size:12px;color:rgba(255,255,255,.5);">e.g. removed along with a staff member</div>' : ''}</td></tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;color:rgba(255,255,255,.55);padding:14px;">No entries have been deleted.</td></tr>`;
+}
+
 async function loadSensitiveAccessLog() {
   const tbody = document.getElementById('sensitiveAccessLogTbody');
   if (!tbody) return;
@@ -13322,7 +13584,7 @@ async function loadSensitiveAccessLog() {
       <td style="font-size:14px;">${r.accessed_by || '—'}</td>
       <td style="max-width:260px;white-space:normal;font-size:14px;color:rgba(255,255,255,.66);">${r.justification || '—'}</td>
       <td style="font-size:13px;white-space:nowrap;">${r.acknowledged_at
-        ? `<span style="color:rgba(255,255,255,.58);">✓ by ${r.acknowledged_by || '—'}</span>`
+        ? `<span style="color:rgba(255,255,255,.58);">✓ by ${r.acknowledged_by || '—'}</span>${canDeleteSensitiveLog() ? ` <button class="btn btn-sm btn-ghost" onclick="showDeleteSensitiveLogModal('${r.id}', decodeURIComponent('${encodeURIComponent((r.credtrack_staff?.full_name || r.hr_employees?.full_name || 'a staff member') + ' · ' + new Date(r.accessed_at).toLocaleString())}'))" style="font-size:12px;padding:2px 7px;margin-left:6px;color:#fca5a5;border-color:rgba(248,113,113,.4);">Delete</button>` : ''}`
         : (_superProfile
             // Reviewing accesses is the COMPANY's own job (it's how they check the platform owner's
             // access to their staff), and the database only lets that company's own admins do it —
@@ -15320,6 +15582,7 @@ async function loadCompliance() {
   // without it, rather than wastefully populating tables nobody can see.
   await loadAccessLog();
   await loadSensitiveAccessLog();
+  await loadSensitiveLogDeletions();
   await loadPlatformAccessLog();
   if (currentCompany.has_credentialing_addon) {
     const oigDaySel = document.getElementById('oigPreferredDaySelect');
@@ -15459,7 +15722,7 @@ const STAFF_HELP = [
     html: `<p>From a staff member's Full Profile:</p>
       <ul>
         <li><strong>Search NPI Registry</strong> looks them up against the official CMS registry — selecting a match both fills in the NPI and marks it verified, since picking a specific name-and-location match from the real registry is itself the verification.</li>
-        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is permanently logged (see Compliance → Sensitive data access log).</li>
+        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is logged (see Compliance → Sensitive data access log).</li>
       </ul>`,
   },
 ];
@@ -15539,7 +15802,7 @@ const COMPLIANCE_HELP = [
     title: 'The two access logs',
     subtitle: '',
     html: `<ul>
-        <li><strong>Sensitive data access log</strong> — every time anyone views or enters a Social Security Number, logged permanently. There's no delete button here on purpose, it's meant to be a genuine audit trail.</li>
+        <li><strong>Sensitive data access log</strong> — every time anyone views or enters a Social Security Number, logged permanently. Once an entry has been reviewed, your company's own admins (never Selko staff) can delete it, and every deletion is recorded permanently in the deletion history under the log.</li>
         <li><strong>Access log</strong> — who viewed or downloaded which documents, including agency partners, with filters and an exportable PDF/CSV.</li>
       </ul>`,
   },
@@ -17892,7 +18155,7 @@ function showRevealHrSsnPrompt(employeeId) {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;">Why do you need to view this SSN?</div>
-      <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">This access — including your reason — is permanently logged and cannot be deleted.</p>
+      <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">This access, including your reason, is logged. Only your company's own admins can remove an entry, and only after it has been reviewed. Every removal is itself recorded permanently.</p>
       <textarea id="hrSsnJustification" placeholder="e.g. Completing Form I-9 for this employee's onboarding" style="width:100%;min-height:70px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:15px;margin-bottom:10px;box-sizing:border-box;"></textarea>
       <div id="hrSsnRevealErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div id="hrSsnRevealValue" style="display:none;background:rgba(255,255,255,.05);border-radius:6px;padding:14px;text-align:center;font-size:22px;letter-spacing:2px;color:#fff;font-weight:700;margin-bottom:12px;"></div>
