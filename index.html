@@ -8083,7 +8083,8 @@ function showFullProfileSheet(staffId) {
         </div>
         <div>
           <label class="inline-label">License state</label>
-          <input class="inline-input" type="text" id="fpLicenseState" value="${s.license_state || ''}" maxlength="2" placeholder="OK" />
+          <select class="inline-select" id="fpLicenseState">${stateOptionsHtml(s.license_state)}</select>
+          <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:3px;">State that issued this license. Also used to narrow NPI registry searches.</div>
         </div>
         <div>
           <label class="inline-label">License issued</label>
@@ -8101,7 +8102,7 @@ function showFullProfileSheet(staffId) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
         ${((currentCompany.has_credtrack || currentCompany.has_credentialing_addon) && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
         ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>` : ''}
-        ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">🔍 Look up NPI</button>` : ''}
+        ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="${s.license_state ? 'Searches the registry in ' + stateName(s.license_state) + ' — you can change the state first' : 'No license state on file — you choose the state, or search all states'}">🔍 Look up NPI</button>` : ''}
       </div>
 
       <label class="inline-label" style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};">State licensing board lookup</label>
@@ -8344,6 +8345,11 @@ function showFullProfileSheet(staffId) {
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
         <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
       </div>
+      ${(currentProfile?.role === 'admin' || currentProfile?.is_super_admin) ? `
+      <div style="margin-top:22px;padding-top:14px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+        <div style="font-size:13px;color:rgba(255,255,255,.55);max-width:420px;">Start over: erases this person's credentialing details (license, NPI, CAQH, DEA, board, address and the rest) and, if you choose, their education, licenses and other lists. Name, role, login, documents and notes stay.</div>
+        <button class="btn btn-sm btn-danger" onclick="showClearProviderProfile('${staffId}')">Clear this profile…</button>
+      </div>` : ''}
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -8616,55 +8622,89 @@ function showCvImportReview(staffId, staffName, extracted) {
     </label>
     <p style="font-size:13px;color:rgba(255,255,255,.55);margin:4px 0 0;">Applies to your company's Primary practice location and general fax number — only fills in fields that are currently blank, never overwrites something already on file. Creates a Primary location if you don't have one yet.</p>` : '';
 
-  const pi = extracted.practitioner_info;
-  const hasPractitionerInfo = pi && (pi.license_number || pi.caqh_id || pi.npi_number || pi.discipline || pi.date_of_birth || pi.gender || pi.address || pi.phone);
+  const pi = extracted.practitioner_info || {};
 
-  // Each field is compared with what's ALREADY on this person's profile, so the
-  // screen says honestly what Save will do with it. Previously every field was
-  // shown as "found" under one tick-box, but anything already filled in was
-  // silently left alone and the result still read "Imported successfully",
-  // which looked like the import had found the data and then not saved it.
+  // Every profile field the document supplied gets its OWN row, compared with
+  // what's already on this person's profile, so the screen says exactly what
+  // Save will do with it: fill a blank, leave a match alone, or (only if
+  // ticked) replace a different value. Per-field rows matter: when address,
+  // city, state and ZIP shared one row, a blank ZIP was skipped whenever the
+  // profile already had any other address part.
   const currentStaff = staffList.find(s => s.id === staffId) || {};
-  const piNorm = (k, v) => k === 'phone' ? String(v ?? '').replace(/\D/g, '') : String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
-  const PI_FIELDS = [
-    { keys: ['license_number'], label: 'License #' },
-    { keys: ['caqh_id'], label: 'CAQH #' },
-    { keys: ['npi_number'], label: 'NPI #' },
-    { keys: ['date_of_birth'], label: 'Date of birth' },
-    { keys: ['gender'], label: 'Gender' },
-    { keys: ['address', 'city', 'state', 'zip'], label: 'Personal address' },
-    { keys: ['phone'], label: 'Personal phone' },
+  const prescribes = isPrescribingDiscipline(currentStaff.discipline);
+  const normIsoDate = v => {
+    const s = String(v ?? '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    return us ? `${us[3]}-${us[1].padStart(2, '0')}-${us[2].padStart(2, '0')}` : '';
+  };
+  const DATE_KEYS = new Set(['date_of_birth', 'license_issued_date', 'license_expiration_date', 'dea_issued_date', 'dea_expiration_date', 'board_certification_date', 'board_certification_expiration_date']);
+  const piNorm = (k, v) => {
+    if (k === 'phone') return String(v ?? '').replace(/\D/g, '');
+    if (k === 'state' || k === 'license_state') return String(v ?? '').trim().toUpperCase();
+    if (k === 'zip') return String(v ?? '').trim().replace(/\D/g, '').slice(0, 5);   // 74103 matches 74103-1234
+    return String(v ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  };
+  const FIELD_GROUPS = [
+    { title: 'Personal', src: 'pi', fields: [
+      ['middle_name', 'Middle name'], ['date_of_birth', 'Date of birth'], ['gender', 'Gender'],
+      ['address', 'Address'], ['city', 'City'], ['state', 'State'], ['zip', 'ZIP'], ['phone', 'Phone'] ] },
+    { title: 'License & IDs', src: 'pi', fields: [
+      ['license_type', 'License type'], ['license_number', 'License #'], ['license_state', 'License state'],
+      ['license_issued_date', 'License issued'], ['license_expiration_date', 'License expires'],
+      ['caqh_id', 'CAQH #'], ['npi_number', 'NPI #'] ] },
+    { title: 'DEA', src: 'pi', needsPrescriber: true, fields: [
+      ['dea_number', 'DEA #'], ['dea_issued_date', 'DEA issued'], ['dea_expiration_date', 'DEA expires'] ] },
+    { title: 'Specialty & board', src: 'top', fields: [
+      ['primary_specialty', 'Primary specialty'], ['secondary_specialty', 'Secondary specialty'],
+      ['board_certified', 'Board certified'], ['board_name', 'Board name'],
+      ['board_certification_date', 'Board certification date'], ['board_certification_expiration_date', 'Board certification expires'] ] },
   ];
-  const piRows = !hasPractitionerInfo ? '' : PI_FIELDS.map(f => {
-    const docKeys = f.keys.filter(k => pi[k]);
-    if (!docKeys.length) return '';
-    const docText = docKeys.map(k => pi[k]).join(', ');
-    const curText = f.keys.map(k => currentStaff[k]).filter(Boolean).join(', ');
-    const isBlank = docKeys.every(k => !currentStaff[k]);
-    const isSame = docKeys.every(k => piNorm(k, currentStaff[k]) === piNorm(k, pi[k]));
-    const state = isBlank ? 'new' : (isSame ? 'same' : 'differs');
+  let skippedDea = false;
+  const fieldRow = (src, key, label) => {
+    let docVal = (src === 'top' ? extracted : pi)[key];
+    const isBool = key === 'board_certified';
+    if (isBool ? !(docVal === true || docVal === false) : (docVal === null || docVal === undefined || String(docVal).trim() === '')) return '';
+    if (DATE_KEYS.has(key)) { docVal = normIsoDate(docVal); if (!docVal) return ''; }
+    const cur = currentStaff[key];
+    let state;
+    if (isBool) state = docVal === true ? (cur === true ? 'same' : 'new') : (cur === true ? 'differs' : 'same');
+    else if (cur === null || cur === undefined || String(cur).trim() === '') state = 'new';
+    else state = piNorm(key, cur) === piNorm(key, docVal) ? 'same' : 'differs';
+    const show = v => isBool ? (v === true ? 'Yes' : 'No') : String(v ?? '');
+    const attrs = `data-key="${key}" data-src="${src}" data-label="${label}"`;
     const control = state === 'new'
-      ? `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#4ade80;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" data-keys="${f.keys.join(',')}" data-label="${f.label}" data-mode="new" checked /> Save (blank on file)</label>`
+      ? `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#4ade80;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" ${attrs} data-mode="new" checked /> Save (blank on file)</label>`
       : state === 'same'
         ? `<span style="font-size:13px;color:rgba(255,255,255,.5);white-space:nowrap;">Already matches</span>`
-        : `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#f59e0b;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" data-keys="${f.keys.join(',')}" data-label="${f.label}" data-mode="replace" /> Replace what's on file</label>`;
-    return `<div class="cvPiRow" data-state="${state}" data-label="${f.label}" data-current="${hrOnbEsc(curText)}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+        : `<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#f59e0b;white-space:nowrap;"><input type="checkbox" class="cvPiCheck" ${attrs} data-mode="replace" /> Replace what's on file</label>`;
+    return `<div class="cvPiRow" data-state="${state}" data-label="${label}" data-current="${hrOnbEsc(show(cur))}" style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="min-width:0;font-size:14px;color:#fff;">
-        <div>${f.label}: <strong>${hrOnbEsc(docText)}</strong></div>
-        ${state === 'differs' ? `<div style="font-size:12px;color:#f59e0b;">On file: ${hrOnbEsc(curText)}</div>` : ''}
+        <div>${label}: <strong>${hrOnbEsc(show(docVal))}</strong></div>
+        ${state === 'differs' ? `<div style="font-size:12px;color:#f59e0b;">On file: ${hrOnbEsc(show(cur))}</div>` : ''}
       </div>
       ${control}
     </div>`;
+  };
+  const groupHtml = FIELD_GROUPS.map(g => {
+    if (g.needsPrescriber && !prescribes) {
+      if (g.fields.some(([k]) => pi[k])) skippedDea = true;
+      return '';
+    }
+    const rows = g.fields.map(([k, l]) => fieldRow(g.src, k, l)).join('');
+    return rows ? `<div style="font-size:12px;font-weight:700;color:rgba(255,255,255,.5);text-transform:uppercase;margin:10px 0 2px;">${g.title}</div>${rows}` : '';
   }).join('');
+  const hasPiRows = !!groupHtml;
   // Guard against the wrong person's document: the name the AI read must
   // share the last name of the profile being updated.
   const lastNameOf = s => String(s || '').toLowerCase().replace(/[,.].*$/, '').trim().split(/\s+/).pop();
-  const nameMismatch = pi && pi.name && lastNameOf(staffName) && !String(pi.name).toLowerCase().includes(lastNameOf(staffName));
-  const practitionerRow = hasPractitionerInfo ? `
+  const nameMismatch = pi.name && lastNameOf(staffName) && !String(pi.name).toLowerCase().includes(lastNameOf(staffName));
+  const practitionerRow = hasPiRows ? `
     ${nameMismatch ? `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:8px 10px;margin-bottom:8px;font-size:13px;color:#fbbf24;">This document is for <strong>${hrOnbEsc(pi.name)}</strong>, but you're updating <strong>${hrOnbEsc(staffName)}</strong>. Check it's the right file before saving.</div>` : ''}
     ${pi.name || pi.discipline ? `<div style="font-size:13px;color:rgba(255,255,255,.62);margin-bottom:4px;">${pi.name ? `Name on document: <strong style="color:#fff;">${hrOnbEsc(pi.name)}</strong>` : ''}${pi.name && pi.discipline ? ' · ' : ''}${pi.discipline ? `Discipline: <strong style="color:#fff;">${hrOnbEsc(pi.discipline)}</strong>` : ''}</div>` : ''}
-    ${piRows}
-    <p style="font-size:13px;color:rgba(255,255,255,.55);margin:6px 0 0;">Blank fields on ${hrOnbEsc(staffName)}'s profile fill in automatically. Where the document disagrees with what's already on file, nothing changes unless you tick Replace.</p>` : '';
+    ${groupHtml}
+    ${skippedDea ? `<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:8px;">DEA details were found, but ${hrOnbEsc(staffName)}'s role isn't set as a prescriber, so they aren't imported. (Settings > Professional roles > Prescribing disciplines.)</div>` : ''}
+    <p style="font-size:13px;color:rgba(255,255,255,.55);margin:8px 0 0;">Blank fields on ${hrOnbEsc(staffName)}'s profile fill in automatically. Where the document disagrees with what's already on file, nothing changes unless you tick Replace.</p>` : '';
 
   const eduRows = extracted.education.map((e, i) => `
     <div style="display:flex;align-items:start;gap:8px;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06);">
@@ -8746,32 +8786,20 @@ function showCvImportReview(staffId, staffName, extracted) {
       </div>
     </div>`).join('') || '<div style="font-size:14px;color:rgba(255,255,255,.55);padding:8px 0;">Nothing found.</div>';
 
-  const hasSpecialtyInfo = extracted.primary_specialty || extracted.secondary_specialty || extracted.board_certified === true || extracted.board_certified === false;
-  const specialtyRow = hasSpecialtyInfo ? `
-    <label style="display:flex;align-items:start;gap:8px;padding:8px 0;cursor:pointer;">
-      <input type="checkbox" id="cvSpecialtyCheck" checked style="margin-top:3px;" />
-      <div style="font-size:14px;color:#fff;">
-        ${extracted.primary_specialty ? `Primary specialty: <strong>${extracted.primary_specialty}</strong><br>` : ''}
-        ${extracted.secondary_specialty ? `Secondary specialty: <strong>${extracted.secondary_specialty}</strong><br>` : ''}
-        ${extracted.board_certified !== null ? `Board certified: <strong>${extracted.board_certified ? 'Yes' : 'No'}</strong>${extracted.board_name ? ' — ' + extracted.board_name : ''}` : ''}
-      </div>
-    </label>` : '';
-
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:85vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Review what was found for ${staffName}</div>
       <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:16px;">Uncheck anything that's wrong or not needed — only checked items get saved. You can fine-tune or add more later from their Licenses/Education/Privileges tabs.</p>
 
       ${hasCompanyInfo ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Company / Facility Info</div>${companyRow}` : ''}
-      ${hasPractitionerInfo ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Basic Info (License / CAQH / NPI)</div>${practitionerRow}` : ''}
+      ${hasPiRows ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin-bottom:6px;">Profile details</div>${practitionerRow}` : ''}
       ${extracted.education.length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Education &amp; Training</div>${eduRows}` : ''}
       ${extracted.additional_licenses.length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Additional Licenses</div>${licRows}` : ''}
       ${extracted.hospital_privileges.length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Hospital Privileges</div>${privRows}` : ''}
       ${(extracted.malpractice_claims || []).length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Malpractice Claims</div>${claimRows}` : ''}
       ${(extracted.employment_history || []).length ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Employment History</div>${empRows}` : ''}
-      ${hasSpecialtyInfo ? `<div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;margin:14px 0 6px;">Specialty &amp; Board Info</div>${specialtyRow}` : ''}
 
-      ${!hasCompanyInfo && !hasPractitionerInfo && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.malpractice_claims || []).length && !(extracted.employment_history || []).length && !hasSpecialtyInfo
+      ${!hasCompanyInfo && !hasPiRows && !extracted.education.length && !extracted.additional_licenses.length && !extracted.hospital_privileges.length && !(extracted.malpractice_claims || []).length && !(extracted.employment_history || []).length
         ? '<div style="font-size:15px;color:rgba(255,255,255,.58);text-align:center;padding:20px;">Nothing usable was found in this document.</div>' : ''}
 
       <div id="cvImportSaveErr" style="color:#f87171;font-size:14px;margin-top:12px;display:none;"></div>
@@ -8863,25 +8891,34 @@ async function saveCvImportSelections(staffId) {
      }
     }
 
-    if (extracted.practitioner_info) {
-      const pi = extracted.practitioner_info;
+    {
+      // Every profile field ticked in the review is written here: a "Save
+      // (blank on file)" tick fills a blank, a "Replace" tick overwrites.
+      const pi = extracted.practitioner_info || {};
       const current = staffList.find(s => s.id === staffId) || {};
-      // Only fields ticked in the review are written. A "Save" (blank on file)
-      // tick fills blanks only; a "Replace" tick overwrites what's there.
+      const toIso = v => {
+        const s = String(v ?? '').trim();
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+        return us ? `${us[3]}-${us[1].padStart(2, '0')}-${us[2].padStart(2, '0')}` : null;
+      };
+      const DATE_KEYS = new Set(['date_of_birth', 'license_issued_date', 'license_expiration_date', 'dea_issued_date', 'dea_expiration_date', 'board_certification_date', 'board_certification_expiration_date']);
       const updates = {};
       const labels = [];
       document.querySelectorAll('.cvPiCheck:checked').forEach(el => {
+        const key = el.dataset.key;
         const replace = el.dataset.mode === 'replace';
-        let wrote = false;
-        el.dataset.keys.split(',').forEach(k => {
-          if (pi[k] && (replace || !current[k])) { updates[k] = pi[k]; wrote = true; }
-        });
-        if (wrote) labels.push(el.dataset.label + (replace ? ' (replaced)' : ''));
+        let val = (el.dataset.src === 'top' ? extracted : pi)[key];
+        if (DATE_KEYS.has(key)) val = toIso(val);
+        if (val === null || val === undefined || val === '') return;
+        const blank = key === 'board_certified' ? current[key] !== true : (current[key] === null || current[key] === undefined || String(current[key]).trim() === '');
+        if (replace || blank) { updates[key] = val; labels.push(el.dataset.label + (replace ? ' (replaced)' : '')); }
       });
       if (Object.keys(updates).length) {
         const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
         if (error) throw error;
         if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so nothing was imported.");
+        await logStaffFieldChanges(staffId, Object.keys(updates).map(f => ({ field: f, old: current[f], new: updates[f] })));
         saved.push(...labels);
       }
     }
@@ -9008,24 +9045,6 @@ async function saveCvImportSelections(staffId) {
         );
         if (error) throw error;
         saved.push(newRows.length + (newRows.length === 1 ? ' employment entry' : ' employment entries'));
-      }
-    }
-
-    if (document.getElementById('cvSpecialtyCheck')?.checked) {
-      const updates = {};
-      if (extracted.primary_specialty) updates.primary_specialty = extracted.primary_specialty;
-      if (extracted.secondary_specialty) updates.secondary_specialty = extracted.secondary_specialty;
-      // Same fix as the review screen's own display check last night — !== null
-      // is true for undefined too, so a document that never mentioned board
-      // certification at all was writing `board_certified: undefined` into the
-      // update, which the real save function overlooked at the time.
-      if (extracted.board_certified === true || extracted.board_certified === false) updates.board_certified = extracted.board_certified;
-      if (extracted.board_name) updates.board_name = extracted.board_name;
-      if (Object.keys(updates).length) {
-        const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
-        if (error) throw error;
-        if (!changed || !changed.length) throw new Error("You don't have permission to edit this person's record, so the specialty wasn't saved.");
-        saved.push('specialty / board info');
       }
     }
 
@@ -9646,9 +9665,10 @@ function attachVerificationProof(staffId) {
     }
 
     const today = new Date().toLocaleDateString();
-    const stateLabel = s.license_state || 'OK';
+    // No guess when the profile has no license state — the note just says so.
+    const boardText = s.license_state ? `${s.license_state} board` : 'state licensing board';
     document.getElementById('auNotes').value =
-      `License verified on ${stateLabel} board, ${today}, by ${currentProfile.full_name}`;
+      `License verified on ${boardText}, ${today}, by ${currentProfile.full_name}`;
 
     document.getElementById('auFile').scrollIntoView({ behavior: 'smooth', block: 'center' });
     toast(`Ready — attach the screenshot/PDF for ${s.full_name}`);
@@ -10280,29 +10300,63 @@ async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
   await loadStaffTable();
 }
 
-async function lookupNpi(staffId, fullName, licenseState) {
+// NPI registry search, in two steps so the state is never applied silently:
+// first a small chooser (the license state from the profile is pre-selected,
+// or "any state" when there isn't one), then the search itself. A wrong or
+// missing state is the most common reason a real provider "isn't found".
+function lookupNpi(staffId, fullName, licenseState) {
+  document.getElementById('npiSearchOptionsModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'npiSearchOptionsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const have = String(licenseState || '').trim();
+  const note = have
+    ? `This profile lists a license in <strong>${hrOnbEsc(stateName(have))}</strong>, so the search is limited to that state. If they registered or practice somewhere else, change it below or choose "Any state".`
+    : `This profile has no license state, so by default the search covers <strong>all states</strong>. Choose a state to narrow the results, which helps with common names.`;
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:26px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:6px;">Look up NPI — ${hrOnbEsc(fullName)}</div>
+      <div style="color:rgba(255,255,255,.66);font-size:14px;line-height:1.5;margin-bottom:14px;">${note}</div>
+      <label class="inline-label" for="npiSearchState">Search in</label>
+      <select class="inline-select" id="npiSearchState" style="margin-bottom:16px;">${stateOptionsHtml(have, 'Any state (search nationwide)')}</select>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="runNpiSearchFromOptions('${staffId}','${String(fullName).replace(/'/g, "\\'")}')" style="flex:1;justify-content:center;">Search</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('npiSearchOptionsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+function runNpiSearchFromOptions(staffId, fullName) {
+  const state = document.getElementById('npiSearchState').value;
+  document.getElementById('npiSearchOptionsModal')?.remove();
+  runNpiSearch(staffId, fullName, state);
+}
+
+async function runNpiSearch(staffId, fullName, state) {
   const namePart = fullName.split(',')[0].trim(); // drop the credential after the comma, e.g. "Kym Crane, SLP" -> "Kym Crane"
   const nameWords = namePart.split(' ').filter(Boolean);
   const firstName = nameWords[0] || '';
   const lastName = nameWords.slice(1).join(' ') || namePart; // handles multi-word last names reasonably
 
-  toast('Searching the public NPI registry...');
+  toast(state ? `Searching the public NPI registry in ${stateName(state)}...` : 'Searching the public NPI registry (all states)...');
   try {
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/lookup-npi', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ firstName, lastName, state: licenseState || undefined }),
+      body: JSON.stringify({ firstName, lastName, state: state || undefined }),
     });
     const result = await res.json();
     if (result.error) { toast('NPI lookup failed: ' + result.error, true); return; }
-    showNpiResultsModal(staffId, fullName, result.results || [], result.usedLastNameOnlyFallback);
+    showNpiResultsModal(staffId, fullName, result.results || [], result.usedLastNameOnlyFallback, state || '');
   } catch (e) {
     toast('NPI lookup failed: ' + e.message, true);
   }
 }
 
-function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallback) {
+function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallback, searchedState = '') {
   const existing = document.getElementById('npiResultsModal');
   if (existing) existing.remove();
 
@@ -10311,7 +10365,7 @@ function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallbac
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
 
   const body = !results.length
-    ? `<div style="color:rgba(255,255,255,.62);font-size:15px;padding:12px 0;">No matches found in the public NPI registry for "${fullName}". They may not have registered yet, or the name/state might not match exactly — you can still enter their NPI manually if you have it.</div>`
+    ? `<div style="color:rgba(255,255,255,.62);font-size:15px;padding:12px 0;">No matches found in the public NPI registry for "${fullName}". They may not have registered yet, or the name/state might not match exactly — you can still enter their NPI manually if you have it.${searchedState ? ` This search only looked in ${hrOnbEsc(stateName(searchedState))}.` : ''}</div>`
     : `<div style="max-height:360px;overflow-y:auto;">
         ${results.map(r => `
           <div onclick="applyNpiResult('${staffId}','${r.npi}')" style="cursor:pointer;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:8px;">
@@ -10325,6 +10379,13 @@ function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallbac
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:480px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">NPI matches for "${fullName}"</div>
       <div style="color:rgba(255,255,255,.62);font-size:14px;margin-bottom:16px;">This is public information from the CMS NPI Registry. Click the correct match to use it — double-check name and location before selecting, since common names can return multiple results.</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.8);">
+        <span>Searched: <strong style="color:#fff;">${searchedState ? hrOnbEsc(stateName(searchedState)) + ' only' : 'all states'}</strong></span>
+        <span style="display:flex;gap:6px;">
+          ${searchedState ? `<button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();runNpiSearch('${staffId}','${String(fullName).replace(/'/g, "\'")}','')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Search all states</button>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();lookupNpi('${staffId}','${String(fullName).replace(/'/g, "\'")}','${hrOnbEsc(searchedState)}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Change state</button>
+        </span>
+      </div>
       ${usedLastNameOnlyFallback ? `<div style="color:var(--gold);font-size:14px;margin-bottom:16px;">No exact match on first name — showing everyone registered under "${fullName.split(' ').slice(1).join(' ')}" instead. Check first names carefully below.</div>` : ''}
       ${body}
       <button class="btn btn-ghost" onclick="document.getElementById('npiResultsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);margin-top:14px;">Cancel</button>
@@ -11024,11 +11085,173 @@ function applyFreeScanResults(guessedDate, guessedTypeId) {
   toast('Applied — please still verify against the actual document before saving');
 }
 
+// ── States ────────────────────────────────────────────────────────────────
+// One list of states for every picker, so a license state is always CHOSEN,
+// never guessed. (An Oklahoma default used to be built into the credential
+// form and was written onto the profile whenever a license number was typed,
+// which also fed the wrong state into NPI registry searches.)
+const US_STATE_NAMES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
+
+// <option> list: a blank "not set" first, every state, and — if the profile
+// holds something that isn't a plain state code — that value kept as-is rather
+// than silently dropped when the form is saved.
+function stateOptionsHtml(current, blankLabel = '— Not set —') {
+  const cur = String(current || '').trim();
+  const curUp = cur.toUpperCase();
+  const known = Object.prototype.hasOwnProperty.call(US_STATE_NAMES, curUp);
+  return `<option value="">${blankLabel}</option>`
+    + (cur && !known ? `<option value="${hrOnbEsc(cur)}" selected>${hrOnbEsc(cur)}</option>` : '')
+    + Object.entries(US_STATE_NAMES).map(([code, name]) => `<option value="${code}" ${known && curUp === code ? 'selected' : ''}>${name} (${code})</option>`).join('');
+}
+function stateName(code) { return US_STATE_NAMES[String(code || '').toUpperCase()] || String(code || ''); }
+
+// ── Clear a provider's profile ────────────────────────────────────────────
+// A "start over" for one person: wipes the credentialing details stored on
+// their record and, optionally, the lists attached to it. Deliberately keeps
+// who they are (name, discipline, job title, email, login, active status) and
+// everything that is a record of what happened (documents, files, notes,
+// enrollments, the SSN record and its access log). Every cleared value is
+// written to the audit log, so what was there is not lost to history.
+const CLEAR_PROFILE_FIELDS = [
+  'date_of_birth','gender','phone','address','city','state','zip',
+  'license_number','license_type','license_state','license_issued_date','license_expiration_date',
+  'npi_number','npi_verified','npi_verified_by','npi_verified_at',
+  'caqh_id','caqh_issued_date','caqh_expiration_date',
+  'dea_number','dea_issued_date','dea_expiration_date','dea_registered_address','dea_schedules',
+  'state_cds_number','state_cds_issued_date','state_cds_expiration_date',
+  'board_certified','board_name','board_certification_date','board_certification_expiration_date',
+  'primary_specialty','secondary_specialty','board_exam_status','board_exam_intended_date',
+  'citizenship_status','visa_number_status','military_duty_status',
+  'supervising_physician_name','supervising_physician_npi',
+  'hospital_affiliation_1','hospital_affiliation_2','hospital_affiliation_3',
+];
+const CLEAR_PROFILE_FALSE_FIELDS = new Set(['board_certified', 'military_duty_status', 'npi_verified']);
+const CLEAR_PROFILE_LISTS = [
+  { table: 'staff_education_training',  label: 'Education & training' },
+  { table: 'staff_additional_licenses', label: 'Additional licenses' },
+  { table: 'staff_hospital_privileges', label: 'Hospital privileges' },
+  { table: 'staff_malpractice_claims',  label: 'Malpractice claims' },
+  { table: 'staff_employment_history',  label: 'Employment history' },
+  { table: 'staff_professional_references', label: 'Professional references' },
+  { table: 'staff_caqh_credentials',    label: 'Saved CAQH login' },
+];
+
+async function showClearProviderProfile(staffId) {
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) { toast('Could not find this staff member — try refreshing.', true); return; }
+  document.getElementById('clearProfileModal')?.remove();
+
+  const counts = await Promise.all(CLEAR_PROFILE_LISTS.map(l =>
+    sb.from(l.table).select('id', { count: 'exact', head: true }).eq('staff_id', staffId)
+      .then(r => (r && !r.error && typeof r.count === 'number') ? r.count : 0, () => 0)));
+  const filledFields = CLEAR_PROFILE_FIELDS.filter(f => { const v = s[f]; return Array.isArray(v) ? v.length : (v !== null && v !== undefined && v !== '' && v !== false); }).length;
+
+  const modal = document.createElement('div');
+  modal.id = 'clearProfileModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1250;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;border:1px solid rgba(248,113,113,.4);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Clear profile — ${hrOnbEsc(s.full_name)}</div>
+      <div style="color:#fca5a5;font-size:14px;margin-bottom:14px;">This can't be undone from the app.</div>
+
+      <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;margin-bottom:4px;">Will be erased</div>
+      <div style="font-size:14px;color:#fff;line-height:1.5;margin-bottom:14px;">${filledFields} filled-in detail${filledFields === 1 ? '' : 's'} on the profile: license, NPI, CAQH ID and dates, DEA and state CDS, board and specialty, date of birth, gender, phone and address, citizenship, supervising physician and hospital affiliations.</div>
+
+      <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;margin-bottom:4px;">Also delete these lists</div>
+      <div style="margin-bottom:14px;">
+        ${CLEAR_PROFILE_LISTS.map((l, i) => `
+          <label style="display:flex;align-items:center;gap:8px;padding:5px 0;font-size:14px;color:${counts[i] ? '#fff' : 'rgba(255,255,255,.4)'};cursor:${counts[i] ? 'pointer' : 'default'};">
+            <input type="checkbox" class="clearProfileList" value="${l.table}" ${counts[i] ? 'checked' : 'disabled'} />
+            ${l.label} <span style="color:rgba(255,255,255,.5);">(${counts[i]})</span>
+          </label>`).join('')}
+      </div>
+
+      <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.6);text-transform:uppercase;margin-bottom:4px;">Stays as it is</div>
+      <div style="font-size:14px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:14px;">Name, role, job title, email and login, active status, uploaded documents and files, notes, insurance enrollments, and the SSN record. Consider exporting this person's data first.</div>
+
+      <label class="inline-label" for="clearProfileConfirm">Type <strong>CLEAR</strong> to confirm</label>
+      <input class="inline-input" type="text" id="clearProfileConfirm" autocomplete="off" oninput="document.getElementById('clearProfileBtn').disabled = this.value.trim() !== 'CLEAR'" style="margin-bottom:12px;" />
+      <div id="clearProfileErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-danger" id="clearProfileBtn" disabled onclick="runClearProviderProfile('${staffId}')" style="flex:1;justify-content:center;">Clear profile</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('clearProfileModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function runClearProviderProfile(staffId) {
+  const errEl = document.getElementById('clearProfileErr');
+  const btn = document.getElementById('clearProfileBtn');
+  errEl.style.display = 'none';
+  if (document.getElementById('clearProfileConfirm').value.trim() !== 'CLEAR') return;
+  if (!(currentProfile?.role === 'admin' || currentProfile?.is_super_admin)) { errEl.textContent = 'Only an admin can clear a profile.'; errEl.style.display = 'block'; return; }
+
+  const s = staffList.find(x => x.id === staffId);
+  if (!s) return;
+  btn.disabled = true; btn.textContent = 'Clearing…';
+  const failed = [];
+  const cleared = [];
+
+  // 1. The details on the person's own record.
+  const updates = {};
+  CLEAR_PROFILE_FIELDS.forEach(f => { updates[f] = f === 'dea_schedules' ? [] : (CLEAR_PROFILE_FALSE_FIELDS.has(f) ? false : null); });
+  const attempt = async (u) => sb.from('credtrack_staff').update(u).eq('id', staffId).select('id');
+  let { data: changed, error } = await attempt(updates);
+  if (error && /citizenship_status|visa_number_status/.test(error.message || '')) {
+    // A couple of columns may be required by the database; leave just those and clear the rest.
+    delete updates.citizenship_status; delete updates.visa_number_status;
+    ({ data: changed, error } = await attempt(updates));
+    if (!error) failed.push('citizenship / visa status (the database requires a value there)');
+  }
+  if (error) { errEl.textContent = error.message; errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Clear profile'; return; }
+  if (!changed || !changed.length) {
+    errEl.textContent = "Nothing was cleared. Your account may not have permission to edit this person's record.";
+    errEl.style.display = 'block'; btn.disabled = false; btn.textContent = 'Clear profile'; return;
+  }
+  cleared.push('profile details');
+  await logStaffFieldChanges(staffId, Object.keys(updates).map(f => ({ field: f, old: s[f], new: updates[f] })));
+
+  // 2. The lists the admin ticked.
+  for (const el of document.querySelectorAll('.clearProfileList:checked')) {
+    const meta = CLEAR_PROFILE_LISTS.find(l => l.table === el.value);
+    const { data: gone, error: delErr } = await sb.from(meta.table).delete().eq('staff_id', staffId).select('id');
+    if (delErr) failed.push(`${meta.label} (${delErr.message})`);
+    else { cleared.push(`${meta.label} (${(gone || []).length})`); }
+  }
+  if (cleared.length > 1) {
+    await logStaffFieldChanges(staffId, [{ field: 'profile_cleared', old: 'lists: ' + cleared.slice(1).join(', '), new: null }]);
+  }
+
+  await loadStaffTable();
+  document.getElementById('clearProfileModal')?.remove();
+  showFullProfileSheet(staffId);
+  if (failed.length) toast(`Profile cleared, but not: ${failed.join('; ')}`, true);
+  else toast(`Profile cleared (${cleared.join(', ')})`);
+}
+
 function toggleAdminUpload() {
   const form = document.getElementById('adminUploadForm');
   const isHidden = form.style.display === 'none' || !form.style.display;
   form.style.display = isHidden ? 'block' : 'none';
   if (isHidden) populateAdminUploadSelects('au', false);
+}
+
+// Pre-selects the license state from whoever the document is for, but only
+// while the person filling in the form hasn't chosen one themselves.
+function syncAuLicenseStateToStaff(prefix, staffJustChanged = false) {
+  const sel = document.getElementById(`${prefix}LicenseState`);
+  if (!sel) return;
+  if (sel.dataset.userChose === '1' && !staffJustChanged) return;
+  const staffId = prefix === 'pau' ? window._presetCredStaffId : (document.getElementById(`${prefix}Staff`) || {}).value;
+  const staff = staffList.find(x => x.id === staffId);
+  sel.innerHTML = stateOptionsHtml(staff && staff.license_state, '— Choose state —');
+  delete sel.dataset.userChose;
+  if (!sel.dataset.wired) {
+    sel.dataset.wired = '1';
+    sel.addEventListener('change', () => { sel.dataset.userChose = '1'; });
+  }
 }
 
 function populateAdminUploadSelects(prefix = 'au', skipStaffDropdown = false) {
@@ -11052,14 +11275,16 @@ function populateAdminUploadSelects(prefix = 'au', skipStaffDropdown = false) {
   });
   // License state dropdown
   const auLicState = document.getElementById(`${prefix}LicenseState`);
-  const US_STATES = {AL:'Alabama',AK:'Alaska',AZ:'Arizona',AR:'Arkansas',CA:'California',CO:'Colorado',CT:'Connecticut',DE:'Delaware',FL:'Florida',GA:'Georgia',HI:'Hawaii',ID:'Idaho',IL:'Illinois',IN:'Indiana',IA:'Iowa',KS:'Kansas',KY:'Kentucky',LA:'Louisiana',ME:'Maine',MD:'Maryland',MA:'Massachusetts',MI:'Michigan',MN:'Minnesota',MS:'Mississippi',MO:'Missouri',MT:'Montana',NE:'Nebraska',NV:'Nevada',NH:'New Hampshire',NJ:'New Jersey',NM:'New Mexico',NY:'New York',NC:'North Carolina',ND:'North Dakota',OH:'Ohio',OK:'Oklahoma',OR:'Oregon',PA:'Pennsylvania',RI:'Rhode Island',SC:'South Carolina',SD:'South Dakota',TN:'Tennessee',TX:'Texas',UT:'Utah',VT:'Vermont',VA:'Virginia',WA:'Washington',WV:'West Virginia',WI:'Wisconsin',WY:'Wyoming'};
-  auLicState.innerHTML = '';
-  Object.entries(US_STATES).forEach(([code, name]) => {
-    const o = document.createElement('option');
-    o.value = code; o.textContent = `${name} (${code})`;
-    if (code === 'OK') o.selected = true;
-    auLicState.appendChild(o);
-  });
+  const US_STATES = US_STATE_NAMES;
+  // Starts on the person's own license state if the profile already has one,
+  // otherwise blank — never a built-in default.
+  auLicState.innerHTML = stateOptionsHtml('', '— Choose state —');
+  syncAuLicenseStateToStaff(prefix);
+  const auStaffSel = document.getElementById(`${prefix}Staff`);
+  if (auStaffSel && !auStaffSel.dataset.stateWired) {
+    auStaffSel.dataset.stateWired = '1';
+    auStaffSel.addEventListener('change', () => syncAuLicenseStateToStaff(prefix, true));
+  }
   onAuTypeChanged(prefix);
 }
 
@@ -11080,6 +11305,10 @@ async function saveCredentialDoc(prefix, presetStaffId) {
   const license  = document.getElementById(`${prefix}License`).value.trim();
   const licState = document.getElementById(`${prefix}LicenseState`).value;
   const licType  = document.getElementById(`${prefix}LicenseType`).value;
+  // A license number only means something together with the state that issued
+  // it, and that state is what NPI registry searches use — so it has to be an
+  // actual choice, not left to whatever the form happened to start on.
+  if (license && !licState) { showAuStatus('Choose the state this license was issued in. It is saved to the profile and used when searching the NPI registry.', 'err', prefix); return; }
   const file     = document.getElementById(`${prefix}File`).files[0];
   const statusEl = document.getElementById(`${prefix}Status`);
   statusEl.style.display = 'none';
@@ -11263,7 +11492,8 @@ async function openProfileDocUpload(staffId, staffName) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.addEventListener('click', e => { if (e.target === modal) { window._presetCredStaffId = null; modal.remove(); } });
+  window._presetCredStaffId = staffId;
   populateAdminUploadSelects('pau', true);
 }
 
@@ -19530,21 +19760,36 @@ function payerNetworkStatusCell(r) {
 // — Juan's own framing was "for each provider per network", and a step-by-
 // step credentialing pipeline doesn't really describe a company-wide
 // contract the way it describes one clinician's application.
+// Four steps. The stored step numbers stay 1, 3, 4 and 8 (NOT renumbered to
+// 1-4) on purpose: enrollments already saved use those numbers, and the
+// completion-email function receives the number too, so renumbering would
+// silently mislabel existing data and emails. They are only DISPLAYED as
+// 1-4 (see stepDisplayNumber). The former steps 2 (Pre-Qualification),
+// 5 (Contract Sent), 6 (System Setup) and 7 (Onboarding Scheduled) are no
+// longer shown or edited; any values already saved for them are left in the
+// record untouched rather than deleted, so nothing is lost and it is
+// reversible.
 const ENROLLMENT_STEPS = [
   { n: 1, name: 'Initial Inquiry Submitted',  desc: "Submitted the provider's inquiry/request to join the network", options: ['Not Started', 'Pending', 'Completed', 'Delayed'],   complete: 'Completed' },
-  { n: 2, name: 'Pre-Qualification',          desc: 'License and basic credential verification started by the network', options: ['Not Started', 'Pending', 'Completed', 'Issues'], complete: 'Completed' },
   { n: 3, name: 'Application Completed',      desc: "Provider's full enrollment application and documents submitted", options: ['Not Started', 'Pending', 'Completed', 'In Progress'], complete: 'Completed' },
   { n: 4, name: 'Credentialing in Progress',  desc: 'Network is reviewing credentials and performing background checks', options: ['Not Started', 'Pending', 'Completed', 'In Review'], complete: 'Completed' },
-  { n: 5, name: 'Contract Sent',              desc: 'Contract sent to the provider for review/signature', options: ['Not Started', 'Pending', 'Sent', 'Signed'], complete: 'Signed' },
-  { n: 6, name: 'System Setup',               desc: "Provider data entered into the network's systems", options: ['Not Started', 'Pending', 'Completed'], complete: 'Completed' },
-  { n: 7, name: 'Onboarding Scheduled',        desc: 'Provider onboarding and training session planned', options: ['Not Started', 'Pending', 'Scheduled', 'Completed'], complete: 'Completed' },
   { n: 8, name: 'Enrollment Complete',        desc: 'Provider is fully enrolled and active in the network', options: ['No', 'Yes'], complete: 'Yes' },
 ];
 
-// A fresh 8-step skeleton for an enrollment that has none yet — each step
+// What people see: 1, 2, 3, 4 in list order, whatever the stored numbers are.
+function stepDisplayNumber(meta) { return ENROLLMENT_STEPS.indexOf(meta) + 1; }
+
+// Dates are plain calendar dates (YYYY-MM-DD) in the user's own timezone, so
+// "Oct 1" never shifts to Sep 30 or Oct 2 depending on the time of day.
+function isoDateLocal(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function todayLocalIso() { return isoDateLocal(new Date()); }
+function isoDateFromStamp(stamp) { return stamp ? isoDateLocal(new Date(stamp)) : ''; }
+function fmtStepDate(iso) { return iso ? new Date(iso + 'T00:00:00').toLocaleDateString() : ''; }
+
+// A fresh skeleton for an enrollment that has none yet — each step
 // starts at its own first (least-progressed) option, never at a random one.
 function defaultEnrollmentSteps() {
-  return ENROLLMENT_STEPS.map(s => ({ step: s.n, status: stepUntouchedValue(s), updated_at: null }));
+  return ENROLLMENT_STEPS.map(s => ({ step: s.n, status: stepUntouchedValue(s), date: null, updated_at: null }));
 }
 
 // Step workflow (Juan's remake): every step starts at "Not Started". Writing a
@@ -19583,7 +19828,7 @@ function detectNewlyCompletedSteps(prevSteps, newSteps) {
     .map(meta => meta.n);
 }
 
-// The modal where an enrollment's 8 steps actually get edited, opened from
+// The modal where an enrollment's steps actually get edited, opened from
 // either the main board or the per-staff profile tab (the `source` argument
 // says which, so Save knows what to refresh afterward). Always re-fetches
 // the row fresh rather than trusting whatever list it was opened from, so
@@ -19634,16 +19879,23 @@ async function showEnrollmentStepsModal(rowId, source) {
       ${ENROLLMENT_STEPS.map(meta => {
         const cur = byN.get(meta.n);
         const val = normalizeStepStatus(meta, cur);
-        const baseHint = [
-          cur && cur.note ? [cur.note_by, cur.note_at ? new Date(cur.note_at).toLocaleDateString() : ''].filter(Boolean).join(' · ') : '',
-          cur && cur.updated_at ? 'Status changed ' + new Date(cur.updated_at).toLocaleDateString() : '',
-        ].filter(Boolean).join('  |  ');
+        const untouched = val === stepUntouchedValue(meta);
+        // Saved date, or (for steps saved before dates existed) the day the
+        // status last changed, so editing starts from something sensible.
+        const dateVal = untouched ? '' : ((cur && cur.date) || isoDateFromStamp(cur && cur.updated_at));
+        const baseHint = cur && cur.note ? [cur.note_by, cur.note_at ? new Date(cur.note_at).toLocaleDateString() : ''].filter(Boolean).join(' · ') : '';
         return `<div style="margin-bottom:12px;padding:12px;border:1px solid rgba(255,255,255,.08);border-radius:10px;background:rgba(255,255,255,.02);">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;">
-            <label for="estepStatus_${meta.n}" title="${hrOnbEsc(meta.desc)}" style="font-size:14px;font-weight:600;color:#fff;">${meta.n}. ${hrOnbEsc(meta.name)}</label>
-            <select class="inline-select" id="estepStatus_${meta.n}" onchange="enrollStepStatusChanged(${meta.n})" style="width:150px;flex-shrink:0;">
-              ${meta.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}
-            </select>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+            <label for="estepStatus_${meta.n}" title="${hrOnbEsc(meta.desc)}" style="font-size:14px;font-weight:600;color:#fff;">${stepDisplayNumber(meta)}. ${hrOnbEsc(meta.name)}</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input type="date" class="inline-input" id="estepDate_${meta.n}" value="${dateVal}" ${untouched ? 'disabled' : ''}
+                data-orig-status="${hrOnbEsc(val)}" data-orig-date="${dateVal}"
+                oninput="enrollStepDateEdited(${meta.n})" title="Date for this step. Change it any time, for this step only."
+                style="width:150px;font-size:14px;" />
+              <select class="inline-select" id="estepStatus_${meta.n}" onchange="enrollStepStatusChanged(${meta.n})" style="width:170px;flex-shrink:0;">
+                ${meta.options.map(o => `<option value="${o}" ${val === o ? 'selected' : ''}>${o}</option>`).join('')}
+              </select>
+            </div>
           </div>
           <textarea class="inline-input" id="estepNote_${meta.n}" rows="2" maxlength="600" oninput="enrollStepNoteInput(${meta.n})" placeholder="Note: what was done, who we're waiting on…" style="width:100%;box-sizing:border-box;resize:vertical;font-size:15px;">${hrOnbEsc((cur && cur.note) || '')}</textarea>
           <div id="estepHint_${meta.n}" data-base="${hrOnbEsc(baseHint)}" style="font-size:12px;color:rgba(255,255,255,.45);margin-top:4px;min-height:14px;">${hrOnbEsc(baseHint)}</div>
@@ -19679,7 +19931,30 @@ function enrollStepStatusChanged(n) {
   if (sel) delete sel.dataset.auto; // a manual choice always wins over the auto-pending
   const hint = document.getElementById('estepHint_' + n);
   if (hint) hint.textContent = hint.dataset.base || '';
+  syncEnrollStepDate(n);
   paintEnrollStepSelect(n);
+}
+
+// Each step has its own date. It follows the status — set to today when the
+// status moves, restored if the status goes back to where it started — right up
+// until someone types a date themselves; after that this step's date is theirs
+// and no later status change touches it. The date is switched off while a step
+// is Not Started, since there is nothing yet to date.
+function syncEnrollStepDate(n) {
+  const meta = ENROLLMENT_STEPS.find(m => m.n === n);
+  const sel = document.getElementById('estepStatus_' + n);
+  const dateEl = document.getElementById('estepDate_' + n);
+  if (!meta || !sel || !dateEl) return;
+  const untouched = sel.value === stepUntouchedValue(meta);
+  dateEl.disabled = untouched;
+  if (dateEl.dataset.edited === '1') { if (untouched) dateEl.value = ''; return; }
+  if (untouched) dateEl.value = '';
+  else if (sel.value === dateEl.dataset.origStatus && dateEl.dataset.origDate) dateEl.value = dateEl.dataset.origDate;
+  else dateEl.value = todayLocalIso();
+}
+function enrollStepDateEdited(n) {
+  const dateEl = document.getElementById('estepDate_' + n);
+  if (dateEl) dateEl.dataset.edited = '1';
 }
 
 // Typing a note on a Not Started step marks it Pending. It never touches a
@@ -19694,10 +19969,12 @@ function enrollStepNoteInput(n) {
   if (hasText && sel.value === untouched) {
     sel.value = 'Pending';
     sel.dataset.auto = '1';
+    syncEnrollStepDate(n);
     if (hint) hint.textContent = 'Marked Pending because a note was added. Set it to ' + meta.complete + ' yourself once this step is done.';
   } else if (!hasText && sel.dataset.auto === '1' && sel.value === 'Pending') {
     sel.value = untouched;
     delete sel.dataset.auto;
+    syncEnrollStepDate(n);
     if (hint) hint.textContent = hint.dataset.base || '';
   }
   paintEnrollStepSelect(n);
@@ -19728,7 +20005,14 @@ async function saveEnrollmentSteps(rowId, source) {
     if (meta.n !== 8 && noteText && value === stepUntouchedValue(meta)) value = 'Pending';
     const priorStatus = normalizeStepStatus(meta, prior);
     const statusChanged = priorStatus !== value;
-    const out = { step: meta.n, status: value, updated_at: statusChanged ? nowIso : (prior ? prior.updated_at : null) };
+    // This step's own date: nothing for a step not yet started; otherwise
+    // whatever is in its date box, falling back to today (status just moved) or
+    // the date already on record.
+    const untouchedNow = value === stepUntouchedValue(meta);
+    const dateTyped = (document.getElementById(`estepDate_${meta.n}`).value || '').trim();
+    const stepDate = untouchedNow ? null
+      : (dateTyped || (statusChanged ? todayLocalIso() : ((prior && prior.date) || isoDateFromStamp(prior && prior.updated_at) || null)));
+    const out = { step: meta.n, status: value, date: stepDate, updated_at: statusChanged ? nowIso : (prior ? prior.updated_at : null) };
     if (noteText) {
       out.note = noteText;
       out.note_at = noteChanged ? nowIso : (prior.note_at || nowIso);
@@ -19736,6 +20020,10 @@ async function saveEnrollmentSteps(rowId, source) {
     }
     return out;
   });
+  // Steps that are no longer shown (old 2, 5, 6, 7) keep whatever was saved for
+  // them — carried forward as-is so nothing is deleted.
+  prevSteps.filter(s => !ENROLLMENT_STEPS.some(m => m.n === s.step)).forEach(s => newSteps.push(s));
+  newSteps.sort((a, b) => a.step - b.step);
 
   const justCompleted = detectNewlyCompletedSteps(prevSteps, newSteps);
 
@@ -19808,9 +20096,10 @@ function enrollmentStepCell(r) {
   const stepObjs = new Map(r.enrollment_steps.map(s => [s.step, s]));
   const valueOf = meta => normalizeStepStatus(meta, stepObjs.get(meta.n));
   const firstIncomplete = ENROLLMENT_STEPS.find(meta => valueOf(meta) !== meta.complete);
+  const dateOf = meta => { const o = stepObjs.get(meta.n); return o ? (o.date || isoDateFromStamp(o.updated_at)) : ''; };
   const summary = firstIncomplete
-    ? `Step ${firstIncomplete.n} of 8: ${firstIncomplete.name} (${hrOnbEsc(valueOf(firstIncomplete))})`
-    : 'Fully enrolled — all 8 steps complete';
+    ? `Step ${stepDisplayNumber(firstIncomplete)} of ${ENROLLMENT_STEPS.length}: ${firstIncomplete.name} (${hrOnbEsc(valueOf(firstIncomplete))}${valueOf(firstIncomplete) !== stepUntouchedValue(firstIncomplete) && dateOf(firstIncomplete) ? ' · ' + fmtStepDate(dateOf(firstIncomplete)) : ''})`
+    : `Fully enrolled — all ${ENROLLMENT_STEPS.length} steps complete`;
   const dots = ENROLLMENT_STEPS.map(meta => {
     const val = valueOf(meta);
     const note = (stepObjs.get(meta.n) || {}).note;
@@ -19818,7 +20107,8 @@ function enrollmentStepCell(r) {
     const isDefault = val === stepUntouchedValue(meta);
     const color = isComplete ? 'var(--teal)' : (isDefault ? 'rgba(255,255,255,.15)' : '#f59e0b');
     const noteTip = note ? ' — ' + hrOnbEsc(note.length > 140 ? note.slice(0, 140) + '…' : note) : '';
-    return `<div title="${meta.n}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}${noteTip}" style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></div>`;
+    const dateTip = (!isDefault && dateOf(meta)) ? ' · ' + fmtStepDate(dateOf(meta)) : '';
+    return `<div title="${stepDisplayNumber(meta)}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}${dateTip}${noteTip}" style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></div>`;
   }).join('');
   return `<div style="display:flex;flex-direction:column;gap:3px;">
     <div style="display:flex;gap:3px;">${dots}</div>
