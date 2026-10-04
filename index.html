@@ -152,6 +152,43 @@ window.selkoSharedAuthStorage = {
   <button onclick="document.getElementById('appUpdateBanner').style.display='none';" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:6px 16px;border-radius:6px;font-size:15px;cursor:pointer;">Later</button>
 </div>
 
+<!-- ADD DOCUMENT TYPE — one shared popup, opened from both the Documents tab
+     and Settings > Document types. It lives at body level (not inside either
+     tab) so it works no matter which tab is showing. z-index sits below the
+     duplicate-name confirm dialog (2000) so that warning appears on top. -->
+<div id="addDocTypeModal" onclick="if(event.target===this) hideAddDocType()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1100;align-items:center;justify-content:center;padding:20px;">
+  <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:4px;">Add document type</div>
+    <p style="font-size:14px;color:rgba(255,255,255,.58);margin:0 0 16px;">Creates a custom document type for your company. It becomes available when uploading documents and can be set as required from the table below.</p>
+    <div style="margin-bottom:12px;">
+      <label class="inline-label" for="dtName">Document type name</label>
+      <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" onkeydown="if(event.key==='Enter') saveDocType()" />
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div>
+        <label class="inline-label" for="dtExpires">Has expiration?</label>
+        <select class="inline-select" id="dtExpires">
+          <option value="true">Yes</option>
+          <option value="false">No</option>
+        </select>
+      </div>
+      <div>
+        <label class="inline-label" for="dtCategory">Category</label>
+        <select class="inline-select" id="dtCategory"></select>
+      </div>
+    </div>
+    <label id="dtGlobalWrap" style="display:none;align-items:center;gap:6px;margin-bottom:12px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;">
+      <input type="checkbox" id="dtIsGlobal" />
+      Add this as a Selko-wide default (available to every company, not just this one)
+    </label>
+    <div id="dtErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-teal" onclick="saveDocType()" style="flex:1;justify-content:center;">Save document type</button>
+      <button class="btn btn-ghost" onclick="hideAddDocType()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    </div>
+  </div>
+</div>
+
 <!-- LOGIN -->
 <div id="loginScreen" class="screen active">
   <aside class="login-brand" aria-hidden="false">
@@ -807,35 +844,6 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Custom doc type form (Pro only) -->
-      <div class="inline-form" id="addDocTypeForm">
-        <div class="inline-grid-4" style="grid-template-columns: 1fr 1fr 1fr auto;">
-          <div>
-            <label class="inline-label">Document type name</label>
-            <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" />
-          </div>
-          <div>
-            <label class="inline-label">Has expiration?</label>
-            <select class="inline-select" id="dtExpires">
-              <option value="true">Yes</option>
-              <option value="false">No</option>
-            </select>
-          </div>
-          <div>
-            <label class="inline-label">Category</label>
-            <select class="inline-select" id="dtCategory"></select>
-          </div>
-          <div style="display:flex;gap:6px;align-items:flex-end;">
-            <button class="btn btn-sm btn-teal" onclick="saveDocType()">Save</button>
-            <button class="btn btn-sm btn-ghost" onclick="hideAddDocType()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
-          </div>
-        </div>
-        <label id="dtGlobalWrap" style="display:none;align-items:center;gap:6px;margin-top:10px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;">
-          <input type="checkbox" id="dtIsGlobal" />
-          Add this as a Selko-wide default (available to every company, not just this one)
-        </label>
-        <div id="dtErr" style="color:#f87171;font-size:14px;margin-top:8px;display:none;"></div>
-      </div>
-
       <div class="tbl-wrap">
         <table>
           <thead><tr>
@@ -2322,7 +2330,10 @@ window.selkoSharedAuthStorage = {
             <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
             Show hidden types too
           </label>
-          <button type="button" class="btn btn-sm btn-ghost" id="docTypesExpandAllBtn" onclick="toggleAllDocTypeCategories()" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;padding:3px 10px;">Expand all sections</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <button type="button" class="btn btn-sm btn-gold" id="addDocTypeBtnSettings" onclick="proGate(showAddDocType)" style="display:none;">+ Add document type</button>
+            <button type="button" class="btn btn-sm btn-ghost" id="docTypesExpandAllBtn" onclick="toggleAllDocTypeCategories()" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;padding:3px 10px;">Expand all sections</button>
+          </div>
         </div>
         <div id="docTypesExplainerBanner" style="background:rgba(56,189,248,.08);border:1px solid rgba(56,189,248,.25);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.7);line-height:1.5;"></div>
         <div class="tbl-wrap">
@@ -5897,6 +5908,8 @@ function updateModuleTabVisibility(company, profile) {
 function updateProFeatureButtons() {
   const display = window._isPro ? 'inline-flex' : 'none';
   document.getElementById('addDocTypeBtn').style.display     = display;
+  const addDocTypeBtnSettings = document.getElementById('addDocTypeBtnSettings');
+  if (addDocTypeBtnSettings) addDocTypeBtnSettings.style.display = display;
   document.getElementById('bulkDownloadBtn').style.display   = display;
   document.getElementById('exportProExcelBtn').style.display = display;
   document.getElementById('exportProPdfBtn').style.display   = display;
@@ -10425,7 +10438,9 @@ function proGate(action) {
   toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
 }
 async function showAddDocType() {
-  document.getElementById('addDocTypeForm').style.display = 'block';
+  document.getElementById('addDocTypeModal').style.display = 'flex';
+  document.getElementById('dtErr').style.display = 'none';
+  setTimeout(() => document.getElementById('dtName')?.focus(), 50);
   // Only true super admins can create a Selko-wide default — same
   // privilege that already lets them edit existing global rows directly.
   document.getElementById('dtGlobalWrap').style.display = currentProfile?.is_super_admin ? 'flex' : 'none';
@@ -10437,7 +10452,7 @@ async function showAddDocType() {
   sel.innerHTML = categories.map(c => `<option value="${c}" ${c === 'Other' ? 'selected' : ''}>${c}</option>`).join('');
 }
 function hideAddDocType() {
-  document.getElementById('addDocTypeForm').style.display = 'none';
+  document.getElementById('addDocTypeModal').style.display = 'none';
   document.getElementById('dtName').value = '';
   document.getElementById('dtIsGlobal').checked = false;
   document.getElementById('dtErr').style.display = 'none';
