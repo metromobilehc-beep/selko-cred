@@ -2409,7 +2409,7 @@ window.selkoSharedAuthStorage = {
         <div id="payerErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Payer</th><th>Type</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Payer</th><th>Type</th><th>In use<span class="th-hint">records attached</span></th><th>Actions</th></tr></thead>
             <tbody id="payersTbody"></tbody>
           </table>
         </div>
@@ -2457,7 +2457,7 @@ window.selkoSharedAuthStorage = {
           <div id="agencyErr" class="up-status" style="display:none;color:#ff6b6b;margin-bottom:10px;"></div>
           <div class="tbl-wrap">
             <table>
-              <thead><tr><th>Agency</th><th>Status</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Agency</th><th>Status</th><th>In use<span class="th-hint">staff and logins</span></th><th>Actions</th></tr></thead>
               <tbody id="credtrackAgenciesTbody"></tbody>
             </table>
           </div>
@@ -11555,9 +11555,12 @@ async function loadEntitiesPanel() {
     return;
   }
 
+  let usage = { byPayer: {}, byEntity: {} };
+  try { usage = await getNetworkUsageSummary(); } catch (e) { console.warn('In-use counts unavailable:', e); }
   container.innerHTML = data.map(e => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <span style="flex:1;color:#fff;font-size:15px;">${e.name}</span>
+      <span style="text-align:right;min-width:120px;">${usageCellHtml(usage.byEntity[e.name], 'No insurance records are filed under this name.')}</span>
       <button class="btn btn-sm btn-ghost" onclick="renameCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Rename</button>
       <button class="btn btn-sm btn-danger" onclick="removeCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="font-size:13px;">Delete</button>
     </div>`).join('');
@@ -13633,10 +13636,31 @@ async function duplicateDocTypeToCustomize(id) {
   }
 }
 
+// A built-in (Selko-provided) document type is ONE shared row used by every
+// company, so its partner visibility can't be a per-company choice — only a
+// Selko super admin can change it. For anyone else the update is silently
+// refused by the access rules (no error, zero rows changed), which used to
+// look like the click doing nothing while the toast still claimed success.
+function partnerVisibilityLockedFor(t) {
+  return !!t && !t.company_id && !currentProfile?.is_super_admin;
+}
+function explainPartnerVisibilityLocked() {
+  toast(window._isPro
+    ? 'This is a built-in type shared by every company, so its partner visibility can\'t be changed here. In Document types, hit "Duplicate" to get your own copy, then set it here.'
+    : 'This is a built-in type shared by every company, so its partner visibility can\'t be changed here. Making your own editable copy is a Pro feature — contact Selko to upgrade.', true);
+}
+
 async function toggleDocTypePartnerVisible(id, currentlyVisible) {
-  const { error } = await sb.from('document_types').update({ partner_visible: !currentlyVisible }).eq('id', id);
+  const t = docTypes.find(x => x.id === id);
+  if (partnerVisibilityLockedFor(t)) { explainPartnerVisibilityLocked(); return; }
+  const { data: changed, error } = await sb.from('document_types').update({ partner_visible: !currentlyVisible }).eq('id', id).select('id');
   if (error) { toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to change this document type.", true); return; }
   toast(!currentlyVisible ? 'Now visible to agency partners' : 'Hidden from agency partners');
+  // The partner panel draws from the in-memory docTypes list, so that list has
+  // to be reloaded before redrawing — otherwise the badge keeps showing the
+  // old state even though the change was saved.
+  await loadDocTypes();
   await loadDocTypesTable();
   if (document.getElementById('partnerDocTypesTbody')) await loadPartnerDocTypesPanel();
 }
@@ -13644,23 +13668,27 @@ async function toggleDocTypePartnerVisible(id, currentlyVisible) {
 async function loadPartnerDocTypesPanel() {
   const tbody = document.getElementById('partnerDocTypesTbody');
   if (!tbody) return;
-  tbody.innerHTML = docTypes.map(t => `
+  tbody.innerHTML = docTypes.map(t => {
+    const locked = partnerVisibilityLockedFor(t);
+    return `
     <tr>
-      <td>${t.name}</td>
+      <td>${t.name}${locked ? ' 🔒' : ''}</td>
       <td>
-        <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;"
-          onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="Click to toggle whether agency partners can see this document type">
-          ${t.partner_visible ? '✓ Visible' : 'Hidden'}
+        <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="${locked ? 'opacity:.55;' : ''}cursor:pointer;"
+          onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="${locked ? 'Built-in type — shared by every company, so this can\'t be changed here. Click for details.' : 'Click to toggle whether agency partners can see this document type'}">
+          ${t.partner_visible ? '✓ Visible' : 'Hidden'}${locked ? '' : ' <span class="toggle-glyph">⇄</span>'}
         </span>
       </td>
       <td>
-        ${t.partner_visible ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
+        ${t.partner_visible && !locked ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
                class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:13px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : '—'}
       </td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 async function showDocTypePartnerScopeModal(id, name, currentAgencyIds) {
+  if (partnerVisibilityLockedFor(docTypes.find(x => x.id === id))) { explainPartnerVisibilityLocked(); return; }
   const existing = document.getElementById('partnerScopeModalCred');
   if (existing) existing.remove();
 
@@ -13694,8 +13722,10 @@ async function showDocTypePartnerScopeModal(id, name, currentAgencyIds) {
 
 async function confirmDocTypePartnerScope(id) {
   const checked = Array.from(document.querySelectorAll('input[name="partnerScopeOption"]:checked')).map(el => el.value);
-  const { error } = await sb.from('document_types').update({ partner_visible_agencies: checked.length ? checked : null }).eq('id', id);
+  const { data: changed, error } = await sb.from('document_types').update({ partner_visible_agencies: checked.length ? checked : null }).eq('id', id).select('id');
   if (error) { document.getElementById('partnerScopeModalCred').remove(); toast('Error: ' + error.message, true); return; }
+  if (!changed || !changed.length) { document.getElementById('partnerScopeModalCred').remove(); toast("Nothing was saved — you may not have permission to change this document type.", true); return; }
+  await loadDocTypes();
   await loadDocTypesTable();
   if (document.getElementById('partnerDocTypesTbody')) await loadPartnerDocTypesPanel();
   document.getElementById('partnerScopeModalCred').remove();
@@ -13920,7 +13950,13 @@ async function savePayer() {
 }
 
 async function deletePayer(id, name) {
-  if (!confirm(`Delete payer "${name}"? This will also remove any staff network records tied to it.`)) return;
+  const u = await countPayerUsage(id);
+  if (u.total > 0) {
+    const ok = await showCustomConfirm(
+      `"${name}" has ${u.total} network record${u.total === 1 ? '' : 's'} attached (${usageDescription(u)}).\n\nDeleting it also permanently removes ${u.total === 1 ? 'that record' : 'those records'}. If this is a duplicate of another payer, the records should be moved to the copy you're keeping first, or they'll be lost.`,
+      { okLabel: `Delete payer and ${u.total} record${u.total === 1 ? '' : 's'}`, cancelLabel: 'Cancel' });
+    if (!ok) return;
+  } else if (!confirm(`Delete payer "${name}"? Nothing is attached to it, so no records will be lost.`)) return;
   const { error } = await sb.from('payers').delete().eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
   toast(name + ' deleted');
@@ -13980,6 +14016,68 @@ async function saveEditedPayer(id) {
   toast('✓ Payer details updated');
 }
 
+// ── "In use" indicators (Settings > Payers / Agencies / Entities) ──────────
+// Shows how much real data hangs off each item BEFORE someone deletes it, so a
+// duplicate that is genuinely empty reads "Not used" (safe to remove) and one
+// with records attached is flagged with exactly what's attached.
+
+// PostgREST returns at most 1,000 rows per request, so read in pages.
+async function fetchAllRows(makeQuery, pageSize = 1000, maxPages = 20) {
+  const out = [];
+  for (let p = 0; p < maxPages; p++) {
+    const { data, error } = await makeQuery().range(p * pageSize, p * pageSize + pageSize - 1);
+    if (error || !data) break;
+    out.push(...data);
+    if (data.length < pageSize) break;
+  }
+  return out;
+}
+
+function emptyUsage() { return { total: 0, staff: 0, entity: 0, inNetwork: 0 }; }
+function addToUsage(u, row) {
+  u.total++;
+  if (row.staff_id) u.staff++; else u.entity++;
+  if (row.status === 'in_network') u.inNetwork++;
+}
+
+// One pass over this company's network records, grouped by payer and by entity name.
+async function getNetworkUsageSummary() {
+  const rows = await fetchAllRows(() =>
+    sb.from('staff_payer_networks').select('payer_id, staff_id, entity_name, status').eq('company_id', currentCompany.id));
+  const byPayer = {}, byEntity = {};
+  for (const r of rows) {
+    addToUsage(byPayer[r.payer_id] = byPayer[r.payer_id] || emptyUsage(), r);
+    if (!r.staff_id && r.entity_name) addToUsage(byEntity[r.entity_name] = byEntity[r.entity_name] || emptyUsage(), r);
+  }
+  return { byPayer, byEntity };
+}
+
+// A fresh count taken at the moment of clicking Delete, not whatever the
+// table showed when it was drawn.
+async function countPayerUsage(payerId) {
+  const rows = await fetchAllRows(() =>
+    sb.from('staff_payer_networks').select('staff_id, status').eq('payer_id', payerId).eq('company_id', currentCompany.id));
+  const u = emptyUsage();
+  rows.forEach(r => addToUsage(u, r));
+  return u;
+}
+
+function usageDescription(u) {
+  const parts = [];
+  if (u.staff) parts.push(`${u.staff} staff`);
+  if (u.entity) parts.push(`${u.entity} entity`);
+  if (u.inNetwork) parts.push(`${u.inNetwork} in-network`);
+  return parts.join(' · ');
+}
+
+function usageCellHtml(u, notUsedTitle) {
+  if (!u || !u.total) {
+    return `<span style="font-size:13px;color:rgba(255,255,255,.45);" title="${notUsedTitle || 'Nothing is attached to this, so removing it loses no data.'}">Not used</span>`;
+  }
+  return `<div style="font-size:14px;font-weight:700;color:#f59e0b;">${u.total} record${u.total === 1 ? '' : 's'}</div>
+    <div style="font-size:12px;color:rgba(255,255,255,.58);">${usageDescription(u)}</div>`;
+}
+
 async function loadPayersTable() {
   const { data } = await sb.from('payers')
     .select('*')
@@ -13990,14 +14088,17 @@ async function loadPayersTable() {
 
   const tbody = document.getElementById('payersTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No payers added yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No payers added yet.</td></tr>';
     return;
   }
+  let usage = { byPayer: {}, byEntity: {} };
+  try { usage = await getNetworkUsageSummary(); } catch (e) { console.warn('In-use counts unavailable:', e); }
   tbody.innerHTML = data.map(p => {
     const contactLine = [p.phone, p.fax ? `Fax: ${p.fax}` : null, p.email].filter(Boolean).join(' · ');
     return `<tr>
     <td>${p.name}${p.address ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">${p.address}</div>` : ''}${contactLine ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">${contactLine}</div>` : ''}</td>
     <td><span style="font-size:13px;color:rgba(255,255,255,.58);">${p.company_id ? 'Custom' : 'Global'}</span></td>
+    <td>${usageCellHtml(usage.byPayer[p.id], 'Nothing is attached to this payer, so deleting it loses no data.')}</td>
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="showEditPayerModal('${p.id}','${p.name.replace(/'/g,"\\'")}','${(p.address||'').replace(/'/g,"\\'")}','${p.phone||''}','${p.fax||''}','${(p.email||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       ${p.company_id ? `<button class="btn btn-sm btn-danger" onclick="deletePayer('${p.id}','${p.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
@@ -14017,8 +14118,25 @@ async function loadCredtrackAgencies() {
 
   const tbody = document.getElementById('credtrackAgenciesTbody');
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No agencies added yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No agencies added yet.</td></tr>';
   } else {
+    // How much hangs off each agency: staff assigned to it and partner logins.
+    const staffCount = {}, loginCount = {};
+    try {
+      const ids = data.map(a => a.id);
+      const [assigned, logins] = await Promise.all([
+        fetchAllRows(() => sb.from('credtrack_staff_agencies').select('agency_id').in('agency_id', ids)),
+        fetchAllRows(() => sb.from('agency_partner_users').select('agency_id').in('agency_id', ids)),
+      ]);
+      assigned.forEach(r => { staffCount[r.agency_id] = (staffCount[r.agency_id] || 0) + 1; });
+      logins.forEach(r => { loginCount[r.agency_id] = (loginCount[r.agency_id] || 0) + 1; });
+    } catch (e) { console.warn('Agency in-use counts unavailable:', e); }
+    const agencyUse = a => {
+      const s = staffCount[a.id] || 0, l = loginCount[a.id] || 0;
+      if (!s && !l) return `<span style="font-size:13px;color:rgba(255,255,255,.45);" title="No staff are assigned and there are no partner logins, so deleting it loses nothing.">Not used</span>`;
+      return `<div style="font-size:14px;font-weight:700;color:#f59e0b;">In use</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.58);">${[s ? s + ' staff assigned' : '', l ? l + ' partner login' + (l === 1 ? '' : 's') : ''].filter(Boolean).join(' · ')}</div>`;
+    };
     tbody.innerHTML = data.map(a => `<tr>
       <td>
         <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:15px;width:100%;padding:4px 0;"
@@ -14026,6 +14144,7 @@ async function loadCredtrackAgencies() {
           onblur="updateCredtrackAgencyName('${a.id}', this.value)" />
       </td>
       <td><span style="color:${a.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:14px;">${a.active ? '● Active' : '○ Inactive'}</span></td>
+      <td>${agencyUse(a)}</td>
       <td><div class="td-actions">
         <button class="btn btn-sm btn-teal" onclick="previewAsPartner('${a.id}','${a.name.replace(/'/g,"\\'")}')">👁 Preview portal</button>
         <button class="btn btn-sm btn-gold" onclick="toggleCredtrackAgencyActive('${a.id}',${a.active})">${a.active ? 'Deactivate' : 'Reactivate'}</button>
@@ -14077,7 +14196,14 @@ async function toggleCredtrackAgencyActive(id, active) {
 }
 
 async function deleteCredtrackAgency(id, name) {
-  if (!confirm(`Delete "${name}"? This removes all staff assignments and any partner logins tied to this agency.`)) return;
+  const [assigned, logins] = await Promise.all([
+    fetchAllRows(() => sb.from('credtrack_staff_agencies').select('agency_id').eq('agency_id', id)),
+    fetchAllRows(() => sb.from('agency_partner_users').select('agency_id').eq('agency_id', id)),
+  ]);
+  const detail = (assigned.length || logins.length)
+    ? `It has ${[assigned.length ? assigned.length + ' staff assignment' + (assigned.length === 1 ? '' : 's') : '', logins.length ? logins.length + ' partner login' + (logins.length === 1 ? '' : 's') : ''].filter(Boolean).join(' and ')}, which will be removed too.`
+    : 'Nothing is assigned to it and it has no partner logins.';
+  if (!confirm(`Delete "${name}"? ${detail}`)) return;
   await sb.from('agency_partner_users').delete().eq('agency_id', id);
   await sb.from('credtrack_staff_agencies').delete().eq('agency_id', id);
   const { error } = await sb.from('credtrack_agencies').delete().eq('id', id);
@@ -20810,8 +20936,9 @@ function switchTab(tab) {
 // someone to confirm something the app can already see. The one manual step
 // (reviewing document types) has no data signal of its own unless the company
 // has already changed something there, so it also auto-completes in that case.
-// Hidden automatically once everything is done; can also be hidden by hand,
-// and brought back from the Overview.
+// OFF by default: an admin chooses to turn it on (a quiet "Show the
+// getting-started checklist" link on the Overview) and can turn it off again
+// with Hide. While it's off nothing is queried or drawn beyond that link.
 //
 // State lives in companies.custom_vars.gettingStarted so it's per company (the
 // admin team shares it) and needs no database change.
@@ -20886,17 +21013,19 @@ async function renderGettingStarted() {
   if (!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin))) return;
 
   const state = (currentCompany.custom_vars && currentCompany.custom_vars.gettingStarted) || {};
+  // Opt-in. Until an admin turns it on there is only a small link, and no
+  // queries are run for it.
+  if (state.enabled !== true) {
+    host.innerHTML = `<div style="margin:0 0 14px;font-size:14px;"><a href="#" onclick="setGettingStartedEnabled(true); return false;" style="color:var(--teal-l);">Show the getting-started checklist</a> <span style="color:rgba(255,255,255,.45);">(a short list of what to set up first)</span></div>`;
+    return;
+  }
+
   const ctx = await gatherGettingStartedContext();
   const { steps, doneCount, total } = evaluateGettingStarted(ctx, state);
   if (!total) return;
 
-  const allDone = doneCount === total;
-  if (state.hidden || allDone) {
-    // Nothing to nag about. If it was hidden by hand (and isn't finished),
-    // leave a quiet way back.
-    if (state.hidden && !allDone) {
-      host.innerHTML = `<div style="margin:0 0 14px;font-size:14px;"><a href="#" onclick="setGettingStartedHidden(false); return false;" style="color:var(--teal-l);">Show the getting-started checklist (${doneCount} of ${total} done)</a></div>`;
-    }
+  if (doneCount === total) {
+    host.innerHTML = `<div style="margin:0 0 14px;font-size:14px;color:rgba(255,255,255,.62);">✓ Getting started: all ${total} steps are done. <a href="#" onclick="setGettingStartedEnabled(false); return false;" style="color:var(--teal-l);">Hide this</a></div>`;
     return;
   }
 
@@ -20909,7 +21038,7 @@ async function renderGettingStarted() {
           <div style="font-size:18px;font-weight:700;color:#fff;">Getting started</div>
           <div style="font-size:14px;color:rgba(255,255,255,.62);margin-top:2px;">${doneCount} of ${total} done. Work through these in order. Each button takes you straight to the right place.</div>
         </div>
-        <button class="btn btn-sm btn-ghost" onclick="setGettingStartedHidden(true)" style="color:#fff;border-color:rgba(255,255,255,.2);flex-shrink:0;">Hide</button>
+        <button class="btn btn-sm btn-ghost" onclick="setGettingStartedEnabled(false)" style="color:#fff;border-color:rgba(255,255,255,.2);flex-shrink:0;">Hide</button>
       </div>
       <div style="height:6px;background:rgba(255,255,255,.1);border-radius:3px;margin:14px 0 8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:var(--teal);"></div></div>
       ${steps.map((s, i) => {
@@ -20929,8 +21058,8 @@ async function renderGettingStarted() {
     </div>`;
 }
 
-async function setGettingStartedHidden(hidden) {
-  if (await saveGettingStarted({ hidden })) renderGettingStarted();
+async function setGettingStartedEnabled(enabled) {
+  if (await saveGettingStarted({ enabled })) renderGettingStarted();
 }
 async function markGettingStartedStepDone(stepId) {
   if (await saveGettingStarted({ done: { [stepId]: true } })) renderGettingStarted();
