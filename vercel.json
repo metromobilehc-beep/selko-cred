@@ -1,0 +1,5 @@
+{
+  "functions": {
+    "api/sam-refresh.js": { "maxDuration": 60 }
+  }
+}
