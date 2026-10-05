@@ -3071,6 +3071,9 @@ async function checkSamSetup() {
   try {
     const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'ping' } });
     if (error) throw new Error(await samInvokeError(error));
+    // An older sam-exclusions-refresh does not report on the worker at all. That is a different problem from
+    // "the secret is not set", and the fix is different, so say which one it is.
+    const oldFunction = data.worker_secret_set === undefined;
     const bits = [
       data.sam_api_key_set ? `✓ SAM_API_KEY is set (${data.sam_api_key_length} characters)` : '✗ SAM_API_KEY is NOT set',
       data.tables_installed ? '✓ tables installed' : '✗ tables missing: ' + (data.tables_error || ''),
@@ -3078,14 +3081,15 @@ async function checkSamSetup() {
       data.mail_configured ? '✓ mail configured' : '– mail not configured (no failure emails)',
       data.alert_email_set ? '✓ SAM_ALERT_EMAIL set' : '✗ SAM_ALERT_EMAIL not set: no failure or key-renewal emails will be sent',
       data.key_expiry_recorded ? `✓ key expiry recorded (${data.key_expires_on})` : '✗ key expiry not recorded: no renewal reminder yet (fill in the box below)',
-      !data.worker_secret_set ? '✗ SAM_WORKER_SECRET is not set (needed to reach the refresh worker)'
+      oldFunction ? '✗ the sam-exclusions-refresh function in Supabase is an OLDER version that does not know about the refresh worker. Redeploy it from the latest file (Verify JWT off), then press Check setup again.'
+        : !data.worker_secret_set ? '✗ SAM_WORKER_SECRET is not set in Supabase (needed to reach the refresh worker). Add it under Edge Functions > Secrets, with the same value as on Vercel.'
         : data.worker_reachable ? `✓ refresh worker reachable${data.worker_node ? ' (Node ' + data.worker_node.replace(/^v/, '') + ')' : ''}`
         : `✗ refresh worker: ${data.worker_error || 'not reachable'}`,
-      data.worker_reachable ? (data.worker_database_configured ? '✓ the worker has its database settings' : '✗ the worker has no database settings: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the Vercel project') : null,
+      (!oldFunction && data.worker_reachable) ? (data.worker_database_configured ? '✓ the worker has its database settings' : '✗ the worker has no database settings: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the Vercel project, then redeploy') : null,
     ].filter(Boolean);
-    const bad = !data.sam_api_key_set || !data.tables_installed || !data.worker_secret_set || !data.worker_reachable || (data.worker_reachable && !data.worker_database_configured);
-    msg.style.color = bad ? '#f87171' : '#4ade80';
-    msg.innerHTML = bits.map(b => hrOnbEsc(b)).join('<br>');
+    // one colour per LINE: green ticks, red crosses, grey notes (a single problem no longer turns every line red)
+    msg.style.color = 'rgba(255,255,255,.66)';
+    msg.innerHTML = bits.map(b => `<div style="color:${b.startsWith('✓') ? '#4ade80' : b.startsWith('✗') ? '#f87171' : 'rgba(255,255,255,.55)'};">${hrOnbEsc(b)}</div>`).join('');
   } catch (e) {
     msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
   }
