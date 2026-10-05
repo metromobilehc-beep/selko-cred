@@ -1995,6 +1995,7 @@ window.selkoSharedAuthStorage = {
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Downloaded once a day and used for every company's SAM.gov check. A personal SAM.gov API key is allowed 10 requests a day, so each refresh uses one.</p>
         <div id="superSamStatus" style="font-size:14px;color:rgba(255,255,255,.7);margin-bottom:10px;">Loading…</div>
         <button class="btn btn-sm btn-teal" id="superSamRefreshBtn" onclick="refreshSamListNow()">Refresh the list now</button>
+        <button class="btn btn-sm btn-ghost" id="superSamPingBtn" onclick="checkSamSetup()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;" title="Checks the secret and the tables. Makes no request to SAM.gov, so it uses none of your 10 a day.">Check setup</button>
         <span id="superSamMsg" style="font-size:14px;margin-left:10px;"></span>
 
         <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
@@ -2926,10 +2927,24 @@ async function loadSuperSamCompanies() {
   }).join('');
 }
 
+// Turns a failed Edge Function call into the REAL reason. The function's own errors arrive as
+// {error}; the platform's (function not found, failed to start, out of memory or time) arrive as
+// {code, message}. The HTTP status is added so "not found" and "crashed" are told apart.
 async function samInvokeError(error) {
-  let detail = error.message;
-  if (error.context && typeof error.context.json === 'function') { try { const b = await error.context.json(); if (b && b.error) detail = b.error; } catch (e) { /* keep generic */ } }
-  return detail;
+  let detail = (error && error.message) || 'The function failed.';
+  const ctx = error && error.context;
+  const status = ctx && ctx.status;
+  if (ctx && typeof ctx.text === 'function') {
+    try {
+      const raw = await ctx.text();
+      let b = null; try { b = JSON.parse(raw); } catch (e) { /* not JSON */ }
+      const msg = b ? (b.error || b.message || b.msg || b.details) : raw;
+      if (msg) detail = (b && b.code && !String(msg).includes(b.code) ? b.code + ': ' : '') + String(msg).slice(0, 400);
+    } catch (e) { /* keep what we have */ }
+  }
+  if (status === 404 && /not found|NOT_FOUND/i.test(detail)) detail += ' (the function is not deployed under exactly this lowercase name)';
+  if (status === 546 || /WORKER_LIMIT|compute resources|memory|CPU/i.test(detail)) detail += ' (the function ran out of memory or time)';
+  return status ? `${detail} [HTTP ${status}]` : detail;
 }
 
 async function runSamForCompany(companyId, companyName) {
@@ -2966,17 +2981,36 @@ async function runSamForAll() {
   }
 }
 
+// Checks the key is set, the tables exist and the function runs, without spending a SAM.gov request.
+async function checkSamSetup() {
+  const msg = document.getElementById('superSamMsg');
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  msg.style.color = 'rgba(255,255,255,.66)'; msg.textContent = 'Checking…';
+  try {
+    const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'ping' } });
+    if (error) throw new Error(await samInvokeError(error));
+    const bits = [
+      data.sam_api_key_set ? `✓ SAM_API_KEY is set (${data.sam_api_key_length} characters)` : '✗ SAM_API_KEY is NOT set',
+      data.tables_installed ? '✓ tables installed' : '✗ tables missing: ' + (data.tables_error || ''),
+      data.cron_secret_set ? '✓ CRON_SECRET set' : '✗ CRON_SECRET not set (the daily schedule needs it)',
+      data.mail_configured ? '✓ mail configured' : '– mail not configured (no failure emails)',
+      data.alert_email_set ? '✓ SAM_ALERT_EMAIL set' : '– SAM_ALERT_EMAIL not set (optional)',
+    ];
+    const bad = !data.sam_api_key_set || !data.tables_installed;
+    msg.style.color = bad ? '#f87171' : '#4ade80';
+    msg.innerHTML = bits.map(b => hrOnbEsc(b)).join('<br>');
+  } catch (e) {
+    msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
+  }
+}
+
 async function refreshSamListNow() {
   const btn = document.getElementById('superSamRefreshBtn'); const msg = document.getElementById('superSamMsg');
   if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
   btn.disabled = true; msg.style.color = 'rgba(255,255,255,.66)'; msg.textContent = 'Downloading and loading the list. This can take up to a minute…';
   try {
     const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'refresh' } });
-    if (error) {
-      let detail = error.message;
-      if (error.context && typeof error.context.json === 'function') { try { const b = await error.context.json(); if (b && b.error) detail = b.error; } catch (e) { /* keep generic */ } }
-      throw new Error(detail);
-    }
+    if (error) throw new Error(await samInvokeError(error));
     msg.style.color = '#4ade80';
     msg.textContent = `Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
   } catch (e) {
@@ -2997,13 +3031,7 @@ async function runMyCompanySamCheck() {
   listEl.innerHTML = '';
   try {
     const { data, error } = await sb.functions.invoke('check-sam-exclusions', { body: { company_id: currentCompany.id } });
-    if (error) {
-      let detail = error.message;
-      if (error.context && typeof error.context.json === 'function') {
-        try { const body = await error.context.json(); if (body && body.error) detail = extractErrorMessage(body.error); } catch (parseErr) { /* keep the generic message */ }
-      }
-      throw new Error(extractErrorMessage(detail));
-    }
+    if (error) throw new Error(await samInvokeError(error));
     const staleNote = data.list_stale ? ' ⚠ The SAM.gov list is more than 3 days old, so very recent exclusions may be missing.' : '';
     statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + staleNote;
     listEl.innerHTML = samMatchesHtml(data.matches);
