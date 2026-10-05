@@ -1998,6 +1998,19 @@ window.selkoSharedAuthStorage = {
         <button class="btn btn-sm btn-ghost" id="superSamPingBtn" onclick="checkSamSetup()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;" title="Checks the secret and the tables. Makes no request to SAM.gov, so it uses none of your 10 a day.">Check setup</button>
         <span id="superSamMsg" style="font-size:14px;margin-left:10px;"></span>
 
+        <div id="superSamKeyBox" style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
+          <div style="color:#fff;font-weight:700;margin-bottom:4px;">API key renewal reminder</div>
+          <div id="superSamKeyStatus" style="font-size:14px;margin-bottom:8px;">Loading…</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:8px;">
+            <div><label class="inline-label" for="samKeySetOn">Key created on</label><input class="inline-input" type="date" id="samKeySetOn" oninput="samKeySetOnChanged()" /></div>
+            <div><label class="inline-label" for="samKeyExpires">Expires on</label><input class="inline-input" type="date" id="samKeyExpires" oninput="this.dataset.touched='1'" /></div>
+            <button class="btn btn-sm btn-teal" onclick="saveSamKey()">Save dates</button>
+            <button class="btn btn-sm btn-ghost" onclick="samKeyRenewedToday()" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Use this right after you create a new key and update the SAM_API_KEY secret">I just updated the key</button>
+          </div>
+          <div id="superSamKeyMsg" style="font-size:13px;margin-bottom:4px;"></div>
+          <p style="font-size:13px;color:rgba(255,255,255,.5);margin:0;">SAM.gov keys expire (reportedly every 90 days). Enter the date you created the key and the expiry fills in 90 days later; change it if SAM.gov shows a different date. You are emailed at SAM_ALERT_EMAIL 14 days before, then weekly, then daily in the last 3 days and once it has expired.</p>
+        </div>
+
         <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
           <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
             <div style="color:#fff;font-weight:700;">Companies</div>
@@ -2887,6 +2900,60 @@ async function loadSuperSamStatus() {
   }
 }
 
+// ── SAM.gov API key renewal reminder ────────────────────────────────────────
+function samAddDays(iso, n) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const t = new Date(y, m - 1, d + n);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+function samDaysUntil(iso, from = new Date()) {
+  const [y, m, d] = String(iso).split('-').map(Number);
+  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate()), b = new Date(y, m - 1, d);
+  return Math.round((b - a) / 86400000);
+}
+function samKeyStatusHtml(row, from = new Date()) {
+  if (!row || !row.expires_on) return '<span style="color:#fbbf24;">Not recorded yet. Enter when the key was created, so Selko can remind you before it expires.</span>';
+  const dl = samDaysUntil(row.expires_on, from);
+  const date = new Date(row.expires_on + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+  if (dl < 0) return `<span style="color:#f87171;font-weight:700;">Expired ${-dl} day${dl === -1 ? '' : 's'} ago (${hrOnbEsc(date)}).</span> <span style="color:#f87171;">Refreshes will fail until you update the key.</span>`;
+  if (dl <= 3) return `<span style="color:#f87171;font-weight:700;">Expires ${dl === 0 ? 'today' : 'in ' + dl + ' day' + (dl === 1 ? '' : 's')} (${hrOnbEsc(date)}).</span> Renew it now.`;
+  if (dl <= 14) return `<span style="color:#fbbf24;font-weight:700;">Expires in ${dl} days (${hrOnbEsc(date)}).</span> Time to request a new key.`;
+  return `<span style="color:#4ade80;">Expires in ${dl} days (${hrOnbEsc(date)}).</span>`;
+}
+async function loadSamKeyStatus() {
+  const el = document.getElementById('superSamKeyStatus');
+  if (!el) return;
+  const { data, error } = await sb.rpc('sam_key_get');
+  if (error) { el.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run sam-exclusions.sql).' : 'Could not load: ' + (error.message || ''); return; }
+  const row = Array.isArray(data) ? data[0] : data;
+  el.innerHTML = samKeyStatusHtml(row);
+  const setOn = document.getElementById('samKeySetOn'), exp = document.getElementById('samKeyExpires');
+  if (row && row.key_set_on && setOn && !setOn.value) setOn.value = row.key_set_on;
+  if (row && row.expires_on && exp && !exp.value) { exp.value = row.expires_on; exp.dataset.touched = '1'; }
+}
+function samKeySetOnChanged() {
+  const setOn = document.getElementById('samKeySetOn'), exp = document.getElementById('samKeyExpires');
+  if (!setOn.value) return;
+  if (exp.dataset.touched !== '1') exp.value = samAddDays(setOn.value, 90);       // 90 days unless you have typed another date
+}
+async function saveSamKey(setOnOverride, expiresOverride) {
+  const msg = document.getElementById('superSamKeyMsg');
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  const setOn = setOnOverride || document.getElementById('samKeySetOn').value;
+  const expires = expiresOverride || document.getElementById('samKeyExpires').value;
+  if (!setOn) { msg.style.color = '#f87171'; msg.textContent = 'Enter the date the key was created.'; return; }
+  const { error } = await sb.rpc('sam_key_set', { p_set_on: setOn, p_expires_on: expires || samAddDays(setOn, 90), p_remind_days: 14 });
+  if (error) { msg.style.color = '#f87171'; msg.textContent = error.message; return; }
+  msg.style.color = '#4ade80'; msg.textContent = 'Saved. The reminders start from these dates.';
+  document.getElementById('samKeySetOn').value = setOn;
+  const exEl = document.getElementById('samKeyExpires'); exEl.value = expires || samAddDays(setOn, 90); exEl.dataset.touched = '1';
+  await loadSamKeyStatus();
+}
+async function samKeyRenewedToday() {
+  const t = new Date(), today = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+  await saveSamKey(today, samAddDays(today, 90));
+}
+
 // The next date a company's automatic monthly check will run (its chosen day, 1 to 28).
 function nextSamDue(day, from = new Date()) {
   const d = Math.min(Math.max(parseInt(day, 10) || 1, 1), 28);
@@ -2994,7 +3061,8 @@ async function checkSamSetup() {
       data.tables_installed ? '✓ tables installed' : '✗ tables missing: ' + (data.tables_error || ''),
       data.cron_secret_set ? '✓ CRON_SECRET set' : '✗ CRON_SECRET not set (the daily schedule needs it)',
       data.mail_configured ? '✓ mail configured' : '– mail not configured (no failure emails)',
-      data.alert_email_set ? '✓ SAM_ALERT_EMAIL set' : '– SAM_ALERT_EMAIL not set (optional)',
+      data.alert_email_set ? '✓ SAM_ALERT_EMAIL set' : '✗ SAM_ALERT_EMAIL not set: no failure or key-renewal emails will be sent',
+      data.key_expiry_recorded ? `✓ key expiry recorded (${data.key_expires_on})` : '✗ key expiry not recorded: no renewal reminder yet (fill in the box below)',
     ];
     const bad = !data.sam_api_key_set || !data.tables_installed;
     msg.style.color = bad ? '#f87171' : '#4ade80';
@@ -16473,6 +16541,7 @@ const SUPER_HELP = [
       <ul>
         <li>The panel shows the last good load and the latest failure, if any. <strong>Refresh the list now</strong> loads it by hand.</li>
         <li>SAM.gov keys expire (reportedly every 90 days). When a refresh fails, companies keep checking against the last good list and see a warning after 3 days. If <strong>SAM_ALERT_EMAIL</strong> is set, you are also emailed. Fix it by requesting a new key and updating the secret.</li>
+        <li><strong>API key renewal reminder:</strong> enter the date you created the key (the expiry fills in 90 days later, and you can change it). Selko emails <strong>SAM_ALERT_EMAIL</strong> 14 days before it expires, then weekly, then daily in the last 3 days and once it has expired. After renewing: request the new key at sam.gov, update the <strong>SAM_API_KEY</strong> secret, then press <strong>I just updated the key</strong>, which restarts the countdown. Only the platform owner can see or change this.</li>
         <li>Use a mailbox that belongs to the company for the SAM.gov account, not one person's.</li>
       </ul>
       <p><strong>Companies.</strong> Nothing needs setting up per company. Every company with the Credentialing add-on is checked automatically once a month, on the day it chose for its OIG check (the 1st if it never chose one). The table shows who is ready, what is missing (the add-on, or nobody to email), the next run date, and the last result as counts only. <strong>Run now</strong> checks one company, and <strong>Run every company now</strong> checks all of them. Selko never sees staff names unless the company allows it: if a company requires its own permission, Run now tells you so, and its automatic monthly check still runs. If <strong>SAM_ALERT_EMAIL</strong> is set, you are emailed after a monthly run that had matches or failures, with company names and counts only.</p>`,
@@ -24267,6 +24336,7 @@ async function toggleJuanAgencyAccess(companyId, granted) {
 
 async function loadSuperAdmin() {
   loadSuperSamStatus();
+  loadSamKeyStatus();
   loadSuperSamCompanies();
   await loadBugLog();
   await loadSupportRequests();
