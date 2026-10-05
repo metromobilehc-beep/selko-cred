@@ -1662,7 +1662,32 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
-        
+        <!-- SAM.gov exclusions: federal debarment and suspension. The list is downloaded ONCE a
+             day (a personal SAM.gov key is allowed only 10 requests a day) and every company's
+             check is matched against it here, so a run takes a moment and never calls SAM.gov. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="samPanel">
+          <h2>🏛 SAM.gov Exclusion Check</h2>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Checks your active staff against SAM.gov's list of people excluded from federal programs (debarred or suspended). The list is refreshed from sam.gov every day. A match with an NPI is strong. Otherwise it is by name, and many people share a name, so <strong>a match is a lead to look at, never a finding</strong>.</p>
+          <div id="samListFresh" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;"></div>
+          <button class="btn btn-sm btn-teal" id="mySamRunCheckBtn" onclick="runMyCompanySamCheck()">Run check now</button>
+          <div id="mySamCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
+          <div id="mySamMatchesList"></div>
+          <p style="font-size:13px;color:rgba(255,255,255,.5);margin:6px 0 10px;">Also runs by itself once a month, on the day you chose for the OIG check, and emails your admins the result.</p>
+          <div class="tbl-wrap">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <select class="inline-select" id="mySamArchiveFilter" onchange="loadMySamHistory()" style="max-width:160px;">
+                <option value="active">Active checks</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <table>
+              <thead><tr><th>Checked</th><th>How</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
+              <tbody id="mySamHistoryTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
       <!-- Sex offender registry search — a plain outbound link to the U.S. Department of
              Justice's NSOPW, NOT an automated check like OIG/OFAC above. Selko can't run it
              or record that it was done (the site is a manual search form), so this panel is
@@ -1960,6 +1985,30 @@ window.selkoSharedAuthStorage = {
           <button class="btn btn-sm btn-teal" onclick="startSuperHrTemplateUpload()">+ Upload &amp; map fields</button>
         </div>
         <div id="superHrTemplateUploadErr" style="color:#f87171;font-size:14px;margin-top:8px;display:none;"></div>
+      </div>
+
+      <!-- SAM.gov exclusions list: loaded once a day for every company. This is where the
+           owner sees whether the last refresh worked (an expired key is the usual problem)
+           and can load it by hand the first time. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="superSamPanel">
+        <h2>SAM.gov exclusions list</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Downloaded once a day and used for every company's SAM.gov check. A personal SAM.gov API key is allowed 10 requests a day, so each refresh uses one.</p>
+        <div id="superSamStatus" style="font-size:14px;color:rgba(255,255,255,.7);margin-bottom:10px;">Loading…</div>
+        <button class="btn btn-sm btn-teal" id="superSamRefreshBtn" onclick="refreshSamListNow()">Refresh the list now</button>
+        <span id="superSamMsg" style="font-size:14px;margin-left:10px;"></span>
+
+        <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+            <div style="color:#fff;font-weight:700;">Companies</div>
+            <button class="btn btn-sm btn-ghost" id="superSamRunAllBtn" onclick="runSamForAll()" style="color:#fff;border-color:rgba(255,255,255,.2);">Run every company now</button>
+          </div>
+          <p style="font-size:13px;color:rgba(255,255,255,.55);margin:0 0 8px;">Counts only. Staff names stay with each company. Every company with the Credentialing add-on is checked automatically once a month; this shows who is set up and what is missing.</p>
+          <div id="superSamRunAllOut" style="font-size:14px;margin-bottom:8px;"></div>
+          <div class="tbl-wrap"><table>
+            <thead><tr><th>Company</th><th>Ready?</th><th>Monthly day</th><th>Notifies</th><th>Last check</th><th>Staff</th><th>Matches</th><th></th></tr></thead>
+            <tbody id="superSamCompaniesTbody"><tr><td colspan="8" style="color:rgba(255,255,255,.58);">Loading…</td></tr></tbody>
+          </table></div>
+        </div>
       </div>
 
       <!-- Platform document types (tier + global/custom management) -->
@@ -2781,6 +2830,270 @@ async function saveOigPreferredDay() {
 // stores the result, and renders matches directly (no separate history/
 // archive view yet — that's the natural next piece, matching what OIG
 // already has, not built in this pass).
+// ── SAM.gov exclusions ──────────────────────────────────────────────────────
+// The server function (check-sam-exclusions) does the matching against the daily list
+// and records the run; this screen starts it and shows the result and history.
+const SAM_CONF_LABEL = {
+  high: 'Match (NPI-confirmed)',
+  medium: 'Match (name and state or middle initial agree)',
+  low: 'Possible match (name only, verify manually)',
+  review_needed: 'Review needed (last name and first initial only)',
+};
+const SAM_CONF_COLOR = { high: '#f87171', medium: '#fb923c', low: '#facc15', review_needed: '#94a3b8' };
+
+async function loadSamListFreshness() {
+  const el = document.getElementById('samListFresh');
+  if (!el) return;
+  try {
+    const { data, error } = await sb.from('sam_exclusions_meta').select('loaded_at, status, individuals, source, error').order('loaded_at', { ascending: false }).limit(5);
+    if (error) throw error;
+    const ok = (data || []).find(r => r.status === 'ok');
+    if (!ok) { el.innerHTML = '⚠ The SAM.gov list has not been loaded yet, so checks can\'t run. Selko is setting this up.'; return; }
+    const ageDays = (Date.now() - new Date(ok.loaded_at).getTime()) / 86400000;
+    const stale = ageDays > 3;
+    el.innerHTML = `${stale ? '<span style="color:#fbbf24;">⚠ </span>' : ''}List last refreshed ${new Date(ok.loaded_at).toLocaleString()} (${Number(ok.individuals || 0).toLocaleString()} excluded individuals).${stale ? ' <span style="color:#fbbf24;">It is more than 3 days old, so very recent exclusions may be missing.</span>' : ''}`;
+  } catch (e) {
+    el.textContent = '';   // not installed yet: say nothing rather than guess
+  }
+}
+
+function samMatchesHtml(matches) {
+  return (matches || []).map(m => `
+    <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-top:8px;">
+      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-size:13px;">${hrOnbEsc(SAM_CONF_LABEL[m.confidence] || m.confidence || '')}</span>
+      <div style="font-size:14px;color:rgba(255,255,255,.66);">${hrOnbEsc(m.detail || '')}</div>
+    </div>`).join('');
+}
+
+async function loadSuperSamStatus() {
+  const el = document.getElementById('superSamStatus');
+  if (!el) return;
+  try {
+    const { data, error } = await sb.from('sam_exclusions_meta').select('loaded_at, status, individuals, total_rows, source, error').order('loaded_at', { ascending: false }).limit(8);
+    if (error) throw error;
+    if (!data || !data.length) { el.innerHTML = 'Not loaded yet. Press <strong>Refresh the list now</strong> once SAM_API_KEY is set.'; return; }
+    const lastOk = data.find(r => r.status === 'ok');
+    const lastRow = data[0];
+    let html = '';
+    if (lastOk) {
+      const ageDays = (Date.now() - new Date(lastOk.loaded_at).getTime()) / 86400000;
+      html += `<div>Last good load: <strong>${new Date(lastOk.loaded_at).toLocaleString()}</strong> · ${Number(lastOk.individuals || 0).toLocaleString()} individuals of ${Number(lastOk.total_rows || 0).toLocaleString()} rows${ageDays > 3 ? ' <span style="color:#fbbf24;">(more than 3 days old)</span>' : ''}</div><div style="font-size:13px;color:rgba(255,255,255,.55);">${hrOnbEsc(lastOk.source || '')}</div>`;
+    } else html += '<div style="color:#fbbf24;">No successful load yet.</div>';
+    if (lastRow.status === 'failed') html += `<div style="margin-top:6px;color:#f87171;">Latest attempt failed (${new Date(lastRow.loaded_at).toLocaleString()}): ${hrOnbEsc(lastRow.error || 'unknown error')}</div>`;
+    el.innerHTML = html;
+  } catch (e) {
+    el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? 'The SAM.gov check is not installed yet (run sam-exclusions.sql).' : 'Could not read the list status: ' + ((e && e.message) || e);
+  }
+}
+
+// The next date a company's automatic monthly check will run (its chosen day, 1 to 28).
+function nextSamDue(day, from = new Date()) {
+  const d = Math.min(Math.max(parseInt(day, 10) || 1, 1), 28);
+  const t = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  let due = new Date(t.getFullYear(), t.getMonth(), d);
+  if (due < t) due = new Date(t.getFullYear(), t.getMonth() + 1, d);
+  return due;
+}
+
+async function loadSuperSamCompanies() {
+  const tbody = document.getElementById('superSamCompaniesTbody');
+  if (!tbody) return;
+  const { data, error } = await sb.rpc('platform_sam_overview');
+  if (error) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run sam-exclusions.sql).' : 'Could not load: ' + hrOnbEsc(error.message || '')}</td></tr>`;
+    return;
+  }
+  if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:rgba(255,255,255,.58);">No companies.</td></tr>'; return; }
+  tbody.innerHTML = data.map(r => {
+    const problems = [];
+    if (!r.has_addon) problems.push('Needs the Credentialing add-on');
+    else if (!r.notify_count) problems.push('No one to email');
+    const ready = r.has_addon && r.notify_count > 0;
+    const last = r.last_checked_at
+      ? `${new Date(r.last_checked_at).toLocaleDateString()} <span style="color:rgba(255,255,255,.5);">(${r.last_how === 'scheduled' ? 'monthly' : 'by hand'})</span>`
+      : '<span style="color:rgba(255,255,255,.5);">Never</span>';
+    const safeName = String(r.company_name || '').replace(/'/g, "\\'");
+    return `<tr>
+      <td>${hrOnbEsc(r.company_name)}</td>
+      <td>${ready ? '<span style="color:#4ade80;">✓ Set up</span>' : `<span style="color:#fbbf24;">${hrOnbEsc(problems.join(', '))}</span>`}</td>
+      <td>${r.has_addon ? `${r.preferred_day} <span style="color:rgba(255,255,255,.5);">(next ${nextSamDue(r.preferred_day).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })})</span>` : '—'}</td>
+      <td style="${r.has_addon && !r.notify_count ? 'color:#f87171;' : ''}">${r.notify_count}</td>
+      <td>${last}</td>
+      <td>${r.last_checked_at ? r.last_staff : '—'}</td>
+      <td style="${r.last_matches > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.last_checked_at ? r.last_matches : '—'}</td>
+      <td>${r.has_addon ? `<button class="btn btn-sm btn-ghost" onclick="runSamForCompany('${r.company_id}','${safeName}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:13px;">Run now</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function samInvokeError(error) {
+  let detail = error.message;
+  if (error.context && typeof error.context.json === 'function') { try { const b = await error.context.json(); if (b && b.error) detail = b.error; } catch (e) { /* keep generic */ } }
+  return detail;
+}
+
+async function runSamForCompany(companyId, companyName) {
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  const out = document.getElementById('superSamRunAllOut');
+  if (out) { out.style.color = 'rgba(255,255,255,.66)'; out.textContent = `Checking ${companyName}…`; }
+  try {
+    const { data, error } = await sb.functions.invoke('check-sam-exclusions', { body: { company_id: companyId } });
+    if (error) throw new Error(await samInvokeError(error));
+    if (out) { out.style.color = data.match_count ? '#fbbf24' : '#4ade80'; out.textContent = `${companyName}: ${data.checked} staff checked, ${data.match_count} possible match(es).${data.match_count ? (data.emailed ? ' Their admins were emailed.' : ' Nobody was emailed (no valid notification address on file).') + " The names are in that company's own Compliance tab." : ''}`; }
+  } catch (e) {
+    const msg = (e && e.message) || String(e);
+    if (out) { out.style.color = '#f87171'; out.textContent = /Only an admin of this company/i.test(msg) ? `${companyName} requires its own permission before Selko can run a check for it. Ask them to allow support access, or they can run it from their Compliance tab. Their automatic monthly check still runs.` : `${companyName}: ${msg}`; }
+  }
+  await loadSuperSamCompanies();
+}
+
+async function runSamForAll() {
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  if (!confirm('Run the SAM.gov check for every company that has the Credentialing add-on now?\n\nEach run is saved in that company\'s own history. A company\'s admins are emailed only if there is a possible match.')) return;
+  const btn = document.getElementById('superSamRunAllBtn'); const out = document.getElementById('superSamRunAllOut');
+  btn.disabled = true; out.style.color = 'rgba(255,255,255,.66)'; out.textContent = 'Checking every company…';
+  try {
+    const { data, error } = await sb.functions.invoke('check-sam-exclusions', { body: { mode: 'run_all' } });
+    if (error) throw new Error(await samInvokeError(error));
+    const failed = (data.rows || []).filter(r => r.error);
+    out.style.color = failed.length ? '#fbbf24' : '#4ade80';
+    out.innerHTML = `${data.checked} of ${data.companies} companies checked, ${data.with_matches} with possible matches.` + (failed.length ? `<div style="color:#f87171;">${failed.map(f => hrOnbEsc(f.name + ': ' + f.error)).join('<br>')}</div>` : '');
+  } catch (e) {
+    out.style.color = '#f87171'; out.textContent = (e && e.message) || String(e);
+  } finally {
+    btn.disabled = false;
+    await loadSuperSamCompanies();
+  }
+}
+
+async function refreshSamListNow() {
+  const btn = document.getElementById('superSamRefreshBtn'); const msg = document.getElementById('superSamMsg');
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  btn.disabled = true; msg.style.color = 'rgba(255,255,255,.66)'; msg.textContent = 'Downloading and loading the list. This can take up to a minute…';
+  try {
+    const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'refresh' } });
+    if (error) {
+      let detail = error.message;
+      if (error.context && typeof error.context.json === 'function') { try { const b = await error.context.json(); if (b && b.error) detail = b.error; } catch (e) { /* keep generic */ } }
+      throw new Error(detail);
+    }
+    msg.style.color = '#4ade80';
+    msg.textContent = `Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
+  } catch (e) {
+    msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
+  } finally {
+    btn.disabled = false;
+    await loadSuperSamStatus();
+  }
+}
+
+async function runMyCompanySamCheck() {
+  const btn = document.getElementById('mySamRunCheckBtn');
+  const statusEl = document.getElementById('mySamCheckStatus');
+  const listEl = document.getElementById('mySamMatchesList');
+  if (currentProfile?.role !== 'admin') { toast('Only an admin can run this check.', true); return; }
+  btn.disabled = true;
+  statusEl.textContent = 'Checking your staff against the SAM.gov list…';
+  listEl.innerHTML = '';
+  try {
+    const { data, error } = await sb.functions.invoke('check-sam-exclusions', { body: { company_id: currentCompany.id } });
+    if (error) {
+      let detail = error.message;
+      if (error.context && typeof error.context.json === 'function') {
+        try { const body = await error.context.json(); if (body && body.error) detail = extractErrorMessage(body.error); } catch (parseErr) { /* keep the generic message */ }
+      }
+      throw new Error(extractErrorMessage(detail));
+    }
+    const staleNote = data.list_stale ? ' ⚠ The SAM.gov list is more than 3 days old, so very recent exclusions may be missing.' : '';
+    statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + staleNote;
+    listEl.innerHTML = samMatchesHtml(data.matches);
+    if (data.match_count) toast(`⚠ ${data.match_count} potential SAM.gov match(es) found. Review below.` + staleNote, true);
+    else toast('SAM.gov check complete: no matches found.' + staleNote, !!data.list_stale);
+    await loadMySamHistory();
+    await loadSamListFreshness();
+  } catch (err) {
+    statusEl.textContent = '';
+    toast('SAM.gov check failed: ' + extractErrorMessage(err.message || String(err)), true);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function loadMySamHistory() {
+  const tbody = document.getElementById('mySamHistoryTbody');
+  if (!tbody) return;
+  loadSamListFreshness();
+  const canWrite = currentProfile?.role === 'admin';
+  const runBtn = document.getElementById('mySamRunCheckBtn'); if (runBtn) runBtn.style.display = canWrite ? '' : 'none';
+  const archiveFilter = document.getElementById('mySamArchiveFilter')?.value || 'active';
+  let query = sb.from('sam_exclusion_checks')
+    .select('id, checked_at, staff_checked_count, match_count, archived, trigger_type, emailed_at')
+    .eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(25);
+  if (archiveFilter === 'active') query = query.eq('archived', false);
+  else if (archiveFilter === 'archived') query = query.eq('archived', true);
+  const { data, error } = await query;
+  if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache/i.test(error.message || '') ? 'The SAM.gov check is not set up yet.' : 'Could not load history: ' + hrOnbEsc(extractErrorMessage(error))}</td></tr>`; return; }
+  if (!data || !data.length) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`; return; }
+  tbody.innerHTML = data.map(r => `
+    <tr>
+      <td>${new Date(r.checked_at).toLocaleString()}</td>
+      <td>${r.trigger_type === 'scheduled' ? 'Monthly (automatic)' : 'Run by hand'}</td>
+      <td>${r.staff_checked_count}</td>
+      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
+      <td>${r.emailed_at ? new Date(r.emailed_at).toLocaleDateString() : '—'}</td>
+      <td style="white-space:nowrap;">
+        <button class="btn btn-sm btn-ghost" onclick="showSamCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">View list</button>
+        ${canWrite ? `<button class="btn btn-sm btn-ghost" onclick="toggleSamCheckArchived('${r.id}', ${!r.archived})" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">${r.archived ? 'Restore' : 'Archive'}</button>
+        <button class="btn btn-sm btn-ghost" onclick="deleteSamCheck('${r.id}')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>` : ''}
+      </td>
+    </tr>`).join('');
+}
+
+async function showSamCheckDetails(checkId) {
+  document.getElementById('samDetailsModal')?.remove();
+  const { data: row, error } = await sb.from('sam_exclusion_checks')
+    .select('checked_at, staff_checked_count, match_count, matches, checked_staff, source, trigger_type').eq('id', checkId).single();
+  if (error || !row) { toast('Could not load check details' + (error ? ': ' + error.message : ''), true); return; }
+  const byId = new Map((row.matches || []).map(m => [m.staff_id, m]));
+  const rows = (row.checked_staff || []).slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(s => {
+    const m = byId.get(s.id);
+    return m
+      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${hrOnbEsc(SAM_CONF_LABEL[m.confidence] || 'Potential match')}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div></td></tr>`
+      : `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:#4ade80;">✓ Clear</td></tr>`;
+  }).join('') || '<tr><td colspan="2" style="color:rgba(255,255,255,.58);">No per-staff detail was kept for this check.</td></tr>';
+  const modal = document.createElement('div');
+  modal.id = 'samDetailsModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1600;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:clamp(500px,70vw,800px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;">
+      <div><div style="color:#fff;font-size:20px;font-weight:700;">SAM.gov Check Details</div><div style="color:rgba(255,255,255,.58);font-size:14px;">${hrOnbEsc(currentCompany?.name || '')} · ${new Date(row.checked_at).toLocaleString()} · ${row.trigger_type === 'scheduled' ? 'monthly, automatic' : 'run by hand'}</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('samDetailsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button></div>
+    <div style="flex:1;overflow-y:auto;padding:20px 28px;">
+      <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:6px;">Checked ${row.staff_checked_count} staff member(s) against SAM.gov's exclusions list${row.source ? ` (${hrOnbEsc(row.source)})` : ''}.</p>
+      ${row.match_count > 0 ? '<p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:14px;">A match is a lead, not a finding. Open the person in SAM.gov, compare name, state and any NPI, and only then act on it. A record without an NPI can easily be someone else with the same name.</p>' : ''}
+      <div class="tbl-wrap"><table><thead><tr><th>Staff</th><th>Result</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p style="font-size:12px;color:rgba(255,255,255,.45);margin-top:12px;">Search the official list yourself at <a href="https://sam.gov/search/?index=ex" target="_blank" rel="noopener noreferrer" style="color:var(--teal-l);">sam.gov</a> (Exclusions).</p>
+    </div></div>`;
+  document.body.appendChild(modal);
+}
+
+async function toggleSamCheckArchived(checkId, archived) {
+  const { data: changed, error } = await sb.from('sam_exclusion_checks').update({ archived }).eq('id', checkId).select('id');
+  if (error) { toast('Could not update: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast('Nothing was updated. You may not have permission to change this record.', true); return; }
+  toast(archived ? 'Check archived' : 'Check restored');
+  await loadMySamHistory();
+}
+
+async function deleteSamCheck(checkId) {
+  if (!confirm('Permanently delete this SAM.gov check record? This cannot be undone.')) return;
+  const { data: changed, error } = await sb.from('sam_exclusion_checks').delete().eq('id', checkId).select('id');
+  if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast('Nothing was deleted. You may not have permission to delete this record.', true); return; }
+  toast('Check deleted');
+  await loadMySamHistory();
+}
+
 async function runMyCompanyOfacCheck() {
   const btn = document.getElementById('myOfacRunCheckBtn');
   const statusEl = document.getElementById('myOfacCheckStatus');
@@ -15692,6 +16005,7 @@ async function loadCompliance() {
     if (oigDaySel) oigDaySel.value = currentCompany.oig_check_preferred_day || 1;
     await loadMyOigHistory();
     await loadMyOfacHistory();
+    await loadMySamHistory();
   }
 }
 
@@ -15944,12 +16258,25 @@ const COMPLIANCE_HELP = [
     html: `<p>This one is a manual lookup, not an automated check like OIG/OFAC above — Selko can't run it for you or record that you did. Click <strong>Open NSOPW search</strong> to use the Department of Justice's own site, and keep your own note of who you searched and when. A name match is a lead, not confirmation, and no result doesn't prove there's no record — see Guides &amp; resources in the Credentialing tab for more on reading a result correctly.</p>`,
   },
   {
+    title: 'The SAM.gov exclusion check',
+    subtitle: 'Federal debarment and suspension',
+    html: `<p>SAM.gov publishes a list of people who are excluded from federal programs (debarred or suspended). This check compares your <strong>active</strong> staff against it.</p>
+      <ul>
+        <li><strong>Run check now</strong> checks everyone in a moment. Selko refreshes the SAM.gov list from sam.gov every day, and the panel shows when it was last refreshed. If it is more than 3 days old you are warned.</li>
+        <li><strong>How strong a match is:</strong> <em>NPI-confirmed</em> is the strongest. <em>Name and state or middle initial agree</em> is likely but needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means the last name and first initial match in the same state.</li>
+        <li><strong>A match is a lead, never a finding.</strong> Many people share a name. Open the person on sam.gov, compare the details, and only then act.</li>
+        <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, saves the result as your record, and emails your admins. Every run stays in the history (View list, Archive, Delete).</li>
+        <li>Admins run and manage checks. Office users can read the history.</li>
+      </ul>`,
+  },
+  {
     title: 'The access logs',
     subtitle: 'Who looked at what',
     html: `<ul>
         <li><strong>Sensitive data access log</strong>: every time anyone views or enters a Social Security number or a CAQH login, with who, when and the reason they gave. <strong>Acknowledge</strong> marks an entry reviewed and hides it from the default view (tick <em>Show acknowledged entries</em> to see it again).</li>
         <li><strong>Deleting reviewed entries</strong>: only an admin of your own company can delete entries, and only ones already reviewed. Use <strong>Delete reviewed entries…</strong> for everything older than a number of days, or <strong>Delete</strong> on a single reviewed row. You give a reason and type DELETE. Selko staff can never delete your entries. Every deletion is recorded permanently in the <strong>Deletion history</strong> under the log (who, when, how many, which dates and the reason), and that record can't be edited or removed. Removing a staff member also removes their entries, and that shows up in the history too.</li>
         <li><strong>Access log</strong>: who viewed or downloaded which documents, including agency partners, with filters and an exportable PDF or CSV. Archiving hides old entries but never deletes them.</li>
+        <li><strong>Screening checks</strong> (OIG, OFAC and SAM.gov): each has a <strong>Run check now</strong> button and a history of every run, which is your record that the check was done. They also run by themselves once a month. A match is a lead to investigate, never a finding.</li>
         <li><strong>Selko platform access</strong>: whenever someone from the Selko team opens your account, looks at a tab or changes anything in it, it is recorded here with their name, the time and what they did. Entries can't be edited or deleted in the app, and you can export them as a CSV. Your own admins' activity isn't listed here.</li>
       </ul>`,
   },
@@ -16110,6 +16437,17 @@ const SUPER_HELP = [
     subtitle: '',
     html: `<p>Every company on the platform, with tools to add new ones and manage each one's plan and settings. <strong>Invite staff to any company</strong> sends a login invitation to someone at any company without needing to be logged into that company's own session first.</p>
       <p><strong>Remove a stray login</strong> cleans up an orphaned account left behind by an email change made the old way, before a safe "Change login email" tool existed on the Staff tab. Only removes the exact email typed in — it never affects that person's current, in-use login, and nothing happens without typing the email and confirming.</p>`,
+  },
+  {
+    title: 'The SAM.gov exclusions list',
+    subtitle: 'Setup and daily refresh',
+    html: `<p>Every company's SAM.gov check is matched against one list that Selko downloads from sam.gov each day. It needs one secret on the <strong>sam-exclusions-refresh</strong> function: <strong>SAM_API_KEY</strong>, a Public API Key from a personal SAM.gov account (Account Details, then the eye icon next to Public API Key, which sends a one-time code to that account's email). A personal key is allowed 10 requests a day and the refresh uses one.</p>
+      <ul>
+        <li>The panel shows the last good load and the latest failure, if any. <strong>Refresh the list now</strong> loads it by hand.</li>
+        <li>SAM.gov keys expire (reportedly every 90 days). When a refresh fails, companies keep checking against the last good list and see a warning after 3 days. If <strong>SAM_ALERT_EMAIL</strong> is set, you are also emailed. Fix it by requesting a new key and updating the secret.</li>
+        <li>Use a mailbox that belongs to the company for the SAM.gov account, not one person's.</li>
+      </ul>
+      <p><strong>Companies.</strong> Nothing needs setting up per company. Every company with the Credentialing add-on is checked automatically once a month, on the day it chose for its OIG check (the 1st if it never chose one). The table shows who is ready, what is missing (the add-on, or nobody to email), the next run date, and the last result as counts only. <strong>Run now</strong> checks one company, and <strong>Run every company now</strong> checks all of them. Selko never sees staff names unless the company allows it: if a company requires its own permission, Run now tells you so, and its automatic monthly check still runs. If <strong>SAM_ALERT_EMAIL</strong> is set, you are emailed after a monthly run that had matches or failures, with company names and counts only.</p>`,
   },
   {
     title: 'Support access (permission to open a company)',
@@ -23900,6 +24238,8 @@ async function toggleJuanAgencyAccess(companyId, granted) {
 }
 
 async function loadSuperAdmin() {
+  loadSuperSamStatus();
+  loadSuperSamCompanies();
   await loadBugLog();
   await loadSupportRequests();
   await populateOigCompanyFilter();
