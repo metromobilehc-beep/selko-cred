@@ -613,7 +613,7 @@ window.selkoSharedAuthStorage = {
       <button class="tab"        id="tab-hr" onclick="switchTab('hr')"><i class="ti ti-id-badge-2"></i> HR Onboarding</button>
       <div class="sidebar-section-break"></div>
       <button class="tab"        id="tab-settings" onclick="switchTab('settings')"><i class="ti ti-settings"></i> Settings</button>
-      <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin</button>
+      <button class="tab"        id="tab-super"    onclick="switchTab('super')" style="display:none;"><i class="ti ti-bolt"></i> Selko Admin <span id="superAttentionBadge" style="display:none;margin-left:4px;min-width:18px;padding:0 6px;border-radius:9px;background:#f87171;color:#111;font-size:12px;font-weight:700;line-height:18px;text-align:center;"></span></button>
     </div>
 
     <div class="admin-sidebar-memo">
@@ -1808,6 +1808,17 @@ window.selkoSharedAuthStorage = {
       <div style="font-size:22px;font-weight:700;color:#fff;margin-bottom:4px;display:flex;align-items:center;justify-content:space-between;gap:10px;">Selko Admin<button class="btn btn-sm btn-ghost" style="font-size:16px;padding:7px 16px;color:#fff;border-color:rgba(255,255,255,.2);font-weight:600;flex-shrink:0;" onclick="showPageHelp(SUPER_HELP)">❓ Help</button></div>
       <p style="color:rgba(255,255,255,.58);font-size:15px;margin:0 0 16px;">Platform-wide tools for Selko's own administrators — every company on the platform, shared defaults every company starts from, and cross-company support and error logs.</p>
 
+      <!-- Needs attention: what to look at first, without scrolling the whole tab -->
+      <!-- Deliberately NOT a .dark-panel: those collapse (and some start collapsed), and this must always be open. -->
+      <div id="superAttention" style="background:var(--navy2);border:1px solid rgba(255,255,255,.08);border-radius:var(--radius-lg);padding:20px;color:#fff;margin-bottom:16px;box-shadow:var(--shadow-dark);">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px;">
+          <div style="font-size:17px;color:var(--teal-l);font-weight:600;text-transform:uppercase;letter-spacing:.06em;">Needs attention</div>
+          <div style="display:flex;align-items:center;gap:10px;"><span id="superAttentionAt" style="font-size:12px;color:rgba(255,255,255,.45);"></span>
+            <button class="btn btn-sm btn-ghost" onclick="loadSuperAttention(true)" style="color:#fff;border-color:rgba(255,255,255,.2);padding:2px 10px;font-size:13px;">↻ Refresh</button></div>
+        </div>
+        <div id="superAttentionBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
+      </div>
+
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
@@ -1815,7 +1826,7 @@ window.selkoSharedAuthStorage = {
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Management</span>
       </div>
 
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" id="superCompaniesPanel">
         <h2>⚡ Selko Admin — Companies</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Every company on the platform — add new ones, and manage each one's plan and settings.</p>
         <div class="filter-bar">
@@ -2043,7 +2054,7 @@ window.selkoSharedAuthStorage = {
            sits alongside the Bug Log rather than merging with it: this is
            "a person noticed something," that one is "the app itself caught
            an error." -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" id="superSupportPanel">
         <h2>🆘 Support requests</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Submitted by users via "Report an issue" in the header, from any company.</p>
         <div id="supportRequestsList"></div>
@@ -2078,7 +2089,7 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" style="margin-bottom:16px;" id="superBugPanel">
         <h2>🐛 Bug log</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Errors logged across all Selko apps that write to this table.</p>
         <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
@@ -2900,6 +2911,151 @@ async function loadSuperSamStatus() {
   } catch (e) {
     el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? 'The SAM.gov check is not installed yet (run sam-exclusions.sql).' : 'Could not read the list status: ' + ((e && e.message) || e);
   }
+}
+
+// ── Needs attention ─────────────────────────────────────────────────────────
+// One place to see what deserves a look: new support requests, errors, SAM.gov list and key problems,
+// possible SAM matches, payment trouble, access requests waiting on a company, and new companies.
+// Each source is read on its own, so one that is missing or fails just drops out of the list.
+const SUPER_SEEN_KEY = 'selkoAdminSupportSeenAt';
+let _superAttentionTimer = null;
+
+function attnAgo(iso, now = Date.now()) {
+  const m = Math.max(0, Math.round((now - new Date(iso).getTime()) / 60000));
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const hrs = Math.round(m / 60);
+  if (hrs < 48) return `${hrs} hour${hrs === 1 ? '' : 's'} ago`;
+  return `${Math.round(hrs / 24)} days ago`;
+}
+function attnList(names, max = 4) {
+  const u = [...new Set(names.filter(Boolean))];
+  return u.slice(0, max).join(', ') + (u.length > max ? ` and ${u.length - max} more` : '');
+}
+
+// Builds the list of things needing attention from the raw data. Pure, so it can be tested on its own.
+function buildAttentionItems(d, now = Date.now()) {
+  const items = [];
+  const add = (level, text, target, extra = {}) => items.push({ level, text, target, ...extra });
+  const nameOf = (id) => (d.companyNames && d.companyNames[id]) || 'a company';
+
+  // Support requests that nobody has dealt with yet
+  if (d.supportOpen && d.supportOpen.length) {
+    const open = d.supportOpen;
+    const seenAt = d.supportSeenAt ? new Date(d.supportSeenAt).getTime() : 0;
+    const fresh = open.filter((r) => new Date(r.created_at).getTime() > seenAt);
+    const oldest = Math.min(...open.map((r) => new Date(r.created_at).getTime()));
+    const stale = (now - oldest) > 3 * 86400000;
+    add(stale ? 'bad' : 'warn',
+      `${open.length} open support request${open.length === 1 ? '' : 's'}${fresh.length ? ` (${fresh.length} new since you last looked)` : ''}${stale ? `, the oldest ${attnAgo(new Date(oldest).toISOString(), now)}` : ''}`,
+      'superSupportPanel', { clearsSupport: true,
+        preview: open.slice(0, 3).map((r) => `${r.reporter_name || 'Someone'} at ${nameOf(r.company_id)}, ${attnAgo(r.created_at, now)}: ${String(r.message || '').replace(/\s+/g, ' ').slice(0, 90)}`) });
+  }
+  // Errors in the last 24 hours
+  if (d.errors24 && d.errors24.length) {
+    const byApp = {}; d.errors24.forEach((e) => { byApp[e.source_app || 'unknown'] = (byApp[e.source_app || 'unknown'] || 0) + 1; });
+    const parts = Object.entries(byApp).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k} ${v}`).join(', ');
+    add(d.errors24.length >= 25 ? 'bad' : 'warn', `${d.errors24.length} error${d.errors24.length === 1 ? '' : 's'} logged in the last 24 hours (${parts})`, 'superBugPanel');
+  }
+  // The SAM.gov list
+  if (d.samMeta) {
+    const last = d.samMeta[0], ok = d.samMeta.find((m) => m.status === 'ok');
+    if (!ok) add('info', 'The SAM.gov exclusions list has not been loaded yet', 'superSamPanel');
+    else {
+      const age = (now - new Date(ok.loaded_at).getTime()) / 86400000;
+      if (last && last.status === 'failed') add('bad', `The last SAM.gov refresh failed: ${String(last.error || 'unknown error').slice(0, 140)}`, 'superSamPanel');
+      else if (age > 3) add('warn', `The SAM.gov list is ${Math.floor(age)} days old`, 'superSamPanel');
+    }
+  }
+  // The SAM.gov API key (owner only: others get no row back)
+  if (d.samKey && d.samKey.expires_on) {
+    const [y, m, dd] = d.samKey.expires_on.split('-').map(Number);
+    const t = new Date(now); const dl = Math.round((new Date(y, m - 1, dd) - new Date(t.getFullYear(), t.getMonth(), t.getDate())) / 86400000);
+    if (dl < 0) add('bad', `The SAM.gov API key expired ${-dl} day${dl === -1 ? '' : 's'} ago`, 'superSamPanel');
+    else if (dl <= 14) add(dl <= 3 ? 'bad' : 'warn', `The SAM.gov API key expires ${dl === 0 ? 'today' : 'in ' + dl + ' day' + (dl === 1 ? '' : 's')}`, 'superSamPanel');
+  }
+  // Possible SAM.gov matches, and companies that cannot be told about them (counts and names of companies only)
+  if (d.samOverview && d.samOverview.length) {
+    const withMatches = d.samOverview.filter((r) => r.has_addon && r.last_matches > 0);
+    if (withMatches.length) add('warn', `${withMatches.length} compan${withMatches.length === 1 ? 'y has' : 'ies have'} possible SAM.gov matches in their last check: ${attnList(withMatches.map((r) => `${r.company_name} (${r.last_matches})`))}`, 'superSamPanel');
+    const unready = d.samOverview.filter((r) => r.has_addon && !r.notify_count);
+    if (unready.length) add('warn', `${unready.length} compan${unready.length === 1 ? 'y' : 'ies'} with the Credentialing add-on ${unready.length === 1 ? 'has' : 'have'} nobody to email SAM.gov results to: ${attnList(unready.map((r) => r.company_name))}`, 'superSamPanel');
+  }
+  // Payments and trials (owner only)
+  if (d.subs) {
+    const bad = d.subs.filter((s) => ['past_due', 'unpaid', 'incomplete', 'incomplete_expired'].includes(s.status));
+    if (bad.length) add('bad', `${bad.length} subscription${bad.length === 1 ? '' : 's'} with a payment problem: ${attnList(bad.map((s) => nameOf(s.company_id)))}`, 'superCompaniesPanel');
+    const ending = d.subs.filter((s) => s.status === 'trialing' && s.current_period_end && (new Date(s.current_period_end).getTime() - now) < 7 * 86400000 && new Date(s.current_period_end).getTime() > now - 86400000);
+    if (ending.length) add('warn', `${ending.length} trial${ending.length === 1 ? '' : 's'} ending within 7 days: ${attnList(ending.map((s) => nameOf(s.company_id)))}`, 'superCompaniesPanel');
+  }
+  // Companies we asked to let support in, still waiting
+  if (d.accessPending && d.accessPending.length) {
+    add('info', `${d.accessPending.length} support access request${d.accessPending.length === 1 ? '' : 's'} waiting for a company to answer: ${attnList(d.accessPending.map((g) => nameOf(g.company_id)))}`, 'superCompaniesPanel');
+  }
+  // New companies this week
+  if (d.newCompanies && d.newCompanies.length) {
+    add('info', `${d.newCompanies.length} new compan${d.newCompanies.length === 1 ? 'y' : 'ies'} in the last 7 days: ${attnList(d.newCompanies.map((c) => c.name))}`, 'superCompaniesPanel');
+  }
+  const rank = { bad: 0, warn: 1, info: 2 };
+  items.sort((a, b) => rank[a.level] - rank[b.level]);
+  return items;
+}
+
+function renderAttention(items, failedSources) {
+  const body = document.getElementById('superAttentionBody');
+  const badge = document.getElementById('superAttentionBadge');
+  const needs = items.filter((i) => i.level !== 'info').length;
+  if (badge) { badge.textContent = needs; badge.style.display = needs ? 'inline-block' : 'none'; badge.title = `${needs} thing${needs === 1 ? '' : 's'} need attention in Selko Admin`; }
+  if (!body) return;
+  const COLOR = { bad: '#f87171', warn: '#fbbf24', info: '#60a5fa' };
+  const rows = items.map((i) => `
+    <div style="display:flex;gap:10px;align-items:flex-start;padding:8px 0;border-top:1px solid rgba(255,255,255,.07);">
+      <span style="margin-top:6px;width:9px;height:9px;border-radius:50%;background:${COLOR[i.level]};flex-shrink:0;"></span>
+      <div style="flex:1;color:#fff;">${hrOnbEsc(i.text)}
+        ${(i.preview || []).map((p) => `<div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;">${hrOnbEsc(p)}</div>`).join('')}</div>
+      <button class="btn btn-sm btn-ghost" onclick="superAttentionGo('${i.target}', ${i.clearsSupport ? 'true' : 'false'})" style="color:#fff;border-color:rgba(255,255,255,.2);padding:2px 10px;font-size:13px;white-space:nowrap;">View</button>
+    </div>`).join('');
+  body.innerHTML = (items.length ? rows : '<div style="color:#4ade80;padding:4px 0;">✓ Nothing needs your attention right now.</div>')
+    + (failedSources.length ? `<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:8px;">Could not read: ${hrOnbEsc(failedSources.join(', '))}.</div>` : '');
+  const at = document.getElementById('superAttentionAt'); if (at) at.textContent = 'Updated ' + new Date().toLocaleTimeString();
+}
+
+function superAttentionGo(target, clearsSupport) {
+  if (clearsSupport) { try { localStorage.setItem(SUPER_SEEN_KEY, new Date().toISOString()); } catch (e) { /* storage unavailable */ } }
+  const el = document.getElementById(target);
+  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (clearsSupport) setTimeout(() => loadSuperAttention(), 600);
+}
+
+async function loadSuperAttention(manual) {
+  if (!currentProfile?.is_super_admin) return;
+  const failed = [];
+  const safe = async (label, p) => { try { const r = await p; if (r && r.error) { failed.push(label); return null; } return r ? r.data : null; } catch (e) { failed.push(label); return null; } };
+  const since24 = new Date(Date.now() - 86400000).toISOString();
+  const since7d = new Date(Date.now() - 7 * 86400000).toISOString();
+  const restricted = Array.isArray(currentProfile?.restricted_agency_ids);          // a super admin limited to certain agencies: no billing view
+  const [support, errors, subs, grants, cos, samMeta, samOv, samKey] = await Promise.all([
+    safe('support requests', sb.from('support_requests').select('id, created_at, reporter_name, company_id, message, resolved').eq('resolved', false).order('created_at', { ascending: false }).limit(200)),
+    safe('error log', sb.from('error_logs').select('created_at, source_app, error_type').gte('created_at', since24).limit(1000)),
+    restricted ? Promise.resolve(null) : safe('subscriptions', sb.from('subscriptions').select('company_id, status, current_period_end').limit(2000)),
+    safe('access requests', sb.from('support_access_grants').select('company_id, status').eq('status', 'requested').limit(200)),
+    safe('companies', sb.from('companies').select('id, name, created_at').order('created_at', { ascending: false }).limit(1000)),
+    safe('SAM.gov list', sb.from('sam_exclusions_meta').select('loaded_at, status, error').order('loaded_at', { ascending: false }).limit(5)),
+    safe('SAM.gov companies', sb.rpc('platform_sam_overview')),
+    safe('SAM.gov key', sb.rpc('sam_key_get')),
+  ]);
+  const companyNames = {}; (cos || []).forEach((c) => { companyNames[c.id] = c.name; });
+  let seenAt = null; try { seenAt = localStorage.getItem(SUPER_SEEN_KEY); } catch (e) { /* storage unavailable */ }
+  const items = buildAttentionItems({
+    supportOpen: support, supportSeenAt: seenAt, errors24: errors, subs, accessPending: grants, companyNames,
+    newCompanies: (cos || []).filter((c) => c.created_at && c.created_at > since7d),
+    samMeta: samMeta && samMeta.length ? samMeta : (samMeta ? [] : null), samOverview: samOv,
+    samKey: Array.isArray(samKey) ? samKey[0] : samKey,
+  });
+  const ORDER = ['support requests', 'error log', 'subscriptions', 'access requests', 'companies', 'SAM.gov list', 'SAM.gov companies', 'SAM.gov key'];
+  failed.sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));                // a steady order, not whichever finished first
+  renderAttention(items, failed);
+  if (!_superAttentionTimer) _superAttentionTimer = setInterval(() => { if (currentProfile?.is_super_admin) loadSuperAttention(); }, 5 * 60 * 1000);   // quietly refreshes while you are signed in
 }
 
 // ── SAM.gov API key renewal reminder ────────────────────────────────────────
@@ -4170,6 +4326,7 @@ async function initSession(user) {
       // visible into this one otherwise, since nothing else in the login
       // path ever hides it if this specific profile isn't a super admin.
       document.getElementById('tab-super').style.display = profile.is_super_admin ? 'inline-flex' : 'none';
+      if (profile.is_super_admin) setTimeout(() => loadSuperAttention(), 1500);      // the count on the Selko Admin tab, from any tab
       document.getElementById('tab-settings').style.display = (profile.role === 'admin' || profile.is_super_admin) ? 'inline-flex' : 'none';
       // Documents, Expiration Tracker, Overview, and Insurance are the
       // document-compliance side of the product — a credentialing-only
@@ -16577,6 +16734,19 @@ const SUPER_HELP = [
       <p><strong>Remove a stray login</strong> cleans up an orphaned account left behind by an email change made the old way, before a safe "Change login email" tool existed on the Staff tab. Only removes the exact email typed in — it never affects that person's current, in-use login, and nothing happens without typing the email and confirming.</p>`,
   },
   {
+    title: 'Needs attention (the strip at the top)',
+    subtitle: 'What to look at first',
+    html: `<p>The strip at the top of Selko Admin lists what deserves a look, most serious first: red for something broken or overdue, amber for something to check soon, blue for information. <strong>View</strong> scrolls to the panel where you can act. The number on the <strong>Selko Admin</strong> tab itself counts the red and amber items, so you can see it from any tab. It refreshes every 5 minutes and when you press Refresh.</p>
+      <ul>
+        <li><strong>Support requests</strong> that are still open, and how many arrived since you last pressed View.</li>
+        <li><strong>Errors</strong> logged in the last 24 hours, by app.</li>
+        <li><strong>SAM.gov</strong>: a failed or old refresh, an API key close to expiring, companies with possible matches, and companies with nobody to email the results to (company names and counts only, never staff names).</li>
+        <li><strong>Payments</strong> past due, and trials ending within 7 days (owner only).</li>
+        <li><strong>Support access</strong> requests still waiting for a company to answer, and <strong>new companies</strong> this week.</li>
+      </ul>
+      <p>If a source can't be read it is listed at the bottom and the rest still shows.</p>`,
+  },
+  {
     title: 'The SAM.gov exclusions list',
     subtitle: 'Setup and daily refresh',
     html: `<p>Every company's SAM.gov check is matched against one list that Selko downloads from sam.gov each day. It needs one secret on the <strong>sam-exclusions-refresh</strong> function: <strong>SAM_API_KEY</strong>, a Public API Key from a personal SAM.gov account (Account Details, then the eye icon next to Public API Key, which sends a one-time code to that account's email). A personal key is allowed 10 requests a day and the refresh uses one.</p>
@@ -24379,6 +24549,7 @@ async function toggleJuanAgencyAccess(companyId, granted) {
 }
 
 async function loadSuperAdmin() {
+  loadSuperAttention();
   loadSuperSamStatus();
   loadSamKeyStatus();
   loadSuperSamCompanies();
