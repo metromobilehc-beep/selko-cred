@@ -1819,6 +1819,49 @@ window.selkoSharedAuthStorage = {
         <div id="superAttentionBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
       </div>
 
+      <!-- Selko's own mailbox (Hostinger), read and run live. Owner only. -->
+      <div class="dark-panel" id="superMailPanel" data-default-open="true" style="margin-bottom:16px;">
+        <h2>📬 Mail</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Selko's own mailbox, run live from Hostinger. Nothing is stored here. Opening a message marks it read in the mailbox. Trash and Spam are real folders, but deleting from them is permanent.</p>
+        <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start;">
+          <div id="mailSide" style="width:190px;flex-shrink:0;">
+            <button class="btn btn-sm btn-teal" onclick="openMailCompose({ mode: 'new' })" style="width:100%;margin-bottom:10px;">✎ Compose</button>
+            <div id="mailFolderList" style="font-size:14px;"></div>
+            <button class="btn btn-sm btn-ghost" onclick="mailNewFolder()" style="margin-top:8px;color:#fff;border-color:rgba(255,255,255,.2);width:100%;">+ New folder</button>
+          </div>
+          <div id="mailMain" style="flex:1;min-width:300px;">
+            <div id="mailToolbar" style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
+              <label style="font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;"><input type="checkbox" id="mailSelectAll" onchange="mailSelectAllToggle(this.checked)" /> All</label>
+              <button class="btn btn-sm btn-ghost" data-mailact="archive" onclick="mailBulk('archive')" style="color:#fff;border-color:rgba(255,255,255,.2);">Archive</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="trash" onclick="mailBulk('trash')" style="color:#fff;border-color:rgba(255,255,255,.2);">Trash</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="spam" onclick="mailBulk('spam')" style="color:#fff;border-color:rgba(255,255,255,.2);">Spam</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="read" onclick="mailBulk('read')" style="color:#fff;border-color:rgba(255,255,255,.2);">Mark read</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="unread" onclick="mailBulk('unread')" style="color:#fff;border-color:rgba(255,255,255,.2);">Mark unread</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="star" onclick="mailBulk('star')" style="color:#fff;border-color:rgba(255,255,255,.2);">★ Star</button>
+              <select class="inline-select" id="mailMoveSelect" onchange="mailMoveSelected(this.value); this.value='';" style="max-width:150px;font-size:14px;padding:5px 8px;"><option value="">Move to…</option></select>
+              <button class="btn btn-sm btn-ghost" data-mailact="restore" onclick="mailBulk('restore')" style="display:none;color:#fff;border-color:rgba(255,255,255,.2);">Restore to Inbox</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="forever" onclick="mailBulk('forever')" style="display:none;color:#f87171;border-color:rgba(248,113,113,.4);">Delete forever</button>
+              <button class="btn btn-sm btn-ghost" data-mailact="empty" onclick="mailEmptyFolder()" style="display:none;color:#f87171;border-color:rgba(248,113,113,.4);">Empty this folder</button>
+            </div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+              <input class="inline-input" id="mailSearch" type="text" placeholder='Search… (from:  subject:  since:)' onkeydown="if(event.key==='Enter') doMailSearch()" style="flex:1;min-width:200px;" />
+              <button class="btn btn-sm btn-teal" onclick="doMailSearch()">Search</button>
+              <button class="btn btn-sm btn-ghost" onclick="clearMailSearch()" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear</button>
+              <label style="font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;"><input type="checkbox" id="mailUnreadOnly" onchange="renderSuperMail()" /> Unread only</label>
+              <label style="font-size:13px;color:rgba(255,255,255,.7);cursor:pointer;"><input type="checkbox" id="mailStarredOnly" onchange="doMailSearch()" /> Starred only</label>
+              <button class="btn btn-sm btn-ghost" onclick="loadSuperMail(_mail.page)" style="color:#fff;border-color:rgba(255,255,255,.2);">↻</button>
+              <span id="superMailStatus" style="font-size:13px;color:rgba(255,255,255,.5);"></span>
+            </div>
+            <div id="superMailList" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
+            <div style="display:flex;gap:8px;align-items:center;margin-top:10px;">
+              <button class="btn btn-sm btn-ghost" id="mailNewerBtn" onclick="loadSuperMail(_mail.page - 1)" style="color:#fff;border-color:rgba(255,255,255,.2);" disabled>← Newer</button>
+              <button class="btn btn-sm btn-ghost" id="mailOlderBtn" onclick="loadSuperMail(_mail.page + 1)" style="color:#fff;border-color:rgba(255,255,255,.2);" disabled>Older →</button>
+              <span id="mailPageLabel" style="font-size:13px;color:rgba(255,255,255,.5);"></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Platform stats -->
       <div class="stat-grid" id="superStats" style="margin-bottom:20px;"></div>
 
@@ -2892,6 +2935,22 @@ function samMatchesHtml(matches) {
     </div>`).join('');
 }
 
+// SAM.gov's allowance resets at midnight UTC, which is 7 PM in Tulsa in summer and 6 PM in winter. A time in UTC is easy to get
+// wrong, so this works out the owner's own clock time for the reset that follows a given moment.
+let _samLastFailure = null;                                                     // { at: Date, error: string } for the latest failed attempt
+const SAM_RESET_MARGIN_MS = 45 * 60 * 1000;                                     // SAM does not publish the exact moment, so allow a margin
+function samNextResetAfter(at) { const d = new Date(at); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1)); }
+function samIsLimitMessage(t) { return /daily request limit|rate limit|too many requests|HTTP 429/i.test(String(t || '')); }
+function samFmtIn(ms) { const m = Math.max(1, Math.round(ms / 60000)); return m < 90 ? `${m} minute${m === 1 ? '' : 's'}` : `${Math.round(m / 60)} hours`; }
+// For a failure at `at` saying the limit was reached: a sentence giving the reset in the owner's own time, and whether it has passed.
+function samResetNote(at, now = Date.now()) {
+  const reset = samNextResetAfter(at);
+  const when = reset.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+  if (now < reset.getTime()) return `The allowance resets at midnight UTC, which is ${when} for you (in ${samFmtIn(reset.getTime() - now)}). Wait until then and try once.`;
+  if (now < reset.getTime() + SAM_RESET_MARGIN_MS) return `The reset was at ${when} for you. SAM.gov does not publish the exact moment, so wait until ${new Date(reset.getTime() + SAM_RESET_MARGIN_MS).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} to be safe, then try once.`;
+  return `The reset was at ${when} for you, so it is worth trying once now.`;
+}
+
 async function loadSuperSamStatus() {
   const el = document.getElementById('superSamStatus');
   if (!el) return;
@@ -2906,11 +2965,451 @@ async function loadSuperSamStatus() {
       const ageDays = (Date.now() - new Date(lastOk.loaded_at).getTime()) / 86400000;
       html += `<div>Last good load: <strong>${new Date(lastOk.loaded_at).toLocaleString()}</strong> · ${Number(lastOk.individuals || 0).toLocaleString()} individuals of ${Number(lastOk.total_rows || 0).toLocaleString()} rows${ageDays > 3 ? ' <span style="color:#fbbf24;">(more than 3 days old)</span>' : ''}</div><div style="font-size:13px;color:rgba(255,255,255,.55);">${hrOnbEsc(lastOk.source || '')}</div>`;
     } else html += '<div style="color:#fbbf24;">No successful load yet.</div>';
-    if (lastRow.status === 'failed') html += `<div style="margin-top:6px;color:#f87171;">Latest attempt failed (${new Date(lastRow.loaded_at).toLocaleString()}): ${hrOnbEsc(lastRow.error || 'unknown error')}</div>`;
+    _samLastFailure = lastRow.status === 'failed' ? { at: new Date(lastRow.loaded_at), error: lastRow.error || '' } : null;
+    if (lastRow.status === 'failed') {
+      html += `<div style="margin-top:6px;color:#f87171;">Latest attempt failed (${new Date(lastRow.loaded_at).toLocaleString()}): ${hrOnbEsc(lastRow.error || 'unknown error')}</div>`;
+      if (samIsLimitMessage(lastRow.error)) html += `<div style="margin-top:4px;color:#fbbf24;">${hrOnbEsc(samResetNote(new Date(lastRow.loaded_at)))}</div>`;
+    }
     el.innerHTML = html;
   } catch (e) {
     el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? 'The SAM.gov check is not installed yet (run sam-exclusions.sql).' : 'Could not read the list status: ' + ((e && e.message) || e);
   }
+}
+
+// ── Mail: Selko's own mailbox, run from inside Selko Admin ──────────────────
+// Everything goes through the selko-inbox function (owner only), which talks to Hostinger live. Nothing is stored
+// here except two small conveniences on THIS computer: the signature and an unsent draft.
+// Message text is shown as text, never as HTML, unless "formatted" is chosen, and then only inside a locked-down frame.
+let _mail = { folder: 'INBOX', page: 1, perPage: 25, messages: [], hasMore: false, total: null, loaded: false,
+              folders: [], roles: {}, mailbox: '', query: {}, selected: new Set(), searching: false };
+const MAIL_SEEN_KEY = 'selkoAdminMailSeenAt';
+let MAIL_UNDO_MS = 8000;                       // how long a message waits, with an Undo button, before it is really sent
+
+function mailIsOwner() { return !!currentProfile?.is_super_admin && !Array.isArray(currentProfile?.restricted_agency_ids); }
+function mailSender(a) { return (a && (a.name || a.address)) || 'Unknown sender'; }
+function mailToast(msg, isErr) { try { toast(msg, !!isErr); } catch (e) { /* toast not available */ } }
+
+async function mailCall(body) {
+  const { data, error } = await sb.functions.invoke('selko-inbox', { body });
+  if (error) throw new Error(await samInvokeError(error));
+  return data;
+}
+
+// "from:pat subject:\"big invoice\" hello since:2026-01-01" -> { from, subject, since, text }
+function parseMailQuery(input) {
+  const q = {}; const rest = [];
+  const re = /(\w+):(?:"([^"]*)"|(\S+))|"([^"]*)"|(\S+)/g; let m;
+  while ((m = re.exec(String(input || '')))) {
+    if (m[1] && ['from', 'to', 'subject', 'since', 'before', 'body'].includes(m[1].toLowerCase())) q[m[1].toLowerCase()] = (m[2] ?? m[3] ?? '').trim();
+    else rest.push(m[1] ? `${m[1]}:${m[2] ?? m[3] ?? ''}` : (m[4] ?? m[5]));
+  }
+  const text = rest.join(' ').trim(); if (text) q.text = text;
+  Object.keys(q).forEach((k) => { if (!q[k]) delete q[k]; });
+  return q;
+}
+
+// ── the folder list ──
+const MAIL_ROLE_ORDER = ['inbox', 'sent', 'drafts', 'archive', 'spam', 'trash'];
+function mailFolderRole(f) {
+  if (f.path === 'INBOX') return 'inbox';
+  for (const r of ['sent', 'drafts', 'archive', 'spam', 'trash']) if (_mail.roles[r] === f.path) return r;
+  return 'other';
+}
+const MAIL_ICON = { inbox: '📥', sent: '📤', drafts: '📝', archive: '🗄', spam: '🚫', trash: '🗑', other: '📁' };
+
+async function loadMailFolders() {
+  const d = await mailCall({ action: 'folders' });
+  _mail.folders = d.folders || []; _mail.roles = d.roles || {}; _mail.mailbox = d.mailbox || '';
+  renderMailFolders();
+}
+function renderMailFolders() {
+  const host = document.getElementById('mailFolderList'); if (!host) return;
+  const rows = (_mail.folders || []).map((f) => ({ ...f, role: mailFolderRole(f) }))
+    .sort((a, b) => (MAIL_ROLE_ORDER.indexOf(a.role) === -1 ? 99 : MAIL_ROLE_ORDER.indexOf(a.role)) - (MAIL_ROLE_ORDER.indexOf(b.role) === -1 ? 99 : MAIL_ROLE_ORDER.indexOf(b.role)) || a.name.localeCompare(b.name));
+  host.innerHTML = rows.map((f) => `<div onclick="mailOpenFolder(this.dataset.folder)" data-folder="${hrOnbEsc(f.path)}" style="display:flex;justify-content:space-between;gap:6px;padding:6px 8px;border-radius:6px;cursor:pointer;${f.path === _mail.folder ? 'background:rgba(45,212,191,.15);color:#fff;font-weight:700;' : 'color:rgba(255,255,255,.75);'}"><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${MAIL_ICON[f.role]} ${hrOnbEsc(f.role === 'inbox' ? 'Inbox' : f.name)}</span>${f.unread > 0 ? `<span style="background:#60a5fa;color:#111;border-radius:9px;padding:0 7px;font-size:12px;font-weight:700;line-height:18px;">${f.unread}</span>` : ''}</div>`).join('');
+  const sel = document.getElementById('mailMoveSelect');
+  if (sel) sel.innerHTML = '<option value="">Move to…</option>' + rows.filter((f) => f.path !== _mail.folder).map((f) => `<option value="${hrOnbEsc(f.path)}">${hrOnbEsc(f.role === 'inbox' ? 'Inbox' : f.name)}</option>`).join('');
+}
+function mailOpenFolder(path) {
+  _mail.folder = path; _mail.query = {}; _mail.selected = new Set();
+  const s = document.getElementById('mailSearch'); if (s) s.value = '';
+  const st = document.getElementById('mailStarredOnly'); if (st) st.checked = false;
+  loadSuperMail(1);
+}
+async function mailNewFolder() {
+  const name = (prompt('Name for the new folder (letters, numbers, spaces, _ and -):') || '').trim();
+  if (!name) return;
+  try { await mailCall({ action: 'create_folder', name }); mailToast('Folder created'); await loadMailFolders(); }
+  catch (e) { mailToast('Could not create the folder: ' + e.message, true); }
+}
+
+// ── the list ──
+async function loadSuperMail(page) {
+  const list = document.getElementById('superMailList');
+  const panel = document.getElementById('superMailPanel');
+  if (!list || !panel) return;
+  if (!mailIsOwner()) { panel.style.display = 'none'; return; }
+  panel.style.display = '';
+  page = Math.max(1, page || 1);
+  list.textContent = 'Loading…';
+  try {
+    const [d] = await Promise.all([
+      mailCall({ action: 'list', folder: _mail.folder, page, per_page: _mail.perPage, ...(Object.keys(_mail.query).length ? { query: _mail.query } : {}) }),
+      _mail.folders.length && _mail.loaded ? Promise.resolve() : loadMailFolders().catch(() => {}),
+    ]);
+    if (!(d.messages || []).length && page > 1) return loadSuperMail(page - 1);          // that page emptied out: go back one
+    _mail = { ..._mail, page: d.page || page, messages: d.messages || [], hasMore: !!d.has_more, total: d.total ?? null, searching: !!d.searching, loaded: true, selected: new Set() };
+    document.getElementById('superMailStatus').textContent = 'Updated ' + new Date().toLocaleTimeString();
+    renderSuperMail();
+    renderMailFolders();
+  } catch (e) {
+    _mail.messages = [];
+    list.innerHTML = `<div style="color:#f87171;">${hrOnbEsc((e && e.message) || String(e))}</div>`;
+    document.getElementById('mailNewerBtn').disabled = true; document.getElementById('mailOlderBtn').disabled = true;
+  }
+}
+
+function mailInTrashOrSpam() { return _mail.folder === _mail.roles.trash || _mail.folder === _mail.roles.spam; }
+
+function renderSuperMail() {
+  const list = document.getElementById('superMailList');
+  if (!list) return;
+  const unreadOnly = document.getElementById('mailUnreadOnly')?.checked;
+  const shown = (_mail.messages || []).filter((m) => !unreadOnly || m.unseen);
+  const unread = (_mail.messages || []).filter((m) => m.unseen).length;
+  const inSent = _mail.folder === _mail.roles.sent;
+  list.innerHTML = shown.length ? shown.map((m) => {
+    const who = inSent ? 'To: ' + ((m.to && m.to.length) ? m.to.map(mailSender).join(', ') : '(no recipient)') : mailSender(m.from);
+    return `
+    <div data-uid="${Number(m.uid)}" onclick="openMailMessage(${Number(m.uid)}, _mail.folder)" style="display:flex;gap:8px;align-items:baseline;padding:8px 4px;border-top:1px solid rgba(255,255,255,.07);cursor:pointer;" onmouseover="this.style.background='rgba(255,255,255,.04)'" onmouseout="this.style.background=''">
+      <input type="checkbox" class="mailRowCheck" ${_mail.selected.has(m.uid) ? 'checked' : ''} onclick="event.stopPropagation(); mailRowToggle(${Number(m.uid)}, this.checked)" />
+      <span onclick="event.stopPropagation(); mailToggleStar(${Number(m.uid)})" title="${m.flagged ? 'Remove the star' : 'Star this message'}" style="cursor:pointer;color:${m.flagged ? '#fbbf24' : 'rgba(255,255,255,.3)'};">${m.flagged ? '★' : '☆'}</span>
+      <span style="width:9px;height:9px;border-radius:50%;flex-shrink:0;background:${m.unseen ? '#60a5fa' : 'transparent'};border:1px solid ${m.unseen ? '#60a5fa' : 'rgba(255,255,255,.2)'};"></span>
+      <span style="width:190px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${m.unseen ? '#fff' : 'rgba(255,255,255,.62)'};font-weight:${m.unseen ? 700 : 400};" title="${hrOnbEsc(inSent ? '' : (m.from?.address || ''))}">${hrOnbEsc(who)}</span>
+      <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:${m.unseen ? '#fff' : 'rgba(255,255,255,.62)'};font-weight:${m.unseen ? 600 : 400};">${hrOnbEsc(m.subject || '(no subject)')}${m.answered ? ' <span title="You replied" style="color:#4ade80;">↩</span>' : ''}${m.forwarded ? ' <span title="You forwarded this" style="color:#60a5fa;">➡</span>' : ''}${m.attachments ? ' 📎' : ''}</span>
+      <span style="flex-shrink:0;font-size:13px;color:rgba(255,255,255,.5);white-space:nowrap;" title="${m.date ? hrOnbEsc(new Date(m.date).toLocaleString()) : ''}">${m.date ? hrOnbEsc(attnAgo(m.date)) : ''}</span>
+    </div>`; }).join('')
+    : `<div style="padding:8px 0;">${_mail.messages.length ? 'No unread messages on this page.' : (_mail.searching ? 'Nothing matches that search.' : 'This folder is empty.')}</div>`;
+  document.getElementById('mailNewerBtn').disabled = _mail.page <= 1;
+  document.getElementById('mailOlderBtn').disabled = !_mail.hasMore;
+  const folderName = _mail.folder === 'INBOX' ? 'Inbox' : ((_mail.folders.find((f) => f.path === _mail.folder) || {}).name || _mail.folder);
+  document.getElementById('mailPageLabel').textContent = `${folderName} · page ${_mail.page}${_mail.total != null ? ' of about ' + Math.max(1, Math.ceil(_mail.total / _mail.perPage)) : ''} · ${unread} unread on this page${_mail.searching ? ' · search results' : ''}`;
+  // the toolbar adapts to the folder: in Trash or Spam there is Restore and Delete forever; elsewhere there is Archive, Trash and Spam
+  const tr = mailInTrashOrSpam();
+  document.querySelectorAll('#mailToolbar [data-mailact]').forEach((b) => {
+    const a = b.dataset.mailact;
+    const show = tr ? ['restore', 'forever', 'empty', 'read', 'unread'].includes(a) : !['restore', 'forever', 'empty'].includes(a);
+    b.style.display = show ? '' : 'none';
+  });
+  const all = document.getElementById('mailSelectAll'); if (all) all.checked = shown.length > 0 && shown.every((m) => _mail.selected.has(m.uid));
+}
+
+function mailRowToggle(uid, on) { if (on) _mail.selected.add(uid); else _mail.selected.delete(uid); }
+function mailSelectAllToggle(on) {
+  const unreadOnly = document.getElementById('mailUnreadOnly')?.checked;
+  (_mail.messages || []).filter((m) => !unreadOnly || m.unseen).forEach((m) => { if (on) _mail.selected.add(m.uid); else _mail.selected.delete(m.uid); });
+  renderSuperMail();
+}
+function mailSelectedUids() { return [..._mail.selected]; }
+
+// ── search ──
+function doMailSearch() {
+  const q = parseMailQuery(document.getElementById('mailSearch')?.value || '');
+  if (document.getElementById('mailStarredOnly')?.checked) q.flagged = true;
+  _mail.query = q; loadSuperMail(1);
+}
+function clearMailSearch() {
+  document.getElementById('mailSearch').value = ''; document.getElementById('mailStarredOnly').checked = false;
+  _mail.query = {}; loadSuperMail(1);
+}
+
+// ── organize: archive, trash, spam, read, unread, star, move, delete forever ──
+async function mailAfterChange(msg) {
+  mailToast(msg);
+  await Promise.all([loadSuperMail(_mail.page), loadMailFolders().catch(() => {})]);
+  loadSuperAttention();
+}
+async function mailRun(uids, kind, folder) {
+  folder = folder || _mail.folder;
+  switch (kind) {
+    case 'archive': case 'trash': case 'spam': return mailCall({ action: 'move', folder, uids, to: kind });
+    case 'restore': return mailCall({ action: 'move', folder, uids, to: 'inbox' });
+    case 'read': return mailCall({ action: 'flags', folder, uids, add: ['\\Seen'] });
+    case 'unread': return mailCall({ action: 'flags', folder, uids, remove: ['\\Seen'] });
+    case 'star': return mailCall({ action: 'flags', folder, uids, add: ['\\Flagged'] });
+    case 'unstar': return mailCall({ action: 'flags', folder, uids, remove: ['\\Flagged'] });
+    case 'forever': return mailCall({ action: 'delete_forever', folder, uids, confirm: true });
+    default: throw new Error('Unknown action');
+  }
+}
+const MAIL_DONE = { archive: 'Archived', trash: 'Moved to Trash', spam: 'Moved to Spam', restore: 'Moved back to the Inbox', read: 'Marked read', unread: 'Marked unread', star: 'Starred', unstar: 'Star removed', forever: 'Deleted permanently' };
+async function mailBulk(kind) {
+  const uids = mailSelectedUids();
+  if (!uids.length) { mailToast('Choose one or more messages first.', true); return; }
+  if (uids.length > 100) { mailToast('Choose up to 100 messages at a time.', true); return; }
+  if (kind === 'forever' && !confirm(`Permanently delete ${uids.length} message${uids.length === 1 ? '' : 's'}?\n\nThis cannot be undone.`)) return;
+  try { await mailRun(uids, kind); await mailAfterChange(`${MAIL_DONE[kind]} (${uids.length}).`); }
+  catch (e) { mailToast('That did not work: ' + e.message, true); }
+}
+async function mailMoveSelected(target) {
+  if (!target) return;
+  const uids = mailSelectedUids();
+  if (!uids.length) { mailToast('Choose one or more messages first.', true); return; }
+  try { await mailCall({ action: 'move', folder: _mail.folder, uids, target }); await mailAfterChange(`Moved (${uids.length}).`); }
+  catch (e) { mailToast('Could not move them: ' + e.message, true); }
+}
+async function mailToggleStar(uid) {
+  const m = _mail.messages.find((x) => x.uid === uid); if (!m) return;
+  const was = m.flagged; m.flagged = !was; renderSuperMail();                         // shown at once; put back if Hostinger refuses
+  try { await mailRun([uid], was ? 'unstar' : 'star'); }
+  catch (e) { m.flagged = was; renderSuperMail(); mailToast('Could not change the star: ' + e.message, true); }
+}
+async function mailEmptyFolder() {
+  const name = (_mail.folders.find((f) => f.path === _mail.folder) || {}).name || 'this folder';
+  if (!mailInTrashOrSpam()) { mailToast('Only Trash and Spam can be emptied.', true); return; }
+  if (!confirm(`Permanently delete EVERYTHING in ${name}?\n\nThis cannot be undone.`)) return;
+  try { await mailCall({ action: 'empty', folder: _mail.folder, confirm: true }); await mailAfterChange(`${name} emptied.`); }
+  catch (e) { mailToast('Could not empty it: ' + e.message, true); }
+}
+
+// ── reading ──
+async function openMailMessage(uid, folder) {
+  folder = folder || _mail.folder || 'INBOX';
+  document.getElementById('mailReaderModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'mailReaderModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1300;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:100%;max-width:780px;max-height:90vh;border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:16px 22px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;gap:10px;align-items:flex-start;flex-shrink:0;">
+      <div id="mailReaderHead" style="min-width:0;color:#fff;">Loading…</div>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('mailReaderModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);flex-shrink:0;">✕ Close</button>
+    </div>
+    <div id="mailReaderBody" style="padding:16px 22px;overflow-y:auto;flex:1;color:#fff;"></div></div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (ev) => { if (ev.target === modal) modal.remove(); });
+  try {
+    const data = await mailCall({ action: 'read', folder, uid });
+    window._mailOpen = data;
+    const addrLine = (arr) => (arr || []).map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(', ');
+    document.getElementById('mailReaderHead').innerHTML = `
+      <div style="font-size:18px;font-weight:700;word-break:break-word;">${hrOnbEsc(data.subject || '(no subject)')}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.66);margin-top:4px;">From <strong>${hrOnbEsc(addrLine([data.from]) || 'Unknown')}</strong>${data.date ? ' · ' + hrOnbEsc(new Date(data.date).toLocaleString()) : ''}</div>
+      ${data.to?.length ? `<div style="font-size:13px;color:rgba(255,255,255,.5);">To ${hrOnbEsc(addrLine(data.to))}</div>` : ''}
+      ${data.cc?.length ? `<div style="font-size:13px;color:rgba(255,255,255,.5);">Cc ${hrOnbEsc(addrLine(data.cc))}</div>` : ''}`;
+    const atts = (data.attachments || []).map((a) => `<span style="display:inline-block;margin:2px 6px 2px 0;padding:2px 8px;border:1px solid rgba(255,255,255,.2);border-radius:6px;font-size:13px;">📎 ${hrOnbEsc(a.name)}${a.size ? ' (' + Math.max(1, Math.round(a.size / 1024)) + ' KB)' : ''}</span>`).join('');
+    const inTR = folder === _mail.roles.trash || folder === _mail.roles.spam;
+    const btn = (label, act, extra = '') => `<button class="btn btn-sm btn-ghost" onclick="${act}" style="color:#fff;border-color:rgba(255,255,255,.2);${extra}">${label}</button>`;
+    document.getElementById('mailReaderBody').innerHTML = `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+        ${btn('↩ Reply', "mailReplyToOpen('reply')")}${btn('↩↩ Reply all', "mailReplyToOpen('replyall')")}${btn('➡ Forward', "mailReplyToOpen('forward')")}
+        ${btn('Mark unread', "mailReaderAct('unread')")}${btn(data.flagged ? '★ Unstar' : '☆ Star', `mailReaderAct('${data.flagged ? 'unstar' : 'star'}')`)}
+        ${inTR ? btn('Restore to Inbox', "mailReaderAct('restore')") + btn('Delete forever', "mailReaderAct('forever')", 'color:#f87171;border-color:rgba(248,113,113,.4);')
+               : btn('Archive', "mailReaderAct('archive')") + btn('Trash', "mailReaderAct('trash')") + btn('Spam', "mailReaderAct('spam')")}
+      </div>
+      ${atts ? `<div style="margin-bottom:10px;"><div style="font-size:12px;color:rgba(255,255,255,.5);margin-bottom:2px;">Attachments (listed only: open the message in Hostinger webmail to download them)</div>${atts}</div>` : ''}
+      <div id="mailReaderText" style="white-space:pre-wrap;word-break:break-word;font-size:15px;line-height:1.5;">${hrOnbEsc(data.text || '(this message has no text)')}</div>
+      ${data.truncated ? '<div style="font-size:12px;color:#fbbf24;margin-top:8px;">This message is very long, so it is cut short here.</div>' : ''}
+      <div style="margin-top:14px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+        ${data.html ? '<button class="btn btn-sm btn-ghost" id="mailFormattedBtn" onclick="toggleMailFormatted()" style="color:#fff;border-color:rgba(255,255,255,.2);">Show formatted version</button>' : ''}
+        <span style="font-size:12px;color:rgba(255,255,255,.45);">Marked read in the mailbox.</span>
+      </div>
+      <div id="mailFormattedHost" style="margin-top:10px;"></div>`;
+    const row = _mail.messages.find((m) => m.uid === Number(uid)); if (row) { row.unseen = false; renderSuperMail(); }
+    loadMailFolders().catch(() => {});
+    loadSuperAttention();
+  } catch (e) {
+    document.getElementById('mailReaderHead').innerHTML = '<div style="font-size:18px;font-weight:700;">Could not open this message</div>';
+    document.getElementById('mailReaderBody').innerHTML = `<div style="color:#f87171;">${hrOnbEsc((e && e.message) || String(e))}</div>`;
+  }
+}
+async function mailReaderAct(kind) {
+  const d = window._mailOpen; if (!d) return;
+  if (kind === 'forever' && !confirm('Permanently delete this message?\n\nThis cannot be undone.')) return;
+  try {
+    await mailRun([d.uid], kind, d.folder);
+    document.getElementById('mailReaderModal')?.remove();
+    await mailAfterChange(`${MAIL_DONE[kind]}.`);
+  } catch (e) { mailToast('That did not work: ' + e.message, true); }
+}
+
+// The formatted (HTML) version is shown ONLY inside a locked-down frame: no scripts, no forms, no navigation,
+// and a content policy that blocks every remote image, font and tracker.
+function toggleMailFormatted() {
+  const host = document.getElementById('mailFormattedHost'), btn = document.getElementById('mailFormattedBtn'), text = document.getElementById('mailReaderText');
+  if (!host || !window._mailOpen) return;
+  if (host.firstChild) { host.innerHTML = ''; if (text) text.style.display = ''; if (btn) btn.textContent = 'Show formatted version'; return; }
+  const doc = `<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'"><base target="_blank"><style>body{font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;background:#fff;margin:12px;word-break:break-word;}img{max-width:100%;}</style></head><body>${window._mailOpen.html}</body></html>`;
+  const frame = document.createElement('iframe');
+  frame.setAttribute('sandbox', '');                       // nothing is allowed: no scripts, no forms, no same-origin, no popups
+  frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.setAttribute('title', 'Formatted message');
+  frame.style.cssText = 'width:100%;height:420px;border:1px solid rgba(255,255,255,.2);border-radius:8px;background:#fff;';
+  frame.srcdoc = doc;
+  host.appendChild(frame);
+  const note = document.createElement('div'); note.style.cssText = 'font-size:12px;color:rgba(255,255,255,.45);margin-top:4px;'; note.textContent = 'Remote images and links are switched off in this view for safety.'; host.appendChild(note);
+  if (text) text.style.display = 'none';
+  if (btn) btn.textContent = 'Show plain text';
+}
+
+// ── writing: new message, reply, reply all, forward ──
+// Pure helpers (also what the tests exercise)
+function mailReplySubject(subject, mode) {
+  const s = String(subject || '').trim();
+  if (mode === 'forward') return /^(fwd?|fw):/i.test(s) ? s : ('Fwd: ' + s).trim();
+  return /^re:/i.test(s) ? s : ('Re: ' + s).trim();
+}
+function mailReplyRecipients(msg, mode, self) {
+  const me = String(self || '').toLowerCase();
+  const seen = new Set(me ? [me] : []);
+  const take = (list) => (list || []).map((a) => String(a.address || '').trim().toLowerCase()).filter((a) => a && !seen.has(a) && (seen.add(a), true));
+  if (mode === 'forward') return { to: [], cc: [] };
+  const fromIsMe = !!me && String(msg.from?.address || '').toLowerCase() === me;       // a message you sent: reply to the people you sent it to
+  const to = take(fromIsMe ? (msg.to || []) : [msg.from]);
+  if (mode === 'reply') return { to: to.length ? to : [String(msg.from?.address || '').toLowerCase()].filter(Boolean), cc: [] };
+  return { to, cc: take(fromIsMe ? (msg.cc || []) : [...(msg.to || []), ...(msg.cc || [])]) };
+}
+function mailQuote(msg, mode) {
+  const when = msg.date ? new Date(msg.date).toLocaleString() : '';
+  const who = msg.from ? (msg.from.name ? `${msg.from.name} <${msg.from.address}>` : msg.from.address) : 'someone';
+  const body = String(msg.text || '').replace(/\r\n/g, '\n').trim();
+  if (mode === 'forward') {
+    const toLine = (msg.to || []).map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(', ');
+    return `\n\n---------- Forwarded message ----------\nFrom: ${who}\nDate: ${when}\nSubject: ${msg.subject || ''}\nTo: ${toLine}\n\n${body}`;
+  }
+  return `\n\nOn ${when}, ${who} wrote:\n` + body.split('\n').map((l) => '> ' + l).join('\n');
+}
+function mailSignature() { try { return localStorage.getItem('selkoMailSignature') || ''; } catch (e) { return ''; } }
+function mailEditSignature() {
+  const cur = mailSignature();
+  const v = prompt('Your signature (added to new messages and replies). Leave empty for none:', cur);
+  if (v === null) return;
+  try { localStorage.setItem('selkoMailSignature', v.slice(0, 500)); mailToast('Signature saved on this computer'); } catch (e) { mailToast('Could not save the signature', true); }
+}
+function mailReplyToOpen(mode) {
+  const d = window._mailOpen; if (!d) return;
+  const r = mailReplyRecipients(d, mode, _mail.mailbox);
+  openMailCompose({ mode, source: { folder: d.folder, uid: d.uid }, to: r.to, cc: r.cc, subject: mailReplySubject(d.subject, mode), quote: mailQuote(d, mode) });
+}
+
+function mailAddrList(s) {
+  return String(s || '').split(/[,;\n]+/).map((x) => { const t = x.trim(); const m = /<([^<>]+)>\s*$/.exec(t); return (m ? m[1] : t).trim().toLowerCase(); }).filter(Boolean);
+}
+function mailEmailOk(a) { return /^[^\s@<>",;]+@[^\s@<>",;]+\.[^\s@<>",;]+$/.test(a); }
+
+function openMailCompose(opts) {
+  opts = opts || { mode: 'new' };
+  document.getElementById('mailReaderModal')?.remove();
+  document.getElementById('mailComposeModal')?.remove();
+  const sig = mailSignature();
+  let draft = null; try { draft = JSON.parse(localStorage.getItem('selkoMailDraft') || 'null'); } catch (e) { /* none */ }
+  const useDraft = opts.mode === 'new' && !opts.to && !opts.subject && draft;
+  const modal = document.createElement('div');
+  modal.id = 'mailComposeModal'; modal.dataset.mode = opts.mode;
+  if (opts.source) modal.dataset.source = JSON.stringify(opts.source);
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:1310;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const field = (id, label, ph) => `<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px;"><label for="${id}" style="width:56px;font-size:13px;color:rgba(255,255,255,.6);">${label}</label><input class="inline-input" id="${id}" type="text" placeholder="${ph || ''}" style="flex:1;" autocomplete="off" /></div>`;
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:100%;max-width:760px;max-height:94vh;border:1px solid rgba(255,255,255,.12);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="padding:14px 22px;border-bottom:1px solid rgba(255,255,255,.1);display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+      <div style="color:#fff;font-size:17px;font-weight:700;">${{ new: 'New message', reply: 'Reply', replyall: 'Reply to all', forward: 'Forward' }[opts.mode] || 'New message'}</div>
+      <button class="btn btn-sm btn-ghost" onclick="mailComposeClose()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close (keeps a draft)</button></div>
+    <div style="padding:14px 22px;overflow-y:auto;flex:1;color:#fff;">
+      ${field('mcFrom', 'Name', 'Shown as the sender\'s name')}
+      ${field('mcTo', 'To', 'name@example.com, another@example.com')}
+      <div id="mcCcRow" style="display:none;">${field('mcCc', 'Cc', '')}${field('mcBcc', 'Bcc', '')}</div>
+      <div style="margin:-2px 0 6px 64px;"><a href="#" id="mcCcLink" onclick="document.getElementById('mcCcRow').style.display=''; this.style.display='none'; return false;" style="font-size:13px;color:var(--teal-l);">Add Cc / Bcc</a></div>
+      ${field('mcSubject', 'Subject', '')}
+      <textarea id="mcBody" class="inline-input" rows="14" style="width:100%;box-sizing:border-box;font-family:inherit;font-size:15px;line-height:1.45;margin-top:4px;"></textarea>
+      <div id="mcNote" style="font-size:12px;color:rgba(255,255,255,.5);margin-top:4px;">Sent as plain text from the Selko mailbox. A copy is saved in Sent.${opts.mode === 'forward' ? ' The original message\'s text is included below; its attachments are not forwarded.' : ''} Attachments cannot be added yet.</div>
+      <div id="mcErr" style="color:#f87171;font-size:13px;margin-top:6px;"></div>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid rgba(255,255,255,.1);display:flex;gap:8px;align-items:center;flex-shrink:0;flex-wrap:wrap;">
+      <button class="btn btn-sm btn-teal" id="mcSend" onclick="mailComposeSend()">Send</button>
+      <button class="btn btn-sm btn-ghost" id="mcUndo" onclick="mailComposeUndo()" style="display:none;color:#fff;border-color:rgba(255,255,255,.2);">Undo</button>
+      <button class="btn btn-sm btn-ghost" onclick="mailComposeDiscard()" style="color:#fff;border-color:rgba(255,255,255,.2);">Discard</button>
+      <a href="#" onclick="mailEditSignature(); return false;" style="font-size:13px;color:var(--teal-l);margin-left:auto;">Signature…</a>
+    </div></div>`;
+  document.body.appendChild(modal);
+  const $ = (id) => document.getElementById(id);
+  let fromName = 'Selko'; try { fromName = localStorage.getItem('selkoMailFromName') || 'Selko'; } catch (e) { /* default */ }
+  $('mcFrom').value = fromName;
+  const src = useDraft ? draft : opts;
+  $('mcTo').value = (src.to || []).join(', ');
+  $('mcCc').value = (src.cc || []).join(', ');
+  $('mcBcc').value = (src.bcc || []).join(', ');
+  $('mcSubject').value = src.subject || '';
+  const sigBlock = sig ? '\n\n-- \n' + sig : '';
+  $('mcBody').value = useDraft ? (draft.body || '') : (opts.quote ? sigBlock + opts.quote : sigBlock);
+  if ((src.cc || []).length || (src.bcc || []).length) { $('mcCcRow').style.display = ''; $('mcCcLink').style.display = 'none'; }
+  if (useDraft) $('mcNote').textContent = 'Restored your unsent draft. ' + $('mcNote').textContent;
+  let t = null;
+  const save = () => { clearTimeout(t); t = setTimeout(() => mailSaveDraft(), 400); };
+  ['mcTo', 'mcCc', 'mcBcc', 'mcSubject', 'mcBody'].forEach((id) => $(id).addEventListener('input', save));
+  modal.addEventListener('click', (ev) => { if (ev.target === modal) mailComposeClose(); });
+  setTimeout(() => { const f = (opts.mode === 'new' || opts.mode === 'forward' ? $('mcTo') : $('mcBody')); f.focus(); if (f === $('mcBody')) f.setSelectionRange(0, 0); }, 50);
+  window._mailSendTimer = null; window._mailCountTimer = null;
+}
+function mailSaveDraft() {
+  const g = (id) => document.getElementById(id)?.value || '';
+  if (!document.getElementById('mailComposeModal') || document.getElementById('mailComposeModal').dataset.mode !== 'new') return;   // only new messages keep a draft
+  const body = g('mcBody').trim(); const any = g('mcTo').trim() || g('mcSubject').trim() || (body && body !== ('-- \n' + mailSignature()).trim());
+  try { if (any) localStorage.setItem('selkoMailDraft', JSON.stringify({ to: mailAddrList(g('mcTo')), cc: mailAddrList(g('mcCc')), bcc: mailAddrList(g('mcBcc')), subject: g('mcSubject'), body: g('mcBody') })); else localStorage.removeItem('selkoMailDraft'); } catch (e) { /* storage unavailable */ }
+}
+function mailClearSendTimers() { clearTimeout(window._mailSendTimer); clearInterval(window._mailCountTimer); window._mailSendTimer = null; window._mailCountTimer = null; }
+function mailComposeClose() { mailClearSendTimers(); mailSaveDraft(); document.getElementById('mailComposeModal')?.remove(); }
+function mailComposeDiscard() {
+  if (!confirm('Throw this message away?')) return;
+  mailClearSendTimers();
+  try { localStorage.removeItem('selkoMailDraft'); } catch (e) { /* ignore */ }
+  document.getElementById('mailComposeModal')?.remove();
+}
+function mailComposeUndo() {
+  mailClearSendTimers();
+  const m = document.getElementById('mailComposeModal'); if (!m) return;
+  m.querySelectorAll('input,textarea').forEach((e) => { e.disabled = false; });
+  document.getElementById('mcSend').disabled = false; document.getElementById('mcSend').textContent = 'Send';
+  document.getElementById('mcUndo').style.display = 'none';
+  document.getElementById('mcErr').textContent = 'Not sent. You can keep editing.';
+}
+function mailComposeSend() {
+  const $ = (id) => document.getElementById(id);
+  const modal = $('mailComposeModal'); if (!modal) return;
+  const to = mailAddrList($('mcTo').value), cc = mailAddrList($('mcCc').value), bcc = mailAddrList($('mcBcc').value);
+  const subject = $('mcSubject').value.trim(), text = $('mcBody').value, err = $('mcErr'); err.textContent = '';
+  const all = [...to, ...cc, ...bcc];
+  if (!to.length && !cc.length) { err.textContent = 'Add at least one recipient.'; return; }
+  const badAddr = all.find((a) => !mailEmailOk(a)); if (badAddr) { err.textContent = `"${badAddr}" is not a valid email address.`; return; }
+  if (new Set(all).size > 25) { err.textContent = 'A message can go to at most 25 people.'; return; }
+  if (!subject && !confirm('Send without a subject?')) return;
+  if (!text.trim() && !confirm('Send with an empty message?')) return;
+  const who = [...new Set(all)];
+  if (!confirm(`Send this message to ${who.length} ${who.length === 1 ? 'person' : 'people'}?\n\n${who.slice(0, 6).join('\n')}${who.length > 6 ? '\n…and ' + (who.length - 6) + ' more' : ''}\n\nSubject: ${subject || '(none)'}`)) return;
+  const fromName = $('mcFrom').value.trim().slice(0, 100);
+  try { localStorage.setItem('selkoMailFromName', fromName); } catch (e) { /* ignore */ }
+  const payload = { action: 'send', mode: modal.dataset.mode, to, cc, bcc, subject, text, display_name: fromName, ...(modal.dataset.source ? { source: JSON.parse(modal.dataset.source) } : {}) };
+  // hold for a few seconds with an Undo button, then really send
+  modal.querySelectorAll('input,textarea').forEach((e) => { e.disabled = true; });
+  const sendBtn = $('mcSend'), undo = $('mcUndo'); sendBtn.disabled = true; undo.style.display = '';
+  let left = Math.max(0, Math.ceil(MAIL_UNDO_MS / 1000));
+  const tick = () => { sendBtn.textContent = left > 0 ? `Sending in ${left}…` : 'Sending…'; };
+  tick();
+  mailClearSendTimers();
+  window._mailCountTimer = setInterval(() => { left--; if (left > 0) tick(); }, 1000);
+  window._mailSendTimer = setTimeout(async () => {
+    clearInterval(window._mailCountTimer); window._mailCountTimer = null; window._mailSendTimer = null;
+    undo.style.display = 'none'; sendBtn.textContent = 'Sending…';
+    try {
+      await mailCall(payload);
+      try { if (payload.mode === 'new') localStorage.removeItem('selkoMailDraft'); } catch (e) { /* ignore */ }
+      document.getElementById('mailComposeModal')?.remove();
+      mailToast(`Sent to ${who.length} ${who.length === 1 ? 'person' : 'people'}.`);
+      if (_mail.folder === _mail.roles.sent || payload.mode !== 'new') { loadSuperMail(_mail.page); }
+      loadMailFolders().catch(() => {});
+    } catch (e) {
+      modal.querySelectorAll('input,textarea').forEach((x) => { x.disabled = false; });
+      sendBtn.disabled = false; sendBtn.textContent = 'Send';
+      err.textContent = 'NOT sent: ' + ((e && e.message) || e);
+    }
+  }, MAIL_UNDO_MS);                                    // Undo, Close and Discard all cancel this
 }
 
 // ── Needs attention ─────────────────────────────────────────────────────────
@@ -2996,6 +3495,14 @@ function buildAttentionItems(d, now = Date.now()) {
   if (d.newCompanies && d.newCompanies.length) {
     add('info', `${d.newCompanies.length} new compan${d.newCompanies.length === 1 ? 'y' : 'ies'} in the last 7 days: ${attnList(d.newCompanies.map((c) => c.name))}`, 'superCompaniesPanel');
   }
+  // Unread mail in Selko's own mailbox. Amber when something arrived since you last pressed View, blue otherwise.
+  if (d.mail && d.mail.unread > 0) {
+    const seenAt = d.mailSeenAt ? new Date(d.mailSeenAt).getTime() : 0;
+    const latest = d.mail.latest || [];
+    const fresh = latest.some((m) => m.date && new Date(m.date).getTime() > seenAt);
+    add(fresh ? 'warn' : 'info', `${d.mail.unread}${d.mail.capped ? '+' : ''} unread email${d.mail.unread === 1 ? '' : 's'} in the Selko mailbox`, 'superMailPanel', {
+      clearsMail: true, preview: latest.slice(0, 3).map((m) => `${(m.from && (m.from.name || m.from.address)) || 'Unknown'}: ${String(m.subject || '(no subject)').slice(0, 80)}${m.date ? ', ' + attnAgo(m.date, now) : ''}`) });
+  }
   const rank = { bad: 0, warn: 1, info: 2 };
   items.sort((a, b) => rank[a.level] - rank[b.level]);
   return items;
@@ -3013,18 +3520,19 @@ function renderAttention(items, failedSources) {
       <span style="margin-top:6px;width:9px;height:9px;border-radius:50%;background:${COLOR[i.level]};flex-shrink:0;"></span>
       <div style="flex:1;color:#fff;">${hrOnbEsc(i.text)}
         ${(i.preview || []).map((p) => `<div style="font-size:13px;color:rgba(255,255,255,.6);margin-top:2px;">${hrOnbEsc(p)}</div>`).join('')}</div>
-      <button class="btn btn-sm btn-ghost" onclick="superAttentionGo('${i.target}', ${i.clearsSupport ? 'true' : 'false'})" style="color:#fff;border-color:rgba(255,255,255,.2);padding:2px 10px;font-size:13px;white-space:nowrap;">View</button>
+      <button class="btn btn-sm btn-ghost" onclick="superAttentionGo('${i.target}', ${i.clearsSupport ? 'true' : 'false'}, ${i.clearsMail ? 'true' : 'false'})" style="color:#fff;border-color:rgba(255,255,255,.2);padding:2px 10px;font-size:13px;white-space:nowrap;">View</button>
     </div>`).join('');
   body.innerHTML = (items.length ? rows : '<div style="color:#4ade80;padding:4px 0;">✓ Nothing needs your attention right now.</div>')
     + (failedSources.length ? `<div style="font-size:12px;color:rgba(255,255,255,.4);margin-top:8px;">Could not read: ${hrOnbEsc(failedSources.join(', '))}.</div>` : '');
   const at = document.getElementById('superAttentionAt'); if (at) at.textContent = 'Updated ' + new Date().toLocaleTimeString();
 }
 
-function superAttentionGo(target, clearsSupport) {
+function superAttentionGo(target, clearsSupport, clearsMail) {
   if (clearsSupport) { try { localStorage.setItem(SUPER_SEEN_KEY, new Date().toISOString()); } catch (e) { /* storage unavailable */ } }
+  if (clearsMail) { try { localStorage.setItem(MAIL_SEEN_KEY, new Date().toISOString()); } catch (e) { /* storage unavailable */ } }
   const el = document.getElementById(target);
   if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  if (clearsSupport) setTimeout(() => loadSuperAttention(), 600);
+  if (clearsSupport || clearsMail) setTimeout(() => loadSuperAttention(), 600);
 }
 
 async function loadSuperAttention(manual) {
@@ -3034,7 +3542,7 @@ async function loadSuperAttention(manual) {
   const since24 = new Date(Date.now() - 86400000).toISOString();
   const since7d = new Date(Date.now() - 7 * 86400000).toISOString();
   const restricted = Array.isArray(currentProfile?.restricted_agency_ids);          // a super admin limited to certain agencies: no billing view
-  const [support, errors, subs, grants, cos, samMeta, samOv, samKey] = await Promise.all([
+  const [support, errors, subs, grants, cos, samMeta, samOv, samKey, mail] = await Promise.all([
     safe('support requests', sb.from('support_requests').select('id, created_at, reporter_name, company_id, message, resolved').eq('resolved', false).order('created_at', { ascending: false }).limit(200)),
     safe('error log', sb.from('error_logs').select('created_at, source_app, error_type').gte('created_at', since24).limit(1000)),
     restricted ? Promise.resolve(null) : safe('subscriptions', sb.from('subscriptions').select('company_id, status, current_period_end').limit(2000)),
@@ -3043,16 +3551,18 @@ async function loadSuperAttention(manual) {
     safe('SAM.gov list', sb.from('sam_exclusions_meta').select('loaded_at, status, error').order('loaded_at', { ascending: false }).limit(5)),
     safe('SAM.gov companies', sb.rpc('platform_sam_overview')),
     safe('SAM.gov key', sb.rpc('sam_key_get')),
+    restricted ? Promise.resolve(null) : safe('mail', sb.functions.invoke('selko-inbox', { body: { action: 'unread' } })),
   ]);
   const companyNames = {}; (cos || []).forEach((c) => { companyNames[c.id] = c.name; });
-  let seenAt = null; try { seenAt = localStorage.getItem(SUPER_SEEN_KEY); } catch (e) { /* storage unavailable */ }
+  let seenAt = null, mailSeenAt = null;
+  try { seenAt = localStorage.getItem(SUPER_SEEN_KEY); mailSeenAt = localStorage.getItem(MAIL_SEEN_KEY); } catch (e) { /* storage unavailable */ }
   const items = buildAttentionItems({
     supportOpen: support, supportSeenAt: seenAt, errors24: errors, subs, accessPending: grants, companyNames,
     newCompanies: (cos || []).filter((c) => c.created_at && c.created_at > since7d),
     samMeta: samMeta && samMeta.length ? samMeta : (samMeta ? [] : null), samOverview: samOv,
-    samKey: Array.isArray(samKey) ? samKey[0] : samKey,
+    samKey: Array.isArray(samKey) ? samKey[0] : samKey, mail, mailSeenAt,
   });
-  const ORDER = ['support requests', 'error log', 'subscriptions', 'access requests', 'companies', 'SAM.gov list', 'SAM.gov companies', 'SAM.gov key'];
+  const ORDER = ['support requests', 'error log', 'subscriptions', 'access requests', 'companies', 'SAM.gov list', 'SAM.gov companies', 'SAM.gov key', 'mail'];
   failed.sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));                // a steady order, not whichever finished first
   renderAttention(items, failed);
   if (!_superAttentionTimer) _superAttentionTimer = setInterval(() => { if (currentProfile?.is_super_admin) loadSuperAttention(); }, 5 * 60 * 1000);   // quietly refreshes while you are signed in
@@ -3273,6 +3783,11 @@ async function checkSamSetup() {
 async function refreshSamListNow() {
   const btn = document.getElementById('superSamRefreshBtn'); const msg = document.getElementById('superSamMsg');
   if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  // The last attempt hit SAM.gov's daily limit and the reset has not happened yet (plus a margin): a new attempt will almost certainly fail too.
+  if (_samLastFailure && samIsLimitMessage(_samLastFailure.error)) {
+    const reset = samNextResetAfter(_samLastFailure.at).getTime();
+    if (Date.now() < reset + SAM_RESET_MARGIN_MS && !confirm(`SAM.gov said its daily limit was reached at ${_samLastFailure.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.\n\n${samResetNote(_samLastFailure.at)}\n\nTry anyway?`)) return;
+  }
   btn.disabled = true; msg.style.color = 'rgba(255,255,255,.66)'; msg.textContent = 'Downloading and loading the list. This can take up to a minute…';
   try {
     const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'refresh' } });
@@ -3281,6 +3796,7 @@ async function refreshSamListNow() {
     msg.textContent = `Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
   } catch (e) {
     msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
+    if (samIsLimitMessage(msg.textContent)) msg.textContent += ' ' + samResetNote(new Date());       // say when, in the owner's own clock
   } finally {
     btn.disabled = false;
     await loadSuperSamStatus();
@@ -16734,6 +17250,23 @@ const SUPER_HELP = [
       <p><strong>Remove a stray login</strong> cleans up an orphaned account left behind by an email change made the old way, before a safe "Change login email" tool existed on the Staff tab. Only removes the exact email typed in — it never affects that person's current, in-use login, and nothing happens without typing the email and confirming.</p>`,
   },
   {
+    title: 'Mail (Selko\'s own mailbox)',
+    subtitle: 'Owner only',
+    html: `<p>The <strong>Mail</strong> panel is Selko's own mailbox (the one Selko Cred sends its emails from), run live from Hostinger. Nothing is stored in Selko Cred.</p>
+      <ul>
+        <li><strong>Reading.</strong> Folders are on the left with unread counts. Unread messages are bold with a blue dot. Click one to read it. <strong>Opening a message marks it read</strong> in the mailbox, because that is how Hostinger's reading works. Use <strong>Mark unread</strong> to put it back.</li>
+        <li><strong>Writing.</strong> <strong>Compose</strong> starts a new message. In a message, <strong>Reply</strong>, <strong>Reply all</strong> and <strong>Forward</strong> fill in the people, the subject and the quoted text, and Hostinger threads it with the original and marks the original as answered (↩) or forwarded (➡). A signature and your sender name can be set (the signature is saved on this computer).</li>
+        <li><strong>Undo.</strong> After you confirm, a message waits 8 seconds with an <strong>Undo</strong> button before it is really sent. If it fails you are told it was NOT sent. A copy of every sent message is saved in Sent.</li>
+        <li><strong>Drafts.</strong> Hostinger can't store drafts for us, so an unsent new message is kept on this computer and offered back the next time you press Compose. Discard clears it.</li>
+        <li><strong>Organizing.</strong> Tick messages, then Archive, Trash, Spam, Mark read or unread, ★ Star, or Move to any folder (up to 100 at a time). The Archive folder is created the first time you use it. <strong>+ New folder</strong> makes more.</li>
+        <li><strong>Trash is safe, Delete forever is not.</strong> Trash and Spam are real folders you can restore from. <strong>Delete forever</strong> and <strong>Empty this folder</strong> only work inside Trash or Spam and always ask first. They cannot be undone.</li>
+        <li><strong>Search.</strong> Type words, or narrow them with <em>from:</em>, <em>to:</em>, <em>subject:</em>, <em>since:2026-01-01</em>, <em>before:</em>. Quote phrases. <strong>Starred only</strong> shows starred messages.</li>
+        <li><strong>Safety.</strong> Messages show as plain text. <strong>Show formatted version</strong> displays the HTML in a locked frame with remote images and links switched off. Attachments are listed, not downloaded, and can't yet be added to outgoing mail.</li>
+        <li>Unread mail also appears in <strong>Needs attention</strong>. Only the platform owner sees any of this.</li>
+        <li>Setup: the same <strong>HOSTINGER_MAIL_TOKEN</strong> and <strong>HOSTINGER_MAILBOX_RESOURCE_ID</strong> used for sending, on the <strong>selko-inbox</strong> function. The Hostinger key must be allowed to read, send and manage this mailbox (hPanel, Agentic Mail, API). If something says the token is not allowed, that is the place to fix it.</li>
+      </ul>`,
+  },
+  {
     title: 'Needs attention (the strip at the top)',
     subtitle: 'What to look at first',
     html: `<p>The strip at the top of Selko Admin lists what deserves a look, most serious first: red for something broken or overdue, amber for something to check soon, blue for information. <strong>View</strong> scrolls to the panel where you can act. The number on the <strong>Selko Admin</strong> tab itself counts the red and amber items, so you can see it from any tab. It refreshes every 5 minutes and when you press Refresh.</p>
@@ -24550,6 +25083,7 @@ async function toggleJuanAgencyAccess(companyId, granted) {
 
 async function loadSuperAdmin() {
   loadSuperAttention();
+  loadSuperMail(1);
   loadSuperSamStatus();
   loadSamKeyStatus();
   loadSuperSamCompanies();
