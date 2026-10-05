@@ -135,13 +135,21 @@ function extractIndividuals(csvText, loadId) {
 // ── Database access through PostgREST (service role) ──────────────────────────────────────
 function makeDb(url, key, fetchImpl) {
   const base = url.replace(/\/+$/, '');
-  const headers = { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' };
+  // Supabase has two kinds of secret key. The older service_role key is a JWT (three parts, starts "eyJ") and
+  // is sent as both apikey and Authorization. The newer "sb_secret_..." key is NOT a JWT: it goes in the apikey
+  // header ONLY, and sending it as a Bearer token is rejected as an invalid JWT. Either kind works here.
+  const isJwt = String(key).split('.').length === 3;
+  const headers = { apikey: key, ...(isJwt ? { Authorization: `Bearer ${key}` } : {}), 'Content-Type': 'application/json' };
   return {
     async rpc(fn, args) {
       const r = await fetchImpl(`${base}/rest/v1/rpc/${fn}`, { method: 'POST', headers, body: JSON.stringify(args || {}) });
       const t = await r.text(); let j = null; try { j = t ? JSON.parse(t) : null; } catch { /* not JSON */ }
       if (!r.ok) throw new Error(`${fn}: ${(j && (j.message || j.error)) || t.slice(0, 200) || 'HTTP ' + r.status}`);
       return j;
+    },
+    async remove(table, filter) {
+      const r = await fetchImpl(`${base}/rest/v1/${table}?${filter}`, { method: 'DELETE', headers: { ...headers, Prefer: 'return=minimal' } });
+      if (!r.ok) { const t = await r.text(); throw new Error(`Could not remove the test rows: ${t.slice(0, 200)}`); }
     },
     async insert(table, rows) {
       const r = await fetchImpl(`${base}/rest/v1/${table}`, { method: 'POST', headers: { ...headers, Prefer: 'return=minimal' }, body: JSON.stringify(rows) });
@@ -214,4 +222,36 @@ async function runRefresh({ samKey, supabaseUrl, serviceKey, fetchImpl = fetch, 
   }
 }
 
-module.exports = { runRefresh, readZip, readCsv, extractIndividuals, julianToIso, redact, makeDb, NEEDED };
+// ── A safe rehearsal: proves the worker can reach the database, and times it, WITHOUT calling SAM.gov ──
+// Writes dummy rows under a throwaway load id (never the current list, so no check can ever see them), then
+// removes them. If removal fails they are still harmless: the next real refresh clears them (sam_cleanup_partial).
+async function runSelfTest({ supabaseUrl, serviceKey, fetchImpl = fetch, rows = 12000, now = () => Date.now() }) {
+  if (!supabaseUrl || !serviceKey) throw new Error('The worker has no database address or key. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the Vercel project.');
+  const secrets = [serviceKey];
+  const db = makeDb(supabaseUrl, serviceKey, fetchImpl);
+  const keyKind = String(serviceKey).split('.').length === 3 ? 'legacy service_role key' : String(serviceKey).startsWith('sb_secret_') ? 'new sb_secret key' : 'unrecognised key format';
+  const id = (globalThis.crypto && globalThis.crypto.randomUUID) ? globalThis.crypto.randomUUID() : require('crypto').randomUUID();
+  const t0 = now();
+  try {
+    await db.rpc('sam_current_load');                                  // read-only: proves the key may call the database functions
+    const data = Array.from({ length: rows }, (_, i) => ({ load_id: id, sam_number: `SELFTEST-${i}`, first_name: 'SELFTEST', middle_name: null, last_name: 'DELETEME', suffix: null,
+      state: 'ZZ', npi: null, exclusion_type: 'Self test', exclusion_program: null, excluding_agency: 'Selko', active_date: '2026-01-01', termination_date: 'Indefinite' }));
+    const batches = [];
+    for (let i = 0; i < data.length; i += BATCH_SIZE) batches.push(data.slice(i, i + BATCH_SIZE));
+    const tIns = now();
+    let removed = false;
+    try {
+      await runWithLimit(batches, CONCURRENCY, async (b) => { await db.insert('sam_exclusions', b); });
+    } finally {
+      try { await db.remove('sam_exclusions', `load_id=eq.${id}`); removed = true; } catch (e) { removed = false; }
+    }
+    const insertMs = Math.round(now() - tIns);
+    const FULL = 133835;                                                // individuals in the real file on 2026-10-04
+    return { rows, batches: batches.length, insert_ms: insertMs, total_ms: Math.round(now() - t0), key_kind: keyKind, test_rows_removed: removed,
+             est_full_ms: Math.round(insertMs * (FULL / rows) + 3500) };
+  } catch (e) {
+    const err = new Error(redact(e && e.message ? e.message : e, secrets)); throw err;
+  }
+}
+
+module.exports = { runRefresh, runSelfTest, readZip, readCsv, extractIndividuals, julianToIso, redact, makeDb, NEEDED };

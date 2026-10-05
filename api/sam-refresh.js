@@ -12,7 +12,7 @@
 // is still just updating the one Supabase secret.
 
 const crypto = require('crypto');
-const { runRefresh } = require('./_sam-loader.js');
+const { runRefresh, runSelfTest } = require('./_sam-loader.js');
 
 function sameSecret(given, expected) {
   const a = Buffer.from(String(given || ''));
@@ -38,6 +38,12 @@ module.exports = async function handler(req, res, deps = {}) {
   if (body.action === 'ping') {                    // checks the setup WITHOUT calling SAM.gov
     return send(200, { success: true, ping: true, node: process.version, region: env.VERCEL_REGION || null,
                        supabase_configured: !!(env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) });
+  }
+  if (body.action === 'selftest') {                // writes and removes dummy rows to prove the database path and time it; no SAM.gov request
+    try {
+      const r = await runSelfTest({ supabaseUrl: env.SUPABASE_URL, serviceKey: env.SUPABASE_SERVICE_ROLE_KEY, fetchImpl: deps.fetchImpl || fetch });
+      return send(200, { success: true, selftest: true, ...r });
+    } catch (e) { return send(500, { error: e.message }); }
   }
   try {
     const result = await runRefresh({
