@@ -1995,6 +1995,7 @@ window.selkoSharedAuthStorage = {
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Downloaded once a day and used for every company's SAM.gov check. A personal SAM.gov API key is allowed 10 requests a day, so each refresh uses one.</p>
         <div id="superSamStatus" style="font-size:14px;color:rgba(255,255,255,.7);margin-bottom:10px;">Loading…</div>
         <button class="btn btn-sm btn-teal" id="superSamRefreshBtn" onclick="refreshSamListNow()">Refresh the list now</button>
+        <button class="btn btn-sm btn-ghost" id="superSamTestMailBtn" onclick="sendSamTestEmail()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;" title="Sends one test message to SAM_ALERT_EMAIL, so you know the failure alerts and renewal reminders can reach you. Makes no request to SAM.gov.">Send test email</button>
         <button class="btn btn-sm btn-ghost" id="superSamPingBtn" onclick="checkSamSetup()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;" title="Checks the secret and the tables. Makes no request to SAM.gov, so it uses none of your 10 a day.">Check setup</button>
         <span id="superSamMsg" style="font-size:14px;margin-left:10px;"></span>
 
@@ -3048,6 +3049,20 @@ async function runSamForAll() {
   }
 }
 
+async function sendSamTestEmail() {
+  const msg = document.getElementById('superSamMsg');
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  msg.style.color = 'rgba(255,255,255,.66)'; msg.textContent = 'Sending…';
+  try {
+    const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'test_email' } });
+    if (error) throw new Error(await samInvokeError(error));
+    msg.style.color = '#4ade80';
+    msg.textContent = `Sent to ${data.sent_to}. Open that inbox (and the spam folder) to confirm it arrived. If it did not, the alerts will not reach you either.`;
+  } catch (e) {
+    msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
+  }
+}
+
 // Checks the key is set, the tables exist and the function runs, without spending a SAM.gov request.
 async function checkSamSetup() {
   const msg = document.getElementById('superSamMsg');
@@ -3063,8 +3078,12 @@ async function checkSamSetup() {
       data.mail_configured ? '✓ mail configured' : '– mail not configured (no failure emails)',
       data.alert_email_set ? '✓ SAM_ALERT_EMAIL set' : '✗ SAM_ALERT_EMAIL not set: no failure or key-renewal emails will be sent',
       data.key_expiry_recorded ? `✓ key expiry recorded (${data.key_expires_on})` : '✗ key expiry not recorded: no renewal reminder yet (fill in the box below)',
-    ];
-    const bad = !data.sam_api_key_set || !data.tables_installed;
+      !data.worker_secret_set ? '✗ SAM_WORKER_SECRET is not set (needed to reach the refresh worker)'
+        : data.worker_reachable ? `✓ refresh worker reachable${data.worker_node ? ' (Node ' + data.worker_node.replace(/^v/, '') + ')' : ''}`
+        : `✗ refresh worker: ${data.worker_error || 'not reachable'}`,
+      data.worker_reachable ? (data.worker_database_configured ? '✓ the worker has its database settings' : '✗ the worker has no database settings: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the Vercel project') : null,
+    ].filter(Boolean);
+    const bad = !data.sam_api_key_set || !data.tables_installed || !data.worker_secret_set || !data.worker_reachable || (data.worker_reachable && !data.worker_database_configured);
     msg.style.color = bad ? '#f87171' : '#4ade80';
     msg.innerHTML = bits.map(b => hrOnbEsc(b)).join('<br>');
   } catch (e) {
@@ -16538,6 +16557,7 @@ const SUPER_HELP = [
     title: 'The SAM.gov exclusions list',
     subtitle: 'Setup and daily refresh',
     html: `<p>Every company's SAM.gov check is matched against one list that Selko downloads from sam.gov each day. It needs one secret on the <strong>sam-exclusions-refresh</strong> function: <strong>SAM_API_KEY</strong>, a Public API Key from a personal SAM.gov account (Account Details, then the eye icon next to Public API Key, which sends a one-time code to that account's email). A personal key is allowed 10 requests a day and the refresh uses one.</p>
+      <p><strong>Where the work happens.</strong> SAM.gov's file is 12 MB zipped and 79 MB unpacked (169,000 rows). That is too much for a Supabase Edge Function, so <strong>sam-exclusions-refresh</strong> hands the job to a small Vercel function, <strong>/api/sam-refresh</strong>, and passes it the SAM key with each call. Both sides need the same <strong>SAM_WORKER_SECRET</strong>; the Vercel project also needs <strong>SUPABASE_URL</strong> and <strong>SUPABASE_SERVICE_ROLE_KEY</strong> (mark it Sensitive). <strong>Check setup</strong> tells you which of these is missing, without using a SAM.gov request.</p>
       <ul>
         <li>The panel shows the last good load and the latest failure, if any. <strong>Refresh the list now</strong> loads it by hand.</li>
         <li>SAM.gov keys expire (reportedly every 90 days). When a refresh fails, companies keep checking against the last good list and see a warning after 3 days. If <strong>SAM_ALERT_EMAIL</strong> is set, you are also emailed. Fix it by requesting a new key and updating the secret.</li>
