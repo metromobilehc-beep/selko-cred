@@ -2959,6 +2959,10 @@ const SAM_CONF_LABEL = {
   low: 'Possible match (name only, verify manually)',
   review_needed: 'Review needed (last name and first initial only)',
 };
+function samLabel(m) {
+  return ({ 'medium/alias_state': 'Match (a former name or alias and the state agree)', 'low/alias': 'Possible match (a former name or alias only, verify manually)' })[`${m.confidence}/${m.basis}`]
+    || SAM_CONF_LABEL[m.confidence] || m.confidence || '';
+}
 const SAM_CONF_COLOR = { high: '#f87171', medium: '#fb923c', low: '#facc15', review_needed: '#94a3b8' };
 
 async function loadSamListFreshness() {
@@ -2980,7 +2984,7 @@ async function loadSamListFreshness() {
 function samMatchesHtml(matches) {
   return (matches || []).map(m => `
     <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-top:8px;">
-      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-size:13px;">${hrOnbEsc(SAM_CONF_LABEL[m.confidence] || m.confidence || '')}</span>
+      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-size:13px;">${hrOnbEsc(samLabel(m))}</span>
       <div style="font-size:14px;color:rgba(255,255,255,.66);">${hrOnbEsc(m.detail || '')}</div>
     </div>`).join('');
 }
@@ -3041,6 +3045,9 @@ function leieLabel(m) {
     'low/name': 'Possible match (name only, verify manually)',
     'review_needed/initial_state': 'Review needed (last name, first initial and state only)',
     'review_needed/dob_differs': 'Review needed (the name matches but the dates of birth differ)',
+    'high/alias_dob': 'Match (a former name or alias and the date of birth agree)',
+    'medium/alias_state': 'Match (a former name or alias and the state agree)',
+    'low/alias': 'Possible match (a former name or alias only, verify manually)',
   })[`${m.confidence}/${m.basis}`] || m.confidence || 'Potential match';
 }
 // The next day a company's monthly check runs: its chosen day, but never before the 12th (the new list is loaded on the 11th).
@@ -3326,7 +3333,9 @@ async function checkLeieSetup() {
         : `✗ refresh worker: ${data.worker_error || 'not reachable'}`,
       data.worker_reachable ? (data.worker_database_configured ? '✓ the worker has its database settings' : '✗ the worker has no database settings: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the Vercel project, then redeploy') : null,
       data.worker_reachable ? (data.source_ok ? `✓ OIG's file was found${mb(data.source_bytes)}` : `✗ OIG's file could not be found: ${data.source_error || 'unknown reason'}`) : null,
-      matcher === 'v1' ? '✓ OIG matching is installed' : '✗ OIG matching is not installed (run leie-exclusions.sql)',
+      matcher === 'v2' ? '✓ OIG matching is installed (with aliases and former names)'
+        : matcher === 'v1' ? '✗ OIG matching is the previous version, without aliases and former names: run leie-exclusions.sql'
+        : '✗ OIG matching is not installed (run leie-exclusions.sql)',
       checkFn.state === 'ok' ? `✓ OIG check function deployed (${checkFn.version.replace(/^check-leie-exclusions\s*/, '')})`
         : checkFn.state === 'old' ? '✗ the check-leie-exclusions function is an OLD version: redeploy it from the latest file (Verify JWT off)'
         : checkFn.state === 'missing' ? '✗ the check-leie-exclusions function is not deployed (all lowercase, Verify JWT off)'
@@ -4164,7 +4173,8 @@ async function checkSamSetup() {
         : !data.worker_secret_set ? '✗ SAM_WORKER_SECRET is not set in Supabase (needed to reach the refresh worker). Add it under Edge Functions > Secrets, with the same value as on Vercel.'
         : data.worker_reachable ? `✓ refresh worker reachable${data.worker_node ? ' (Node ' + data.worker_node.replace(/^v/, '') + ')' : ''}`
         : `✗ refresh worker: ${data.worker_error || 'not reachable'}`,
-      matcher === 'fast' ? '✓ company matching is the fast version'
+      matcher === 'aliases' ? '✓ company matching is the current version (with aliases and former names)'
+        : matcher === 'fast' ? '✗ company matching is the previous version, without aliases and former names: run sam-matcher-upgrade.sql'
         : matcher === 'old' ? '✗ company matching is the OLD slow version: run sam-matcher-upgrade.sql (it can make a company check run out of time)'
         : '✗ company matching version unknown: run sam-matcher-upgrade.sql',
       checkFn.state === 'ok' ? `✓ company check function deployed (${checkFn.version.replace(/^check-sam-exclusions\s*/, '').replace(/\s*\(.*$/, '')})`
@@ -4278,7 +4288,7 @@ async function showSamCheckDetails(checkId) {
   const rows = (row.checked_staff || []).slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(s => {
     const m = byId.get(s.id);
     return m
-      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${hrOnbEsc(SAM_CONF_LABEL[m.confidence] || 'Potential match')}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div></td></tr>`
+      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${hrOnbEsc(samLabel(m) || 'Potential match')}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div></td></tr>`
       : `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:#4ade80;">✓ Clear</td></tr>`;
   }).join('') || '<tr><td colspan="2" style="color:rgba(255,255,255,.58);">No per-staff detail was kept for this check.</td></tr>';
   const modal = document.createElement('div');
@@ -17486,6 +17496,7 @@ const COMPLIANCE_HELP = [
       <ul>
         <li><strong>Run check now</strong> checks everyone in a moment. Selko refreshes the SAM.gov list from sam.gov every day, and the panel shows when it was last refreshed. If it is more than 3 days old you are warned.</li>
         <li><strong>How strong a match is:</strong> <em>NPI-confirmed</em> is the strongest. <em>Name and state or middle initial agree</em> is likely but needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means the last name and first initial match in the same state.</li>
+        <li><strong>Other names are checked too.</strong> SAM.gov lists other names for 14% of the people on it. A staff member's <em>maiden / previously used name</em> and <em>other aliases</em> (Staff profile, Background Check Intake Info), either half of a double surname, and the first of several given names are all compared. SAM.gov gives no date of birth, so a match through a former name or alias is at most <em>medium</em> (when the state agrees) and otherwise <em>low</em>: always a lead to look at.</li>
         <li><strong>A match is a lead, never a finding.</strong> Many people share a name. Open the person on sam.gov, compare the details, and only then act.</li>
         <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, saves the result as your record, and emails your admins. Every run stays in the history (View list, Archive, Delete).</li>
         <li>Admins run and manage checks. Office users can read the history.</li>
@@ -17497,6 +17508,7 @@ const COMPLIANCE_HELP = [
     html: `<p>OIG (the HHS Office of Inspector General) keeps the List of Excluded Individuals/Entities (LEIE): people who may not work for anyone paid by Medicare or Medicaid. OIG publishes a new list by the 10th of every month, and Selko loads it for you. This check compares your <strong>active</strong> staff against it, <strong>including staff with no NPI</strong>.</p>
       <ul>
         <li><strong>Run check now</strong> checks everyone in a moment. The panel shows when the list was loaded and warns you if it is more than 40 days old.</li>
+        <li><strong>Former names and aliases are used.</strong> A staff member's <em>maiden / previously used name</em> and <em>other aliases</em> (Staff profile, Background Check Intake Info), either half of a double surname, and a maiden name or nickname OIG writes in brackets are all checked. A match through one of these is strong only if the date of birth also agrees; otherwise it is medium when the state agrees and low when nothing else does. A different birth date rules it out.</li>
         <li><strong>Date of birth is what makes it accurate.</strong> OIG gives a date of birth for 99% of the people on its list. Someone with your staff member's name but a <em>different</em> birth date is a different person, so they are set aside (the result says how many). If a staff member has <strong>no date of birth on file</strong>, look-alike names cannot be set aside, so add it on their profile.</li>
         <li><strong>How strong a match is:</strong> <em>NPI confirmed</em> and <em>name and date of birth agree</em> are the strongest. <em>Name and state or middle initial agree</em> needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means either the last name and first initial match in the same state, or the name, middle initial and state match but the birth dates differ (one may be mistyped: check which is right).</li>
         <li><strong>A match is a lead, never a finding.</strong> Confirm it with OIG's own online search (exclusions.oig.hhs.gov), using the person's SSN, before acting. The downloadable list covers exclusions through the end of the previous month; the online search is always current.</li>
@@ -17680,6 +17692,7 @@ const SUPER_HELP = [
       <p><strong>Where the work happens.</strong> Like the SAM.gov list, the download is done by a small Vercel function, <strong>/api/leie-refresh</strong>, started by the Supabase function <strong>leie-exclusions-refresh</strong>. It uses the same <strong>SAM_WORKER_SECRET</strong> and the same Vercel settings as the SAM.gov one, so there is nothing new to add. The company checks run in <strong>check-leie-exclusions</strong>.</p>
       <ul>
         <li><strong>Check setup</strong> downloads nothing. It checks the tables, the worker, that OIG's file can be found (and its size and date), which matching and function versions are installed, and whether an alert address is set. Run it before the first refresh.</li>
+        <li><strong>Aliases and former names</strong> are matched in both directions: the other names OIG and SAM.gov list for a person, and each staff member's maiden name and aliases from their intake form. The alias text SAM.gov provides is only stored from the first refresh after the update.</li>
         <li>The result: <strong>NPI, or name plus date of birth</strong> are strong matches; the same name with a different date of birth is set aside. Staff with no date of birth get weaker matching, and every result says how many.</li>
         <li><strong>Companies</strong> shows who is set up and when each company's next monthly check is (their chosen day, never before the 12th). Counts only: staff names stay with each company. <strong>Run every company now</strong> checks all of them.</li>
         <li>The alert address is <strong>LEIE_ALERT_EMAIL</strong>, or <strong>SAM_ALERT_EMAIL</strong> if that is not set.</li>
