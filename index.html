@@ -16649,8 +16649,8 @@ function renderPayerSuggestions(suggestions) {
   if (!suggestions.length) { box.style.display = 'none'; return; }
 
   box.innerHTML = suggestions.map(p => `
-    <div onmousedown="selectPayerSuggestion('${p.name.replace(/'/g,"\\'")}')" style="padding:8px 12px;font-size:15px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
-      ${p.name} <span style="font-size:12px;color:rgba(255,255,255,.55);">— already on another company</span>
+    <div onmousedown="selectPayerSuggestion(${jsArg(p.name)})" style="padding:8px 12px;font-size:15px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
+      ${hrOnbEsc(p.name)} <span style="font-size:12px;color:rgba(255,255,255,.55);">— already on another company</span>
     </div>`).join('');
   box.style.display = 'block';
 }
@@ -16704,24 +16704,24 @@ function showEditPayerModal(id, name, address, phone, fax, email) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:14px;">${name}</div>
+      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:14px;">${hrOnbEsc(name)}</div>
       <label class="inline-label">Address</label>
       <div style="position:relative;margin-bottom:10px;">
-        <input class="inline-input" type="text" id="editPayerAddress" value="${address || ''}" autocomplete="off" oninput="handleAddressSearch(this, 'editPayer')" onblur="setTimeout(() => hideAddressSuggestions('editPayer'), 200)" style="width:100%;box-sizing:border-box;" />
+        <input class="inline-input" type="text" id="editPayerAddress" value="${hrOnbEsc(address || '')}" autocomplete="off" oninput="handleAddressSearch(this, 'editPayer')" onblur="setTimeout(() => hideAddressSuggestions('editPayer'), 200)" style="width:100%;box-sizing:border-box;" />
         <div id="editPayerAddressSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:200px;overflow-y:auto;z-index:50;"></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
         <div>
           <label class="inline-label">Phone</label>
-          <input class="inline-input" type="text" id="editPayerPhone" value="${phone || ''}" oninput="formatPhoneInput(this)" style="width:100%;box-sizing:border-box;" />
+          <input class="inline-input" type="text" id="editPayerPhone" value="${hrOnbEsc(phone || '')}" oninput="formatPhoneInput(this)" style="width:100%;box-sizing:border-box;" />
         </div>
         <div>
           <label class="inline-label">Fax</label>
-          <input class="inline-input" type="text" id="editPayerFax" value="${fax || ''}" oninput="formatPhoneInput(this)" style="width:100%;box-sizing:border-box;" />
+          <input class="inline-input" type="text" id="editPayerFax" value="${hrOnbEsc(fax || '')}" oninput="formatPhoneInput(this)" style="width:100%;box-sizing:border-box;" />
         </div>
       </div>
       <label class="inline-label">Email</label>
-      <input class="inline-input" type="text" id="editPayerEmail" value="${email || ''}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
+      <input class="inline-input" type="text" id="editPayerEmail" value="${hrOnbEsc(email || '')}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
       <div id="editPayerErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-teal" onclick="saveEditedPayer('${id}')" style="flex:1;justify-content:center;">Save</button>
@@ -16827,19 +16827,19 @@ async function loadPayersTable() {
   tbody.innerHTML = data.map(p => {
     const contactLine = [p.phone, p.fax ? `Fax: ${p.fax}` : null, p.email].filter(Boolean).join(' · ');
     return `<tr>
-    <td>${p.name}${p.address ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">${p.address}</div>` : ''}${contactLine ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">${contactLine}</div>` : ''}</td>
+    <td>${hrOnbEsc(p.name)}${p.address ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">${hrOnbEsc(p.address)}</div>` : ''}${contactLine ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">${hrOnbEsc(contactLine)}</div>` : ''}</td>
     <td><span style="font-size:13px;color:rgba(255,255,255,.58);">${p.company_id ? 'Custom' : 'Global'}</span></td>
     <td>${usageCellHtml(usage.byPayer[p.id], 'Nothing is attached to this payer, so deleting it loses no data.')}</td>
     <td><div class="td-actions">
-      <button class="btn btn-sm btn-ghost" onclick="showEditPayerModal('${p.id}','${p.name.replace(/'/g,"\\'")}','${(p.address||'').replace(/'/g,"\\'")}','${p.phone||''}','${p.fax||''}','${(p.email||'').replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
-      ${p.company_id ? `<button class="btn btn-sm btn-danger" onclick="deletePayer('${p.id}','${p.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+      <button class="btn btn-sm btn-ghost" onclick="showEditPayerModal(${jsArg(p.id)},${jsArg(p.name)},${jsArg(p.address || '')},${jsArg(p.phone || '')},${jsArg(p.fax || '')},${jsArg(p.email || '')})" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
+      ${p.company_id ? `<button class="btn btn-sm btn-danger" onclick="deletePayer(${jsArg(p.id)},${jsArg(p.name)})">Delete</button>` : ''}
     </div></td>
   </tr>`;
   }).join('');
 
   // populate the assignment form's payer dropdown too
   const sel = document.getElementById('pnPayer');
-  sel.innerHTML = data.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  sel.innerHTML = data.map(p => `<option value="${hrOnbEsc(p.id)}">${hrOnbEsc(p.name)}</option>`).join('');
 }
 
 // ══ AGENCY PARTNER ACCESS ══
