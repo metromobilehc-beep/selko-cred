@@ -2568,6 +2568,12 @@ window.selkoSharedAuthStorage = {
         <div id="caqhExemptSection" style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;">
           <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:10px;">CAQH-exempt disciplines — check any discipline that doesn't need a CAQH profile (e.g. PTA, COTA working under a supervising clinician). Exempt disciplines won't show up as "Missing CAQH ID" anywhere in the app.</p>
           <div id="caqhExemptListCred" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
+          <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);">
+            <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:8px;">CAQH re-attestation reminders — Selko emails each provider's due date at 30, 14, 7 and 1 days before, on the day, and weekly while overdue. Admins get one summary email.</p>
+            <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="caqhRemindersEnabled" onchange="saveCaqhReminderSetting('caqh_reminders_enabled', this.checked)" /> Send CAQH re-attestation reminders</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;cursor:pointer;"><input type="checkbox" id="caqhRemindProviders" onchange="saveCaqhReminderSetting('caqh_remind_providers', this.checked)" /> Also email the provider directly</label>
+            <div id="caqhReminderSettingMsg" style="font-size:13px;margin-top:6px;"></div>
+          </div>
         </div>
 
         <div id="prescriberSection" style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;margin-top:14px;">
@@ -7617,7 +7623,8 @@ async function checkCredentialingExpirations() {
     (s.caqh_expiration_date && s.caqh_expiration_date <= cutoffStr) ||
     (s.dea_expiration_date && s.dea_expiration_date <= cutoffStr && isPrescribingDiscipline(s.discipline))
   ));
-  if (!dueSoon.length) return;
+  const noDate = staffList.filter(caqhDateMissing);
+  if (!dueSoon.length && !noDate.length) return;
 
   const overdue = dueSoon.filter(s =>
     (s.caqh_expiration_date && s.caqh_expiration_date < new Date().toISOString().slice(0,10)) ||
@@ -7627,7 +7634,9 @@ async function checkCredentialingExpirations() {
   const banner = document.getElementById('credExpiryBanner');
   const text = document.getElementById('credExpiryBannerText');
   const recs = await getActivePartnerRecommendations();
-  const mainMsg = `⚠ ${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.';
+  const dueMsg = dueSoon.length ? `${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.' : '';
+  const noDateMsg = noDate.length ? `${noDate.length} provider${noDate.length !== 1 ? 's have' : ' has'} a CAQH ID but no re-attestation date, so no reminder can be sent. Open their profile and fill in the date.` : '';
+  const mainMsg = '⚠ ' + [dueMsg, noDateMsg].filter(Boolean).join(' ');
   text.innerHTML = mainMsg + (recs.ce_credits ? `<br/><span style="font-weight:400;">${partnerLinkHtml(recs.ce_credits)}</span>` : '');
   banner.style.display = 'flex';
   _credExpiryBannerShown = true;
@@ -9777,6 +9786,7 @@ function showFullProfileSheet(staffId) {
         <div>
           <label class="inline-label">CAQH re-attestation due</label>
           <input class="inline-input" type="date" id="fpCaqhExpiration" value="${s.caqh_expiration_date || ''}" />
+          <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:4px;line-height:1.4;">CAQH needs re-attesting about every 120 days. Selko emails the admins and the provider before this date, so keep it filled in: <strong>a blank date means no reminders.</strong> <a href="#" onclick="caqhSetDue120(); return false;" style="color:var(--teal-l);">Just re-attested? Set it 120 days from today</a></div>
         </div>
       </div>
 
@@ -13589,6 +13599,11 @@ function loadDisciplinesPanel() {
     }).join('');
   }
 
+  const remOn = currentCompany?.caqh_reminders_enabled !== false, remProv = currentCompany?.caqh_remind_providers !== false;
+  const remEl = document.getElementById('caqhRemindersEnabled'), remProvEl = document.getElementById('caqhRemindProviders');
+  if (remEl) remEl.checked = remOn;
+  if (remProvEl) { remProvEl.checked = remProv; remProvEl.disabled = !remOn; }
+
   const prescriberSection = document.getElementById('prescriberSection');
   if (prescriberSection) prescriberSection.style.display = (currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')))) ? 'block' : 'none';
   const prescriberContainer = document.getElementById('prescriberListCred');
@@ -13607,6 +13622,22 @@ function loadDisciplinesPanel() {
 
 function getCaqhExemptDisciplines() {
   return currentCompany?.caqh_exempt_disciplines || [];
+}
+
+async function saveCaqhReminderSetting(field, value) {
+  const msg = document.getElementById('caqhReminderSettingMsg');
+  const back = () => { loadDisciplinesPanel(); };
+  if (currentProfile?.role !== 'admin' && !currentProfile?.is_super_admin) { toast('Only an admin can change this.', true); back(); return; }
+  const { data, error } = await sb.from('companies').update({ [field]: value }).eq('id', currentCompany.id).select('id');
+  if (error) {
+    const missing = /column .* does not exist|schema cache/i.test(error.message || '');
+    if (msg) { msg.style.color = '#f87171'; msg.textContent = missing ? 'Not set up yet: run caqh-reminders.sql in Supabase first.' : 'Could not save: ' + extractErrorMessage(error); }
+    back(); return;
+  }
+  if (!data || !data.length) { if (msg) { msg.style.color = '#f87171'; msg.textContent = "Nothing was saved. You may not have permission to change this company's settings."; } back(); return; }
+  currentCompany[field] = value;
+  if (msg) { msg.style.color = '#4ade80'; msg.textContent = field === 'caqh_reminders_enabled' ? (value ? 'Reminders are on.' : 'Reminders are off. No one will be emailed.') : (value ? 'Providers will be emailed their own reminder.' : 'Providers will not be emailed. Admins still are.'); }
+  back();
 }
 
 async function toggleCaqhExempt(discipline, isExempt) {
@@ -17439,6 +17470,19 @@ const CREDENTIALING_HELP = [
     title: 'Practice locations and accreditations',
     subtitle: '',
     html: `<p><strong>Practice locations</strong> lists every address where your providers actually render services — payer applications often need every location listed, not just your main office. <strong>Accreditations</strong> tracks any accrediting-body certifications your organization itself holds (separate from individual staff licenses).</p>`,
+  },
+  {
+    title: 'CAQH re-attestation reminders',
+    subtitle: 'So no profile quietly lapses',
+    html: `<p>A provider's CAQH ProView profile has to be <strong>re-attested about every 120 days</strong>. Selko emails a reminder before that date, but only if the date is filled in: <strong>on the provider's profile, set 'CAQH re-attestation due'.</strong></p>
+      <ul>
+        <li><strong>When:</strong> 30, 14, 7 and 1 days before, on the day, and every week while overdue (for 12 weeks). Each reminder is sent once. It arrives around 9 AM.</li>
+        <li><strong>Who:</strong> the <em>provider</em> gets their own email with the steps (sign in at proview.caqh.org, review, attest). The <em>admins</em> get one summary email per day with everyone who is due, overdue first.</li>
+        <li><strong>After a provider re-attests,</strong> open their profile and press <em>Just re-attested? Set it 120 days from today</em> beside the date, then Save. That also stops the reminders for the old date.</li>
+        <li><strong>A CAQH ID but no date</strong> is flagged here as <em>Not set: no reminders</em>, in the banner at the top, and once a month in an email to the admins, because nothing can be reminded without a date.</li>
+        <li><strong>Who is skipped:</strong> inactive staff, disciplines you marked CAQH-exempt in Settings, and anyone marked exempt on their own profile.</li>
+        <li><strong>Settings:</strong> turn the reminders off, or turn off just the emails to providers, under Settings, CAQH-exempt disciplines.</li>
+      </ul>`,
   },
   {
     title: 'Payer enrollment steps',
@@ -21784,6 +21828,32 @@ const KNOWN_CLINICAL_DISCIPLINES = [
   'AUD', 'RD', 'DC', 'MSW', 'LCSW',
 ];
 
+// A date written YYYY-MM-DD, `days` days after `from` (a Date). Uses the local calendar day, never UTC, so it cannot land a day off.
+function caqhPlusDays(from, days) {
+  const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+// "Just re-attested" on the profile form: fills the due-date box 120 days out. It does not save: the form's Save button does.
+function caqhSetDue120() {
+  const el = document.getElementById('fpCaqhExpiration');
+  if (!el) return;
+  el.value = caqhPlusDays(new Date(), 120);
+  toast(`Re-attestation due set to ${fmtDate(el.value)}. Press Save to keep it.`);
+}
+// Is this provider expected to have a CAQH profile? (Not exempt by discipline, nor marked exempt on their own profile.)
+function caqhRequired(s) {
+  return !getCaqhExemptDisciplines().includes(s.discipline) && !(s.exempt_from_checks || []).includes('caqh');
+}
+// Has a CAQH ID but no re-attestation date: nothing can remind anyone, so this is flagged instead of staying silent.
+function caqhDateMissing(s) {
+  return !!(s.active && String(s.caqh_id || '').trim() && !s.caqh_expiration_date && caqhRequired(s));
+}
+function caqhDueCell(s) {
+  if (s.caqh_expiration_date) return credExpiryLabel(s.caqh_expiration_date);
+  if (String(s.caqh_id || '').trim() && caqhRequired(s)) return '<span style="color:#fbbf24;" title="Without a date, no reminder can be sent. Open the profile and fill in CAQH re-attestation due.">Not set: no reminders</span>';
+  return '—';
+}
+
 function credExpiryLabel(dateStr) {
   if (!dateStr) return '—';
   const days = Math.ceil((new Date(dateStr) - new Date()) / 86400000);
@@ -21843,7 +21913,7 @@ async function renderCredentialingStaffTable() {
     <tr>
       <td>${s.full_name}</td>
       <td>${caqhCell}</td>
-      <td>${credExpiryLabel(s.caqh_expiration_date)}</td>
+      <td>${caqhDueCell(s)}</td>
       ${deaCells}
       <td><div class="td-actions">
         <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
