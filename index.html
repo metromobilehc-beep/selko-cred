@@ -2594,6 +2594,16 @@ window.selkoSharedAuthStorage = {
           <label style="display:flex;align-items:flex-start;gap:8px;font-size:15px;color:#fff;cursor:pointer;margin:0;"><input type="checkbox" id="supersedeOldDocsToggle" style="margin-top:3px;" onchange="saveSupersedeSetting(this.checked)" /> <span>A newer document replaces the older one of the same type<br><span style="font-size:13px;color:rgba(255,255,255,.58);">When a renewal is uploaded, the older document of that type (with an earlier expiry date) is archived automatically, so it stops showing as expired and stops triggering reminders. Nothing is deleted: it stays under Archived and can be restored. Turn this off only if someone can legitimately hold two current documents of one type, for example licenses in two states.</span></span></label>
           <div id="supersedeSettingMsg" style="font-size:13px;margin-top:6px;"></div>
         </div>
+        <div id="companyCategoriesPanel" style="margin-bottom:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;">
+          <div style="color:#fff;font-size:15px;font-weight:600;margin-bottom:2px;">Your own categories</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:8px;line-height:1.45;">Section headings only your company sees, alongside the shared ones. File your own document types under them, and (Pro) built-in types too: pick one in the Category column. Other companies are never affected.</div>
+          <div id="companyCategoriesList"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <input class="inline-input" type="text" id="newCompanyCategoryName" maxlength="60" placeholder="e.g. Agency requirements" style="max-width:260px;" />
+            <button type="button" class="btn btn-sm btn-teal" id="addCompanyCategoryBtn" onclick="proGate(addCompanyDocTypeCategory)">+ Add category</button>
+          </div>
+          <div id="companyCategoriesMsg" style="font-size:13px;margin-top:6px;"></div>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;margin:0;">
             <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
@@ -5576,11 +5586,11 @@ async function loadDocTypes() {
   // tracked in their payroll system, not needed here). This is a
   // per-company override, so a hidden global type still shows normally
   // for every other company.
-  const { data: hiddenRows } = await sb.from('company_hidden_document_types')
-    .select('document_type_id').eq('company_id', currentCompany.id);
-  const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
+  const hiddenIds = await getHiddenDocTypeIds();   // ids as text, so 12 and "12" are the same type
+  const myOverrides = await getDocTypeOverrides(currentCompany.id);   // Required / Applies To, and this company's own category choices
 
-  docTypes = (data || []).filter(t => !hiddenIds.has(t.id));
+  docTypes = (data || []).filter(t => !hiddenIds.has(String(t.id)))
+    .map(t => (!t.company_id && myOverrides[t.id] && myOverrides[t.id].category) ? { ...t, category: myOverrides[t.id].category } : t);
 
   // Narrow the self-service upload picker to what actually applies to
   // *this* person, if they're a clinician with a discipline on file — a PT
@@ -5590,7 +5600,6 @@ async function loadDocTypes() {
   // and filters elsewhere, which need to see everything regardless.
   const myStaffRec = await findMyStaffRecord(currentCompany.id, currentProfile, 'discipline');
   const myDiscipline = myStaffRec?.discipline || null;
-  const myOverrides = myDiscipline ? await getDocTypeOverrides(currentCompany.id) : {};
 
   const sel = document.getElementById('upType');
   sel.innerHTML = '<option value="">— Select type —</option>';
@@ -7093,13 +7102,13 @@ async function checkStaffCompliance(staffId) {
 
     const { data: hiddenRows } = await sb.from('company_hidden_document_types')
       .select('document_type_id').eq('company_id', staff.company_id);
-    const hiddenIds = new Set((hiddenRows || []).map(h => h.document_type_id));
+    const hiddenIds = new Set((hiddenRows || []).map(h => String(h.document_type_id)));
 
     const overridesMap = await getDocTypeOverrides(staff.company_id);
     const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
 
     const applicable = (allTypes || []).filter(t => {
-      if (hiddenIds.has(t.id)) return false;
+      if (hiddenIds.has(String(t.id))) return false;
       // Pro-gating for an individual type is driven by its own tier column
       // (set from the Selko Admin master list) — the real, deliberately
       // managed source of truth, not an inference from discipline-scoping.
@@ -12589,11 +12598,9 @@ async function showAddDocType() {
   // privilege that already lets them edit existing global rows directly.
   document.getElementById('dtGlobalWrap').style.display = currentProfile?.is_super_admin ? 'flex' : 'none';
 
-  const { data: categoryRows } = await sb.from('document_type_categories').select('name').order('sort_order');
-  const categories = (categoryRows || []).map(c => c.name);
-  if (!categories.includes('Other')) categories.push('Other');
+  const categories = (await loadCategoryOptions()).names;
   const sel = document.getElementById('dtCategory');
-  sel.innerHTML = categories.map(c => `<option value="${c}" ${c === 'Other' ? 'selected' : ''}>${c}</option>`).join('');
+  sel.innerHTML = categoryOptionsHtml(categories, 'Other');
 }
 function hideAddDocType() {
   document.getElementById('addDocTypeModal').style.display = 'none';
@@ -12753,6 +12760,13 @@ async function saveDocType() {
   // already applies to this company (their own types, plus Selko-wide
   // defaults) is worth a second look before creating a genuine duplicate,
   // but a real, distinct type can legitimately share a word too.
+  if (makeGlobal) {
+    const opts = await loadCategoryOptions();
+    if (opts.own.some((c) => c.name === category)) {
+      err.textContent = `"${category}" is one of this company's own categories, which other companies cannot see. A Selko-wide default must use a shared category.`;
+      err.style.display = 'block'; return;
+    }
+  }
   const likelyDup = findLikelyDuplicateDocType(name, docTypes);
   if (likelyDup) {
     const proceed = await showCustomConfirm(
@@ -15655,6 +15669,77 @@ async function saveSupersedeSetting(value) {
   if (msg) { msg.style.color = '#4ade80'; msg.textContent = value ? 'On: a newer upload archives the older document of that type.' : 'Off: older documents stay active until you archive them.'; }
 }
 
+// ── This company's own categories (Settings → Document types) ──
+let _companyCategoriesCache = [];
+function companyCategoryMsg(text, ok) {
+  const el = document.getElementById('companyCategoriesMsg');
+  if (el) { el.style.color = ok ? '#4ade80' : '#f87171'; el.textContent = text || ''; }
+}
+function renderCompanyCategoriesPanel(opts, overridesMap) {
+  const list = document.getElementById('companyCategoriesList');
+  if (!list) return;
+  _companyCategoriesCache = opts.own || [];
+  const btn = document.getElementById('addCompanyCategoryBtn');
+  if (!opts.supported) {
+    list.innerHTML = '<div style="font-size:14px;color:#fbbf24;">Not set up yet: run company-doc-type-categories.sql in Supabase to turn this on.</div>';
+    if (btn) btn.disabled = true;
+    return;
+  }
+  if (btn) btn.disabled = false;
+  if (!_companyCategoriesCache.length) {
+    list.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.58);">None yet. The shared categories are available to you as before.</div>';
+    return;
+  }
+  const mine = (_docTypesCache || []).filter((t) => t.company_id === currentCompany.id);
+  const builtIns = Object.values(overridesMap || {}).filter((o) => o.category);
+  list.innerHTML = _companyCategoriesCache.map((c) => {
+    const n = mine.filter((t) => t.category === c.name).length + builtIns.filter((o) => o.category === c.name).length;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.06);">
+      <span style="flex:1;color:#fff;font-size:15px;">${hrOnbEsc(c.name)}</span>
+      <span style="font-size:13px;color:rgba(255,255,255,.55);">${n} type${n === 1 ? '' : 's'}</span>
+      <button type="button" class="btn btn-sm btn-danger" onclick="deleteCompanyDocTypeCategory(${Number(c.id)})" style="font-size:13px;padding:3px 8px;">Delete</button>
+    </div>`;
+  }).join('');
+}
+async function addCompanyDocTypeCategory() {
+  const input = document.getElementById('newCompanyCategoryName');
+  const name = (input?.value || '').trim().replace(/\s+/g, ' ');
+  companyCategoryMsg('');
+  if (!name) { companyCategoryMsg('Enter a category name first.', false); return; }
+  if (name.length > 60) { companyCategoryMsg('Keep the name to 60 characters or fewer.', false); return; }
+  const opts = await loadCategoryOptions();
+  if (!opts.supported) { companyCategoryMsg('Not set up yet: run company-doc-type-categories.sql in Supabase first.', false); return; }
+  const lower = name.toLowerCase();
+  if (lower === 'other') { companyCategoryMsg('"Other" already exists for everyone, so just pick that one.', false); return; }
+  if (opts.shared.some((c) => String(c.name).trim().toLowerCase() === lower)) { companyCategoryMsg(`"${name}" is already a shared category available to you: just pick it from the list.`, false); return; }
+  if (opts.own.some((c) => String(c.name).trim().toLowerCase() === lower)) { companyCategoryMsg(`You already have a category called "${name}".`, false); return; }
+  const nextSort = opts.own.length ? Math.max(...opts.own.map((c) => c.sort_order || 0)) + 1 : 0;
+  const { data, error } = await sb.from('document_type_categories').insert({ name, sort_order: nextSort, company_id: currentCompany.id }).select('id');
+  if (error) { companyCategoryMsg(error.message, false); return; }
+  if (!data || !data.length) { companyCategoryMsg("Nothing was saved. You may not have permission to add categories for this company.", false); return; }
+  input.value = '';
+  await loadDocTypesTable();
+  companyCategoryMsg(`✓ "${name}" added. Only your company sees it.`, true);
+}
+async function deleteCompanyDocTypeCategory(id) {
+  const cat = _companyCategoriesCache.find((c) => Number(c.id) === Number(id));
+  if (!cat) { companyCategoryMsg('Could not find that category: refresh and try again.', false); return; }
+  companyCategoryMsg('');
+  // Counted fresh from the database, so a type filed under it a moment ago (or one that is hidden) still blocks the delete.
+  const [{ count: typeCount }, { count: builtInCount }] = await Promise.all([
+    sb.from('document_types').select('id', { count: 'exact', head: true }).eq('company_id', currentCompany.id).eq('category', cat.name),
+    sb.from('company_document_type_overrides').select('id', { count: 'exact', head: true }).eq('company_id', currentCompany.id).eq('category', cat.name),
+  ]);
+  const inUse = (typeCount || 0) + (builtInCount || 0);
+  if (inUse > 0) { companyCategoryMsg(`Can't delete "${cat.name}": ${inUse} document type${inUse === 1 ? ' is' : 's are'} still filed under it. Move ${inUse === 1 ? 'it' : 'them'} to another category first.`, false); return; }
+  if (!confirm(`Delete your "${cat.name}" category?`)) return;
+  const { data, error } = await sb.from('document_type_categories').delete().eq('id', id).eq('company_id', currentCompany.id).select('id');
+  if (error) { companyCategoryMsg(error.message, false); return; }
+  if (!data || !data.length) { companyCategoryMsg('Nothing was deleted. You may not have permission.', false); return; }
+  await loadDocTypesTable();
+  companyCategoryMsg(`Deleted "${cat.name}".`, true);
+}
+
 async function loadDocTypesTable() {
   const supersedeEl = document.getElementById('supersedeOldDocsToggle');
   if (supersedeEl) supersedeEl.checked = currentCompany?.supersede_old_documents !== false;
@@ -15713,15 +15798,16 @@ async function loadDocTypesTable() {
   // tonight (Documents tab, Expiration Tracker).
   const groups = {};
   visibleData.forEach(t => {
-    const cat = t.category || 'Other';
+    const cat = effectiveCategory(t, docTypeOverrides);
     (groups[cat] = groups[cat] || []).push(t);
   });
   // Categories are shared platform-wide and managed from Selko Admin, not
   // hardcoded here — so a newly-added category is immediately usable by
   // every company without a code change.
-  const { data: categoryRows } = await sb.from('document_type_categories').select('name').order('sort_order');
-  const categoryOrder = (categoryRows || []).map(c => c.name);
-  if (!categoryOrder.includes('Other')) categoryOrder.push('Other'); // always a valid fallback bucket
+  // Shared headings first, then this company's own (company-doc-type-categories.sql).
+  const catOptions = await loadCategoryOptions();
+  const categoryOrder = catOptions.names.slice();
+  renderCompanyCategoriesPanel(catOptions, docTypeOverrides);
   const sortedCategories = Object.keys(groups).sort((a, b) => {
     const ai = categoryOrder.indexOf(a), bi = categoryOrder.indexOf(b);
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
@@ -15781,10 +15867,10 @@ async function loadDocTypesTable() {
       </span>
     </td>
     <td><div class="td-actions" style="gap:4px;">
-      ${lockedForMe
-        ? `<span style="font-size:13px;color:rgba(255,255,255,.55);" title="${lockTitle}">${t.category || 'Other'} 🔒</span>`
-        : `<select class="filter-sel" style="font-size:13px;padding:3px 5px;width:auto;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="Move to a different category">
-        ${categoryOrder.map(c => `<option value="${c}" ${c === (t.category || 'Other') ? 'selected' : ''}>${c}</option>`).join('')}
+      ${lockedForMe && !canCustomize
+        ? `<span style="font-size:13px;color:rgba(255,255,255,.55);" title="${lockTitle}">${hrOnbEsc(effectiveCategory(t, docTypeOverrides))} 🔒</span>`
+        : `<select class="filter-sel" style="font-size:13px;padding:3px 5px;width:auto;" onchange="updateDocTypeCategory(${t.id}, this.value)" title="${lockedForMe ? "Your company's own heading for this built-in type. It changes nothing for any other company." : 'Move to a different category'}">
+        ${categoryOptionsHtml(categoryOrder, effectiveCategory(t, docTypeOverrides))}
       </select>`}
       <button class="btn btn-sm ${hiddenIds.has(t.id) ? 'btn-teal' : 'btn-ghost'}" onclick="toggleDocTypeHidden(${t.id}, ${hiddenIds.has(t.id)})" style="${hiddenIds.has(t.id) ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:13px;padding:3px 8px;" title="Hide this from your uploads and reports — e.g. W4, if you track it elsewhere">
         ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
@@ -15837,12 +15923,50 @@ let _docTypeRequiredOverrides = {};
 // to customize. Instead both live as a small, standalone per-company
 // override on top of the shared global default: every tier can flip
 // Required/Optional and adjust who it applies to, without forking the type.
+// "category" is this company's own choice of heading for a built-in type (company-doc-type-categories.sql). If that column is not there yet
+// (the SQL has not been run) the same read is repeated without it, so Required / Applies To keep working exactly as before.
+let _overridesHaveCategory = true;
 async function getDocTypeOverrides(companyId) {
-  const { data } = await sb.from('company_document_type_overrides')
-    .select('document_type_id, is_required, required_for_disciplines').eq('company_id', companyId);
+  let res = null;
+  if (_overridesHaveCategory) {
+    res = await sb.from('company_document_type_overrides')
+      .select('document_type_id, is_required, required_for_disciplines, category').eq('company_id', companyId);
+    if (res && res.error && /category/i.test(res.error.message || '')) { _overridesHaveCategory = false; res = null; }
+  }
+  if (!res) {
+    res = await sb.from('company_document_type_overrides')
+      .select('document_type_id, is_required, required_for_disciplines').eq('company_id', companyId);
+  }
   const map = {};
-  (data || []).forEach(o => { map[o.document_type_id] = o; });
+  ((res && res.data) || []).forEach(o => { map[o.document_type_id] = o; });
   return map;
+}
+
+// The heading a type is filed under FOR THIS COMPANY: its own choice for a built-in type if it made one, otherwise the type's own category.
+function effectiveCategory(t, overridesMap) {
+  const o = overridesMap && overridesMap[t.id];
+  return (o && o.category) || t.category || 'Other';
+}
+
+// Every category this company can file a type under, in display order: the shared ones first, then its own. Falls back to the shared list
+// alone when company categories are not set up yet.
+async function loadCategoryOptions() {
+  const mine = currentCompany.id;
+  let supported = true;
+  let res = await sb.from('document_type_categories').select('*').or(`company_id.is.null,company_id.eq.${mine}`).order('sort_order');
+  if (res.error) { supported = false; res = await sb.from('document_type_categories').select('*').order('sort_order'); }
+  const rows = res.data || [];
+  const shared = rows.filter((r) => !r.company_id);
+  const sharedNames = new Set(shared.map((r) => String(r.name).trim().toLowerCase()));
+  const own = supported ? rows.filter((r) => r.company_id === mine && !sharedNames.has(String(r.name).trim().toLowerCase())) : [];
+  const names = [...shared.map((r) => r.name), ...own.map((r) => r.name)];
+  if (!names.some((n) => String(n).toLowerCase() === 'other')) names.push('Other');
+  return { supported, shared, own, names };
+}
+// <option> list for a category picker. The current value is always included, so a heading that was deleted never silently changes.
+function categoryOptionsHtml(names, current) {
+  const list = names.includes(current) ? names : [...names, current];
+  return list.map((c) => `<option value="${hrOnbEsc(c)}" ${c === current ? 'selected' : ''}>${hrOnbEsc(c)}</option>`).join('');
 }
 function effectiveRequired(t, overridesMap) {
   const o = overridesMap[t.id];
@@ -15879,6 +16003,24 @@ function blockedFromEditingGlobalDocType(id) {
 }
 
 async function updateDocTypeCategory(id, category) {
+  const picked = _docTypesCache.find((x) => x.id === id);
+  if (picked && !picked.company_id && !currentProfile?.is_super_admin) {
+    // A built-in type is one shared row, so it is never edited. A company's choice of heading for it is stored as that company's own override.
+    if (!window._isPro) { toast('Choosing your own category for a built-in type is a Pro feature. Contact Selko to upgrade.', true); await loadDocTypesTable(); return; }
+    const value = category === picked.category ? null : category;   // picking the shared heading again just clears this company's choice
+    const { data: existing } = await sb.from('company_document_type_overrides').select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
+    let error = null;
+    if (existing) ({ error } = await sb.from('company_document_type_overrides').update({ category: value }).eq('id', existing.id));
+    else if (value !== null) ({ error } = await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, category: value }));
+    if (error) {
+      toast(/category/i.test(error.message || '') ? 'Company categories are not set up yet: run company-doc-type-categories.sql in Supabase first.' : 'Error: ' + error.message, true);
+      await loadDocTypesTable(); return;
+    }
+    toast(value ? `Filed under "${value}" for your company only` : `Back to the shared heading "${picked.category || 'Other'}"`);
+    await loadDocTypesTable();
+    await loadDocTypes();
+    return;
+  }
   if (blockedFromEditingGlobalDocType(id)) return;
   const { error } = await sb.from('document_types').update({ category }).eq('id', id);
   if (error) { toast('Error: ' + error.message, true); return; }
@@ -16046,7 +16188,7 @@ async function duplicateDocTypeToCustomize(id) {
     const { error: insertErr } = await sb.from('document_types').insert({
       name: t.name,
       expires: t.expires,
-      category: t.category,
+      category: effectiveCategory(t, overridesMap),
       is_required: effReq,
       required_for_disciplines: effDisciplines.length ? effDisciplines : null,
       staff_can_upload: t.staff_can_upload,
@@ -17749,6 +17891,7 @@ const SETTINGS_HELP = [
         <li>The box above the table explains the columns. Click a badge to change it: <strong>Required / Optional</strong>, <strong>Applies to</strong> (which roles), <strong>Self-upload</strong> (whether staff can upload it themselves) and <strong>Hide</strong> (take it off your list).</li>
         <li><strong>+ Add document type</strong> (Pro plan) creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
         <li>The agency-partner <strong>Visible / Hidden</strong> setting can't be changed for built-in types. They show a lock.</li>
+        <li><strong>Your own categories</strong> (above the table) are section headings only your company sees, in addition to the shared ones. Add one, then pick it in the Category column. On a Pro plan that works for built-in types too: it files that type under your heading for your company only. A category can't be deleted while any type is filed under it.</li>
       </ul>`,
   },
   {
@@ -23347,8 +23490,7 @@ async function openOnboardingDocPicker() {
 
   let categoryOrder = [];
   try {
-    const { data } = await sb.from('document_type_categories').select('name').order('sort_order');
-    categoryOrder = (data || []).map(c => c.name);
+    categoryOrder = (await loadCategoryOptions()).names;
   } catch (e) { /* no category order available — groups just sort alphabetically */ }
 
   // Company-level overrides can change who a type applies to, so the "who is
@@ -24701,7 +24843,19 @@ async function loadOverview() {
 async function getHiddenDocTypeIds() {
   const { data } = await sb.from('company_hidden_document_types')
     .select('document_type_id').eq('company_id', currentCompany.id);
-  return new Set((data || []).map(h => String(h.document_type_id)));
+  const ids = new Set((data || []).map(h => String(h.document_type_id)));
+  // A STAFF login may not be allowed to read that table at all: the database then answers "nothing" (not an error) and everything the
+  // company hid would show up on the staff upload form. my_hidden_document_type_ids() returns only the caller's OWN company's hidden ids
+  // whatever the table's access rules are (see hidden-doc-types-for-staff.sql). Added to the above, never replacing it. Skipped for a super
+  // admin viewing another company (their own company is not the one on screen), and for the rest of the session once it is known to be missing.
+  if (!currentProfile?.is_super_admin && !window._hiddenTypesRpcMissing) {
+    try {
+      const { data: mine, error } = await sb.rpc('my_hidden_document_type_ids');
+      if (error) { if (/could not find the function|does not exist|schema cache/i.test(error.message || '')) window._hiddenTypesRpcMissing = true; }
+      else (mine || []).forEach(r => ids.add(String(r.document_type_id)));
+    } catch (e) { /* the table read above is still used */ }
+  }
+  return ids;
 }
 
 // Documents with no type at all (a custom-labelled upload) can't be hidden, so
@@ -25351,7 +25505,10 @@ async function clearBugLog() {
 let _docTypeCategoriesCache = [];
 
 async function loadDocTypeCategories() {
-  const { data, error } = await sb.from('document_type_categories').select('*').order('sort_order');
+  // Shared categories only: a company's own are managed by that company, in its own Settings.
+  let res = await sb.from('document_type_categories').select('*').is('company_id', null).order('sort_order');
+  if (res.error && /company_id/i.test(res.error.message || '')) res = await sb.from('document_type_categories').select('*').order('sort_order');
+  const { data, error } = res;
   const container = document.getElementById('categoriesListSuper');
   if (error) { container.innerHTML = `<span style="color:#f87171;font-size:14px;">${error.message}</span>`; return; }
   _docTypeCategoriesCache = data || [];
