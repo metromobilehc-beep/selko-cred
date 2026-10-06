@@ -3759,6 +3759,17 @@ async function checkSamSetup() {
     // An older sam-exclusions-refresh does not report on the worker at all. That is a different problem from
     // "the secret is not set", and the fix is different, so say which one it is.
     const oldFunction = data.worker_secret_set === undefined;
+    // Which copy of the company check is live? Both answers come without running a check or using a SAM.gov request.
+    let matcher = 'unknown', checkFn = { state: 'error' };
+    try { const r = await sb.rpc('sam_matcher_version'); matcher = r.error ? 'unknown' : String(r.data || 'unknown'); } catch (e) { matcher = 'unknown'; }
+    try {
+      const r = await sb.functions.invoke('check-sam-exclusions', { body: { action: 'version' } });
+      if (!r.error && r.data && r.data.version) checkFn = { state: 'ok', version: r.data.version };
+      else {
+        const m = r.error ? await samInvokeError(r.error) : '';
+        checkFn = /company_id is required|Not signed in|Invalid or expired/i.test(m) ? { state: 'old' } : /not.?found/i.test(m) ? { state: 'missing' } : { state: 'error', detail: m };
+      }
+    } catch (e) { checkFn = { state: 'error', detail: (e && e.message) || String(e) }; }
     const bits = [
       data.sam_api_key_set ? `✓ SAM_API_KEY is set (${data.sam_api_key_length} characters)` : '✗ SAM_API_KEY is NOT set',
       data.tables_installed ? '✓ tables installed' : '✗ tables missing: ' + (data.tables_error || ''),
@@ -3770,6 +3781,13 @@ async function checkSamSetup() {
         : !data.worker_secret_set ? '✗ SAM_WORKER_SECRET is not set in Supabase (needed to reach the refresh worker). Add it under Edge Functions > Secrets, with the same value as on Vercel.'
         : data.worker_reachable ? `✓ refresh worker reachable${data.worker_node ? ' (Node ' + data.worker_node.replace(/^v/, '') + ')' : ''}`
         : `✗ refresh worker: ${data.worker_error || 'not reachable'}`,
+      matcher === 'fast' ? '✓ company matching is the fast version'
+        : matcher === 'old' ? '✗ company matching is the OLD slow version: run sam-matcher-upgrade.sql (it can make a company check run out of time)'
+        : '✗ company matching version unknown: run sam-matcher-upgrade.sql',
+      checkFn.state === 'ok' ? `✓ company check function deployed (${checkFn.version.replace(/^check-sam-exclusions\s*/, '').replace(/\s*\(.*$/, '')})`
+        : checkFn.state === 'old' ? '✗ the company check function is an OLD version: redeploy check-sam-exclusions from the latest file (Verify JWT off)'
+        : checkFn.state === 'missing' ? '✗ the company check function is not deployed under the name check-sam-exclusions (all lowercase)'
+        : `✗ the company check function could not be checked${checkFn.detail ? ': ' + checkFn.detail : ''}`,
       (!oldFunction && data.worker_reachable) ? (data.worker_database_configured ? '✓ the worker has its database settings' : '✗ the worker has no database settings: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY on the Vercel project, then redeploy') : null,
     ].filter(Boolean);
     // one colour per LINE: green ticks, red crosses, grey notes (a single problem no longer turns every line red)
@@ -3796,11 +3814,20 @@ async function refreshSamListNow() {
     msg.textContent = `Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
   } catch (e) {
     msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
-    if (samIsLimitMessage(msg.textContent)) msg.textContent += ' ' + samResetNote(new Date());       // say when, in the owner's own clock
+    if (samIsLimitMessage(msg.textContent)) msg.textContent += ' ' + samResetNote(new Date(Date.now()));       // say when, in the owner's own clock
   } finally {
     btn.disabled = false;
     await loadSuperSamStatus();
   }
+}
+
+// Supabase's own "ran out of compute resources" (HTTP 546) says nothing about what to do. Say what it means for whoever is looking.
+function samCheckFriendlyError(msg) {
+  const raw = String(msg || '');
+  if (!/WORKER_RESOURCE_LIMIT|HTTP 546|not having enough compute resources/i.test(raw)) return raw;
+  return (currentProfile?.is_super_admin
+    ? 'The check ran out of time or memory on Supabase, so nothing was saved. In Selko Admin press Check setup: it shows whether the fast matching and the latest check function are installed. Then look in Supabase > Edge Functions > check-sam-exclusions > Logs.'
+    : 'The check could not finish this time and nothing was saved. Please try again in a minute. If it keeps happening, tell Selko support.') + ' [HTTP 546]';
 }
 
 async function runMyCompanySamCheck() {
@@ -3823,7 +3850,7 @@ async function runMyCompanySamCheck() {
     await loadSamListFreshness();
   } catch (err) {
     statusEl.textContent = '';
-    toast('SAM.gov check failed: ' + extractErrorMessage(err.message || String(err)), true);
+    toast('SAM.gov check failed: ' + samCheckFriendlyError(extractErrorMessage(err.message || String(err))), true);
   } finally {
     btn.disabled = false;
   }
