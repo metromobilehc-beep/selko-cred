@@ -5792,6 +5792,11 @@ function hrOnbEsc(s) {
 }
 
 // Pure — the size math, kept separate so it can be checked on its own.
+// A value that is safe to place inside an inline onclick="..." argument list: a JSON string (so quotes, backslashes and line breaks cannot end
+// the string), then HTML-escaped (so a double quote cannot end the attribute). The old pattern only escaped apostrophes, which let a name
+// containing a double quote break out of the attribute. Anything a company can type must reach the page through this or hrOnbEsc.
+function jsArg(value) { return hrOnbEsc(JSON.stringify(String(value == null ? '' : value))); }
+
 function hrOnbScaledSize(width, height, maxEdge) {
   const longest = Math.max(width, height);
   if (longest <= maxEdge) return { width, height };
@@ -8437,7 +8442,7 @@ function editDocType(docId, currentTypeId) {
   if (existing) existing.remove();
 
   const options = docTypes.map(t =>
-    `<option value="${t.id}" ${String(t.id) === String(currentTypeId) ? 'selected' : ''}>${t.name}</option>`
+    `<option value="${t.id}" ${String(t.id) === String(currentTypeId) ? 'selected' : ''}>${hrOnbEsc(t.name)}</option>`
   ).join('');
 
   const modal = document.createElement('div');
@@ -15854,7 +15859,7 @@ async function loadDocTypesTable() {
       <div style="display:flex;align-items:center;gap:6px;">
         ${(!lockedForMe || canCustomize) ? `<input type="checkbox" class="dt-pick" data-id="${t.id}" ${window._docTypePicks.has(t.id) ? 'checked' : ''} onchange="toggleDocTypePick(${t.id}, this.checked)" title="Tick several, then move them together" aria-label="Select ${hrOnbEsc(t.name)}" style="flex:none;width:16px;height:16px;cursor:pointer;" />` : ''}
         <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:15px;flex:1;padding:4px 0;${lockedForMe ? 'opacity:.5;' : ''}" 
-          type="text" value="${t.name}${lockedForMe ? ' 🔒' : ''}" id="dtname_${t.id}" ${lockedForMe ? `readonly title="${lockTitle}"` : ''}
+          type="text" value="${hrOnbEsc(t.name)}${lockedForMe ? ' 🔒' : ''}" id="dtname_${t.id}" ${lockedForMe ? `readonly title="${lockTitle}"` : ''}
           onblur="updateDocTypeName(${t.id}, this.value)" />
         ${proOnlyBlocked ? `<span style="font-size:11px;font-weight:700;color:var(--gold);border:1px solid var(--gold);border-radius:4px;padding:1px 5px;white-space:nowrap;" title="This document type requires a Pro plan to fully customize">PRO</span>` : ''}
       </div>
@@ -15869,7 +15874,7 @@ async function loadDocTypesTable() {
     </td>
     <td>
       ${isReq
-        ? `<button onclick="showDocTypeScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(disciplines).replace(/"/g, '&quot;')},${isGlobal},${isGlobal && t.tier === 'pro'})"
+        ? `<button onclick="showDocTypeScopeModal(${t.id},${jsArg(t.name)},${JSON.stringify(disciplines).replace(/"/g, '&quot;')},${isGlobal},${isGlobal && t.tier === 'pro'})"
              class="badge badge-none" style="${proOnlyBlocked ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}border:none;font:inherit;font-size:13px;" title="${proOnlyBlocked ? 'This document type is a Pro feature — contact Selko to upgrade' : 'Click to edit — works at any plan tier, even for built-in defaults'}">${scopeLabel} ${proOnlyBlocked ? '🔒' : '✎'}</button>`
         : `<span style="font-size:13px;color:rgba(255,255,255,.55);">—</span>`}
     </td>
@@ -15889,7 +15894,7 @@ async function loadDocTypesTable() {
         ${hiddenIds.has(t.id) ? 'Unhide' : 'Hide for us'}
       </button>
       ${isGlobal && (window._isPro || currentProfile?.is_super_admin) ? `<button class="btn btn-sm btn-teal" onclick="duplicateDocTypeToCustomize(${t.id})" title="Hides this default and creates your own fully-editable copy, in one click" style="font-size:13px;padding:3px 8px;">Duplicate</button>` : ''}
-      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>` : ''}
+      ${t.company_id ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},${jsArg(t.name)})" style="font-size:13px;padding:3px 8px;">Delete</button>` : ''}
     </div></td>
   </tr>`;
     }).join('');
@@ -16234,11 +16239,11 @@ async function showManageDocTypeVisibility(typeId, typeName) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;max-height:80vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:4px;">Visibility — ${typeName}</div>
+      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:4px;">Visibility — ${hrOnbEsc(typeName)}</div>
       <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checked = this company sees it. Unchecked = hidden for them specifically, same as if they'd clicked "Hide for us" themselves.</p>
       <div style="display:flex;gap:8px;margin-bottom:12px;">
-        <button class="btn btn-sm btn-ghost" onclick="bulkSetDocTypeVisibility(${typeId},'${typeName.replace(/'/g,"\\'")}',false)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Hide for all</button>
-        <button class="btn btn-sm btn-ghost" onclick="bulkSetDocTypeVisibility(${typeId},'${typeName.replace(/'/g,"\\'")}',true)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Show for all</button>
+        <button class="btn btn-sm btn-ghost" onclick="bulkSetDocTypeVisibility(${typeId},${jsArg(typeName)},false)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Hide for all</button>
+        <button class="btn btn-sm btn-ghost" onclick="bulkSetDocTypeVisibility(${typeId},${jsArg(typeName)},true)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Show for all</button>
       </div>
       <div style="display:flex;flex-direction:column;gap:2px;">
         ${(allCompanies || []).map(c => `
@@ -16398,7 +16403,7 @@ async function loadPartnerDocTypesPanel() {
     const locked = partnerVisibilityLockedFor(t);
     return `
     <tr>
-      <td>${t.name}${locked ? ' 🔒' : ''}</td>
+      <td>${hrOnbEsc(t.name)}${locked ? ' 🔒' : ''}</td>
       <td>
         <span class="badge ${t.partner_visible ? 'badge-verified' : 'badge-none'}" style="${locked ? 'opacity:.55;' : ''}cursor:pointer;"
           onclick="toggleDocTypePartnerVisible(${t.id}, ${!!t.partner_visible})" title="${locked ? 'Built-in type — shared by every company, so this can\'t be changed here. Click for details.' : 'Click to toggle whether agency partners can see this document type'}">
@@ -16406,7 +16411,7 @@ async function loadPartnerDocTypesPanel() {
         </span>
       </td>
       <td>
-        ${t.partner_visible && !locked ? `<button onclick="showDocTypePartnerScopeModal(${t.id},'${t.name.replace(/'/g,"\\'")}',${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
+        ${t.partner_visible && !locked ? `<button onclick="showDocTypePartnerScopeModal(${t.id},${jsArg(t.name)},${JSON.stringify(t.partner_visible_agencies || []).replace(/"/g, '&quot;')})"
                class="badge badge-none" style="cursor:pointer;border:none;font:inherit;font-size:13px;">${(t.partner_visible_agencies && t.partner_visible_agencies.length) ? t.partner_visible_agencies.length + ' agenc' + (t.partner_visible_agencies.length === 1 ? 'y' : 'ies') : 'All agencies'} ✎</button>` : '—'}
       </td>
     </tr>`;
@@ -16432,7 +16437,7 @@ async function showDocTypePartnerScopeModal(id, name, currentAgencyIds) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${hrOnbEsc(name)}</div>
       <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:18px;">Which agencies can see this document type? Leave everything unchecked to allow all partner agencies — check specific agencies to restrict it to only them (e.g. a document sent specifically by Ascension shouldn't be visible to Rice).</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;max-height:240px;overflow-y:auto;">
         ${checklist || '<span style="font-size:14px;color:rgba(255,255,255,.55);">No agencies yet — add one under "Referral agencies" first.</span>'}
@@ -16488,7 +16493,7 @@ function showDocTypeScopeModal(id, name, currentDisciplines, isGlobal, isProOnly
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:380px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${name}</div>
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${hrOnbEsc(name)}</div>
       ${warningBanner}
       <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:18px;">Who is this required for? Leave everything unchecked for "required for everyone" — check specific disciplines to limit it (e.g. a PT license shouldn't be required for PTAs).</div>
       <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:18px;">
@@ -25870,20 +25875,20 @@ async function loadPlatformDocTypes() {
   }
 
   tbody.innerHTML = data.map(t => `<tr>
-    <td>${t.name}</td>
-    <td style="font-size:13px;color:rgba(255,255,255,.62);">${t.category || 'Other'}</td>
+    <td>${hrOnbEsc(t.name)}</td>
+    <td style="font-size:13px;color:rgba(255,255,255,.62);">${hrOnbEsc(t.category || 'Other')}</td>
     <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
     <td><span style="font-size:13px;color:rgba(255,255,255,.58);">${t.company_id ? 'Custom' : 'Global'}</span></td>
-    <td style="font-size:14px;color:rgba(255,255,255,.62);">${t.companies?.name || '—'}</td>
+    <td style="font-size:14px;color:rgba(255,255,255,.62);">${hrOnbEsc(t.companies?.name || '—')}</td>
     <td><div class="td-actions">
       <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
         style="font-size:13px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.66);">
         ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
       </button>
-      ${!t.company_id ? `<button class="btn btn-sm btn-ghost" onclick="showManageDocTypeVisibility(${t.id},'${t.name.replace(/'/g,"\\'")}')" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage visibility</button>` : ''}
+      ${!t.company_id ? `<button class="btn btn-sm btn-ghost" onclick="showManageDocTypeVisibility(${t.id},${jsArg(t.name)})" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage visibility</button>` : ''}
       ${t.company_id
-        ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>`
-        : `<button class="btn btn-sm btn-danger" onclick="deleteGlobalDocType(${t.id},'${t.name.replace(/'/g,"\\'")}')">Delete</button>`}
+        ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},${jsArg(t.name)})">Delete</button>`
+        : `<button class="btn btn-sm btn-danger" onclick="deleteGlobalDocType(${t.id},${jsArg(t.name)})">Delete</button>`}
     </div></td>
   </tr>`).join('');
 }
