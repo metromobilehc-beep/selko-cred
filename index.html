@@ -2590,6 +2590,10 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
         <h2>Document types</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
+        <div style="margin-bottom:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:15px;color:#fff;cursor:pointer;margin:0;"><input type="checkbox" id="supersedeOldDocsToggle" style="margin-top:3px;" onchange="saveSupersedeSetting(this.checked)" /> <span>A newer document replaces the older one of the same type<br><span style="font-size:13px;color:rgba(255,255,255,.58);">When a renewal is uploaded, the older document of that type (with an earlier expiry date) is archived automatically, so it stops showing as expired and stops triggering reminders. Nothing is deleted: it stays under Archived and can be restored. Turn this off only if someone can legitimately hold two current documents of one type, for example licenses in two states.</span></span></label>
+          <div id="supersedeSettingMsg" style="font-size:13px;margin-top:6px;"></div>
+        </div>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;margin:0;">
             <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
@@ -5174,6 +5178,24 @@ async function forgotPassword() {
   alertEl.style.display = 'block';
 }
 
+// Which staff record is this signed-in person? Used at sign-in and by the staff screens.
+// The old check was an EXACT email match, so a staff record typed with a capital letter or a stray space ("Jane.Doe@Clinic.com" against the
+// account "jane.doe@clinic.com") locked a new person out, and two records with the same email made it error instead of choosing one. Now:
+//   1. the link made when their login was created (credtrack_staff.profile_id), then
+//   2. the email, ignoring capitals and spaces around it (the _ and % in an address are matched literally, never as wildcards).
+// If there are duplicates the first is used rather than failing.
+async function findMyStaffRecord(companyId, profile, columns) {
+  if (!companyId || !profile) return null;
+  if (profile.id) {
+    const { data } = await sb.from('credtrack_staff').select(columns).eq('company_id', companyId).eq('profile_id', profile.id).limit(1);
+    if (data && data[0]) return data[0];
+  }
+  const email = String(profile.email || '').trim();
+  if (!email) return null;
+  const { data } = await sb.from('credtrack_staff').select(columns).eq('company_id', companyId).ilike('email', email.replace(/[\\%_]/g, '\\$&')).limit(1);
+  return (data && data[0]) || null;
+}
+
 async function initSession(user) {
   try {
     const { data: profile, error: profErr } = await sb.from('profiles').select('*').eq('id', user.id).single();
@@ -5210,8 +5232,7 @@ async function initSession(user) {
         }
         partnerRecord = puCheck;
       } else {
-        const { data: staffCheck } = await sb.from('credtrack_staff')
-          .select('id').eq('company_id', profile.company_id).eq('email', profile.email).maybeSingle();
+        const staffCheck = await findMyStaffRecord(profile.company_id, profile, 'id');
         if (!staffCheck) {
           throw new Error("Your account doesn't have access to Selko Cred. Contact your admin if you believe this is a mistake.");
         }
@@ -5567,8 +5588,7 @@ async function loadDocTypes() {
   // will never apply to them. This only affects the `upType` dropdown
   // below; the shared `docTypes` array stays the full set for admin forms
   // and filters elsewhere, which need to see everything regardless.
-  const { data: myStaffRec } = await sb.from('credtrack_staff')
-    .select('discipline').eq('company_id', currentCompany.id).eq('email', currentProfile.email).maybeSingle();
+  const myStaffRec = await findMyStaffRecord(currentCompany.id, currentProfile, 'discipline');
   const myDiscipline = myStaffRec?.discipline || null;
   const myOverrides = myDiscipline ? await getDocTypeOverrides(currentCompany.id) : {};
 
@@ -6637,8 +6657,7 @@ function setStaffUploadDeferred(deferred) {
 async function initStaff() {
   document.getElementById('staffGreeting').textContent =
     'My Credentials — ' + currentProfile.full_name.split(',')[0];
-  const { data: staffRec } = await sb.from('credtrack_staff')
-    .select('*').eq('company_id', currentCompany.id).eq('email', currentProfile.email).maybeSingle();
+  const staffRec = await findMyStaffRecord(currentCompany.id, currentProfile, '*');
   window._staffId = staffRec?.id || null;
   await renderStatCards(window._staffId);
   await loadMyDocs(window._staffId);
@@ -9780,13 +9799,13 @@ function showFullProfileSheet(staffId) {
           <input class="inline-input" type="text" id="fpCaqhId" value="${s.caqh_id || ''}" placeholder="e.g. 12345678" />
         </div>
         <div>
-          <label class="inline-label">CAQH issued</label>
+          <label class="inline-label">CAQH attested</label>
           <input class="inline-input" type="date" id="fpCaqhIssued" value="${s.caqh_issued_date || ''}" />
         </div>
         <div>
           <label class="inline-label">CAQH re-attestation due</label>
           <input class="inline-input" type="date" id="fpCaqhExpiration" value="${s.caqh_expiration_date || ''}" />
-          <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:4px;line-height:1.4;">CAQH needs re-attesting about every 120 days. Selko emails the admins and the provider before this date, so keep it filled in: <strong>a blank date means no reminders.</strong> <a href="#" onclick="caqhSetDue120(); return false;" style="color:var(--teal-l);">Just re-attested? Set it 120 days from today</a></div>
+          <div style="font-size:12px;color:rgba(255,255,255,.55);margin-top:4px;line-height:1.4;">CAQH needs re-attesting about every 120 days. Selko emails the admins and the provider before this date, so keep it filled in: <strong>a blank date means no reminders.</strong> <a href="#" onclick="caqhSetDue120(); return false;" style="color:var(--teal-l);">Just re-attested? Set attested to today and due in 120 days</a></div>
         </div>
       </div>
 
@@ -11497,13 +11516,27 @@ function showAccountActionsMenu(staffId) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:320px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${s.full_name}</div>
       <div style="font-size:13px;color:rgba(255,255,255,.58);text-transform:uppercase;letter-spacing:.5px;margin-bottom:14px;">Account & Access</div>
-      <div style="display:flex;flex-direction:column;gap:8px;">
+      <div id="staffActionsRows" style="display:flex;flex-direction:column;gap:8px;">
         ${rows.join('')}
       </div>
       <button class="btn btn-ghost" onclick="closeStaffActionsMenu()" style="width:100%;justify-content:center;margin-top:14px;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) closeStaffActionsMenu(); });
+  if (s.email && s.profile_id && !isSyntheticStaffEmail(s.email)) warnIfLoginEmailDiffers(s);
+}
+
+// If this person's LOGIN is under a different email than their staff record, say so right in the menu: that mismatch is why a corrected
+// email "does not work" (they must sign in as the login's email, and invitations go there too).
+async function warnIfLoginEmailDiffers(s) {
+  try {
+    const { data } = await sb.from('profiles').select('email').eq('id', s.profile_id).limit(1);
+    const loginEmail = data && data[0] && String(data[0].email || '').trim();
+    if (!loginEmail || loginEmail.toLowerCase() === String(s.email).trim().toLowerCase()) return;
+    const box = document.getElementById('staffActionsRows');
+    if (!box || !document.getElementById('staffActionsModal')) return;
+    box.insertAdjacentHTML('afterbegin', `<div id="loginMismatchWarning" style="background:rgba(251,191,36,.12);border:1px solid rgba(251,191,36,.4);border-radius:8px;padding:10px 12px;font-size:13px;color:#fde68a;line-height:1.45;">⚠ Their <strong>login</strong> is under <strong>${hrOnbEsc(loginEmail)}</strong>, not <strong>${hrOnbEsc(s.email)}</strong>. They can only sign in as ${hrOnbEsc(loginEmail)}, and invitations go there. Press <em>Change login email</em> to make them match, then <em>Reissue password</em>.</div>`);
+  } catch (e) { /* the warning is a courtesy: never block the menu */ }
 }
 
 function verifyLicense(staffId) {
@@ -11872,9 +11905,20 @@ async function editStaff(id) {
   const title = prompt('Job title:', s.job_title || '');
   if (title === null) return;
 
+  // Editing the email HERE changes only this staff record. If the person already has a login, that login stays under the old address, so
+  // they would be told to sign in with an email that does not exist as a login, and any invitation or password would still go to the old
+  // address. That is how a corrected email ends up not working. Offer "Change login email" (which changes both) instead.
+  let finalEmail = email.trim() || null;
+  let openChangeLogin = false;
+  const wasEmail = String(s.email || '').trim();
+  if (s.profile_id && !isSyntheticStaffEmail(s.email) && (finalEmail || '').toLowerCase() !== wasEmail.toLowerCase()) {
+    openChangeLogin = confirm(`${s.full_name} already has a login under ${wasEmail || 'this email'}.\n\nEditing the email here changes only this staff record, NOT their login. They would still have to sign in as ${wasEmail}, and invitations and passwords would still go there.\n\nPress OK to open "Change login email" (it changes both), or Cancel to keep their email as it is. Your other edits are saved either way.`);
+    finalEmail = s.email || null;                       // never change only half of it
+  }
+
   const { data: changed, error } = await sb.from('credtrack_staff').update({
     full_name: name.trim() || s.full_name,
-    email:     email.trim() || null,
+    email:     finalEmail,
     job_title: title.trim() || null,
   }).eq('id', id).select('id');
 
@@ -11882,6 +11926,7 @@ async function editStaff(id) {
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   toast(name + ' updated');
   await loadStaffTable();
+  if (openChangeLogin) showManageLoginModal(s.id, (name.trim() || s.full_name), s.profile_id, wasEmail);
 }
 
 async function toggleActive(id, active) {
@@ -12462,11 +12507,23 @@ async function showManageLoginModal(staffId, fullName, profileId, currentEmail) 
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
+// The manage-staff-login function answers JSON. If it is not deployed (or crashes) the browser gets a web page instead, which used to surface
+// as "Unexpected token <". Say what actually happened.
+async function readLoginFunctionJson(res) {
+  let result = null;
+  try { result = await res.json(); } catch (e) { /* not JSON */ }
+  if (result) return result;
+  if (res.status === 404) throw new Error("The login service (the manage-staff-login function) is not deployed in Supabase yet, so nothing was changed. Deploy it, then try again.");
+  throw new Error(`The login service answered HTTP ${res.status} with no readable message, so nothing was changed. Try again, and if it keeps happening tell Selko support.`);
+}
+
 async function submitManageLoginEmail(staffId, profileId) {
-  const newEmail = document.getElementById('manageLoginNewEmail').value.trim();
+  // Sign-in accounts store emails in lower case, so a capital typed here would leave the staff record and the login "different". Normalise once.
+  const newEmail = document.getElementById('manageLoginNewEmail').value.trim().toLowerCase();
   const errEl = document.getElementById('manageLoginErr');
   errEl.style.display = 'none';
   if (!newEmail) { errEl.textContent = 'Enter the new email.'; errEl.style.display = 'block'; return; }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newEmail)) { errEl.textContent = 'That does not look like an email address. Check it for a typo before saving: this is where invitations will be sent.'; errEl.style.display = 'block'; return; }
 
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -12475,7 +12532,7 @@ async function submitManageLoginEmail(staffId, profileId) {
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
       body: JSON.stringify({ profile_id: profileId, new_email: newEmail }),
     });
-    const result = await res.json();
+    const result = await readLoginFunctionJson(res);
     if (result.error) throw new Error(result.error);
 
     // The login itself (auth account) is updated server-side — this
@@ -12488,14 +12545,19 @@ async function submitManageLoginEmail(staffId, profileId) {
     document.getElementById('manageLoginModal')?.remove();
     toast(`✓ Login email changed to ${newEmail}`);
     await loadStaffTable();
+    // Changing the email sends NOTHING. Without a new password the person has nothing to sign in with, so offer it now.
+    const who = staffList.find((x) => x.id === staffId);
+    if (confirm(`Login email changed to ${newEmail}.\n\nNothing has been sent yet. Send ${who ? who.full_name : 'them'} a new temporary password at that address now?`)) {
+      await reissueStaffPassword(staffId, who ? who.full_name : '', profileId, newEmail, true);
+    }
   } catch (e) {
     errEl.textContent = e.message;
     errEl.style.display = 'block';
   }
 }
 
-async function reissueStaffPassword(staffId, fullName, profileId, email) {
-  if (!confirm(`Set a new temporary password for ${fullName} (${email})?`)) return;
+async function reissueStaffPassword(staffId, fullName, profileId, email, skipConfirm = false) {
+  if (!skipConfirm && !confirm(`Set a new temporary password for ${fullName} (${email})?\n\nIt is emailed to the address their LOGIN is under, which should be ${email}. (The account menu warns you if the two differ.)`)) return;
   const tempPassword = generateTempPassword();
   try {
     const { data: { session } } = await sb.auth.getSession();
@@ -12507,7 +12569,7 @@ async function reissueStaffPassword(staffId, fullName, profileId, email) {
         login_url: 'https://cred.selko360.com', app_label: 'Cred',
       }),
     });
-    const result = await res.json();
+    const result = await readLoginFunctionJson(res);
     if (result.error) throw new Error(result.error);
     showTempPasswordModal(fullName, email, tempPassword, result.notification_sent, result.notification_error);
   } catch (e) {
@@ -14702,7 +14764,7 @@ async function showEditHistory(staffId, staffName) {
   const fieldLabels = {
     license_number: 'License number', license_type: 'License type', license_state: 'License state',
     npi_number: 'NPI', discipline: 'Discipline', staff_type: 'Staff type',
-    caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_issued_date: 'CAQH issued', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
+    caqh_id: 'CAQH ID', dea_number: 'DEA number', caqh_issued_date: 'CAQH attested', caqh_expiration_date: 'CAQH re-attestation due', dea_expiration_date: 'DEA expiration',
     middle_name: 'Middle name', date_of_birth: 'Date of birth', gender: 'Gender', license_issued_date: 'License issued date', license_expiration_date: 'License expiration',
     board_certified: 'Board certified?', board_name: 'Board name', board_certification_date: 'Board certification date', board_certification_expiration_date: 'Board certification expiration',
     supervising_physician_name: 'Supervising physician — name', supervising_physician_npi: 'Supervising physician — NPI',
@@ -15577,7 +15639,25 @@ async function loadSettings() {
   // the Compliance tab, not Settings.
 }
 
+// Archive an older document automatically when a newer one of the same type is uploaded (companies.supersede_old_documents, on by default).
+async function saveSupersedeSetting(value) {
+  const msg = document.getElementById('supersedeSettingMsg');
+  const back = () => { const el = document.getElementById('supersedeOldDocsToggle'); if (el) el.checked = currentCompany?.supersede_old_documents !== false; };
+  if (currentProfile?.role !== 'admin' && !currentProfile?.is_super_admin) { toast('Only an admin can change this.', true); back(); return; }
+  const { data, error } = await sb.from('companies').update({ supersede_old_documents: value }).eq('id', currentCompany.id).select('id');
+  if (error) {
+    const missing = /column .* does not exist|schema cache/i.test(error.message || '');
+    if (msg) { msg.style.color = '#f87171'; msg.textContent = missing ? 'Not set up yet: run supersede-documents.sql in Supabase first.' : 'Could not save: ' + extractErrorMessage(error); }
+    back(); return;
+  }
+  if (!data || !data.length) { if (msg) { msg.style.color = '#f87171'; msg.textContent = "Nothing was saved. You may not have permission to change this company's settings."; } back(); return; }
+  currentCompany.supersede_old_documents = value;
+  if (msg) { msg.style.color = '#4ade80'; msg.textContent = value ? 'On: a newer upload archives the older document of that type.' : 'Off: older documents stay active until you archive them.'; }
+}
+
 async function loadDocTypesTable() {
+  const supersedeEl = document.getElementById('supersedeOldDocsToggle');
+  if (supersedeEl) supersedeEl.checked = currentCompany?.supersede_old_documents !== false;
   const { data } = await sb.from('document_types')
     .select('*')
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
@@ -17010,7 +17090,7 @@ async function exportCredentialingDataExcel() {
   const headers = [
     'Full Name', 'Discipline', 'Staff Type', 'Active',
     'License Number', 'License Type', 'License State',
-    'NPI', 'CAQH ID', 'CAQH Issued', 'CAQH Re-attestation Due',
+    'NPI', 'CAQH ID', 'CAQH Attested', 'CAQH Re-attestation Due',
     'DEA Number', 'DEA Expiration',
   ];
   ws.addRow(headers);
@@ -17314,6 +17394,17 @@ const DOCS_HELP = [
       </ul>`,
   },
   {
+    title: 'A renewal replaces the old document',
+    subtitle: 'Why an old document disappears when you upload a new one',
+    html: `<p>When you upload a document and there is already an older one of the <strong>same type for the same person</strong> (for example a new Auto Insurance certificate), the older one is <strong>archived automatically</strong>. That is why it stops showing as expired and stops triggering reminders to upload a replacement.</p>
+      <ul>
+        <li><strong>What counts as older:</strong> the other document's expiry date is earlier than the new one's. Documents with no expiry date are never touched, and uploading an older certificate than the one on file does not archive anything.</li>
+        <li><strong>Nothing is deleted.</strong> Choose <em>Archived</em> in the document filter to see it (marked "Replaced by a newer upload") and restore it if you want it active again.</li>
+        <li><strong>Edit dates</strong> works the same way: if a document's new date makes it the newest, the older ones of that type are archived.</li>
+        <li><strong>Turn it off</strong> under Settings, Document types, if someone can legitimately hold two current documents of one type (for example licenses in two states).</li>
+      </ul>`,
+  },
+  {
     title: 'The four status filters',
     subtitle: 'All / Needs verification / Verified / Verified, no file',
     html: `<p>These buttons filter the table below by what state each document is actually in:</p>
@@ -17478,7 +17569,7 @@ const CREDENTIALING_HELP = [
       <ul>
         <li><strong>When:</strong> 30, 14, 7 and 1 days before, on the day, and every week while overdue (for 12 weeks). Each reminder is sent once. It arrives around 9 AM.</li>
         <li><strong>Who:</strong> the <em>provider</em> gets their own email with the steps (sign in at proview.caqh.org, review, attest). The <em>admins</em> get one summary email per day with everyone who is due, overdue first.</li>
-        <li><strong>After a provider re-attests,</strong> open their profile and press <em>Just re-attested? Set it 120 days from today</em> beside the date, then Save. That also stops the reminders for the old date.</li>
+        <li><strong>After a provider re-attests,</strong> open their profile and press <em>Just re-attested? Set attested to today and due in 120 days</em> beside the date, then Save. That also stops the reminders for the old date.</li>
         <li><strong>A CAQH ID but no date</strong> is flagged here as <em>Not set: no reminders</em>, in the banner at the top, and once a month in an email to the admins, because nothing can be reminded without a date.</li>
         <li><strong>Who is skipped:</strong> inactive staff, disciplines you marked CAQH-exempt in Settings, and anyone marked exempt on their own profile.</li>
         <li><strong>Settings:</strong> turn the reminders off, or turn off just the emails to providers, under Settings, CAQH-exempt disciplines.</li>
@@ -18413,7 +18504,7 @@ const CRED_DATA_SOURCES = [
     ['staff.visa_number_status', 'Visa number/status'],
     ['staff.military_duty_status', 'Currently on active/reserve military duty?'],
     ['staff.caqh_id', 'CAQH ID'],
-    ['staff.caqh_issued_date', 'CAQH issued date'],
+    ['staff.caqh_issued_date', 'CAQH attested date'],
     ['staff.caqh_expiration_date', 'CAQH re-attestation due'],
     ['staff.license_number', 'License number'],
     ['staff.license_type', 'License type'],
@@ -21833,12 +21924,16 @@ function caqhPlusDays(from, days) {
   const d = new Date(from.getFullYear(), from.getMonth(), from.getDate() + days);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
-// "Just re-attested" on the profile form: fills the due-date box 120 days out. It does not save: the form's Save button does.
+// "Just re-attested" on the profile form: fills the attested date with today and the due date 120 days out.
+// It does not save: the form's Save button does.
 function caqhSetDue120() {
   const el = document.getElementById('fpCaqhExpiration');
   if (!el) return;
-  el.value = caqhPlusDays(new Date(), 120);
-  toast(`Re-attestation due set to ${fmtDate(el.value)}. Press Save to keep it.`);
+  const now = new Date();
+  const att = document.getElementById('fpCaqhIssued');
+  if (att) att.value = caqhPlusDays(now, 0);
+  el.value = caqhPlusDays(now, 120);
+  toast(`Attested today. Re-attestation due ${fmtDate(el.value)}. Press Save to keep it.`);
 }
 // Is this provider expected to have a CAQH profile? (Not exempt by discipline, nor marked exempt on their own profile.)
 function caqhRequired(s) {
@@ -21908,7 +22003,7 @@ async function renderCredentialingStaffTable() {
     const deaCells = prescribes
       ? `<td>${s.dea_number || '—'}</td><td>${credExpiryLabel(s.dea_expiration_date)}</td>`
       : `<td colspan="2" style="color:rgba(255,255,255,.55);font-size:14px;">N/A — non-prescribing</td>`;
-    const caqhCell = `${s.caqh_id || '—'}${s.caqh_issued_date ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">Issued ${fmtDate(s.caqh_issued_date)}</div>` : ''}`;
+    const caqhCell = `${s.caqh_id || '—'}${s.caqh_issued_date ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">Attested ${fmtDate(s.caqh_issued_date)}</div>` : ''}`;
     return `
     <tr>
       <td>${s.full_name}</td>
