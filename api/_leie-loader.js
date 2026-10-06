@@ -38,6 +38,20 @@ function cleanNpi(s) {
   return /^\d{10}$/.test(d) && !/^(\d)\1+$/.test(d) ? d : null;
 }
 
+// OIG sometimes writes a maiden name or nickname in brackets ("ACOSTA (DELGADO)", "REATHEE (RITA)", middle name "J (ROBINETT)") and
+// a generation suffix inside a name field ("BROWN, JR", middle name "CARLTON, III"). Left as they are they become names no staff
+// member could have, so the bracketed words are kept apart as other names and the suffix is dropped.
+function tidyName(raw) {
+  const extras = [];
+  let text = String(raw || '').replace(/\(([^)]*)\)/g, (m, x) => { if (x.trim()) extras.push(x.trim()); return ' '; }).replace(/\s+/g, ' ').trim();
+  for (;;) {                                         // "BROWN, JR" -> "BROWN" (also "SMITH JR." and a stack of them)
+    const m = /^(.*?)[\s,]+(JR|SR|II|III|IV)\.?$/i.exec(text);
+    if (!m || !m[1].trim()) break;
+    text = m[1].replace(/[\s,]+$/, '');
+  }
+  return { text, extras };
+}
+
 function headerLooksRight(fields) {
   const have = new Set(fields.map((f) => String(f).replace(/^\uFEFF/, '').trim().toUpperCase()));
   return REQUIRED.every((c) => have.has(c));
@@ -96,7 +110,7 @@ async function locate(fetchImpl, log = () => {}) {
 
 // ── Turn the file into the rows we store ───────────────────────────────────────────
 function extractIndividuals(csvText, loadId) {
-  const rows = []; let header = null, idx = null, total = 0, bad = 0, entities = 0, reinstated = 0;
+  const rows = []; let header = null, idx = null, total = 0, bad = 0, entities = 0, reinstated = 0, aliased = 0;
   readCsv(csvText, (f, n) => {
     if (header === null) {
       header = f.map((h) => String(h).replace(/^\uFEFF/, '').trim().toUpperCase());
@@ -110,12 +124,16 @@ function extractIndividuals(csvText, loadId) {
     if (!v('LASTNAME')) { entities++; return; }                  // a business: not a person on anyone's staff
     const rein = isoDate(v('REINDATE'));
     if (rein) { reinstated++; return; }                          // reinstated: no longer excluded (the real file has none, but the rule is OIG's own)
-    rows.push({ load_id: loadId, first_name: v('FIRSTNAME') || null, middle_name: v('MIDNAME') || null, last_name: v('LASTNAME'), general: v('GENERAL') || null, specialty: v('SPECIALTY') || null,
+    const last = tidyName(v('LASTNAME')), first = tidyName(v('FIRSTNAME')), mid = tidyName(v('MIDNAME'));
+    if (!last.text) { entities++; return; }                    // nothing left but a bracket: not a usable person
+    const altLast = [...last.extras, ...mid.extras].join(' '), altFirst = first.extras.join(' ');
+    if (altLast || altFirst) aliased++;
+    rows.push({ load_id: loadId, first_name: first.text || null, middle_name: mid.text || null, last_name: last.text, alt_first: altFirst || null, alt_last: altLast || null, general: v('GENERAL') || null, specialty: v('SPECIALTY') || null,
       npi: cleanNpi(v('NPI')), dob: isoDate(v('DOB')), city: v('CITY') || null, state: v('STATE') || null, excl_type: v('EXCLTYPE') || null,
       excl_date: isoDate(v('EXCLDATE')), rein_date: null, waiver_date: isoDate(v('WAIVERDATE')), waiver_state: v('WVRSTATE') || null });
   });
   if (header === null) throw new Error('The OIG file is empty.');
-  return { rows, total, bad, entities, reinstated };
+  return { rows, total, bad, entities, reinstated, aliased };
 }
 
 async function runWithLimit(items, limit, fn) {
@@ -145,8 +163,8 @@ async function runLeieRefresh({ supabaseUrl, serviceKey, fetchImpl = fetch, log 
     step(`downloaded ${buf.length} bytes`);
     if (buf.length < MIN_BYTES) throw new Error(`The download is only ${buf.length} bytes, which is too small to be the LEIE (about 15 MB), so nothing was loaded.`);
     if (buf.length > MAX_BYTES) throw new Error(`The download is ${Math.round(buf.length / 1048576)} MB, which is far larger than the LEIE, so nothing was loaded.`);
-    const { rows, total, bad, entities, reinstated } = extractIndividuals(buf.toString('utf8'), loadId);
-    step(`read ${total} records: ${rows.length} individuals, ${entities} businesses${reinstated ? `, ${reinstated} reinstated` : ''}${bad ? `, ${bad} oddly shaped row(s) skipped` : ''}`);
+    const { rows, total, bad, entities, reinstated, aliased } = extractIndividuals(buf.toString('utf8'), loadId);
+    step(`read ${total} records: ${rows.length} individuals (${aliased} with another name), ${entities} businesses${reinstated ? `, ${reinstated} reinstated` : ''}${bad ? `, ${bad} oddly shaped row(s) skipped` : ''}`);
     if (rows.length < MIN_INDIVIDUALS) throw new Error(`Only ${rows.length} individuals were found (the LEIE has about 80,000), so the file looks damaged and nothing was loaded.`);
     const batches = []; for (let i = 0; i < rows.length; i += BATCH_SIZE) batches.push(rows.slice(i, i + BATCH_SIZE));
     let stored = 0;
@@ -165,4 +183,4 @@ async function runLeieRefresh({ supabaseUrl, serviceKey, fetchImpl = fetch, log 
   }
 }
 
-module.exports = { runLeieRefresh, extractIndividuals, locate, probe, discover, isoDate, cleanNpi, headerLooksRight, DIRECT_URL, PAGES };
+module.exports = { runLeieRefresh, extractIndividuals, tidyName, locate, probe, discover, isoDate, cleanNpi, headerLooksRight, DIRECT_URL, PAGES };

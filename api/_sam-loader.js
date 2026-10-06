@@ -116,6 +116,8 @@ function extractIndividuals(csvText, loadId) {
         if (i < 0) throw new Error(`The SAM.gov file has no "${name}" column. Its layout may have changed. Found: ${header.slice(0, 40).join(', ')}.`);
         idx[name] = i;
       }
+      // Optional: SAM.gov's list of other names for a person ("(also Jose Ibarra GOMEZ, ...)"). If a future file lacks it the load still works, just without aliases.
+      idx['Cross-Reference'] = header.findIndex((h) => h.toLowerCase() === 'cross-reference');
       return;
     }
     total++;
@@ -126,6 +128,7 @@ function extractIndividuals(csvText, loadId) {
       load_id: loadId, sam_number: v('SAM Number'), first_name: v('First'), middle_name: v('Middle'), last_name: v('Last'), suffix: v('Suffix'),
       state: v('State / Province'), npi: (f[idx.NPI] || '').replace(/\D/g, '') || null, exclusion_type: v('Exclusion Type'),
       exclusion_program: v('Exclusion Program'), excluding_agency: v('Excluding Agency'), active_date: v('Active Date'), termination_date: v('Termination Date'),
+      cross_reference: v('Cross-Reference'),
     });
   });
   if (header === null) throw new Error('The SAM.gov file is empty.');
