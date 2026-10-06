@@ -2589,21 +2589,7 @@ window.selkoSharedAuthStorage = {
            served by the separate, simpler Credentialing Files system. -->
       <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
         <h2>Document types</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:6px;">Manage which credential types are available to your staff.</p>
-        <div style="margin-bottom:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;">
-          <label style="display:flex;align-items:flex-start;gap:8px;font-size:15px;color:#fff;cursor:pointer;margin:0;"><input type="checkbox" id="supersedeOldDocsToggle" style="margin-top:3px;" onchange="saveSupersedeSetting(this.checked)" /> <span>A newer document replaces the older one of the same type<br><span style="font-size:13px;color:rgba(255,255,255,.58);">When a renewal is uploaded, the older document of that type (with an earlier expiry date) is archived automatically, so it stops showing as expired and stops triggering reminders. Nothing is deleted: it stays under Archived and can be restored. Turn this off only if someone can legitimately hold two current documents of one type, for example licenses in two states.</span></span></label>
-          <div id="supersedeSettingMsg" style="font-size:13px;margin-top:6px;"></div>
-        </div>
-        <div id="companyCategoriesPanel" style="margin-bottom:12px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;">
-          <div style="color:#fff;font-size:15px;font-weight:600;margin-bottom:2px;">Your own categories</div>
-          <div style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:8px;line-height:1.45;">Section headings only your company sees, alongside the shared ones. File your own document types under them, and (Pro) built-in types too: pick one in the Category column. Other companies are never affected.</div>
-          <div id="companyCategoriesList"></div>
-          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
-            <input class="inline-input" type="text" id="newCompanyCategoryName" maxlength="60" placeholder="e.g. Agency requirements" style="max-width:260px;" />
-            <button type="button" class="btn btn-sm btn-teal" id="addCompanyCategoryBtn" onclick="proGate(addCompanyDocTypeCategory)">+ Add category</button>
-          </div>
-          <div id="companyCategoriesMsg" style="font-size:13px;margin-top:6px;"></div>
-        </div>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:6px;">Manage which credential types are available to your staff. <a href="#docTypeOptionsBox" onclick="document.getElementById('docTypeOptionsBox')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:var(--teal-l);">Options for your own categories and for renewals are at the bottom ↓</a></p>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;margin:0;">
             <input type="checkbox" id="showHiddenDocTypesToggle" onchange="window._showHiddenDocTypes = this.checked; loadDocTypesTable();" />
@@ -2624,15 +2610,6 @@ window.selkoSharedAuthStorage = {
             <li><strong>Hide for us</strong> — removes a type from your lists without deleting it. Tick "Show hidden types too" above to bring it back.</li>
           </ul>
         </div>
-        <div id="docTypesBulkBar" style="display:none;position:sticky;top:0;z-index:5;background:var(--navy2);border:1px solid rgba(20,184,166,.5);border-radius:8px;padding:8px 12px;margin-bottom:8px;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <strong id="docTypesBulkCount" style="color:#fff;font-size:14px;"></strong>
-            <select id="docTypesBulkTarget" class="filter-sel" style="font-size:14px;padding:4px 6px;width:auto;max-width:260px;" aria-label="Move the selected types to"></select>
-            <button type="button" class="btn btn-sm btn-teal" id="docTypesBulkMoveBtn" onclick="bulkMoveDocTypes()">Move</button>
-            <button type="button" class="btn btn-sm btn-ghost" onclick="clearDocTypePicks()" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear</button>
-          </div>
-          <div id="docTypesBulkMsg" style="font-size:13px;margin-top:6px;"></div>
-        </div>
         <div class="tbl-wrap">
           <table>
             <thead><tr>
@@ -2644,6 +2621,24 @@ window.selkoSharedAuthStorage = {
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
           </table>
+        </div>
+        <div id="docTypeOptionsBox" style="margin-top:22px;padding-top:14px;border-top:1px solid rgba(255,255,255,.14);">
+          <div style="color:var(--teal-l);font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px;">Options for categories and renewals</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;">These apply to your company only.</div>
+        <div id="companyCategoriesPanel" style="margin-bottom:10px;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;">
+          <div style="color:#fff;font-size:15px;font-weight:600;margin-bottom:2px;">1. Your own categories</div>
+          <div style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:8px;line-height:1.45;">Section headings only your company sees, alongside the shared ones. File your own document types under them, and (Pro) built-in types too: pick one in the Category column. Other companies are never affected.</div>
+          <div id="companyCategoriesList"></div>
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;">
+            <input class="inline-input" type="text" id="newCompanyCategoryName" maxlength="60" placeholder="e.g. Agency requirements" style="max-width:260px;" />
+            <button type="button" class="btn btn-sm btn-teal" id="addCompanyCategoryBtn" onclick="proGate(addCompanyDocTypeCategory)">+ Add category</button>
+          </div>
+          <div id="companyCategoriesMsg" style="font-size:13px;margin-top:6px;"></div>
+        </div>
+        <div style="margin-bottom:0;padding:10px 12px;border:1px solid rgba(255,255,255,.1);border-radius:8px;">
+          <label style="display:flex;align-items:flex-start;gap:8px;font-size:15px;color:#fff;cursor:pointer;margin:0;"><input type="checkbox" id="supersedeOldDocsToggle" style="margin-top:3px;" onchange="saveSupersedeSetting(this.checked)" /> <span><strong>2. Renewals:</strong> a newer document replaces the older one of the same type<br><span style="font-size:13px;color:rgba(255,255,255,.58);">When a renewal is uploaded, the older document of that type (with an earlier expiry date) is archived automatically, so it stops showing as expired and stops triggering reminders. Nothing is deleted: it stays under Archived and can be restored. Turn this off only if someone can legitimately hold two current documents of one type, for example licenses in two states.</span></span></label>
+          <div id="supersedeSettingMsg" style="font-size:13px;margin-top:6px;"></div>
+        </div>
         </div>
       </div>
 
@@ -15763,9 +15758,6 @@ async function loadDocTypesTable() {
     .order('sort_order');
 
   _docTypesCache = data || []; // so edit functions can check company_id before writing, without a re-fetch
-  const _prevPicks = window._docTypePicks || new Set();   // ticks survive a redraw, if the type is still there to tick
-  window._docTypePicks = new Set();
-  refreshDocTypeBulkBar();
 
   const docTypeOverrides = await getDocTypeOverrides(currentCompany.id);
   _docTypeRequiredOverrides = docTypeOverrides; // so toggleDocTypeRequired/confirmDocTypeScope know the current override state without a re-fetch
@@ -15857,7 +15849,6 @@ async function loadDocTypesTable() {
       return `<tr data-doctype-group="${catSlug}" style="display:${window._docTypesAllExpanded ? 'table-row' : 'none'};">
     <td>
       <div style="display:flex;align-items:center;gap:6px;">
-        ${(!lockedForMe || canCustomize) ? `<input type="checkbox" class="dt-pick" data-id="${t.id}" ${window._docTypePicks.has(t.id) ? 'checked' : ''} onchange="toggleDocTypePick(${t.id}, this.checked)" title="Tick several, then move them together" aria-label="Select ${hrOnbEsc(t.name)}" style="flex:none;width:16px;height:16px;cursor:pointer;" />` : ''}
         <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:15px;flex:1;padding:4px 0;${lockedForMe ? 'opacity:.5;' : ''}" 
           type="text" value="${hrOnbEsc(t.name)}${lockedForMe ? ' 🔒' : ''}" id="dtname_${t.id}" ${lockedForMe ? `readonly title="${lockTitle}"` : ''}
           onblur="updateDocTypeName(${t.id}, this.value)" />
@@ -15902,140 +15893,11 @@ async function loadDocTypesTable() {
     return `
       <tr class="doctype-category-header" data-doctype-header="${catSlug}" onclick="toggleDocTypeCategory('${catSlug}')" style="cursor:pointer;background:rgba(255,255,255,.03);">
         <td colspan="${colCount}" style="padding:8px 12px;font-weight:700;font-size:14px;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;">
-          <span class="panel-chevron${window._docTypesAllExpanded ? ' open' : ''}" style="margin-right:6px;">▸</span>${groups[cat].some((t) => !(isGlobalLocked(t))) ? `<input type="checkbox" class="dt-pick-all" data-group="${catSlug}" onclick="event.stopPropagation()" onchange="toggleDocTypePickGroup('${catSlug}', this.checked)" title="Select everything in this section that can be moved" aria-label="Select all in ${hrOnbEsc(cat)}" style="width:16px;height:16px;margin-right:8px;vertical-align:middle;cursor:pointer;" />` : ''}${hrOnbEsc(cat)} <span style="font-weight:400;color:rgba(255,255,255,.58);">(${groups[cat].length})</span>
+          <span class="panel-chevron${window._docTypesAllExpanded ? ' open' : ''}" style="margin-right:6px;">▸</span>${hrOnbEsc(cat)} <span style="font-weight:400;color:rgba(255,255,255,.58);">(${groups[cat].length})</span>
         </td>
       </tr>${rows}`;
   }).join('');
 
-  // Re-apply earlier ticks to types that are still shown and still movable, then fill in the bar.
-  visibleData.forEach((t) => { if (_prevPicks.has(t.id) && docTypePickable(t)) window._docTypePicks.add(t.id); });
-  const bulkSel = document.getElementById('docTypesBulkTarget');
-  if (bulkSel) {
-    const keep = bulkSel.value;
-    bulkSel.innerHTML = '<option value="">Move to…</option>' + categoryOrder.map((c) => `<option value="${hrOnbEsc(c)}">${hrOnbEsc(c)}</option>`).join('')
-      + (currentProfile?.is_super_admin ? '' : '<option value="__reset__">↩ Built-in types: back to their shared heading</option>');
-    if (keep && [...bulkSel.options].some((o) => o.value === keep)) bulkSel.value = keep;
-  }
-  document.querySelectorAll('#docTypesTbody .dt-pick').forEach((cb) => { cb.checked = window._docTypePicks.has(Number(cb.dataset.id)); });
-  syncDocTypePickHeaders();
-  refreshDocTypeBulkBar();
-}
-
-// ── Move several document types to a category at once ──
-window._docTypePicks = window._docTypePicks || new Set();
-// "Locked" = a built-in type this person cannot change: a built-in on a plan without customization.
-function isGlobalLocked(t) { return !t.company_id && !(window._isPro || currentProfile?.is_super_admin); }
-function docTypePickable(t) { return !!t && !isGlobalLocked(t); }
-function bulkMsg(text, ok) { const el = document.getElementById('docTypesBulkMsg'); if (el) { el.style.color = ok ? '#4ade80' : '#f87171'; el.textContent = text || ''; } }
-function syncDocTypePickHeaders() {
-  document.querySelectorAll('#docTypesTbody .dt-pick-all').forEach((hd) => {
-    const boxes = [...document.querySelectorAll(`#docTypesTbody tr[data-doctype-group="${hd.dataset.group}"] .dt-pick`)];
-    const on = boxes.filter((b) => b.checked).length;
-    hd.checked = boxes.length > 0 && on === boxes.length;
-    hd.indeterminate = on > 0 && on < boxes.length;
-  });
-}
-function refreshDocTypeBulkBar() {
-  const bar = document.getElementById('docTypesBulkBar');
-  if (!bar) return;
-  const picks = [...(window._docTypePicks || [])];
-  bar.style.display = picks.length ? 'block' : 'none';
-  if (!picks.length) { bulkMsg(''); return; }
-  const cache = _docTypesCache || [];
-  const builtIn = picks.filter((id) => { const t = cache.find((x) => x.id === id); return t && !t.company_id; }).length;
-  const own = picks.length - builtIn;
-  const parts = [];
-  if (own) parts.push(`${own} of your own`);
-  if (builtIn) parts.push(`${builtIn} built-in`);
-  document.getElementById('docTypesBulkCount').textContent = `${picks.length} selected (${parts.join(', ')})`;
-}
-function toggleDocTypePick(id, on) {
-  if (on) window._docTypePicks.add(id); else window._docTypePicks.delete(id);
-  syncDocTypePickHeaders();
-  refreshDocTypeBulkBar();
-}
-function toggleDocTypePickGroup(slug, on) {
-  document.querySelectorAll(`#docTypesTbody tr[data-doctype-group="${slug}"] .dt-pick`).forEach((cb) => {
-    cb.checked = on;
-    const id = Number(cb.dataset.id);
-    if (on) window._docTypePicks.add(id); else window._docTypePicks.delete(id);
-  });
-  syncDocTypePickHeaders();
-  refreshDocTypeBulkBar();
-}
-function clearDocTypePicks() {
-  window._docTypePicks = new Set();
-  document.querySelectorAll('#docTypesTbody .dt-pick').forEach((cb) => { cb.checked = false; });
-  syncDocTypePickHeaders();
-  refreshDocTypeBulkBar();
-}
-async function bulkMoveDocTypes() {
-  const target = document.getElementById('docTypesBulkTarget')?.value || '';
-  bulkMsg('');
-  if (!target) { bulkMsg('Choose where to move them first.', false); return; }
-  const picked = [...window._docTypePicks].map((id) => (_docTypesCache || []).find((x) => x.id === id)).filter(Boolean);
-  if (!picked.length) { bulkMsg('Tick the types you want to move first.', false); return; }
-  const isSuper = !!currentProfile?.is_super_admin;
-  const reset = target === '__reset__';
-  if (reset && isSuper) { bulkMsg('"Back to the shared heading" only applies to a company\'s own choices. As a platform admin you edit the shared heading directly.', false); return; }
-  const own = picked.filter((t) => t.company_id === currentCompany.id);
-  const builtIn = picked.filter((t) => !t.company_id);
-  if (builtIn.length && !isSuper && !window._isPro) { bulkMsg('Moving built-in types is a Pro feature. Contact Selko to upgrade.', false); return; }
-  if (!reset) {
-    const opts = await loadCategoryOptions();
-    if (!opts.names.includes(target)) { bulkMsg('That category is not available to your company. Refresh and try again.', false); return; }
-  }
-  const overrides = _docTypeRequiredOverrides || {};
-  // Work out what actually has to change, so a type already in place is neither touched nor counted.
-  const ownMoves = reset ? [] : own.filter((t) => (t.category || 'Other') !== target);
-  let builtMoves = [];
-  if (isSuper) builtMoves = reset ? [] : builtIn.filter((t) => (t.category || 'Other') !== target);
-  else if (reset) builtMoves = builtIn.filter((t) => overrides[t.id] && overrides[t.id].category);
-  else builtMoves = builtIn.filter((t) => effectiveCategory(t, overrides) !== target);
-  if (!ownMoves.length && !builtMoves.length) { bulkMsg(reset ? 'None of the selected types had a choice of your own to undo.' : `They are already in "${target}".`, true); return; }
-  if (isSuper && builtMoves.length && !confirm(`${builtMoves.length} of these are built-in types shared by EVERY company. As a platform admin, moving them changes their heading for every company on the platform.\n\nContinue?`)) return;
-
-  const btn = document.getElementById('docTypesBulkMoveBtn');
-  if (btn) btn.disabled = true;
-  const fail = (e) => {
-    bulkMsg(/category/i.test(e.message || '') && /override/i.test(e.message || '') ? 'Company categories are not set up yet: run company-doc-type-categories.sql in Supabase first.' : 'Could not finish: ' + e.message, false);
-    if (btn) btn.disabled = false;
-  };
-  let movedOwn = 0, movedBuilt = 0;
-  try {
-    if (ownMoves.length) {
-      const { data, error } = await sb.from('document_types').update({ category: target }).in('id', ownMoves.map((t) => t.id)).eq('company_id', currentCompany.id).select('id');
-      if (error) { fail(error); return; }
-      movedOwn = (data || []).length;
-    }
-    if (builtMoves.length && isSuper) {
-      const { data, error } = await sb.from('document_types').update({ category: target }).in('id', builtMoves.map((t) => t.id)).is('company_id', null).select('id');
-      if (error) { fail(error); return; }
-      movedBuilt = (data || []).length;
-    } else if (builtMoves.length) {
-      const ids = builtMoves.map((t) => t.id);
-      const { data: existing, error: exErr } = await sb.from('company_document_type_overrides').select('id, document_type_id').eq('company_id', currentCompany.id).in('document_type_id', ids);
-      if (exErr) { fail(exErr); return; }
-      const have = new Map((existing || []).map((r) => [r.document_type_id, r.id]));
-      const valueFor = (t) => (reset || target === t.category) ? null : target;   // choosing the shared heading again just clears the company's choice
-      const toClear = builtMoves.filter((t) => have.has(t.id) && valueFor(t) === null).map((t) => have.get(t.id));
-      const toSet = builtMoves.filter((t) => have.has(t.id) && valueFor(t) !== null).map((t) => have.get(t.id));
-      const toInsert = builtMoves.filter((t) => !have.has(t.id) && valueFor(t) !== null).map((t) => ({ company_id: currentCompany.id, document_type_id: t.id, category: valueFor(t) }));
-      if (toClear.length) { const { error } = await sb.from('company_document_type_overrides').update({ category: null }).in('id', toClear); if (error) { fail(error); return; } }
-      if (toSet.length) { const { error } = await sb.from('company_document_type_overrides').update({ category: target }).in('id', toSet); if (error) { fail(error); return; } }
-      if (toInsert.length) { const { error } = await sb.from('company_document_type_overrides').insert(toInsert); if (error) { fail(error); return; } }
-      movedBuilt = toClear.length + toSet.length + toInsert.length;
-    }
-  } catch (e) { fail(e); return; }
-  if (btn) btn.disabled = false;
-  const expected = ownMoves.length + builtMoves.length, done = movedOwn + movedBuilt;
-  window._docTypePicks = new Set();
-  await loadDocTypesTable();
-  await loadDocTypes();
-  if (done < expected) { bulkMsg(`Moved ${done} of ${expected}. The other ${expected - done} could not be changed (you may not have permission for them).`, false); return; }
-  const where = reset ? 'back to their shared headings' : `to "${target}"`;
-  const note = !isSuper && movedBuilt ? ` ${movedBuilt} built-in: for your company only.` : '';
-  toast(`✓ Moved ${done} document type${done === 1 ? '' : 's'} ${where}.${note}`);
 }
 
 function toggleDocTypeCategory(catSlug) {
@@ -18039,7 +17901,6 @@ const SETTINGS_HELP = [
         <li>The box above the table explains the columns. Click a badge to change it: <strong>Required / Optional</strong>, <strong>Applies to</strong> (which roles), <strong>Self-upload</strong> (whether staff can upload it themselves) and <strong>Hide</strong> (take it off your list).</li>
         <li><strong>+ Add document type</strong> (Pro plan) creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
         <li>The agency-partner <strong>Visible / Hidden</strong> setting can't be changed for built-in types. They show a lock.</li>
-        <li><strong>Moving several at once:</strong> tick the boxes beside the types (or the box on a section heading to tick everything in it), choose a category in the bar that appears, and press Move. On a Pro plan this includes built-in types, which move for your company only. <em>↩ Built-in types: back to their shared heading</em> undoes your own choices.</li>
         <li><strong>Your own categories</strong> (above the table) are section headings only your company sees, in addition to the shared ones. Add one, then pick it in the Category column. On a Pro plan that works for built-in types too: it files that type under your heading for your company only. A category can't be deleted while any type is filed under it.</li>
       </ul>`,
   },
