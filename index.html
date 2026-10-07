@@ -530,6 +530,12 @@ window.selkoSharedAuthStorage = {
           <label class="field-label">License number <span style="color:var(--danger);">*</span></label>
           <input type="text" id="upLicense" placeholder="e.g. OK12345" />
         </div>
+        <div class="form-group" id="upQualGroup" style="display:none;">
+          <label class="field-label">Which one? <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="upQual" maxlength="40" list="upQualList" placeholder="e.g. TX" autocomplete="off" />
+          <datalist id="upQualList"></datalist>
+          <div style="font-size:13px;color:var(--muted,#64748b);margin-top:4px;">You can hold more than one of these (for example a license in each state). Say which this is. A renewal with the same answer replaces the older one.</div>
+        </div>
         <div class="form-group">
           <label class="field-label">Notes (optional)</label>
           <input type="text" id="upNotes" placeholder="e.g. License #OK12345" />
@@ -789,6 +795,12 @@ window.selkoSharedAuthStorage = {
             <label class="inline-label">Expiration date</label>
             <input class="inline-input" type="date" id="auExpiry" />
           </div>
+        </div>
+        <div id="auQualGroup" style="display:none;margin-bottom:12px;max-width:380px;">
+          <label class="inline-label">Which one? <span style="color:#fca5a5;">*</span></label>
+          <input class="inline-input" type="text" id="auQual" maxlength="40" list="auQualList" placeholder="e.g. TX, OK, Vehicle 2" autocomplete="off" />
+          <datalist id="auQualList"></datalist>
+          <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:3px;">This type can be held more than once. A renewal with the same label replaces only that one.</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;">
           <div>
@@ -2648,6 +2660,7 @@ window.selkoSharedAuthStorage = {
               <th>Required<span class="th-hint">click to change</span></th>
               <th>Applies To<span class="th-hint">click to choose</span></th>
               <th>Self-upload<span class="th-hint">click to switch</span></th>
+              <th>Several<span class="th-hint">click to switch</span></th>
               <th>Actions</th>
             </tr></thead>
             <tbody id="docTypesTbody"></tbody>
@@ -5744,7 +5757,12 @@ async function loadDocTypes() {
   const myOverrides = await getDocTypeOverrides(currentCompany.id);   // Required / Applies To, and this company's own category choices
 
   docTypes = (data || []).filter(t => !hiddenIds.has(String(t.id)))
-    .map(t => (!t.company_id && myOverrides[t.id] && myOverrides[t.id].category) ? { ...t, category: myOverrides[t.id].category } : t);
+    .map(t => {
+      let x = t; const o = myOverrides[t.id];
+      if (!t.company_id && o && o.category) x = { ...x, category: o.category };
+      if (o && o.allow_multiple !== null && o.allow_multiple !== undefined) x = { ...x, allow_multiple: o.allow_multiple };   // this company's own choice beats the shared default
+      return x;
+    });
 
   // Narrow the self-service upload picker to what actually applies to
   // *this* person, if they're a clinician with a discipline on file — a PT
@@ -6951,7 +6969,7 @@ async function initPartnerView(partnerRecord) {
     const docRows = (docs || []).map(d => `<div class="doc-item">
       <div class="doc-icon">📄</div>
       <div class="doc-info">
-        <div class="doc-name">${d.document_types?.name || d.label}</div>
+        <div class="doc-name">${hrOnbEsc(docDisplayName(d))}</div>
         <div class="doc-meta">${d.expiry_date ? 'Expires ' + fmtDate(d.expiry_date) : 'No expiration'}</div>
       </div>
       ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(d.file_url)},'${d.id}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
@@ -7069,13 +7087,45 @@ async function loadMyDocs(staffId) {
     return `<div class="doc-item">
       <div class="doc-icon">${icon}</div>
       <div class="doc-info">
-        <div class="doc-name">${typeName} ${badge}</div>
+        <div class="doc-name">${hrOnbEsc(docDisplayName(doc))} ${badge}</div>
         <div class="doc-meta">${doc.file_url_2 ? `${doc.file_name || 'Front'} + ${doc.file_name_2} (front & back)` : (doc.file_name || 'Record only')} · Uploaded ${fmtDate(doc.created_at)}</div>
         ${doc.notes ? `<div class="doc-note">${doc.notes}</div>` : ''}
       </div>
       ${statusBadge(doc.expiry_date)}
     </div>`;
   }).join('');
+}
+
+// ── Several documents of one type (a short label says which: TX, OK, Vehicle 2) ──
+// Only for document types switched to "Several" (Settings → Document types). Every other type ignores the label entirely.
+function docQualifier(d) { return String((d && d.qualifier) || '').trim(); }
+function docDisplayName(d, fallback) {
+  const n = (d && ((d.document_types && d.document_types.name) || d.label)) || fallback || '';
+  const q = docQualifier(d);
+  return q ? `${n} · ${q}` : n;
+}
+function docTypeAllowsMultiple(t) { return !!(t && t.allow_multiple); }
+function cleanQualifier(v) { return String(v || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 40); }
+// Offers the labels this person already uses for this type (including archived ones), plus the license state chosen on the form.
+async function refreshQualSuggestions(prefix, staffId, typeId, stateCode) {
+  const list = document.getElementById(`${prefix}QualList`);
+  if (!list) return;
+  const found = new Set();
+  if (stateCode) found.add(String(stateCode).toUpperCase());
+  if (staffId && typeId) {
+    const { data } = await sb.from('credtrack_documents').select('qualifier').eq('staff_id', staffId).eq('document_type_id', parseInt(typeId, 10)).not('qualifier', 'is', null).limit(50);
+    (data || []).forEach((r) => { const q = cleanQualifier(r.qualifier); if (q) found.add(q); });
+  }
+  list.innerHTML = [...found].map((q) => `<option value="${hrOnbEsc(q)}"></option>`).join('');
+}
+function qualFieldFor(prefix, typeId) {
+  const t = docTypes.find((d) => d.id == typeId);
+  const group = document.getElementById(`${prefix}QualGroup`);
+  if (!group) return false;
+  const on = docTypeAllowsMultiple(t);
+  group.style.display = on ? 'block' : 'none';
+  if (!on) { const el = document.getElementById(`${prefix}Qual`); if (el) el.value = ''; }
+  return on;
 }
 
 const PROFESSIONAL_LICENSE_TYPES = ['pt license', 'pta license', 'ot license', 'cota license', 'slp license'];
@@ -7089,6 +7139,7 @@ function onUpTypeChanged() {
   const typeId = document.getElementById('upType').value;
   const docType = docTypes.find(d => d.id == typeId);
   document.getElementById('upLicenseGroup').style.display = isLicenseDocType(docType) ? 'block' : 'none';
+  if (qualFieldFor('up', typeId)) refreshQualSuggestions('up', window._staffId, typeId);
 }
 
 function onAuTypeChanged(prefix = 'au') {
@@ -7099,6 +7150,9 @@ function onAuTypeChanged(prefix = 'au') {
   if (labelEl) labelEl.innerHTML = required
     ? 'License # <span style="color:#fca5a5;">*</span>'
     : 'License #';
+  const stateEl = document.getElementById(`${prefix}LicenseState`);
+  const staffEl = document.getElementById(`${prefix}Staff`);
+  if (qualFieldFor(prefix, typeId)) refreshQualSuggestions(prefix, staffEl ? staffEl.value : window._pauStaffId, typeId, stateEl ? stateEl.value : '');
 }
 
 // ══ UPLOAD ══
@@ -7358,6 +7412,9 @@ async function uploadDoc() {
     return;
   }
   if (!window._staffId) { showUpStatus('Your staff record is not set up. Contact your admin.', 'err'); return; }
+  const multiType = docTypeAllowsMultiple(docTypeForValidation);
+  const qual = multiType ? cleanQualifier(document.getElementById('upQual')?.value) : '';
+  if (multiType && !qual) { showUpStatus('Please say which one this is (for example the state), because you can hold more than one of this type.', 'err'); return; }
 
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Uploading…';
@@ -7396,6 +7453,7 @@ async function uploadDoc() {
       file_url_2:       fileUrl2,
       file_name_2:      fileName2,
       notes:            notes || null,
+      ...(multiType ? { qualifier: qual } : {}),
     });
     if (dbErr) throw dbErr;
 
@@ -7408,6 +7466,7 @@ async function uploadDoc() {
     document.getElementById('upExp').value   = '';
     document.getElementById('upNotes').value = '';
     document.getElementById('upLicense').value = '';
+    if (document.getElementById('upQual')) document.getElementById('upQual').value = '';
     document.getElementById('upLicenseGroup').style.display = 'none';
     clearPhoto();
     await renderStatCards(window._staffId);
@@ -7884,7 +7943,7 @@ async function fetchProReportRows() {
     const status = !r.expiry_date ? 'No expiry' : days < 0 ? 'EXPIRED' : days < 30 ? 'Expiring soon' : days < 90 ? 'Due soon' : 'Current';
     return {
       staff:    r.credtrack_staff?.full_name || '—',
-      type:     r.document_types?.name || r.label,
+      type:     docDisplayName(r),
       tier:     r.document_types?.tier || 'standard',
       issued:   r.issued_date ? new Date(r.issued_date).toLocaleDateString() : '—',
       expires:  r.expiry_date ? new Date(r.expiry_date).toLocaleDateString() : '—',
@@ -8173,7 +8232,7 @@ async function generateAuditPacket() {
         ? (new Date(d.expiry_date) < new Date() ? 'EXPIRED' : fmtDate(d.expiry_date))
         : 'No expiration';
       if (d.verified && (d.file_url || d.file_url_2)) verifiedFiles.push(d);
-      return [d.document_types?.name || d.label || '—', fmtDate(d.issued_date), expiryLabel, status];
+      return [docDisplayName(d, '—'), fmtDate(d.issued_date), expiryLabel, status];
     });
 
     cover.autoTable({
@@ -8205,7 +8264,7 @@ async function generateAuditPacket() {
     const skipped = [];
     let fileCount = 0;
     for (const d of verifiedFiles) {
-      const typeName = d.document_types?.name || d.label || 'Document';
+      const typeName = docDisplayName(d, 'Document').replace(' · ', ' - ');
       const filesToEmbed = [
         d.file_url   ? { path: d.file_url,   name: d.file_name   || 'file' } : null,
         d.file_url_2 ? { path: d.file_url_2, name: d.file_name_2 || 'file (back)' } : null,
@@ -8497,7 +8556,7 @@ async function loadAdminDocs() {
     const name     = r.credtrack_staff?.full_name || '—';
     const typeName = r.document_types?.name || r.label;
     const verHtml  = r.verified
-      ? (isOffice ? '<span class="badge badge-verified">✓ Verified</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}',${jsArg((r.credtrack_staff?.full_name || ''))},${jsArg((r.document_types?.name || r.label || ''))})" title="Click to unverify — for correcting a mistake, not routine use">✓ Verified</span>`)
+      ? (isOffice ? '<span class="badge badge-verified">✓ Verified</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}',${jsArg((r.credtrack_staff?.full_name || ''))},${jsArg(docDisplayName(r))})" title="Click to unverify — for correcting a mistake, not routine use">✓ Verified</span>`)
       : (isOffice ? '<span class="badge badge-none">Pending</span>' : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`);
     const fileHtml = [
       r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(r.file_url)},'${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
@@ -8505,7 +8564,7 @@ async function loadAdminDocs() {
     ].join(' ') || '<span style="color:rgba(255,255,255,.55);font-size:14px;">No file</span>';
     return `<tr>
       <td>${name}</td>
-      <td>${typeName}</td>
+      <td>${hrOnbEsc(docDisplayName(r))}</td>
       <td style="font-size:14px;">${fmtDate(r.issued_date)}</td>
       <td>${r.expiry_date ? daysLabel(r.expiry_date) + ' <span style="font-size:13px;color:rgba(255,255,255,.58);">(' + fmtDate(r.expiry_date) + ')</span>' : '<span style="color:rgba(255,255,255,.55);">—</span>'}</td>
       <td>${statusBadge(r.expiry_date)}</td>
@@ -8515,6 +8574,7 @@ async function loadAdminDocs() {
         ${fileHtml}
         ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>`}
         ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>`}
+        ${isOffice || !docTypeAllowsMultiple(docTypes.find(t => t.id == r.document_type_id)) ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocLabel('${r.id}',${jsArg(docQualifier(r))})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Say which one this is, for example the state. A renewal with the same label replaces only this one.">${docQualifier(r) ? 'Edit label' : 'Add label'}</button>`}
         ${r.archived ? `<button class="btn btn-sm btn-gold" onclick="unarchiveDoc('${r.id}')">Unarchive</button>` : ''}
         ${isOffice ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}',${jsArg((r.file_url||''))})">Delete</button>`}
       </div></td>
@@ -8584,6 +8644,42 @@ async function saveDocDates(docId) {
   await loadExpTracker();
   document.getElementById('editDatesModal')?.remove();
   toast('Dates updated');
+}
+
+function editDocLabel(docId, current) {
+  const existing = document.getElementById('editLabelModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'editLabelModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Which one is this?</div>
+      <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:18px;">For example the state (TX), or Vehicle 2. A renewal with the same label replaces only this one; other labels are kept.</div>
+      <input class="inline-input" type="text" id="editLabelInput" maxlength="40" value="${hrOnbEsc(current || '')}" placeholder="e.g. TX" style="width:100%;box-sizing:border-box;margin-bottom:12px;" />
+      <div id="editLabelErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveDocLabel(${jsArg(docId)})" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editLabelModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.getElementById('editLabelInput').focus();
+}
+
+async function saveDocLabel(docId) {
+  const errEl = document.getElementById('editLabelErr');
+  const value = cleanQualifier(document.getElementById('editLabelInput').value);
+  const fail = (m) => { errEl.textContent = m; errEl.style.display = 'block'; };
+  if (!value) { fail('Enter which one this is, for example TX.'); return; }
+  const { data: changed, error } = await sb.from('credtrack_documents').update({ qualifier: value }).eq('id', docId).select('id');
+  if (error) { fail(/qualifier/i.test(error.message || '') ? 'Not set up yet: run supersede-documents.sql in Supabase first.' : error.message); return; }
+  if (!changed || !changed.length) { fail("Nothing was saved. You may not have permission to edit this document."); return; }
+  document.getElementById('editLabelModal')?.remove();
+  await loadAdminDocs();
+  await loadExpTracker();
+  toast('Label saved');
 }
 
 function editDocType(docId, currentTypeId) {
@@ -8865,7 +8961,7 @@ async function runBulkDownload(mode) {
   for (const doc of data) {
     try {
       const staffFolder = (doc.credtrack_staff?.full_name || 'Unassigned').replace(/[\/\\:*?"<>|]/g, '_');
-      const typeName     = (doc.document_types?.name || doc.label || 'Document').replace(/[\/\\:*?"<>|]/g, '_');
+      const typeName     = docDisplayName(doc, 'Document').replace(/[\/\\:*?"<>|]/g, '_');
 
       if (doc.file_url) {
         const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(doc.file_url);
@@ -9055,11 +9151,11 @@ async function loadExpTracker() {
   tbody.innerHTML = rows.map(r => {
     const last = latestByDoc[r.id];
     const lastCell = last
-      ? `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}',${jsArg((r.credtrack_staff?.full_name||''))},${jsArg((r.document_types?.name||r.label||''))})" style="color:${last.success ? '#4ade80' : '#f87171'};border-color:rgba(255,255,255,.2);font-size:13px;">${last.success ? '✓' : '✕'} ${fmtDate(last.sent_at)}</button>`
-      : `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}',${jsArg((r.credtrack_staff?.full_name||''))},${jsArg((r.document_types?.name||r.label||''))})" style="color:rgba(255,255,255,.55);border-color:rgba(255,255,255,.15);font-size:13px;">None sent yet</button>`;
+      ? `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}',${jsArg((r.credtrack_staff?.full_name||''))},${jsArg(docDisplayName(r))})" style="color:${last.success ? '#4ade80' : '#f87171'};border-color:rgba(255,255,255,.2);font-size:13px;">${last.success ? '✓' : '✕'} ${fmtDate(last.sent_at)}</button>`
+      : `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}',${jsArg((r.credtrack_staff?.full_name||''))},${jsArg(docDisplayName(r))})" style="color:rgba(255,255,255,.55);border-color:rgba(255,255,255,.15);font-size:13px;">None sent yet</button>`;
     return `<tr>
     <td>${r.credtrack_staff?.full_name || '—'}</td>
-    <td>${r.document_types?.name || r.label}</td>
+    <td>${hrOnbEsc(docDisplayName(r))}</td>
     <td style="font-size:14px;">${fmtDate(r.expiry_date)}</td>
     <td>${daysLabel(r.expiry_date)}</td>
     <td>${statusBadge(r.expiry_date)}</td>
@@ -12308,7 +12404,7 @@ async function loadFpDocsSummary(staffId) {
       ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Verified</span>'
       : '<span class="badge badge-pending" style="margin-left:6px;">Pending review</span>';
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="color:#fff;">${typeName}${badge}</span>
+      <span style="color:#fff;">${hrOnbEsc(docDisplayName(doc))}${badge}</span>
       ${statusBadge(doc.expiry_date)}
     </div>`;
   }).join('');
@@ -13556,6 +13652,9 @@ async function saveCredentialDoc(prefix, presetStaffId) {
   }
 
   const docType = docTypes.find(d => d.id == typeId);
+  const multiType = docTypeAllowsMultiple(docType);
+  const qual = multiType ? cleanQualifier(document.getElementById(`${prefix}Qual`)?.value) : '';
+  if (multiType && !qual) { showAuStatus('This document type can be held more than once. Say which one this is (for example the state) in "Which one?".', 'err', prefix); return; }
 
   try {
     let fileUrl  = null;
@@ -13599,6 +13698,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
       file_url_2:       fileUrl2,
       file_name_2:      fileName2,
       notes:            notes || null,
+      ...(multiType ? { qualifier: qual } : {}),
       verified:         true,
       verified_by:      currentProfile.full_name,
       verified_at:      new Date().toISOString(),
@@ -13690,6 +13790,11 @@ async function openProfileDocUpload(staffId, staffName) {
             <option value="OTHER">Other</option>
           </select>
         </div>
+      </div>
+      <div id="pauQualGroup" style="display:none;margin-bottom:12px;">
+        <label class="inline-label">Which one? <span style="color:#fca5a5;">*</span></label>
+        <input class="inline-input" type="text" id="pauQual" maxlength="40" list="pauQualList" placeholder="e.g. TX, OK, Vehicle 2" autocomplete="off" style="width:100%;box-sizing:border-box;" />
+        <datalist id="pauQualList"></datalist>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
         <div>
@@ -16017,7 +16122,7 @@ async function loadDocTypesTable() {
 
   const tbody = document.getElementById('docTypesTbody');
   if (!data?.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No document types found.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No document types found.</td></tr>`;
     return;
   }
 
@@ -16029,7 +16134,7 @@ async function loadDocTypesTable() {
   // that's still where "Unhide" lives if it's ever needed again.
   const visibleData = window._showHiddenDocTypes ? data : data.filter(t => !hiddenIds.has(t.id));
   if (!visibleData.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">Nothing visible — everything is currently hidden for this company. Check "Show hidden types too" above to see and manage them.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">Nothing visible — everything is currently hidden for this company. Check "Show hidden types too" above to see and manage them.</td></tr>`;
     return;
   }
 
@@ -16054,7 +16159,7 @@ async function loadDocTypesTable() {
     return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 
-  const colCount = 6;
+  const colCount = 7;
 
   tbody.innerHTML = sortedCategories.map((cat, catIdx) => {
     const catSlug = 'cat' + catIdx;
@@ -16078,6 +16183,7 @@ async function loadDocTypesTable() {
       // tracking rather than cosmetic customization like name/category.
       const proOnlyBlocked = isGlobal && t.tier === 'pro' && !window._isPro && !currentProfile?.is_super_admin;
       const isBackgroundCheckType = /background check/i.test(t.name);
+      const multiOn = effectiveMultiple(t, docTypeOverrides);
       return `<tr data-doctype-group="${catSlug}" style="display:${window._docTypesAllExpanded ? 'table-row' : 'none'};">
     <td>
       <div style="display:flex;align-items:center;gap:6px;">
@@ -16105,6 +16211,12 @@ async function loadDocTypesTable() {
       <span class="badge ${t.staff_can_upload === false ? 'badge-none' : 'badge-ok'}" style="${lockedForMe ? 'opacity:.5;cursor:not-allowed;' : 'cursor:pointer;'}"
         onclick="toggleDocTypeStaffUpload(${t.id}, ${t.staff_can_upload !== false})" title="${lockedForMe ? lockTitle : 'Click to toggle whether staff can upload this themselves'}">
         ${t.staff_can_upload === false ? 'Admin only' : 'Allowed'}${lockedForMe ? ' 🔒' : ' <span class="toggle-glyph">⇄</span>'}
+      </span>
+    </td>
+    <td>
+      <span class="badge ${multiOn ? 'badge-warn' : 'badge-none'}" style="cursor:pointer;"
+        onclick="toggleDocTypeMultiple(${t.id}, ${multiOn}, ${isGlobal})" title="${multiOn ? 'Several allowed: each document carries a label (for example one per state) and a renewal replaces only the one with the same label. Click to turn off.' : 'One document of this type per person: a newer one replaces the older. Click to allow several (one per state, vehicle, test step...).'}">
+        ${multiOn ? 'Several' : 'One'} <span class="toggle-glyph">⇄</span>
       </span>
     </td>
     <td><div class="td-actions" style="gap:4px;">
@@ -16168,16 +16280,18 @@ let _docTypeRequiredOverrides = {};
 // "category" is this company's own choice of heading for a built-in type (company-doc-type-categories.sql). If that column is not there yet
 // (the SQL has not been run) the same read is repeated without it, so Required / Applies To keep working exactly as before.
 let _overridesHaveCategory = true;
+let _overridesHaveMultiple = true;
 async function getDocTypeOverrides(companyId) {
   let res = null;
-  if (_overridesHaveCategory) {
-    res = await sb.from('company_document_type_overrides')
-      .select('document_type_id, is_required, required_for_disciplines, category').eq('company_id', companyId);
-    if (res && res.error && /category/i.test(res.error.message || '')) { _overridesHaveCategory = false; res = null; }
-  }
-  if (!res) {
-    res = await sb.from('company_document_type_overrides')
-      .select('document_type_id, is_required, required_for_disciplines').eq('company_id', companyId);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cols = ['document_type_id', 'is_required', 'required_for_disciplines'];
+    if (_overridesHaveCategory) cols.push('category');
+    if (_overridesHaveMultiple) cols.push('allow_multiple');
+    res = await sb.from('company_document_type_overrides').select(cols.join(', ')).eq('company_id', companyId);
+    const msg = (res && res.error && res.error.message) || '';
+    if (res && res.error && /category/i.test(msg) && _overridesHaveCategory) { _overridesHaveCategory = false; continue; }
+    if (res && res.error && /allow_multiple/i.test(msg) && _overridesHaveMultiple) { _overridesHaveMultiple = false; continue; }
+    break;
   }
   const map = {};
   ((res && res.data) || []).forEach(o => { map[o.document_type_id] = o; });
@@ -16303,6 +16417,31 @@ async function toggleDocTypeRequired(id, currentlyRequired, isGlobal, isProOnly)
   }
   toast(newValue ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
   await loadDocTypesTable();
+}
+
+function effectiveMultiple(t, overridesMap) {
+  const o = overridesMap && overridesMap[t.id];
+  if (o && o.allow_multiple !== null && o.allow_multiple !== undefined) return !!o.allow_multiple;
+  return !!t.allow_multiple;
+}
+// "Several": a person may hold more than one document of this type, told apart by a label (one per state, vehicle, test step...).
+// A company's choice for a built-in type is its own override; the platform default is changed only by Selko.
+async function toggleDocTypeMultiple(id, current, isGlobal) {
+  const newValue = !current;
+  const notSetUp = (e) => /allow_multiple|qualifier/i.test((e && e.message) || '') ? 'Not set up yet: run supersede-documents.sql in Supabase first.' : 'Error: ' + e.message;
+  if (isGlobal && !currentProfile?.is_super_admin) {
+    const { data: existing } = await sb.from('company_document_type_overrides').select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
+    const { error } = existing
+      ? await sb.from('company_document_type_overrides').update({ allow_multiple: newValue }).eq('id', existing.id)
+      : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, allow_multiple: newValue });
+    if (error) { toast(notSetUp(error), true); return; }
+  } else {
+    const { error } = await sb.from('document_types').update({ allow_multiple: newValue }).eq('id', id);
+    if (error) { toast(notSetUp(error), true); return; }
+  }
+  toast(newValue ? 'Several allowed: uploads of this type now ask which one (for example the state)' : 'One per person: a newer document replaces the older one again');
+  await loadDocTypesTable();
+  await loadDocTypes();
 }
 
 async function toggleDocTypeStaffUpload(id, currentlyAllowed) {
@@ -25229,7 +25368,7 @@ async function loadDocumentOverviewStats() {
   // keeps dragging down compliance stats and cluttering Needs Attention
   // forever, even though it's correctly tucked away everywhere else.
   const { data: docs } = await sb.from('credtrack_documents')
-    .select('id, staff_id, document_type_id, expiry_date, credtrack_staff(full_name, active, exclude_from_compliance), document_types(name)')
+    .select('*, credtrack_staff(full_name, active, exclude_from_compliance), document_types(name)')   // all columns, so the label shows once it exists but this still loads before it does
     .eq('company_id', currentCompany.id)
     .eq('archived', false);
   // Only pertinent documents count below (numbers AND the Needs-attention list): not a
@@ -25306,7 +25445,7 @@ async function loadDocumentOverviewStats() {
       const badgeColor = isExpired ? 'background:rgba(239,68,68,.15);color:#ef4444;' : 'background:rgba(245,158,11,.15);color:#f59e0b;';
       const label = isExpired ? `Expired ${Math.abs(d.days)}d ago` : `${d.days}d remaining`;
       return `<div class="ov-attention-row">
-        <span>${d.credtrack_staff?.full_name || '—'} — ${d.document_types?.name || 'Document'}</span>
+        <span>${d.credtrack_staff?.full_name || '—'} — ${hrOnbEsc(docDisplayName(d, 'Document'))}</span>
         <span class="ov-days-badge" style="${badgeColor}">${label}</span>
       </div>`;
     }).join('') + (missingCount > 0
