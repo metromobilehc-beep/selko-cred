@@ -519,3 +519,23 @@
   .chip-btn:hover { border-color: var(--teal); color: #fff; background: rgba(20,184,166,.12); }
   .flash-highlight { animation: flashHighlight 2.2s ease-out; }
   @keyframes flashHighlight { 0% { box-shadow: 0 0 0 3px rgba(20,184,166,.9); } 100% { box-shadow: 0 0 0 3px rgba(20,184,166,0); } }
+
+
+/* ── Settings sections: a title, one short help line capped at a readable
+   width, then the controls. Replaces long full-width paragraphs. ── */
+.set-block { padding: 18px 0; border-top: 1px solid rgba(255,255,255,.1); }
+.set-block.first { border-top: 0; padding-top: 4px; }
+.set-title { font-size: 16px; font-weight: 600; color: #fff; margin: 0 0 4px; }
+.set-help { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,.62); max-width: 66ch; margin: 0 0 12px; }
+.set-note { font-size: 14px; line-height: 1.5; color: var(--gold); max-width: 66ch; margin: 0 0 14px; padding: 8px 12px; border-left: 3px solid var(--gold); background: rgba(255,255,255,.04); border-radius: 0 6px 6px 0; }
+.set-chips { display: flex; flex-wrap: wrap; gap: 10px; }
+.set-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.set-row input.inline-input { flex: 1 1 180px; max-width: 240px; }
+.set-check { display: flex; align-items: center; gap: 10px; font-size: 15px; color: #fff; padding: 6px 0; cursor: pointer; }
+.set-msg { font-size: 13px; margin-top: 2px; }
+.role-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 14px; border-radius: 20px; font-weight: 600; font-size: 15px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.2); color: #fff; }
+.role-chip button { background: none; border: 0; color: rgba(255,255,255,.6); cursor: pointer; font-size: 15px; line-height: 1; padding: 6px 8px; border-radius: 50%; min-width: 30px; min-height: 30px; }
+.role-chip button:hover { background: rgba(255,255,255,.14); color: #fff; }
+.toggle-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 20px; font-size: 15px; cursor: pointer; font-weight: 600; background: transparent; color: rgba(255,255,255,.7); border: 1px solid rgba(255,255,255,.25); }
+.toggle-chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
+@media (max-width: 600px) { .set-row input.inline-input { max-width: none; } .set-row .btn { flex: 1 1 100%; } }

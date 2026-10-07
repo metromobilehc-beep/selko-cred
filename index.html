@@ -2596,32 +2596,37 @@ window.selkoSharedAuthStorage = {
            credential, never a role from an unrelated industry. -->
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="rolesPanelSettings">
         <h2 id="disciplinesPanelTitle">Professional roles</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
-          Define the professional roles used across your staff and document requirements — e.g. PT/PTA/OT/COTA/SLP for a therapy staffing company, or MD/DO/PA/NP/RN for an urgent care clinic. These appear anywhere a role is selected: adding staff, editing a staff member's role, and scoping which document types apply to which roles.
-        </p>
-        <p style="font-size:14px;color:var(--gold);margin-bottom:14px;">
-          ⚠ Licensed or credentialed roles only (e.g. PT, RN, DO, LPN) — not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile, not added here as a discipline.
-        </p>
-        <div id="disciplinesListCred" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;"></div>
-        <div style="display:flex;gap:8px;margin-bottom:16px;">
-          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN, or LPN" style="max-width:160px;" />
-          <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add discipline</button>
-        </div>
 
-        <div id="caqhExemptSection" style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;">
-          <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:10px;">CAQH-exempt disciplines — check any discipline that doesn't need a CAQH profile (e.g. PTA, COTA working under a supervising clinician). Exempt disciplines won't show up as "Missing CAQH ID" anywhere in the app.</p>
-          <div id="caqhExemptListCred" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
-          <div style="margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);">
-            <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:8px;">CAQH re-attestation reminders — Selko emails each provider's due date at 30, 14, 7 and 1 days before, on the day, and weekly while overdue. Admins get one summary email.</p>
-            <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;margin-bottom:6px;cursor:pointer;"><input type="checkbox" id="caqhRemindersEnabled" onchange="saveCaqhReminderSetting('caqh_reminders_enabled', this.checked)" /> Send CAQH re-attestation reminders</label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;cursor:pointer;"><input type="checkbox" id="caqhRemindProviders" onchange="saveCaqhReminderSetting('caqh_remind_providers', this.checked)" /> Also email the provider directly</label>
-            <div id="caqhReminderSettingMsg" style="font-size:13px;margin-top:6px;"></div>
+        <div class="set-block first">
+          <div class="set-title">Your roles</div>
+          <p class="set-help">The licensed or credentialed roles your company uses, for example PT, PTA, OT, COTA and SLP, or MD, DO, PA, NP and RN. They appear wherever a role is chosen: adding staff, editing a staff member, and scoping which documents apply to which roles.</p>
+          <p class="set-note">Licensed or credentialed roles only (PT, RN, DO, LPN). Not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile.</p>
+          <div id="disciplinesListCred" class="set-chips" style="margin-bottom:14px;"></div>
+          <div class="set-row">
+            <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN or LPN" />
+            <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add role</button>
           </div>
         </div>
 
-        <div id="prescriberSection" style="border-top:1px solid rgba(255,255,255,.1);padding-top:14px;margin-top:14px;">
-          <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:10px;">Prescribing disciplines — check every discipline that can hold a DEA registration. Checked disciplines get the DEA &amp; Controlled Substances section and the prescriber credentialing fields on their profile; unchecked ones don't. MD, DO, PA, NP and common NP spellings (FNP, APRN, PMHNP...) start out checked, but whatever you set here wins.</p>
-          <div id="prescriberListCred" style="display:flex;flex-wrap:wrap;gap:12px;"></div>
+        <div id="caqhExemptSection">
+          <div class="set-block">
+            <div class="set-title">Exempt from CAQH</div>
+            <p class="set-help">Highlighted roles don't need a CAQH profile (for example PTA or COTA working under a supervising clinician). They won't show as "Missing CAQH ID" anywhere in the app.</p>
+            <div id="caqhExemptListCred" class="set-chips"></div>
+          </div>
+          <div class="set-block">
+            <div class="set-title">CAQH re-attestation reminders</div>
+            <p class="set-help">Each provider is emailed 30, 14, 7 and 1 days before the due date, on the day, and weekly while overdue. Admins get one summary email.</p>
+            <label class="set-check"><input type="checkbox" id="caqhRemindersEnabled" onchange="saveCaqhReminderSetting('caqh_reminders_enabled', this.checked)" /> Send CAQH re-attestation reminders</label>
+            <label class="set-check"><input type="checkbox" id="caqhRemindProviders" onchange="saveCaqhReminderSetting('caqh_remind_providers', this.checked)" /> Also email the provider directly</label>
+            <div id="caqhReminderSettingMsg" class="set-msg"></div>
+          </div>
+        </div>
+
+        <div id="prescriberSection" class="set-block">
+          <div class="set-title">Prescribing roles</div>
+          <p class="set-help">Highlighted roles can hold a DEA registration, so they get the DEA &amp; Controlled Substances section and the prescriber credentialing fields on their profile. MD, DO, PA, NP and common NP spellings (FNP, APRN, PMHNP) start highlighted, but whatever you set here wins.</p>
+          <div id="prescriberListCred" class="set-chips"></div>
         </div>
       </div>
 
@@ -13994,10 +13999,9 @@ function loadDisciplinesPanel() {
   const container = document.getElementById('disciplinesListCred');
   const disciplines = getCompanyDisciplines();
   container.innerHTML = disciplines.map(d => `
-    <span class="badge badge-ok" style="display:flex;align-items:center;gap:6px;padding:6px 10px;">
-      ${hrOnbEsc(d)}
-      <span onclick="showRenameDisciplineForm(${jsArg(d)})" style="cursor:pointer;font-weight:700;opacity:.6;" title="Rename">✎</span>
-      <span onclick="removeCompanyDiscipline(${jsArg(d)})" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
+    <span class="role-chip">${hrOnbEsc(d)}
+      <button type="button" onclick="showRenameDisciplineForm(${jsArg(d)})" title="Rename ${hrOnbEsc(d)}" aria-label="Rename ${hrOnbEsc(d)}">✎</button>
+      <button type="button" onclick="removeCompanyDiscipline(${jsArg(d)})" title="Remove ${hrOnbEsc(d)}" aria-label="Remove ${hrOnbEsc(d)}">✕</button>
     </span>`).join('');
 
   // CAQH is a credentialing concept, not a general staff/discipline one —
@@ -14011,12 +14015,7 @@ function loadDisciplinesPanel() {
     const exemptList = getCaqhExemptDisciplines();
     exemptContainer.innerHTML = disciplines.map(d => {
       const isExempt = exemptList.includes(d);
-      return `<button type="button" onclick="toggleCaqhExempt(${jsArg(d)}, ${!isExempt})"
-        style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:15px;cursor:pointer;font-weight:600;
-        background:${isExempt ? 'var(--teal)' : 'transparent'};color:${isExempt ? '#fff' : 'rgba(255,255,255,.6)'};
-        border:1px solid ${isExempt ? 'var(--teal)' : 'rgba(255,255,255,.2)'};">
-        ${isExempt ? '✓ ' : ''}${hrOnbEsc(d)}
-      </button>`;
+      return `<button type="button" class="toggle-chip${isExempt ? ' on' : ''}" onclick="toggleCaqhExempt(${jsArg(d)}, ${!isExempt})">${isExempt ? '✓ ' : ''}${hrOnbEsc(d)}</button>`;
     }).join('');
   }
 
@@ -14031,12 +14030,7 @@ function loadDisciplinesPanel() {
   if (prescriberContainer) {
     prescriberContainer.innerHTML = disciplines.map(d => {
       const on = isPrescribingDiscipline(d);
-      return `<button type="button" onclick="togglePrescriberDiscipline(${jsArg(d)}, ${!on})"
-        style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:15px;cursor:pointer;font-weight:600;
-        background:${on ? 'var(--teal)' : 'transparent'};color:${on ? '#fff' : 'rgba(255,255,255,.6)'};
-        border:1px solid ${on ? 'var(--teal)' : 'rgba(255,255,255,.2)'};">
-        ${on ? '✓ ' : ''}${hrOnbEsc(d)}
-      </button>`;
+      return `<button type="button" class="toggle-chip${on ? ' on' : ''}" onclick="togglePrescriberDiscipline(${jsArg(d)}, ${!on})">${on ? '✓ ' : ''}${hrOnbEsc(d)}</button>`;
     }).join('');
   }
 }
@@ -14139,7 +14133,7 @@ function showRenameDisciplineForm(oldName) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:360px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;">Rename "${oldName}"</div>
+      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:6px;">Rename "${hrOnbEsc(oldName)}"</div>
       <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Updates every staff member currently set to this discipline, plus your CAQH-exempt list if it applies here.</p>
       <input class="inline-input" type="text" id="renameDisciplineInput" value="${oldName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
       <div id="renameDisciplineErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
