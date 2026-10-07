@@ -9907,6 +9907,17 @@ async function renderProviderReadinessTracker(staffId) {
   `;
 }
 
+
+// Sub-tabs inside a person's Info page. Every field stays in the page (hidden, not removed), so one
+// "Save all changes" still saves the whole profile.
+function fpSelectTab(name) {
+  document.querySelectorAll('.fp-pane').forEach((p) => p.classList.toggle('on', p.getAttribute('data-fp-pane') === name));
+  document.querySelectorAll('.fp-subtab').forEach((b) => {
+    const on = b.getAttribute('data-fp-tab') === name;
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+}
+
 function showFullProfileSheet(staffId) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -9954,6 +9965,14 @@ function showFullProfileSheet(staffId) {
 
       <div id="providerReadinessTracker" style="margin-bottom:20px;">Loading readiness…</div>
 
+      <div class="fp-subtabs" role="tablist" id="fpSubTabs">
+        <button type="button" class="fp-subtab on" role="tab" data-fp-tab="details" onclick="fpSelectTab('details')">Details</button>
+        <button type="button" class="fp-subtab" role="tab" data-fp-tab="credentials" onclick="fpSelectTab('credentials')">Credentials</button>
+        ${deaModuleActive ? `<button type="button" class="fp-subtab" role="tab" data-fp-tab="prescribing" onclick="fpSelectTab('prescribing')">Prescribing</button>` : ''}
+        <button type="button" class="fp-subtab" role="tab" data-fp-tab="identity" onclick="fpSelectTab('identity')">Identity &amp; screening</button>
+      </div>
+
+      <div class="fp-pane on" data-fp-pane="details">
       <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Basic info</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px;">
         <div>
@@ -10029,6 +10048,9 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
+      </div>
+
+      <div class="fp-pane" data-fp-pane="credentials">
       <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">License & NPI</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:10px;">
         <div>
@@ -10098,6 +10120,15 @@ function showFullProfileSheet(staffId) {
         </div>
       </div>
 
+      <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Documents on file</div>
+      <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
+        <p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:10px;">Read-only summary — manage uploads from the Documents tab.</p>
+        <div id="fpDocsSummary" style="font-size:14px;color:rgba(255,255,255,.55);">Loading...</div>
+      </div>
+
+      </div>
+
+      <div class="fp-pane" data-fp-pane="prescribing">
       <div style="display:${deaModuleActive ? 'block' : 'none'};font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">DEA & Controlled Substances</div>
       <div id="fpDeaSection" style="display:${prescribes ? 'block' : 'none'};margin-bottom:10px;">
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
@@ -10252,12 +10283,9 @@ function showFullProfileSheet(staffId) {
       </div>
       ${(!prescribes && deaModuleActive) ? `<p style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;">Hidden — not applicable to this discipline. Change discipline above first if that's wrong, then reopen this sheet.</p>` : ''}
 
-      <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Documents on file</div>
-      <div style="display:${currentCompany.has_credtrack ? 'block' : 'none'};background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
-        <p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:10px;">Read-only summary — manage uploads from the Documents tab.</p>
-        <div id="fpDocsSummary" style="font-size:14px;color:rgba(255,255,255,.55);">Loading...</div>
       </div>
 
+      <div class="fp-pane" data-fp-pane="identity">
       <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;">Social Security Number</div>
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:10px;">
         <p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:10px;">Stored encrypted, separate from every other field on this sheet. Viewing it requires a stated reason, logged every time — it's never shown in any list or export.</p>
@@ -10299,8 +10327,10 @@ function showFullProfileSheet(staffId) {
         <a href="https://proview.caqh.org" target="_blank" rel="noopener" style="font-size:14px;color:var(--teal-l);">Open CAQH ProView ↗</a>
       </div>
 
+      </div>
+
       <div id="fullProfileErr" style="color:#f87171;font-size:14px;margin:14px 0 6px;display:none;"></div>
-      <div style="display:flex;gap:8px;margin-top:14px;">
+      <div style="display:flex;gap:8px;margin-top:14px;position:sticky;bottom:-28px;background:var(--navy2);padding:12px 0 28px;box-shadow:0 -10px 12px -8px rgba(0,0,0,.45);z-index:2;">
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
         <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
       </div>
