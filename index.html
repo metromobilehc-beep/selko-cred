@@ -2165,7 +2165,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" id="companyCustomTypesPanel" style="margin-top:16px;">
         <h2>Company custom types</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Document types companies created for themselves, grouped when several made the same thing. Read-only here. <strong>Promote platform-wide</strong> turns one into a default every company can use; the company's own copy and its documents are left exactly as they are.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Document types companies created for themselves, grouped when several made the same thing. You see the name, category and how many companies made it, never which companies, so this works even when a company has not granted support access. <strong>Promote platform-wide</strong> turns one into a default every company can use; the company's own copy and its documents are left exactly as they are.</p>
         <div class="tbl-wrap">
           <table>
             <thead><tr><th>Name</th><th>Companies</th><th>Category</th><th>Actions</th></tr></thead>
@@ -2444,7 +2444,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="supportAccessPanel">
         <h2>Selko support access</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko platform access.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko platform access. The one exception: Selko can always see the <em>names and categories</em> of document types your company creates, and how many companies made the same one, to decide what to add to the shared defaults. It never sees which company made them, or any documents or staff.</p>
         <div id="supportAccessStatus"></div>
         <div id="supportAccessRequests"></div>
         <div id="supportAccessGrantForm"></div>
@@ -18560,10 +18560,10 @@ const SUPER_HELP = [
   {
     title: 'Company custom types and promoting one',
     subtitle: 'Turn a company-made document type into a default for everyone',
-    html: `<p>Under <strong>Platform document types</strong>, <strong>Company custom types</strong> lists the document types companies created for themselves. Types that are the same thing (capitals, spaces and punctuation ignored) are grouped into one row with how many companies made it. It is read-only: you cannot edit or delete another company's type from here.</p>
+    html: `<p>Under <strong>Platform document types</strong>, <strong>Company custom types</strong> lists the document types companies created for themselves. Types that are the same thing (capitals, spaces and punctuation ignored) are grouped into one row with how many companies made it. It is read-only: you cannot edit or delete another company's type from here. You never see which companies made a type, and this list does not depend on any company's support-access permission.</p>
       <ul>
         <li><strong>Promote platform-wide</strong> opens a review. Check the name does not identify the company or its customers (it will be shown to everyone) and rename it if it does. Choose a shared category, the plan (Standard or Pro) and whether it expires.</li>
-        <li>The companies that already have their own copy are listed and ticked: the new default is hidden for them so they do not see it twice. Untick one to let that company see both.</li>
+        <li>The companies that already have their own copy do not see the new default twice: it is hidden for them automatically, without you seeing who they are.</li>
         <li>Nothing is moved or deleted. Their own copy and every document filed under it stay exactly as they are.</li>
         <li>A row marked <em>Already a platform default</em> has a default with the same name already, so there is nothing to promote.</li>
       </ul>`,
@@ -26338,13 +26338,18 @@ async function loadPlatformDocTypes() {
     .select('*, companies(name)')
     .is('company_id', null)
     .order('sort_order');
-  const customRows = await fetchAllRows(() => sb.from('document_types')
+  // Names, categories and how many companies made each: anonymous, so it works
+  // whether or not companies have granted support access. If the function is not
+  // installed yet, fall back to reading the rows directly (only companies with an
+  // active support grant will show in that case).
+  let summary = null;
+  { const r = await sb.rpc('custom_document_type_summary'); if (!r.error && Array.isArray(r.data)) summary = r.data; }
+  const customRows = summary ? [] : await fetchAllRows(() => sb.from('document_types')
     .select('*, companies(name)')
     .not('company_id', 'is', null)
     .order('id'));
 
   const globals = data || [];
-  const all = [...globals, ...customRows];
   _platformGlobalTypes = globals;
 
   const tbody = document.getElementById('platformDocTypesTbody');
@@ -26365,7 +26370,7 @@ async function loadPlatformDocTypes() {
     </div></td>
   </tr>`).join('');
   }
-  renderCompanyCustomTypes(all.filter((t) => t.company_id), globals);
+  renderCompanyCustomTypes(summary, customRows, globals);
 }
 
 // Company-made types, grouped by what they are (capitals, spaces and punctuation ignored) so "Annual Review" and "annual  review!" are one row.
@@ -26373,19 +26378,26 @@ function docTypeGroupKey(name) {
   const k = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   return k || String(name || '').trim().toLowerCase();
 }
-function renderCompanyCustomTypes(customs, globals) {
+function renderCompanyCustomTypes(summary, customs, globals) {
   const tbody = document.getElementById('companyCustomTypesTbody');
   if (!tbody) return;
   const globalKeys = new Set((globals || []).map((t) => docTypeGroupKey(t.name)));
   const groups = {};
-  customs.forEach((t) => {
-    const k = docTypeGroupKey(t.name);
-    const g = groups[k] = groups[k] || { key: k, spellings: {}, companies: new Map(), categories: new Set(), expires: t.expires, staff_can_upload: t.staff_can_upload, ids: [] };
-    g.spellings[t.name] = (g.spellings[t.name] || 0) + 1;
-    g.companies.set(t.company_id, (t.companies && t.companies.name) || 'A company');
-    g.categories.add(t.category || 'Other');
-    g.ids.push(t.id);
-  });
+  if (summary) {
+    // Anonymous rows from the database: only a count, never a company name.
+    summary.forEach((r) => {
+      groups[r.group_key] = { key: r.group_key, spellings: { [r.display_name]: 1 }, count: Number(r.company_count) || 0, categories: new Set(r.categories || ['Other']), expires: r.expires, staff_can_upload: r.staff_can_upload };
+    });
+  } else {
+    (customs || []).forEach((t) => {
+      const k = docTypeGroupKey(t.name);
+      const g = groups[k] = groups[k] || { key: k, spellings: {}, companies: new Set(), categories: new Set(), expires: t.expires, staff_can_upload: t.staff_can_upload };
+      g.spellings[t.name] = (g.spellings[t.name] || 0) + 1;
+      g.companies.add(t.company_id);
+      g.categories.add(t.category || 'Other');
+      g.count = g.companies.size;
+    });
+  }
   _customTypeGroups = groups;
   const list = Object.values(groups).map((g) => {
     g.display = Object.entries(g.spellings).sort((a, b) => b[1] - a[1])[0][0];
@@ -26393,14 +26405,12 @@ function renderCompanyCustomTypes(customs, globals) {
     // A renamed promotion (the usual way to remove a company's name) no longer matches exactly, so say when a similar default exists.
     g.similar = g.already ? null : findLikelyDuplicateDocType(g.display, globals);
     return g;
-  }).sort((a, b) => b.companies.size - a.companies.size || a.display.localeCompare(b.display));
+  }).sort((a, b) => b.count - a.count || a.display.localeCompare(b.display));
   if (!list.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No company has created a custom document type yet.</td></tr>'; return; }
   tbody.innerHTML = list.map((g) => {
-    const names = [...g.companies.values()];
-    const shown = names.slice(0, 3).map(hrOnbEsc).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '');
     return `<tr>
       <td>${hrOnbEsc(g.display)}${g.already ? '<div style="font-size:12px;color:#4ade80;">Already a platform default</div>' : (g.similar ? `<div style="font-size:12px;color:var(--gold);">Similar platform default: ${hrOnbEsc(g.similar.name)}</div>` : '')}</td>
-      <td>${names.length} compan${names.length === 1 ? 'y' : 'ies'}<div style="font-size:12px;color:rgba(255,255,255,.55);">${shown}</div></td>
+      <td>${g.count} compan${g.count === 1 ? 'y' : 'ies'}</td>
       <td style="font-size:13px;color:rgba(255,255,255,.62);">${[...g.categories].map(hrOnbEsc).join(', ')}</td>
       <td>${g.already ? '<span style="font-size:13px;color:rgba(255,255,255,.55);">—</span>' : `<button class="btn btn-sm btn-teal" onclick="showPromoteDocTypeModal(${jsArg(g.key)})" style="font-size:13px;padding:3px 10px;">Promote platform-wide</button>`}</td>
     </tr>`;
@@ -26421,7 +26431,6 @@ async function showPromoteDocTypeModal(key) {
   modal.id = 'promoteDocTypeModal';
   modal.dataset.key = key;
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
-  const companies = [...g.companies.entries()];
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:6px;">Promote to a platform-wide default</div>
@@ -26439,11 +26448,9 @@ async function showPromoteDocTypeModal(key) {
           <select class="inline-select" id="pdtExpires" style="width:100%;"><option value="true" ${g.expires !== false ? 'selected' : ''}>Yes</option><option value="false" ${g.expires === false ? 'selected' : ''}>No</option></select></div>
       </div>
       <div style="font-size:14px;color:#fff;margin-bottom:6px;font-weight:600;">Who sees it right away?</div>
-      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0;cursor:pointer;"><input type="radio" name="pdtRollout" value="hidden" checked onchange="document.querySelectorAll('#pdtCompanies input').forEach(i=>i.disabled=true)" style="margin-top:3px;"> <span><strong>No one yet (recommended).</strong> It is hidden for every company; turn it on per company in Manage visibility.</span></label>
-      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0 10px;cursor:pointer;"><input type="radio" name="pdtRollout" value="all" onchange="document.querySelectorAll('#pdtCompanies input').forEach(i=>i.disabled=false)" style="margin-top:3px;"> <span>Every company now, except the ones ticked below.</span></label>
-      <div style="font-size:14px;color:#fff;margin-bottom:6px;">${companies.length === 1 ? 'This company has' : 'These companies have'} their own copy. Hide the new default for ${companies.length === 1 ? 'them' : 'each one ticked'} so ${companies.length === 1 ? 'they' : 'they'} don't see it twice:</div>
-      <div id="pdtCompanies" style="margin-bottom:6px;">${companies.map(([id, name]) => `<label style="display:flex;align-items:center;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0;cursor:pointer;"><input type="checkbox" class="pdt-hide" value="${hrOnbEsc(id)}" checked /> ${hrOnbEsc(name)}</label>`).join('')}</div>
-      <div style="font-size:12px;color:rgba(255,255,255,.55);margin-bottom:12px;">Their own copy and every document filed under it stay exactly as they are. Nothing is moved or deleted.</div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0;cursor:pointer;"><input type="radio" name="pdtRollout" value="hidden" checked style="margin-top:3px;"> <span><strong>No one yet (recommended).</strong> It is hidden for every company; turn it on per company in Manage visibility.</span></label>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0 10px;cursor:pointer;"><input type="radio" name="pdtRollout" value="all" style="margin-top:3px;"> <span>Every company now, except the ones that already made their own copy.</span></label>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);margin-bottom:12px;line-height:1.45;">The ${g.count} compan${g.count === 1 ? 'y that has' : 'ies that have'} their own copy will not see the new default twice: it is hidden for them automatically. Their own copy and every document filed under it stay exactly as they are. Nothing is moved or deleted.</div>
       <div id="pdtErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
         <button type="button" class="btn btn-teal" id="pdtGoBtn" onclick="promoteDocTypePlatformWide()" style="flex:1;justify-content:center;">Promote</button>
@@ -26451,7 +26458,6 @@ async function showPromoteDocTypeModal(key) {
       </div>
     </div>`;
   document.body.appendChild(modal);
-  modal.querySelectorAll('#pdtCompanies input').forEach((i) => { i.disabled = true; });
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
@@ -26469,7 +26475,7 @@ async function promoteDocTypePlatformWide() {
   const similar = findLikelyDuplicateDocType(name, _platformGlobalTypes);
   if (similar && !(await showCustomConfirm(`"${similar.name}" is already a platform default and looks similar to "${name}".\n\nPromoting this too would give every company two similar types. Promote it anyway?`, { okLabel: 'Promote anyway', cancelLabel: 'Go back' }))) return;
   const rollout = modal.querySelector('input[name=pdtRollout]:checked')?.value || 'hidden';
-  let hideFor = [...modal.querySelectorAll('.pdt-hide:checked')].map((c) => c.value);
+  let hideFor = [];
   const btn = document.getElementById('pdtGoBtn'); btn.disabled = true;
   if (rollout === 'hidden') {
     // New default starts switched off everywhere; a platform admin turns it on per company.
@@ -26493,10 +26499,14 @@ async function promoteDocTypePlatformWide() {
       if (hErr) hideProblem = hErr.message;
     }
   }
+  // Companies that already made their own copy never see the new default twice. Done in the database so it works without seeing who they are.
+  let hiddenForOwners = 0;
+  { const { data: n, error: oErr } = await sb.rpc('hide_new_default_for_owners', { p_new_type_id: newId, p_group_key: g.key });
+    if (oErr) hideProblem = hideProblem || oErr.message; else hiddenForOwners = Number(n) || 0; }
   modal.remove();
   await loadPlatformDocTypes();
   if (hideProblem) toast(`✓ "${name}" is now a platform default, but it could not be hidden for the companies that already have their own copy (${hideProblem}). Use Manage visibility to hide it for them.`, true);
-  else toast(`✓ "${name}" is now a platform default${rollout === 'hidden' ? ', hidden for every company until you turn it on in Manage visibility' : ' for every company'}${rollout !== 'hidden' && hideFor.length ? `, hidden for the ${hideFor.length} compan${hideFor.length === 1 ? 'y' : 'ies'} that already had their own copy` : ''}.`);
+  else toast(`✓ "${name}" is now a platform default${rollout === 'hidden' ? ', hidden for every company until you turn it on in Manage visibility' : ' for every company'}${rollout !== 'hidden' && hiddenForOwners ? `, hidden for the ${hiddenForOwners} compan${hiddenForOwners === 1 ? 'y' : 'ies'} that already had their own copy` : ''}.`);
 }
 
 async function loadRecentUploads() {
