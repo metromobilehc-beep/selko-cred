@@ -5385,12 +5385,12 @@ async function forgotPassword() {
 async function findMyStaffRecord(companyId, profile, columns) {
   if (!companyId || !profile) return null;
   if (profile.id) {
-    const { data } = await sb.from('credtrack_staff').select(columns).eq('company_id', companyId).eq('profile_id', profile.id).limit(1);
+    const { data } = await sb.from('credtrack_staff').select(columns).eq('company_id', companyId).eq('profile_id', profile.id).order('active', { ascending: false, nullsFirst: false }).limit(1);
     if (data && data[0]) return data[0];
   }
   const email = String(profile.email || '').trim();
   if (!email) return null;
-  const { data } = await sb.from('credtrack_staff').select(columns).eq('company_id', companyId).ilike('email', email.replace(/[\\%_]/g, '\\$&')).limit(1);
+  const { data } = await sb.from('credtrack_staff').select(columns).eq('company_id', companyId).ilike('email', email.replace(/[\\%_]/g, '\\$&')).order('active', { ascending: false, nullsFirst: false }).limit(1);
   return (data && data[0]) || null;
 }
 
