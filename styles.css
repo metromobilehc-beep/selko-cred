@@ -552,3 +552,11 @@
 }
 .set-row .btn { padding: 11px 18px; font-size: 15px; }
 .role-chip button { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Staff profile, Info page: sub-tabs so one long scroll becomes a few short pages. */
+.fp-subtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; border-bottom: 1px solid rgba(255,255,255,.12); }
+.fp-subtab { background: none; border: 0; border-bottom: 2px solid transparent; color: rgba(255,255,255,.62); font-size: 15px; font-weight: 600; padding: 10px 14px; cursor: pointer; margin-bottom: -1px; }
+.fp-subtab:hover { color: #fff; }
+.fp-subtab.on { color: var(--teal-l); border-bottom-color: var(--teal-l); }
+.fp-pane { display: none; }
+.fp-pane.on { display: block; }
