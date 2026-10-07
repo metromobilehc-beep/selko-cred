@@ -14198,11 +14198,36 @@ async function submitRenameDiscipline(oldName) {
     currentCompany.caqh_exempt_disciplines = updatedExempt;
   }
   await renamePrescriberOverride(oldName, newName);
+  const scopeFix = await renameDisciplineInDocTypeScoping(oldName, newName);
 
   loadDisciplinesPanel();
   await loadStaffList(); // refresh in-memory staff data so every other view reflects the rename immediately
   document.getElementById('renameDisciplineModal')?.remove();
-  toast(`✓ Renamed "${oldName}" to "${newName}" — updated ${affectedStaff?.length || 0} staff record(s)`);
+  toast(`✓ Renamed "${oldName}" to "${newName}" — updated ${affectedStaff?.length || 0} staff record(s)` + (scopeFix.changed ? ` and ${scopeFix.changed} document requirement${scopeFix.changed === 1 ? '' : 's'}` : '') + (scopeFix.failed ? `. WARNING: ${scopeFix.failed} document requirement(s) could not be updated and still say "${oldName}", so they apply to nobody until you re-select the role under Document types, Applies to.` : ''), !!scopeFix.failed);
+}
+
+
+// Which roles a document is required for is stored as the role's exact spelling, on the company's own
+// document types and on its settings for built-in types. Renaming a role must rename it there too, or those
+// requirements silently stop matching anyone and the missing-documents check goes quiet.
+async function renameDisciplineInDocTypeScoping(oldName, newName) {
+  const out = { changed: 0, failed: 0 };
+  const swap = (arr) => (arr || []).map((d) => d === oldName ? newName : d);
+  const jobs = [
+    ['document_types', (q) => q.eq('company_id', currentCompany.id)],
+    ['company_document_type_overrides', (q) => q.eq('company_id', currentCompany.id)],
+  ];
+  for (const [table, scope] of jobs) {
+    try {
+      const { data, error } = await scope(sb.from(table).select('id, required_for_disciplines')).contains('required_for_disciplines', [oldName]);
+      if (error) { out.failed++; continue; }
+      for (const row of (data || [])) {
+        const { error: upErr } = await sb.from(table).update({ required_for_disciplines: swap(row.required_for_disciplines) }).eq('id', row.id);
+        if (upErr) out.failed++; else out.changed++;
+      }
+    } catch (e) { out.failed++; }
+  }
+  return out;
 }
 
 async function removeCompanyDiscipline(discipline) {
@@ -16560,23 +16585,21 @@ async function duplicateDocTypeToCustomize(id) {
   if (!t) { toast('Could not find this document type — try refreshing.', true); return; }
   if (t.company_id) { toast('This is already your own document type.', true); return; }
 
+  let newId = null;
   try {
-    const { data: existingHide } = await sb.from('company_hidden_document_types')
-      .select('document_type_id').eq('document_type_id', id).eq('company_id', currentCompany.id).maybeSingle();
-    if (!existingHide) {
-      const { error: hideErr } = await sb.from('company_hidden_document_types')
-        .insert({ document_type_id: id, company_id: currentCompany.id });
-      if (hideErr) throw hideErr;
-    }
-
-    // Preserve whatever Required/Optional and Applies-To scoping this
-    // company already had via the lightweight override, rather than
-    // silently reverting them the moment they duplicate into a full copy.
+    // Preserve whatever Required/Optional, Applies-To and "Several allowed" choices this
+    // company already had via the lightweight override, rather than silently
+    // reverting them the moment they duplicate into a full copy.
     const overridesMap = await getDocTypeOverrides(currentCompany.id);
     const effReq = effectiveRequired(t, overridesMap);
     const effDisciplines = effectiveDisciplines(t, overridesMap);
+    const effMulti = effectiveMultiple(t, overridesMap);
+    // The cached row only has a few columns; read the whole row so nothing else is lost.
+    const { data: full } = await sb.from('document_types').select('*').eq('id', id).maybeSingle();
+    const src = full || t;
 
-    const { error: insertErr } = await sb.from('document_types').insert({
+    // 1. Make the copy FIRST. If anything below fails, the original is still visible and nothing is lost.
+    const row = {
       name: t.name,
       expires: t.expires,
       category: effectiveCategory(t, overridesMap),
@@ -16586,22 +16609,48 @@ async function duplicateDocTypeToCustomize(id) {
       company_id: currentCompany.id,
       sort_order: 999,
       description: 'Customized from the Selko-provided "' + t.name + '" default',
-    });
-    if (insertErr) throw insertErr;
+    };
+    if (src.partner_visible !== undefined && src.partner_visible !== null) row.partner_visible = src.partner_visible;
+    if (src.partner_visible_agencies) row.partner_visible_agencies = src.partner_visible_agencies;
+    if (effMulti) row.allow_multiple = true;
+    let ins = await sb.from('document_types').insert(row).select('id').maybeSingle();
+    // allow_multiple / partner columns may not exist yet on an older database: retry without them
+    if (ins.error && /allow_multiple|partner_visible/i.test(ins.error.message || '')) {
+      delete row.allow_multiple; delete row.partner_visible; delete row.partner_visible_agencies;
+      ins = await sb.from('document_types').insert(row).select('id').maybeSingle();
+    }
+    if (ins.error) throw ins.error;
+    newId = ins.data && ins.data.id;
+    if (newId == null) throw new Error('The copy was created but its id could not be read. Nothing was hidden or moved. Refresh and check Document types.');
 
-    // The override was only ever a stand-in for not having a real custom
-    // copy — now that they have one, it's redundant (the hidden global row
-    // is never evaluated for compliance again for this company anyway).
-    // A failure here is genuinely low-stakes (the leftover override row is
-    // harmless, not incorrect) — logged rather than surfaced to the user,
-    // since interrupting a successful duplicate over a harmless cleanup
-    // step failing would be worse than just leaving the redundant row.
+    // 2. Move every document this company already has of the original type (archived ones too, so history follows) onto the copy.
+    //    Without this, the existing documents stay on the hidden original: everyone shows as "missing" the new type
+    //    and their expiry reminders stop.
+    const { data: moved, error: moveErr } = await sb.from('credtrack_documents')
+      .update({ document_type_id: newId }).eq('company_id', currentCompany.id).eq('document_type_id', id).select('id');
+    if (moveErr) {
+      await sb.from('document_types').delete().eq('id', newId);   // undo: no half-finished copy left behind
+      throw new Error('Could not move your existing documents onto the copy, so nothing was changed. ' + moveErr.message);
+    }
+
+    // 3. Only now hide the original for this company.
+    const { data: existingHide } = await sb.from('company_hidden_document_types')
+      .select('document_type_id').eq('document_type_id', id).eq('company_id', currentCompany.id).maybeSingle();
+    if (!existingHide) {
+      const { error: hideErr } = await sb.from('company_hidden_document_types')
+        .insert({ document_type_id: id, company_id: currentCompany.id });
+      if (hideErr) throw new Error('Your copy was made and ' + ((moved || []).length) + ' document(s) moved onto it, but hiding the original failed: ' + hideErr.message + '. Hide "' + t.name + '" yourself to finish.');
+    }
+
+    // The override was only ever a stand-in for not having a real custom copy;
+    // a failure here is harmless (the leftover row is redundant, not incorrect).
     if (overridesMap.hasOwnProperty(id)) {
       const { error: cleanupErr } = await sb.from('company_document_type_overrides').delete().eq('company_id', currentCompany.id).eq('document_type_id', id);
       if (cleanupErr) console.warn('Could not clean up redundant override row:', cleanupErr.message);
     }
 
-    toast(`✓ "${t.name}" duplicated — the original is now hidden, and your own copy is fully editable below`);
+    const n = (moved || []).length;
+    toast(`✓ "${t.name}" duplicated — the original is now hidden, ${n} existing document${n === 1 ? ' was' : 's were'} moved onto your copy, and the copy is fully editable below`);
     await loadDocTypesTable();
     await loadDocTypes();
     await loadAdminFilters();
