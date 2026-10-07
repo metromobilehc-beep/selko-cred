@@ -16582,6 +16582,7 @@ async function deleteGlobalDocType(id, name) {
 // entries across companies. Purely a naming reference: selecting a
 // suggestion just fills the text box, then "+ Add payer" proceeds exactly
 // as it always has, creating this company's own row.
+const PAYER_SUGGEST_MIN_COMPANIES = 2;
 let _payerSearchTimer;
 function handlePayerNameSearch(input) {
   clearTimeout(_payerSearchTimer);
@@ -16594,18 +16595,29 @@ function handlePayerNameSearch(input) {
       .not('company_id', 'is', null)
       .neq('company_id', currentCompany.id)
       .ilike('name', `%${query}%`)
-      .limit(30);
+      .limit(300);
     if (!data?.length) { hidePayerSuggestions(); return; }
 
-    // De-dupe by name (the same real payer may have been added by several
-    // companies with identical spelling) and drop anything this company
-    // already has on its own list.
+    // Only names that SEVERAL other companies use are offered. A name used by a
+    // single company could reveal who that company works with, so it is never
+    // shown to another company. Raise PAYER_SUGGEST_MIN_COMPANIES as more
+    // companies join. Matching ignores capitals; the most common spelling wins.
     const alreadyHave = new Set((currentCompanyPayerNames || []).map(n => n.toLowerCase()));
-    const seen = new Set();
-    const suggestions = data
-      .filter(p => !alreadyHave.has(p.name.toLowerCase()))
-      .filter(p => { const k = p.name.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; })
+    const byName = new Map();
+    for (const p of data) {
+      const k = p.name.toLowerCase();
+      if (alreadyHave.has(k)) continue;
+      const g = byName.get(k) || { spellings: {}, companies: new Set() };
+      g.spellings[p.name] = (g.spellings[p.name] || 0) + 1;
+      g.companies.add(p.company_id);
+      byName.set(k, g);
+    }
+    const suggestions = [...byName.values()]
+      .filter(g => g.companies.size >= PAYER_SUGGEST_MIN_COMPANIES)
+      .map(g => ({ name: Object.entries(g.spellings).sort((x, y) => y[1] - x[1])[0][0], count: g.companies.size }))
+      .sort((x, y) => y.count - x.count || x.name.localeCompare(y.name))
       .slice(0, 8);
+    if (!suggestions.length) { hidePayerSuggestions(); return; }
 
     renderPayerSuggestions(suggestions);
   }, 300);
@@ -16618,7 +16630,7 @@ function renderPayerSuggestions(suggestions) {
 
   box.innerHTML = suggestions.map(p => `
     <div onmousedown="selectPayerSuggestion(${jsArg(p.name)})" style="padding:8px 12px;font-size:15px;color:#fff;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.06);" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">
-      ${hrOnbEsc(p.name)} <span style="font-size:12px;color:rgba(255,255,255,.55);">— already on another company</span>
+      ${hrOnbEsc(p.name)} <span style="font-size:12px;color:rgba(255,255,255,.55);">— used by other companies</span>
     </div>`).join('');
   box.style.display = 'block';
 }
