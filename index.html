@@ -2439,6 +2439,18 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="adminNotificationsPanel">
+        <h2>Notifications</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
+          How you hear about credentials that are expired or about to expire. This is your own choice: other admins set theirs.
+          Staff still get their own reminders either way.
+        </p>
+        <div id="adminNotificationsForm"></div>
+        <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:12px;">
+          Exclusion check results (OIG and SAM) and sensitive data alerts are always sent and cannot be turned off here.
+        </div>
+      </div>
+
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="sensitiveAlertsPanel">
         <h2>Sensitive data alerts</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Get an email whenever someone views or enters a staff member's Social Security number or CAQH login, so you always know. The email says who, what and when, and never includes the sensitive information itself.</p>
@@ -15625,6 +15637,7 @@ async function loadSettings() {
   loadEntitiesPanel();
   loadSupportAccessPanel();
   loadSensitiveAlertsPanel();
+  loadAdminNotificationsPanel();
   loadGettingStartedSettings();
   // loadSensitiveAccessLog() moved to loadCompliance() — this panel now
   // lives in the Compliance tab, not Settings.
@@ -24088,6 +24101,56 @@ function describeSensitiveAlert(a) {
   return `Changed ${hrOnbEsc((a.fields || []).join(', ') || 'profile details')} on ${who}'s profile`;
 }
 
+// ── Settings → Notifications: how THIS admin wants credential expiry emails ──
+const ADMIN_NOTIFY_MODES = {
+  weekly: ['Weekly summary (recommended)', 'One email every Monday listing everything expired or expiring soon.'],
+  daily:  ['Daily summary', 'One email each morning, only on days when something is expired or expiring soon.'],
+  each:   ['Every item, as it happens', 'A separate email for each document or date: 7 days before, then every week while it stays expired. Can be a lot of email.'],
+  off:    ['None', 'No credential expiry emails to you. You can still see everything on the Overview and the Expiration tracker.'],
+};
+function adminNotifyEmail() { return String(currentProfile?.email || '').trim().toLowerCase(); }
+async function loadAdminNotificationsPanel() {
+  const form = document.getElementById('adminNotificationsForm');
+  if (!form) return;
+  const email = adminNotifyEmail();
+  if (currentProfile?.role !== 'admin' || _superProfile) {
+    form.innerHTML = `<div style="font-size:14px;color:rgba(255,255,255,.55);">${_superProfile ? 'These choices belong to each admin and cannot be changed while viewing as an admin.' : 'Only company admins receive these emails.'}</div>`;
+    return;
+  }
+  const listed = (currentCompany.admin_emails || []).some((e) => String(e).trim().toLowerCase() === email);
+  let mode = 'weekly', unavailable = false;
+  const { data, error } = await sb.from('admin_notification_prefs').select('credential_mode').eq('company_id', currentCompany.id).eq('email', email).maybeSingle();
+  if (error) unavailable = true; else if (data?.credential_mode && ADMIN_NOTIFY_MODES[data.credential_mode]) mode = data.credential_mode;
+  if (unavailable) {
+    form.innerHTML = `<div style="font-size:14px;color:rgba(255,255,255,.55);">These choices are not available yet. Until they are, admins receive an email for each item.</div>`;
+    return;
+  }
+  form.innerHTML = `
+    ${listed ? '' : `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:14px;color:var(--gold);">Your address (${hrOnbEsc(email)}) is not on your company's admin email list, so you are not sent these emails whatever you choose here.</div>`}
+    <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:6px;">Credential expiry emails to ${hrOnbEsc(email)}</div>
+    ${Object.entries(ADMIN_NOTIFY_MODES).map(([k, [label, help]]) => `
+      <label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;">
+        <input type="radio" name="adminNotifyMode" value="${k}" ${k === mode ? 'checked' : ''} style="margin-top:4px;">
+        <span><span style="color:#fff;font-size:15px;">${label}</span><span style="display:block;font-size:13px;color:rgba(255,255,255,.55);">${help}</span></span>
+      </label>`).join('')}
+    <div id="adminNotifyErr" style="color:#f87171;font-size:14px;margin:8px 0;display:none;"></div>
+    <button class="btn btn-sm btn-teal" style="margin-top:8px;" onclick="saveAdminNotifications()">Save</button>`;
+}
+async function saveAdminNotifications() {
+  const err = document.getElementById('adminNotifyErr');
+  const fail = (m) => { err.textContent = m; err.style.display = 'block'; };
+  err.style.display = 'none';
+  const email = adminNotifyEmail();
+  const mode = document.querySelector('input[name=adminNotifyMode]:checked')?.value;
+  if (!email || !ADMIN_NOTIFY_MODES[mode]) { fail('Choose one of the options.'); return; }
+  if (currentProfile?.role !== 'admin' || _superProfile) { fail('Only you, signed in as yourself, can change your own notifications.'); return; }
+  const { error } = await sb.from('admin_notification_prefs').upsert(
+    { company_id: currentCompany.id, email, credential_mode: mode, updated_at: new Date().toISOString(), updated_by: currentProfile.id },
+    { onConflict: 'company_id,email' });
+  if (error) { fail('Not saved: ' + error.message); return; }
+  toast('✓ Saved: ' + ADMIN_NOTIFY_MODES[mode][0].replace(' (recommended)', ''));
+}
+
 async function loadSensitiveAlertsPanel() {
   const formEl = document.getElementById('sensitiveAlertsForm');
   if (!formEl) return;
@@ -25831,12 +25894,20 @@ function partnerLinkHtml(rec) {
 
 let _customTypeGroups = {}, _platformGlobalTypes = [];
 async function loadPlatformDocTypes() {
+  // Platform defaults are few; company-made types grow with every company, so
+  // they are read a page at a time (the database returns at most 1,000 rows per
+  // request) and ordered by id so no row is skipped or repeated between pages.
   const { data } = await sb.from('document_types')
     .select('*, companies(name)')
+    .is('company_id', null)
     .order('sort_order');
+  const customRows = await fetchAllRows(() => sb.from('document_types')
+    .select('*, companies(name)')
+    .not('company_id', 'is', null)
+    .order('id'));
 
-  const all = data || [];
-  const globals = all.filter((t) => !t.company_id);
+  const globals = data || [];
+  const all = [...globals, ...customRows];
   _platformGlobalTypes = globals;
 
   const tbody = document.getElementById('platformDocTypesTbody');
