@@ -24091,7 +24091,10 @@ async function saveCompanySettings() {
   // Only super admins can change company name
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
   const updates = {
-    admin_emails: adminEmail ? [adminEmail] : currentCompany.admin_emails,
+    // The form edits only the primary address; keep any other admins on the list.
+    admin_emails: adminEmail
+      ? [adminEmail, ...(currentCompany.admin_emails || []).slice(1).filter((e) => String(e).trim().toLowerCase() !== adminEmail.toLowerCase())]
+      : currentCompany.admin_emails,
     custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays },
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
@@ -24400,7 +24403,13 @@ async function loadAdminNotificationsPanel() {
     form.innerHTML = `<div style="font-size:14px;color:rgba(255,255,255,.55);">${_superProfile ? 'These choices belong to each admin and cannot be changed while viewing as an admin.' : 'Only company admins receive these emails.'}</div>`;
     return;
   }
-  const listed = (currentCompany.admin_emails || []).some((e) => String(e).trim().toLowerCase() === email);
+  // currentCompany was loaded at sign-in and can be stale; read the list fresh.
+  let adminList = currentCompany.admin_emails || [];
+  try {
+    const { data: fresh } = await sb.from('companies').select('admin_emails').eq('id', currentCompany.id).maybeSingle();
+    if (fresh && Array.isArray(fresh.admin_emails)) { adminList = fresh.admin_emails; currentCompany = { ...currentCompany, admin_emails: adminList }; }
+  } catch (e) { /* keep the loaded list */ }
+  const listed = adminList.some((e) => String(e).trim().toLowerCase() === email);
   let mode = 'weekly', upMode = 'weekly', unavailable = false;
   _adminUploadColumn = true;
   let { data, error } = await sb.from('admin_notification_prefs').select('credential_mode, upload_digest_mode').eq('company_id', currentCompany.id).eq('email', email).maybeSingle();
