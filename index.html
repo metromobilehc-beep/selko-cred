@@ -1896,6 +1896,13 @@ window.selkoSharedAuthStorage = {
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Management</span>
       </div>
 
+      <!-- Cron secrets: when each was last rotated and when it is due. Owner only. Holds no secret values. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="superSecretsPanel" data-default-open="true">
+        <h2>Secrets</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">The passwords the scheduled jobs use to call Selko's functions. Rotate each on schedule. Rotating replaces it in the Vault right away, so the job fails until you paste the same new value into that function's secret in Supabase (Edge Functions → Secrets).</p>
+        <div id="superSecretsBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
+      </div>
+
       <div class="dark-panel" style="margin-bottom:16px;" id="superCompaniesPanel">
         <h2>⚡ Selko Admin — Companies</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Every company on the platform — add new ones, and manage each one's plan and settings.</p>
@@ -3889,6 +3896,20 @@ function buildAttentionItems(d, now = Date.now()) {
       else if (age > 3) add('warn', `The SAM.gov list is ${Math.floor(age)} days old`, 'superSamPanel');
     }
   }
+  // Cron secrets that are overdue, never recorded, or rotated but not confirmed on the function (owner only)
+  if (d.cronSecrets && d.cronSecrets.length) {
+    const bad = [], warn = [];
+    d.cronSecrets.forEach((r) => {
+      const st = cronSecretState(r, now); if (st.snoozed) return;
+      const nm = r.label || r.secret_name;
+      if (st.key === 'pendingStale') bad.push(`${nm} (rotated but not confirmed on the function)`);
+      else if (st.key === 'overdue') bad.push(`${nm} (overdue)`);
+      else if (st.key === 'never') warn.push(`${nm} (no rotation recorded)`);
+      else if (st.key === 'soon') warn.push(`${nm} (due in ${st.daysLeft} day${st.daysLeft === 1 ? '' : 's'})`);
+    });
+    if (bad.length) add('bad', `${bad.length} cron secret${bad.length === 1 ? '' : 's'} need${bad.length === 1 ? 's' : ''} attention: ${attnList(bad)}`, 'superSecretsPanel');
+    if (warn.length) add('warn', `${warn.length} cron secret${warn.length === 1 ? '' : 's'} to rotate soon: ${attnList(warn)}`, 'superSecretsPanel');
+  }
   // The SAM.gov API key (owner only: others get no row back)
   if (d.samKey && d.samKey.expires_on) {
     const [y, m, dd] = d.samKey.expires_on.split('-').map(Number);
@@ -3972,6 +3993,109 @@ function superAttentionGo(target, clearsSupport, clearsMail) {
   if (clearsSupport || clearsMail) setTimeout(() => loadSuperAttention(), 600);
 }
 
+// ── Selko Admin → Secrets: when each cron secret was last rotated and when it is due ──
+function cronSecretState(row, now = Date.now()) {
+  const rot = row.last_rotated_at ? new Date(row.last_rotated_at).getTime() : null;
+  const snoozed = !!(row.snoozed_until && new Date(row.snoozed_until).getTime() > now);
+  if (row.status === 'pending') return { key: (rot && now - rot > 86400000) ? 'pendingStale' : 'pending', snoozed, rot };
+  if (rot == null) return { key: 'never', snoozed, rot };
+  const dueAt = rot + (row.interval_days || 180) * 86400000;
+  const daysLeft = Math.ceil((dueAt - now) / 86400000);
+  return { key: daysLeft < 0 ? 'overdue' : daysLeft <= 14 ? 'soon' : 'ok', daysLeft, dueAt, snoozed, rot };
+}
+const CRON_SECRET_BADGE = {
+  ok: ['#4ade80', 'On schedule'], soon: ['#fbbf24', 'Due soon'], overdue: ['#f87171', 'Overdue'], never: ['#fbbf24', 'No rotation recorded'],
+  pending: ['#fbbf24', 'Pending: set it on the function'], pendingStale: ['#f87171', 'Not confirmed on the function'],
+};
+let _secretRows = [], _secretUi = null;
+function secretDate(ms) { return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
+async function loadSecretsPanel() {
+  const body = document.getElementById('superSecretsBody');
+  if (!body) return;
+  if (!currentProfile?.is_super_admin) { body.textContent = 'Platform owner only.'; return; }
+  const { data, error } = await sb.from('cron_secret_registry').select('*').order('label');
+  if (error) { body.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run cron-secret-registry.sql).' : 'Could not load: ' + (error.message || ''); return; }
+  _secretRows = data || [];
+  renderSecretsPanel();
+}
+function renderSecretsPanel() {
+  const body = document.getElementById('superSecretsBody');
+  if (!body) return;
+  const now = Date.now();
+  body.innerHTML = _secretRows.map((r) => {
+    const st = cronSecretState(r, now), [color, label] = CRON_SECRET_BADGE[st.key];
+    const when = st.rot ? `Last rotated ${secretDate(st.rot)}${st.dueAt ? `, due ${secretDate(st.dueAt)}${st.daysLeft < 0 ? ` (${-st.daysLeft} day${st.daysLeft === -1 ? '' : 's'} ago)` : ` (in ${st.daysLeft} day${st.daysLeft === 1 ? '' : 's'})`}` : ''}` : 'No rotation recorded yet';
+    const n = r.secret_name, ui = _secretUi && _secretUi.name === n ? _secretUi : null;
+    const btn = (txt, fn, extra = '') => `<button class="btn btn-sm btn-ghost" onclick="${fn}" style="color:#fff;border-color:rgba(255,255,255,.2);${extra}">${txt}</button>`;
+    let box = '';
+    if (ui && ui.mode === 'ask') box = `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin-top:8px;font-size:14px;color:#fbbf24;">This replaces the secret in the Vault now. ${hrOnbEsc(r.used_by || 'The job')} will fail until you set the same new value as ${hrOnbEsc(r.function_secret_name || 'the function\'s secret')} in Supabase → Edge Functions → Secrets.
+      <div style="margin-top:8px;"><button class="btn btn-sm btn-teal" id="secretGenBtn" onclick="secretsRotate(${jsArg(n)})">Generate new secret</button> ${btn('Cancel', 'secretsCancel()')}</div></div>`;
+    else if (ui && ui.mode === 'busy') box = `<div style="margin-top:8px;color:rgba(255,255,255,.7);">Generating…</div>`;
+    else if (ui && ui.mode === 'err') box = `<div style="margin-top:8px;color:#f87171;">${hrOnbEsc(ui.msg)}</div>`;
+    else if (ui && ui.mode === 'value') box = `<div style="background:rgba(13,148,136,.12);border:1px solid rgba(13,148,136,.4);border-radius:8px;padding:10px 12px;margin-top:8px;">
+      <div style="font-size:14px;color:#fff;margin-bottom:6px;">New secret (shown once). Copy it into <strong>${hrOnbEsc(r.function_secret_name || 'the function\'s secret')}</strong> in Supabase → Edge Functions → Secrets, then press "I've set it". Do not paste it anywhere else.</div>
+      <input id="secretValueBox" readonly value="${hrOnbEsc(ui.value)}" style="width:100%;font-family:monospace;font-size:13px;padding:6px 8px;border-radius:6px;border:1px solid rgba(255,255,255,.2);background:rgba(0,0,0,.25);color:#fff;" onclick="this.select()">
+      <div style="margin-top:8px;">${btn('Copy', 'secretsCopy()')} ${btn('Hide', 'secretsCancel()')}</div></div>`;
+    return `<div style="border-top:1px solid rgba(255,255,255,.1);padding:12px 0;">
+      <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;">
+        <div><span style="color:#fff;font-size:15px;font-weight:600;">${hrOnbEsc(r.label || n)}</span> <span style="font-size:12px;color:rgba(255,255,255,.45);">${hrOnbEsc(n)}</span></div>
+        <span style="color:${color};font-weight:700;font-size:14px;">${label}${st.snoozed ? ' (snoozed)' : ''}</span></div>
+      <div style="font-size:13px;color:rgba(255,255,255,.55);margin:2px 0 8px;">${hrOnbEsc(r.used_by || '')}</div>
+      <div style="font-size:14px;color:rgba(255,255,255,.75);margin-bottom:8px;">${when}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+        ${btn('Rotate', `secretsAskRotate(${jsArg(n)})`)}
+        ${r.status === 'pending' ? `<button class="btn btn-sm btn-teal" onclick="secretsConfirm(${jsArg(n)})">I've set it on the function</button>` : ''}
+        ${btn('I rotated it myself today', `secretsMarkRotated(${jsArg(n)})`)}
+        ${btn('Snooze 7 days', `secretsSnooze(${jsArg(n)})`)}
+        <label style="font-size:13px;color:rgba(255,255,255,.55);margin-left:6px;">Every
+          <select onchange="secretsSaveField(${jsArg(n)}, 'interval_days', Number(this.value))" style="background:rgba(0,0,0,.25);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:2px 4px;">
+            ${[30, 60, 90, 180, 365].map((d) => `<option value="${d}" ${d === r.interval_days ? 'selected' : ''}>${d} days</option>`).join('')}${[30, 60, 90, 180, 365].includes(r.interval_days) ? '' : `<option value="${Number(r.interval_days)}" selected>${Number(r.interval_days)} days</option>`}
+          </select></label>
+        <label style="font-size:13px;color:rgba(255,255,255,.55);">Function secret name
+          <input type="text" value="${hrOnbEsc(r.function_secret_name || '')}" placeholder="e.g. REMINDERS_CRON_SECRET" maxlength="80" onchange="secretsSaveField(${jsArg(n)}, 'function_secret_name', this.value.trim() || null)" style="background:rgba(0,0,0,.25);color:#fff;border:1px solid rgba(255,255,255,.2);border-radius:6px;padding:2px 6px;width:210px;"></label>
+      </div>${box}</div>`;
+  }).join('') + '<div id="superSecretsMsg" style="font-size:13px;margin-top:6px;"></div>';
+}
+function secretsMsg(text, bad) { const e = document.getElementById('superSecretsMsg'); if (e) { e.style.color = bad ? '#f87171' : '#4ade80'; e.textContent = text; } }
+function secretsAskRotate(name) { _secretUi = { name, mode: 'ask' }; renderSecretsPanel(); }
+function secretsCancel() { _secretUi = null; renderSecretsPanel(); }
+async function secretsRotate(name) {
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  _secretUi = { name, mode: 'busy' }; renderSecretsPanel();
+  const { data, error } = await sb.functions.invoke('generate-cron-secret', { body: { name } });
+  if (error || !data || !data.value) { _secretUi = { name, mode: 'err', msg: 'Not rotated: ' + ((data && data.error) || (error && error.message) || 'no answer') }; renderSecretsPanel(); return; }
+  _secretUi = { name, mode: 'value', value: data.value };
+  await loadSecretsPanel();
+}
+async function secretsCopy() {
+  const v = _secretUi && _secretUi.value; if (!v) return;
+  try { await navigator.clipboard.writeText(v); toast('✓ Copied'); }
+  catch (e) { const el = document.getElementById('secretValueBox'); if (el) { el.select(); toast('Select the value and copy it.', true); } }
+}
+async function secretsUpdate(name, patch, okText) {
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return false; }
+  const { data, error } = await sb.from('cron_secret_registry').update(patch).eq('secret_name', name).select('secret_name');
+  if (error || !data || !data.length) { secretsMsg('Not saved: ' + ((error && error.message) || 'no permission'), true); return false; }
+  if (okText) secretsMsg(okText);
+  await loadSecretsPanel();
+  loadSuperAttention();
+  return true;
+}
+async function secretsConfirm(name) {
+  _secretUi = null;
+  await secretsUpdate(name, { status: 'confirmed', confirmed_at: new Date().toISOString() }, 'Confirmed. The reminder clock runs from the rotation date.');
+}
+async function secretsMarkRotated(name) {
+  _secretUi = null;
+  const now = new Date().toISOString();
+  await secretsUpdate(name, { last_rotated_at: now, status: 'confirmed', confirmed_at: now, snoozed_until: null, last_reminder_at: null }, 'Recorded as rotated today.');
+}
+async function secretsSnooze(name) { await secretsUpdate(name, { snoozed_until: new Date(Date.now() + 7 * 86400000).toISOString() }, 'Snoozed for 7 days.'); }
+async function secretsSaveField(name, field, value) {
+  if (field !== 'interval_days' && field !== 'function_secret_name') return;
+  await secretsUpdate(name, { [field]: value }, 'Saved.');
+}
+
 async function loadSuperAttention(manual) {
   if (!currentProfile?.is_super_admin) return;
   const failed = [];
@@ -3979,7 +4103,7 @@ async function loadSuperAttention(manual) {
   const since24 = new Date(Date.now() - 86400000).toISOString();
   const since7d = new Date(Date.now() - 7 * 86400000).toISOString();
   const restricted = Array.isArray(currentProfile?.restricted_agency_ids);          // a super admin limited to certain agencies: no billing view
-  const [support, errors, subs, grants, cos, samMeta, samOv, samKey, mail, leieMeta, leieOv] = await Promise.all([
+  const [support, errors, subs, grants, cos, samMeta, samOv, samKey, mail, leieMeta, leieOv, cronSecrets] = await Promise.all([
     safe('support requests', sb.from('support_requests').select('id, created_at, reporter_name, company_id, message, resolved').eq('resolved', false).order('created_at', { ascending: false }).limit(200)),
     safe('error log', sb.from('error_logs').select('created_at, source_app, error_type').gte('created_at', since24).limit(1000)),
     restricted ? Promise.resolve(null) : safe('subscriptions', sb.from('subscriptions').select('company_id, status, current_period_end').limit(2000)),
@@ -3991,6 +4115,8 @@ async function loadSuperAttention(manual) {
     restricted ? Promise.resolve(null) : safe('mail', sb.functions.invoke('selko-inbox', { body: { action: 'unread' } })),
     safe('OIG list', sb.from('leie_exclusions_meta').select('loaded_at, status, error').order('loaded_at', { ascending: false }).limit(5)),
     safe('OIG companies', sb.rpc('platform_leie_overview')),
+    // Not installed yet is not a failure to report: the panel itself says so.
+    sb.from('cron_secret_registry').select('secret_name, label, interval_days, last_rotated_at, status, snoozed_until').then((r) => (r && !r.error ? r.data : null), () => null),
   ]);
   const companyNames = {}; (cos || []).forEach((c) => { companyNames[c.id] = c.name; });
   let seenAt = null, mailSeenAt = null;
@@ -4000,7 +4126,7 @@ async function loadSuperAttention(manual) {
     newCompanies: (cos || []).filter((c) => c.created_at && c.created_at > since7d),
     samMeta: samMeta && samMeta.length ? samMeta : (samMeta ? [] : null), samOverview: samOv,
     samKey: Array.isArray(samKey) ? samKey[0] : samKey, mail, mailSeenAt,
-    leieMeta: leieMeta && leieMeta.length ? leieMeta : (leieMeta ? [] : null), leieOverview: leieOv,
+    leieMeta: leieMeta && leieMeta.length ? leieMeta : (leieMeta ? [] : null), leieOverview: leieOv, cronSecrets,
   });
   const ORDER = ['support requests', 'error log', 'subscriptions', 'access requests', 'companies', 'SAM.gov list', 'SAM.gov companies', 'SAM.gov key', 'mail', 'OIG list', 'OIG companies'];
   failed.sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));                // a steady order, not whichever finished first
@@ -24120,7 +24246,13 @@ const ADMIN_NOTIFY_MODES = {
   each:   ['Every item, as it happens', 'A separate email for each document or date: 7 days before, then every week while it stays expired. Can be a lot of email.'],
   off:    ['None', 'No credential expiry emails to you. You can still see everything on the Overview and the Expiration tracker.'],
 };
+const ADMIN_UPLOAD_MODES = {
+  weekly: ['Weekly summary (recommended)', 'One email every Monday listing the documents staff uploaded that week.'],
+  daily:  ['Daily summary', 'One email each morning, only on days when staff uploaded something.'],
+  off:    ['None', 'No upload emails to you. Uploads still show in Selko Cred.'],
+};
 function adminNotifyEmail() { return String(currentProfile?.email || '').trim().toLowerCase(); }
+let _adminUploadColumn = true;
 async function loadAdminNotificationsPanel() {
   const form = document.getElementById('adminNotificationsForm');
   if (!form) return;
@@ -24130,21 +24262,34 @@ async function loadAdminNotificationsPanel() {
     return;
   }
   const listed = (currentCompany.admin_emails || []).some((e) => String(e).trim().toLowerCase() === email);
-  let mode = 'weekly', unavailable = false;
-  const { data, error } = await sb.from('admin_notification_prefs').select('credential_mode').eq('company_id', currentCompany.id).eq('email', email).maybeSingle();
-  if (error) unavailable = true; else if (data?.credential_mode && ADMIN_NOTIFY_MODES[data.credential_mode]) mode = data.credential_mode;
+  let mode = 'weekly', upMode = 'weekly', unavailable = false;
+  _adminUploadColumn = true;
+  let { data, error } = await sb.from('admin_notification_prefs').select('credential_mode, upload_digest_mode').eq('company_id', currentCompany.id).eq('email', email).maybeSingle();
+  if (error) {
+    // The upload column may not exist yet; fall back to the credential choice alone.
+    _adminUploadColumn = false;
+    ({ data, error } = await sb.from('admin_notification_prefs').select('credential_mode').eq('company_id', currentCompany.id).eq('email', email).maybeSingle());
+  }
+  if (error) unavailable = true;
+  else {
+    if (data?.credential_mode && ADMIN_NOTIFY_MODES[data.credential_mode]) mode = data.credential_mode;
+    if (data?.upload_digest_mode && ADMIN_UPLOAD_MODES[data.upload_digest_mode]) upMode = data.upload_digest_mode;
+  }
   if (unavailable) {
     form.innerHTML = `<div style="font-size:14px;color:rgba(255,255,255,.55);">These choices are not available yet. Until they are, admins receive an email for each item.</div>`;
     return;
   }
+  const radios = (name, modes, cur) => Object.entries(modes).map(([k, [label, help]]) => `
+      <label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;">
+        <input type="radio" name="${name}" value="${k}" ${k === cur ? 'checked' : ''} style="margin-top:4px;">
+        <span><span style="color:#fff;font-size:15px;">${label}</span><span style="display:block;font-size:13px;color:rgba(255,255,255,.55);">${help}</span></span>
+      </label>`).join('');
   form.innerHTML = `
     ${listed ? '' : `<div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin-bottom:12px;font-size:14px;color:var(--gold);">Your address (${hrOnbEsc(email)}) is not on your company's admin email list, so you are not sent these emails whatever you choose here.</div>`}
     <div style="font-size:14px;color:#fff;font-weight:600;margin-bottom:6px;">Credential expiry emails to ${hrOnbEsc(email)}</div>
-    ${Object.entries(ADMIN_NOTIFY_MODES).map(([k, [label, help]]) => `
-      <label style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;cursor:pointer;">
-        <input type="radio" name="adminNotifyMode" value="${k}" ${k === mode ? 'checked' : ''} style="margin-top:4px;">
-        <span><span style="color:#fff;font-size:15px;">${label}</span><span style="display:block;font-size:13px;color:rgba(255,255,255,.55);">${help}</span></span>
-      </label>`).join('')}
+    ${radios('adminNotifyMode', ADMIN_NOTIFY_MODES, mode)}
+    ${_adminUploadColumn ? `<div style="font-size:14px;color:#fff;font-weight:600;margin:14px 0 6px;">Staff upload summary</div>
+    ${radios('adminUploadMode', ADMIN_UPLOAD_MODES, upMode)}` : ''}
     <div id="adminNotifyErr" style="color:#f87171;font-size:14px;margin:8px 0;display:none;"></div>
     <button class="btn btn-sm btn-teal" style="margin-top:8px;" onclick="saveAdminNotifications()">Save</button>`;
 }
@@ -24154,13 +24299,15 @@ async function saveAdminNotifications() {
   err.style.display = 'none';
   const email = adminNotifyEmail();
   const mode = document.querySelector('input[name=adminNotifyMode]:checked')?.value;
+  const upMode = document.querySelector('input[name=adminUploadMode]:checked')?.value;
   if (!email || !ADMIN_NOTIFY_MODES[mode]) { fail('Choose one of the options.'); return; }
+  if (_adminUploadColumn && !ADMIN_UPLOAD_MODES[upMode]) { fail('Choose one of the upload summary options.'); return; }
   if (currentProfile?.role !== 'admin' || _superProfile) { fail('Only you, signed in as yourself, can change your own notifications.'); return; }
-  const { error } = await sb.from('admin_notification_prefs').upsert(
-    { company_id: currentCompany.id, email, credential_mode: mode, updated_at: new Date().toISOString(), updated_by: currentProfile.id },
-    { onConflict: 'company_id,email' });
+  const row = { company_id: currentCompany.id, email, credential_mode: mode, updated_at: new Date().toISOString(), updated_by: currentProfile.id };
+  if (_adminUploadColumn) row.upload_digest_mode = upMode;
+  const { error } = await sb.from('admin_notification_prefs').upsert(row, { onConflict: 'company_id,email' });
   if (error) { fail('Not saved: ' + error.message); return; }
-  toast('✓ Saved: ' + ADMIN_NOTIFY_MODES[mode][0].replace(' (recommended)', ''));
+  toast('✓ Saved your notification choices');
 }
 
 async function loadSensitiveAlertsPanel() {
@@ -26186,6 +26333,7 @@ async function toggleJuanAgencyAccess(companyId, granted) {
 
 async function loadSuperAdmin() {
   loadSuperAttention();
+  loadSecretsPanel();
   loadSuperMail(1);
   loadSuperSamStatus();
   loadSamKeyStatus();
