@@ -16641,6 +16641,15 @@ async function toggleDocTypeHidden(id, currentlyHidden) {
     if (error) { toast('Error: ' + error.message, true); return; }
     toast('Unhidden — back in your uploads and reports');
   } else {
+    // Hiding a type does not delete its documents, but they stop showing in compliance checks and their expiry reminders stop. Say so first.
+    const { count: inUse, error: cntErr } = await sb.from('credtrack_documents')
+      .select('id', { count: 'exact', head: true })
+      .eq('company_id', currentCompany.id).eq('document_type_id', id).eq('archived', false);
+    if (!cntErr && inUse > 0) {
+      const tName = (_docTypesCache || []).find((x) => x.id === id)?.name || 'This document type';
+      const go = await showCustomConfirm(`"${tName}" has ${inUse} document${inUse === 1 ? '' : 's'} on file.\n\nIf you hide it, ${inUse === 1 ? 'that document stays' : 'those documents stay'} saved, but ${inUse === 1 ? 'it' : 'they'} will no longer count in compliance checks, and ${inUse === 1 ? 'its' : 'their'} expiry reminders will stop.\n\nHide it anyway?`, { okLabel: 'Hide it anyway', cancelLabel: 'Keep it visible', danger: true });
+      if (!go) return;
+    }
     const { error } = await sb.from('company_hidden_document_types')
       .insert({ document_type_id: id, company_id: currentCompany.id });
     if (error) { toast('Error: ' + error.message, true); return; }
@@ -16936,10 +16945,24 @@ async function toggleDocTypeTier(id, currentTier) {
   if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
 }
 
+// The database refuses to delete a type that documents still point to (a foreign key), which protects the data
+// but gives a raw error. This turns it into plain words.
+function docTypeInUseMessage(name, count) {
+  return `"${name}" can't be deleted: ${count ? `${count} document${count === 1 ? ' is' : 's are'} filed under it (archived ones count too)` : 'documents or company settings still refer to it (archived documents count too)'}.\n\nHide it instead: documents stay saved, it disappears from uploads, and you can bring it back any time. Or move the documents to another type first.`;
+}
 async function deleteDocType(id, name) {
-  if (!confirm(`Delete custom document type "${name}"? This cannot be undone.`)) return;
+  const { count: used, error: cntErr } = await sb.from('credtrack_documents')
+    .select('id', { count: 'exact', head: true }).eq('company_id', currentCompany.id).eq('document_type_id', id);
+  if (!cntErr && used > 0) { await showCustomConfirm(docTypeInUseMessage(name, used), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
+  if (!(await showCustomConfirm(`Delete custom document type "${name}"? This cannot be undone.`, { okLabel: 'Delete', cancelLabel: 'Cancel', danger: true }))) return;
+  // Leftover settings rows for this type would block the delete; they mean nothing once the type is gone.
+  await sb.from('company_document_type_overrides').delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
+  await sb.from('company_hidden_document_types').delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
   const { error } = await sb.from('document_types').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) {
+    if (error.code === '23503' || /foreign key/i.test(error.message || '')) { await showCustomConfirm(docTypeInUseMessage(name, 0), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
+    toast('Error: ' + error.message, true); return;
+  }
   toast(name + ' deleted');
   if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
   if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
@@ -16968,7 +16991,11 @@ async function deleteGlobalDocType(id, name) {
   await sb.from('company_hidden_document_types').delete().eq('document_type_id', id);
 
   const { error } = await sb.from('document_types').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) {
+    // The count above can miss companies the platform owner is not allowed to see into, so the database has the last word.
+    if (error.code === '23503' || /foreign key/i.test(error.message || '')) { await showCustomConfirm(docTypeInUseMessage(name, 0), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
+    toast('Error: ' + error.message, true); return;
+  }
   toast(`✓ "${name}" deleted platform-wide`);
   await loadPlatformDocTypes();
   await loadDocTypes();
