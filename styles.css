@@ -1,4 +1,4 @@
-  :root {
+:root {
     --navy:      #0f1f2e;
     --navy2:     #172333;
     --navy3:     #1e2d3d;
@@ -539,3 +539,16 @@
 .toggle-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 20px; font-size: 15px; cursor: pointer; font-weight: 600; background: transparent; color: rgba(255,255,255,.7); border: 1px solid rgba(255,255,255,.25); }
 .toggle-chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
 @media (max-width: 600px) { .set-row input.inline-input { max-width: none; } .set-row .btn { flex: 1 1 100%; } }
+
+/* Wide screens: explanation on the left, controls on the right, so the page
+   isn't a narrow column with a blank right half. */
+.set-block { display: grid; grid-template-columns: 1fr; gap: 4px 40px; }
+.set-text .set-help { margin-bottom: 12px; }
+.set-text .set-note { margin-bottom: 0; }
+@media (min-width: 900px) {
+  .set-block { grid-template-columns: minmax(260px, 380px) 1fr; align-items: start; padding: 22px 0; }
+  .set-controls { padding-top: 2px; }
+  .set-text .set-help, .set-text .set-note { margin-bottom: 12px; }
+}
+.set-row .btn { padding: 11px 18px; font-size: 15px; }
+.role-chip button { display: inline-flex; align-items: center; justify-content: center; }
