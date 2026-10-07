@@ -3278,7 +3278,7 @@ async function loadSuperLeieCompanies() {
     const last = r.last_checked_at
       ? `${new Date(r.last_checked_at).toLocaleDateString()} <span style="color:rgba(255,255,255,.5);">(${r.last_how === 'scheduled' ? 'monthly' : 'by hand'})</span>`
       : '<span style="color:rgba(255,255,255,.5);">Never</span>';
-    const safeName = String(r.company_name || '').replace(/'/g, "\\'");
+    const safeName = jsArg(r.company_name || '');
     return `<tr>
       <td>${hrOnbEsc(r.company_name)}</td>
       <td>${ready ? '<span style="color:#4ade80;">✓ Set up</span>' : `<span style="color:#fbbf24;">${hrOnbEsc(problems.join(', '))}</span>`}</td>
@@ -3287,7 +3287,7 @@ async function loadSuperLeieCompanies() {
       <td>${last}</td>
       <td>${r.last_checked_at ? r.last_staff : '—'}</td>
       <td style="${r.last_matches > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.last_checked_at ? r.last_matches : '—'}</td>
-      <td>${r.has_addon ? `<button class="btn btn-sm btn-ghost" onclick="runLeieForCompany('${r.company_id}','${safeName}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:13px;">Run now</button>` : ''}</td>
+      <td>${r.has_addon ? `<button class="btn btn-sm btn-ghost" onclick="runLeieForCompany('${r.company_id}',${safeName})" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:13px;">Run now</button>` : ''}</td>
     </tr>`;
   }).join('');
 }
@@ -4076,7 +4076,7 @@ async function loadSuperSamCompanies() {
     const last = r.last_checked_at
       ? `${new Date(r.last_checked_at).toLocaleDateString()} <span style="color:rgba(255,255,255,.5);">(${r.last_how === 'scheduled' ? 'monthly' : 'by hand'})</span>`
       : '<span style="color:rgba(255,255,255,.5);">Never</span>';
-    const safeName = String(r.company_name || '').replace(/'/g, "\\'");
+    const safeName = jsArg(r.company_name || '');
     return `<tr>
       <td>${hrOnbEsc(r.company_name)}</td>
       <td>${ready ? '<span style="color:#4ade80;">✓ Set up</span>' : `<span style="color:#fbbf24;">${hrOnbEsc(problems.join(', '))}</span>`}</td>
@@ -4085,7 +4085,7 @@ async function loadSuperSamCompanies() {
       <td>${last}</td>
       <td>${r.last_checked_at ? r.last_staff : '—'}</td>
       <td style="${r.last_matches > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.last_checked_at ? r.last_matches : '—'}</td>
-      <td>${r.has_addon ? `<button class="btn btn-sm btn-ghost" onclick="runSamForCompany('${r.company_id}','${safeName}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:13px;">Run now</button>` : ''}</td>
+      <td>${r.has_addon ? `<button class="btn btn-sm btn-ghost" onclick="runSamForCompany('${r.company_id}',${safeName})" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:13px;">Run now</button>` : ''}</td>
     </tr>`;
   }).join('');
 }
@@ -6816,8 +6816,8 @@ async function initPartnerView(partnerRecord) {
         <div class="doc-name">${d.document_types?.name || d.label}</div>
         <div class="doc-meta">${d.expiry_date ? 'Expires ' + fmtDate(d.expiry_date) : 'No expiration'}</div>
       </div>
-      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${d.file_url.replace(/'/g,"\\'")}','${d.id}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
-      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile('${d.file_url.replace(/'/g,"\\'")}','${(d.file_name || d.document_types?.name || 'document').replace(/'/g,"\\'")}','${d.id}')">⬇ Download</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(d.file_url)},'${d.id}')" style="color:var(--teal-l);border-color:var(--teal-l);">View</button>` : ''}
+      ${d.file_url ? `<button class="btn btn-sm btn-teal" onclick="downloadFile(${jsArg(d.file_url)},${jsArg((d.file_name || d.document_types?.name || 'document'))},'${d.id}')">⬇ Download</button>` : ''}
     </div>`).join('');
 
     const docCount = (docs || []).length;
@@ -6826,7 +6826,7 @@ async function initPartnerView(partnerRecord) {
         <span class="panel-title">${cs.full_name}${cs.job_title ? ' — ' + cs.job_title : ''}</span>
         <div style="display:flex;align-items:center;gap:10px;" onclick="event.stopPropagation()">
           <span class="badge ${docCount ? 'badge-verified' : 'badge-none'}">${docCount} doc${docCount!==1?'s':''}</span>
-          ${docCount ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}','${cs.full_name.replace(/'/g,"\\'")}')">⬇ Download all</button>` : ''}
+          ${docCount ? `<button class="btn btn-sm btn-gold" onclick="downloadAllPartnerDocs('${cs.id}',${jsArg(cs.full_name)})">⬇ Download all</button>` : ''}
         </div>
         <span class="panel-chevron">▸</span>
       </div>
@@ -7118,8 +7118,12 @@ async function checkStaffCompliance(staffId) {
       .eq('id', staffId).maybeSingle();
     if (!staff || staff.exclude_from_compliance) return;
 
+    // Only this person's company types plus the shared platform ones. Without
+    // the filter this read every company's custom types and trimmed in JS,
+    // which gets slower with each company and hits the 1,000-row cap.
     const { data: allTypes } = await sb.from('document_types')
-      .select('id, name, company_id, required_for_disciplines, is_required, tier');
+      .select('id, name, company_id, required_for_disciplines, is_required, tier')
+      .or(`company_id.is.null,company_id.eq.${staff.company_id}`);
 
     const { data: hiddenRows } = await sb.from('company_hidden_document_types')
       .select('document_type_id').eq('company_id', staff.company_id);
@@ -7470,7 +7474,7 @@ function renderGlobalSearchResults(results, query, quickActions) {
     sections.push(renderSearchSection('💼 Employment history', results.employment.map(e => ({
       label: e.employer_name,
       sub: `${e.credtrack_staff?.full_name || 'Unknown'}${e.position_title ? ' · ' + e.position_title : ''}`,
-      onclick: `showEmploymentHistory('${e.staff_id}','${(e.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`,
+      onclick: `showEmploymentHistory('${e.staff_id}',${jsArg((e.credtrack_staff?.full_name || ''))})`,
     }))));
   }
   if (results.notes.length) {
@@ -7478,7 +7482,7 @@ function renderGlobalSearchResults(results, query, quickActions) {
       label: n.note_text.length > 60 ? n.note_text.slice(0, 60) + '…' : n.note_text,
       sub: n.staff_id ? (n.credtrack_staff?.full_name || 'Unknown provider') : 'Organization note',
       onclick: n.staff_id
-        ? `showNotesLog('${n.staff_id}','${(n.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`
+        ? `showNotesLog('${n.staff_id}',${jsArg((n.credtrack_staff?.full_name || ''))})`
         : `switchTab('credentialing')`,
     }))));
   }
@@ -7487,7 +7491,7 @@ function renderGlobalSearchResults(results, query, quickActions) {
       label: f.file_name,
       sub: f.staff_id ? (f.credtrack_staff?.full_name || 'Unknown provider') : 'Organization file',
       onclick: f.staff_id
-        ? `showCredentialingFiles('${f.staff_id}','${(f.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}')`
+        ? `showCredentialingFiles('${f.staff_id}',${jsArg((f.credtrack_staff?.full_name || ''))})`
         : `switchTab('credentialing')`,
     }))));
   }
@@ -8355,11 +8359,11 @@ async function loadAdminDocs() {
     const name     = r.credtrack_staff?.full_name || '—';
     const typeName = r.document_types?.name || r.label;
     const verHtml  = r.verified
-      ? (isOffice ? '<span class="badge badge-verified">✓ Verified</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}','${(r.credtrack_staff?.full_name || '').replace(/'/g,"\\'")}','${(r.document_types?.name || r.label || '').replace(/'/g,"\\'")}')" title="Click to unverify — for correcting a mistake, not routine use">✓ Verified</span>`)
+      ? (isOffice ? '<span class="badge badge-verified">✓ Verified</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}',${jsArg((r.credtrack_staff?.full_name || ''))},${jsArg((r.document_types?.name || r.label || ''))})" title="Click to unverify — for correcting a mistake, not routine use">✓ Verified</span>`)
       : (isOffice ? '<span class="badge badge-none">Pending</span>' : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`);
     const fileHtml = [
-      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
-      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile('${r.file_url_2.replace(/'/g,"\\'")}','${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">View back</button>` : '',
+      r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(r.file_url)},'${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
+      r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(r.file_url_2)},'${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">View back</button>` : '',
     ].join(' ') || '<span style="color:rgba(255,255,255,.55);font-size:14px;">No file</span>';
     return `<tr>
       <td>${name}</td>
@@ -8374,7 +8378,7 @@ async function loadAdminDocs() {
         ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocDates('${r.id}','${r.issued_date || ''}','${r.expiry_date || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit dates</button>`}
         ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="editDocType('${r.id}','${r.document_type_id || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit type</button>`}
         ${r.archived ? `<button class="btn btn-sm btn-gold" onclick="unarchiveDoc('${r.id}')">Unarchive</button>` : ''}
-        ${isOffice ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Delete</button>`}
+        ${isOffice ? '' : `<button class="btn btn-sm btn-danger" onclick="deleteDoc('${r.id}',${jsArg((r.file_url||''))})">Delete</button>`}
       </div></td>
     </tr>`;
   }).join('');
@@ -8913,8 +8917,8 @@ async function loadExpTracker() {
   tbody.innerHTML = rows.map(r => {
     const last = latestByDoc[r.id];
     const lastCell = last
-      ? `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}','${(r.credtrack_staff?.full_name||'').replace(/'/g,"\\'")}','${(r.document_types?.name||r.label||'').replace(/'/g,"\\'")}')" style="color:${last.success ? '#4ade80' : '#f87171'};border-color:rgba(255,255,255,.2);font-size:13px;">${last.success ? '✓' : '✕'} ${fmtDate(last.sent_at)}</button>`
-      : `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}','${(r.credtrack_staff?.full_name||'').replace(/'/g,"\\'")}','${(r.document_types?.name||r.label||'').replace(/'/g,"\\'")}')" style="color:rgba(255,255,255,.55);border-color:rgba(255,255,255,.15);font-size:13px;">None sent yet</button>`;
+      ? `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}',${jsArg((r.credtrack_staff?.full_name||''))},${jsArg((r.document_types?.name||r.label||''))})" style="color:${last.success ? '#4ade80' : '#f87171'};border-color:rgba(255,255,255,.2);font-size:13px;">${last.success ? '✓' : '✕'} ${fmtDate(last.sent_at)}</button>`
+      : `<button class="btn btn-sm btn-ghost" onclick="showReminderHistory('${r.id}',${jsArg((r.credtrack_staff?.full_name||''))},${jsArg((r.document_types?.name||r.label||''))})" style="color:rgba(255,255,255,.55);border-color:rgba(255,255,255,.15);font-size:13px;">None sent yet</button>`;
     return `<tr>
     <td>${r.credtrack_staff?.full_name || '—'}</td>
     <td>${r.document_types?.name || r.label}</td>
@@ -9173,13 +9177,13 @@ async function loadStaffTable() {
     const nameCell = s.full_name;
     const staffTypeCell = isOffice
       ? `<span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span>`
-      : `<button onclick="showStaffTypeModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
+      : `<button onclick="showStaffTypeModal('${s.id}',${jsArg(s.full_name)},'${s.staff_type||'clinician'}')" class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;">${s.staff_type} ✎</button>`;
     return `${groupDivider}<tr>
     <td>${nameCell}</td>
     <td style="font-size:14px;color:rgba(255,255,255,.62);">${isSyntheticStaffEmail(s.email) ? '<em style="opacity:.5;" title="No automated document reminders, no self-service password reset — both have to go through an admin manually. Update with a real email via Edit once one\'s available.">Placeholder — please update ⚠</em>' : (s.email || '<em style="opacity:.4;">not set</em>')}</td>
     <td style="font-size:14px;">
       ${s.job_title || '—'}
-      <button onclick="showDisciplineModal('${s.id}','${s.full_name.replace(/'/g,"\\'")}','${s.discipline||''}')"
+      <button onclick="showDisciplineModal('${s.id}',${jsArg(s.full_name)},${jsArg(s.discipline||'')})"
         class="badge ${s.discipline ? 'badge-ok' : 'badge-none'}" style="cursor:pointer;border:none;font:inherit;margin-left:6px;font-size:12px;">
         ${s.discipline || 'set discipline'} ✎
       </button>
@@ -9465,7 +9469,7 @@ async function restoreHospitalInfoOnLoad(staff) {
 const PROVIDER_TAB_MODAL_ID = 'providerTabModal';
 function renderProviderTabBar(staffId, staffName, activeTab) {
   if (!staffId) return ''; // org-level Notes has no per-provider tabs
-  const safeName = staffName.replace(/'/g, "\\'");
+  const safeName = jsArg(staffName);
   // Licenses/Education/Privileges/Claims were built specifically for the
   // FIXED: these five tabs were bundled into the same "Full-tier-only"
   // gate as genuinely premium conveniences (one-click form generation,
@@ -9504,14 +9508,14 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
   const tabs = [
     { key: 'info', label: '👤 Info', fn: `showFullProfileSheet('${staffId}')` },
     ...(showCredDataTabs ? [
-      !hidden.has('additional_licenses') ? { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}','${safeName}')` } : null,
-      !hidden.has('education') ? { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}','${safeName}')` } : null,
-      !hidden.has('hospital_privileges') ? { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}','${safeName}')` } : null,
-      !hidden.has('malpractice') ? { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}','${safeName}')` } : null,
-      !hidden.has('employment_history') ? { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}','${safeName}')` } : null,
+      !hidden.has('additional_licenses') ? { key: 'licenses', label: '🪪 Licenses', fn: `showAdditionalLicenses('${staffId}',${safeName})` } : null,
+      !hidden.has('education') ? { key: 'education', label: '🎓 Education', fn: `showEducationTraining('${staffId}',${safeName})` } : null,
+      !hidden.has('hospital_privileges') ? { key: 'privileges', label: '🏥 Privileges', fn: `showHospitalPrivileges('${staffId}',${safeName})` } : null,
+      !hidden.has('malpractice') ? { key: 'claims', label: '⚖️ Claims', fn: `showMalpracticeClaims('${staffId}',${safeName})` } : null,
+      !hidden.has('employment_history') ? { key: 'employment', label: '💼 Employment', fn: `showEmploymentHistory('${staffId}',${safeName})` } : null,
     ].filter(Boolean) : []),
-    ...(showNetworkTab ? [{ key: 'network', label: '🩺 Network', fn: `showStaffPayerNetwork('${staffId}','${safeName}')` }] : []),
-    ...(showReferencesTab ? [{ key: 'references', label: '📇 References', fn: `showProfessionalReferences('${staffId}','${safeName}')` }] : []),
+    ...(showNetworkTab ? [{ key: 'network', label: '🩺 Network', fn: `showStaffPayerNetwork('${staffId}',${safeName})` }] : []),
+    ...(showReferencesTab ? [{ key: 'references', label: '📇 References', fn: `showProfessionalReferences('${staffId}',${safeName})` }] : []),
     // Only appears when this person is ALSO linked to an hr_employees
     // record — most staff won't have one. Same Admin/Super-Admin-only
     // gate as References, matching HR's existing access boundary
@@ -9522,9 +9526,9 @@ function renderProviderTabBar(staffId, staffName, activeTab) {
     ...((hrVisible() && window._staffHrLinkMap?.has(staffId) && (currentProfile?.role === 'admin' || currentProfile?.is_super_admin))
       ? [{ key: 'hr', label: '🪪 HR', fn: `showHrEmployeeSheet('${window._staffHrLinkMap.get(staffId)}')` }]
       : []),
-    { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}','${safeName}')` },
-    { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}','${safeName}')` },
-    { key: 'history', label: '🕒 History', fn: `showEditHistory('${staffId}','${safeName}')` },
+    { key: 'notes', label: '📝 Notes', fn: `showNotesLog('${staffId}',${safeName})` },
+    { key: 'files', label: '📎 Files', fn: `showCredentialingFiles('${staffId}',${safeName})` },
+    { key: 'history', label: '🕒 History', fn: `showEditHistory('${staffId}',${safeName})` },
   ];
   return `
     <div style="display:flex;flex-direction:column;gap:6px;">
@@ -9688,7 +9692,7 @@ function showFullProfileSheet(staffId) {
 
       <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span style="font-size:14px;color:rgba(255,255,255,.62);flex:1;min-width:200px;">Have their CV or resume? Import education, licenses, hospital privileges, and specialty info automatically — you'll review everything before it saves.</span>
-        <input type="file" id="cvImportFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleCvImportFile('${staffId}','${s.full_name.replace(/'/g,"\\'")}')" />
+        <input type="file" id="cvImportFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleCvImportFile('${staffId}',${jsArg(s.full_name)})" />
         <label for="cvImportFile" class="btn btn-sm btn-teal" style="cursor:pointer;">📄 Import from document</label>
         <span id="cvImportStatus" style="font-size:13px;color:rgba(255,255,255,.58);"></span>
       </div>
@@ -9801,7 +9805,7 @@ function showFullProfileSheet(staffId) {
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px;">
         ${((currentCompany.has_credtrack || currentCompany.has_credentialing_addon) && !(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="verifyLicense('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Verify license${s.license_number ? '' : ' ⚠'}</button>` : ''}
         ${currentCompany.has_credtrack ? `<button class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📎 Attach proof</button>` : ''}
-        ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}','${s.full_name.replace(/'/g,"\\'")}','${s.license_state || ''}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="${s.license_state ? 'Searches the registry in ' + stateName(s.license_state) + ' — you can change the state first' : 'No license state on file — you choose the state, or search all states'}">🔍 Look up NPI</button>` : ''}
+        ${(currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('npi_lookup'))) ? `<button class="btn btn-sm btn-ghost" onclick="lookupNpi('${staffId}',${jsArg(s.full_name)},${jsArg(s.license_state || '')})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="${s.license_state ? 'Searches the registry in ' + stateName(s.license_state) + ' — you can change the state first' : 'No license state on file — you choose the state, or search all states'}">🔍 Look up NPI</button>` : ''}
       </div>
 
       <label class="inline-label" style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};">State licensing board lookup</label>
@@ -11497,12 +11501,12 @@ function showAccountActionsMenu(staffId) {
   if (!s) return;
   closeStaffActionsMenu();
 
-  const esc = (str) => (str || '').replace(/'/g, "\\'");
+  const esc = (str) => jsArg(str || '');
 
   const rows = [];
   if (isSyntheticStaffEmail(s.email)) {
     rows.push(`<div style="font-size:13px;color:rgba(255,255,255,.58);padding:4px 0;">🔒 Login already set up with a placeholder — please update to a real email via Edit when one's available. Until then: no automated document reminders reach them, and password resets have to go through you.</div>`);
-    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPasswordNoEmail('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPasswordNoEmail('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
   } else if (s.email && s.profile_id) {
     // FOUND AND FIXED — this used to show the same "Set up login" /
     // "Reset password" buttons as the no-login case below, both keyed by
@@ -11512,19 +11516,19 @@ function showAccountActionsMenu(staffId) {
     // one — exactly what happened to Kym Crane. These two actions
     // instead target the EXISTING account by its own profile_id, never
     // by email lookup, so they can never create a duplicate.
-    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();showManageLoginModal('${s.id}','${esc(s.full_name)}','${s.profile_id}','${esc(s.email)}')" style="width:100%;justify-content:flex-start;">Change login email</button>`);
-    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();reissueStaffPassword('${s.id}','${esc(s.full_name)}','${s.profile_id}','${esc(s.email)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reissue password</button>`);
+    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();showManageLoginModal('${s.id}',${esc(s.full_name)},'${s.profile_id}',${esc(s.email)})" style="width:100%;justify-content:flex-start;">Change login email</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();reissueStaffPassword('${s.id}',${esc(s.full_name)},'${s.profile_id}',${esc(s.email)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reissue password</button>`);
     if (currentCompany.has_credtrack) {
-      rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
+      rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
     }
   } else if (s.email) {
-    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}','${esc(s.full_name)}','${s.email}')" style="width:100%;justify-content:flex-start;">Set up login</button>`);
-    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPassword('${s.email}','${esc(s.full_name)}','${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
+    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLogin('${s.id}',${esc(s.full_name)},${jsArg(s.email)})" style="width:100%;justify-content:flex-start;">Set up login</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetPassword(${jsArg(s.email)},${esc(s.full_name)},'${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>`);
     if (currentCompany.has_credtrack) {
-      rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
+      rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
     }
   } else {
-    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLoginNoEmail('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Set up login (no email)</button>`);
+    rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();setupStaffLoginNoEmail('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;">Set up login (no email)</button>`);
   }
   rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();editStaff('${s.id}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>`);
   if (currentCompany.has_credtrack) {
@@ -11532,12 +11536,12 @@ function showAccountActionsMenu(staffId) {
   }
   rows.push(`<button class="btn btn-gold" onclick="closeStaffActionsMenu();toggleActive('${s.id}',${s.active})" style="width:100%;justify-content:flex-start;">${s.active ? 'Deactivate' : 'Reactivate'}</button>`);
   if (!s.active && !s.offboarded_at) {
-    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();offboardStaffMember('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN and CAQH login credentials — everything else (documents, employment history, credentialing profile) stays">📁 Offboard (expunge SSN/CAQH)</button>`);
+    rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();offboardStaffMember('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN and CAQH login credentials — everything else (documents, employment history, credentialing profile) stays">📁 Offboard (expunge SSN/CAQH)</button>`);
   }
   if (s.offboarded_at) {
     rows.push(`<div style="font-size:13px;color:rgba(255,255,255,.55);padding:4px 0;">Offboarded ${new Date(s.offboarded_at).toLocaleDateString()} — SSN/CAQH already expunged</div>`);
   }
-  rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}','${esc(s.full_name)}')" style="width:100%;justify-content:flex-start;">Delete</button>`);
+  rows.push(`<button class="btn btn-danger" onclick="closeStaffActionsMenu();deleteStaff('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;">Delete</button>`);
 
   const modal = document.createElement('div');
   modal.id = 'staffActionsModal';
@@ -12200,7 +12204,7 @@ function showStaffTypeModal(id, name, currentType) {
           </label>`).join('')}
       </div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="confirmStaffTypeCred('${id}','${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-teal" onclick="confirmStaffTypeCred('${id}',${jsArg(name)})" style="flex:1;justify-content:center;">Save</button>
         <button class="btn btn-ghost" onclick="document.getElementById('staffTypeModalCred').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -12301,7 +12305,7 @@ function lookupNpi(staffId, fullName, licenseState) {
       <label class="inline-label" for="npiSearchState">Search in</label>
       <select class="inline-select" id="npiSearchState" style="margin-bottom:16px;">${stateOptionsHtml(have, 'Any state (search nationwide)')}</select>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="runNpiSearchFromOptions('${staffId}','${String(fullName).replace(/'/g, "\\'")}')" style="flex:1;justify-content:center;">Search</button>
+        <button class="btn btn-teal" onclick="runNpiSearchFromOptions('${staffId}',${jsArg(String(fullName))})" style="flex:1;justify-content:center;">Search</button>
         <button class="btn btn-ghost" onclick="document.getElementById('npiSearchOptionsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -12346,10 +12350,10 @@ function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallbac
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
 
   const body = !results.length
-    ? `<div style="color:rgba(255,255,255,.62);font-size:15px;padding:12px 0;">No matches found in the public NPI registry for "${fullName}". They may not have registered yet, or the name/state might not match exactly — you can still enter their NPI manually if you have it.${searchedState ? ` This search only looked in ${hrOnbEsc(stateName(searchedState))}.` : ''}</div>`
+    ? `<div style="color:rgba(255,255,255,.62);font-size:15px;padding:12px 0;">No matches found in the public NPI registry for "${hrOnbEsc(fullName)}". They may not have registered yet, or the name/state might not match exactly — you can still enter their NPI manually if you have it.${searchedState ? ` This search only looked in ${hrOnbEsc(stateName(searchedState))}.` : ''}</div>`
     : `<div style="max-height:360px;overflow-y:auto;">
         ${results.map(r => `
-          <div onclick="applyNpiResult('${staffId}','${r.npi}')" style="cursor:pointer;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:8px;">
+          <div onclick="applyNpiResult('${staffId}',${jsArg(r.npi)})" style="cursor:pointer;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:8px;">
             <div style="color:#fff;font-weight:600;font-size:16px;">${r.firstName} ${r.lastName}${r.credential ? ', ' + r.credential : ''}</div>
             <div style="color:rgba(255,255,255,.62);font-size:14px;">NPI: ${r.npi} · ${r.taxonomy || 'No specialty listed'}</div>
             <div style="color:rgba(255,255,255,.58);font-size:14px;">${r.city}${r.city && r.state ? ', ' : ''}${r.state}</div>
@@ -12363,8 +12367,8 @@ function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallbac
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.8);">
         <span>Searched: <strong style="color:#fff;">${searchedState ? hrOnbEsc(stateName(searchedState)) + ' only' : 'all states'}</strong></span>
         <span style="display:flex;gap:6px;">
-          ${searchedState ? `<button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();runNpiSearch('${staffId}','${String(fullName).replace(/'/g, "\'")}','')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Search all states</button>` : ''}
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();lookupNpi('${staffId}','${String(fullName).replace(/'/g, "\'")}','${hrOnbEsc(searchedState)}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Change state</button>
+          ${searchedState ? `<button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();runNpiSearch('${staffId}',${jsArg(String(fullName))},'')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Search all states</button>` : ''}
+          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();lookupNpi('${staffId}',${jsArg(String(fullName))},${jsArg(searchedState)})" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Change state</button>
         </span>
       </div>
       ${usedLastNameOnlyFallback ? `<div style="color:var(--gold);font-size:14px;margin-bottom:16px;">No exact match on first name — showing everyone registered under "${fullName.split(' ').slice(1).join(' ')}" instead. Check first names carefully below.</div>` : ''}
@@ -13748,9 +13752,9 @@ function loadDisciplinesPanel() {
   const disciplines = getCompanyDisciplines();
   container.innerHTML = disciplines.map(d => `
     <span class="badge badge-ok" style="display:flex;align-items:center;gap:6px;padding:6px 10px;">
-      ${d}
-      <span onclick="showRenameDisciplineForm('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Rename">✎</span>
-      <span onclick="removeCompanyDiscipline('${d.replace(/'/g,"\\'")}')" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
+      ${hrOnbEsc(d)}
+      <span onclick="showRenameDisciplineForm(${jsArg(d)})" style="cursor:pointer;font-weight:700;opacity:.6;" title="Rename">✎</span>
+      <span onclick="removeCompanyDiscipline(${jsArg(d)})" style="cursor:pointer;font-weight:700;opacity:.6;" title="Remove">✕</span>
     </span>`).join('');
 
   // CAQH is a credentialing concept, not a general staff/discipline one —
@@ -13764,11 +13768,11 @@ function loadDisciplinesPanel() {
     const exemptList = getCaqhExemptDisciplines();
     exemptContainer.innerHTML = disciplines.map(d => {
       const isExempt = exemptList.includes(d);
-      return `<button type="button" onclick="toggleCaqhExempt('${d.replace(/'/g,"\\'")}', ${!isExempt})"
+      return `<button type="button" onclick="toggleCaqhExempt(${jsArg(d)}, ${!isExempt})"
         style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:15px;cursor:pointer;font-weight:600;
         background:${isExempt ? 'var(--teal)' : 'transparent'};color:${isExempt ? '#fff' : 'rgba(255,255,255,.6)'};
         border:1px solid ${isExempt ? 'var(--teal)' : 'rgba(255,255,255,.2)'};">
-        ${isExempt ? '✓ ' : ''}${d}
+        ${isExempt ? '✓ ' : ''}${hrOnbEsc(d)}
       </button>`;
     }).join('');
   }
@@ -13784,11 +13788,11 @@ function loadDisciplinesPanel() {
   if (prescriberContainer) {
     prescriberContainer.innerHTML = disciplines.map(d => {
       const on = isPrescribingDiscipline(d);
-      return `<button type="button" onclick="togglePrescriberDiscipline('${d.replace(/'/g,"\\'")}', ${!on})"
+      return `<button type="button" onclick="togglePrescriberDiscipline(${jsArg(d)}, ${!on})"
         style="display:flex;align-items:center;gap:6px;padding:6px 12px;border-radius:20px;font-size:15px;cursor:pointer;font-weight:600;
         background:${on ? 'var(--teal)' : 'transparent'};color:${on ? '#fff' : 'rgba(255,255,255,.6)'};
         border:1px solid ${on ? 'var(--teal)' : 'rgba(255,255,255,.2)'};">
-        ${on ? '✓ ' : ''}${d}
+        ${on ? '✓ ' : ''}${hrOnbEsc(d)}
       </button>`;
     }).join('');
   }
@@ -13897,7 +13901,7 @@ function showRenameDisciplineForm(oldName) {
       <input class="inline-input" type="text" id="renameDisciplineInput" value="${oldName.replace(/"/g,'&quot;')}" style="margin-bottom:10px;width:100%;box-sizing:border-box;" />
       <div id="renameDisciplineErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="submitRenameDiscipline('${oldName.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Rename</button>
+        <button class="btn btn-teal" onclick="submitRenameDiscipline(${jsArg(oldName)})" style="flex:1;justify-content:center;">Rename</button>
         <button class="btn btn-ghost" onclick="document.getElementById('renameDisciplineModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -13974,10 +13978,10 @@ async function loadEntitiesPanel() {
   try { usage = await getNetworkUsageSummary(); } catch (e) { console.warn('In-use counts unavailable:', e); }
   container.innerHTML = data.map(e => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="flex:1;color:#fff;font-size:15px;">${e.name}</span>
+      <span style="flex:1;color:#fff;font-size:15px;">${hrOnbEsc(e.name)}</span>
       <span style="text-align:right;min-width:120px;">${usageCellHtml(usage.byEntity[e.name], 'No insurance records are filed under this name.')}</span>
-      <button class="btn btn-sm btn-ghost" onclick="renameCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Rename</button>
-      <button class="btn btn-sm btn-danger" onclick="removeCompanyEntity('${e.id}','${e.name.replace(/'/g,"\\'")}')" style="font-size:13px;">Delete</button>
+      <button class="btn btn-sm btn-ghost" onclick="renameCompanyEntity('${e.id}',${jsArg(e.name)})" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Rename</button>
+      <button class="btn btn-sm btn-danger" onclick="removeCompanyEntity('${e.id}',${jsArg(e.name)})" style="font-size:13px;">Delete</button>
     </div>`).join('');
 }
 
@@ -14094,7 +14098,7 @@ async function showProfessionalReferences(staffId, staffName) {
         <div id="referenceFormErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-teal" onclick="addProfessionalReference('${staffId}')" style="flex:1;justify-content:center;">+ Add reference</button>
-          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}',${jsArg(staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
         </div>
       </div>
 
@@ -14264,7 +14268,7 @@ async function showEmploymentHistory(staffId, staffName) {
         <div id="employmentFormErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-teal" onclick="addEmploymentHistory('${staffId}')" style="flex:1;justify-content:center;">+ Add employment record</button>
-          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}',${jsArg(staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
         </div>
       </div>
 
@@ -14389,7 +14393,7 @@ async function showAdditionalLicenses(staffId, staffName) {
         <div id="additionalLicenseFormErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-teal" onclick="addAdditionalLicense('${staffId}')" style="flex:1;justify-content:center;">+ Add license</button>
-          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}',${jsArg(staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
         </div>
       </div>
 
@@ -14521,7 +14525,7 @@ async function showEducationTraining(staffId, staffName) {
         <div id="educationFormErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-teal" onclick="addEducationTraining('${staffId}')" style="flex:1;justify-content:center;">+ Add entry</button>
-          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}',${jsArg(staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
         </div>
       </div>
 
@@ -14648,7 +14652,7 @@ async function showHospitalPrivileges(staffId, staffName) {
         <div id="privilegesFormErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-teal" onclick="addHospitalPrivilege('${staffId}')" style="flex:1;justify-content:center;">+ Add privilege record</button>
-          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}',${jsArg(staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
         </div>
       </div>
 
@@ -14765,7 +14769,7 @@ async function showMalpracticeClaims(staffId, staffName) {
         <div id="claimsFormErr" style="color:#f87171;font-size:14px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:8px;">
           <button class="btn btn-sm btn-teal" onclick="addMalpracticeClaim('${staffId}')" style="flex:1;justify-content:center;">+ Add claim record</button>
-          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}','${staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
+          <button class="btn btn-sm btn-ghost" onclick="openProfileDocUpload('${staffId}',${jsArg(staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Attach a supporting document — goes straight into this person's Documents tab">📎 Attach document</button>
         </div>
       </div>
 
@@ -15160,7 +15164,7 @@ async function loadCompanyLocationsPanel() {
       </span>
       <span style="font-size:14px;color:rgba(255,255,255,.62);flex:2;min-width:220px;">${[loc.address, loc.city, loc.state, loc.zip].filter(Boolean).join(', ') || '—'}${loc.county ? ' · ' + loc.county + ' County' : ''}${loc.phone ? ' · ' + loc.phone : ''}</span>
       ${!loc.is_primary ? `<button class="btn btn-sm btn-gold" onclick="setPrimaryLocation('${loc.id}')" style="font-size:13px;padding:3px 8px;">Make Primary</button>` : ''}
-      <button class="btn btn-sm btn-danger" onclick="deleteCompanyLocation('${loc.id}','${(loc.location_name||'this location').replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteCompanyLocation('${loc.id}',${jsArg((loc.location_name||'this location'))})" style="font-size:13px;padding:3px 8px;">Delete</button>
     </div>`).join('');
 }
 
@@ -15239,9 +15243,9 @@ async function loadAccreditationsPanel() {
     const expired = a.expiration_date && new Date(a.expiration_date) < new Date();
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="flex:1;color:#fff;font-size:15px;">${a.body_name}${a.accreditation_number ? ' — ' + a.accreditation_number : ''}${a.effective_date ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">Effective ${fmtDate(a.effective_date)}</div>` : ''}</span>
+      <span style="flex:1;color:#fff;font-size:15px;">${hrOnbEsc(a.body_name)}${a.accreditation_number ? ' — ' + hrOnbEsc(a.accreditation_number) : ''}${a.effective_date ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">Effective ${fmtDate(a.effective_date)}</div>` : ''}</span>
       <span style="font-size:14px;color:${expired ? '#f87171' : 'rgba(255,255,255,.4)'};">${a.expiration_date ? (expired ? 'Expired ' : 'Expires ') + fmtDate(a.expiration_date) : 'No expiration on file'}</span>
-      <button class="btn btn-sm btn-danger" onclick="removeCompanyAccreditation('${a.id}','${a.body_name.replace(/'/g,"\\'")}')" style="font-size:13px;">Remove</button>
+      <button class="btn btn-sm btn-danger" onclick="removeCompanyAccreditation('${a.id}',${jsArg(a.body_name)})" style="font-size:13px;">Remove</button>
     </div>`;
   }).join('');
 }
@@ -16822,21 +16826,21 @@ async function loadCredtrackAgencies() {
     tbody.innerHTML = data.map(a => `<tr>
       <td>
         <input style="background:transparent;border:none;border-bottom:1px solid rgba(255,255,255,.15);color:#fff;font-size:15px;width:100%;padding:4px 0;"
-          type="text" value="${a.name}" id="agname_${a.id}"
+          type="text" value="${hrOnbEsc(a.name)}" id="agname_${a.id}"
           onblur="updateCredtrackAgencyName('${a.id}', this.value)" />
       </td>
       <td><span style="color:${a.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:14px;">${a.active ? '● Active' : '○ Inactive'}</span></td>
       <td>${agencyUse(a)}</td>
       <td><div class="td-actions">
-        <button class="btn btn-sm btn-teal" onclick="previewAsPartner('${a.id}','${a.name.replace(/'/g,"\\'")}')">👁 Preview portal</button>
+        <button class="btn btn-sm btn-teal" onclick="previewAsPartner('${a.id}',${jsArg(a.name)})">👁 Preview portal</button>
         <button class="btn btn-sm btn-gold" onclick="toggleCredtrackAgencyActive('${a.id}',${a.active})">${a.active ? 'Deactivate' : 'Reactivate'}</button>
-        <button class="btn btn-sm btn-danger" onclick="deleteCredtrackAgency('${a.id}','${a.name.replace(/'/g,"\\'")}')">Delete</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteCredtrackAgency('${a.id}',${jsArg(a.name)})">Delete</button>
       </div></td>
     </tr>`).join('');
   }
 
   // populate the agency dropdowns used elsewhere on this panel
-  const options = (data || []).filter(a => a.active).map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  const options = (data || []).filter(a => a.active).map(a => `<option value="${a.id}">${hrOnbEsc(a.name)}</option>`).join('');
   const puAgencySel = document.getElementById('puAgency');
   if (puAgencySel) puAgencySel.innerHTML = '<option value="">— Select agency —</option>' + options;
 
@@ -16915,12 +16919,12 @@ async function loadAgencyAssignmentsTable() {
 
   tbody.innerHTML = activeAgencies.map(a => `
     <tr>
-      <td>${a.name}</td>
+      <td>${hrOnbEsc(a.name)}</td>
       <td>${countByAgency[a.id] || 0} of ${staffList.filter(s => s.active).length} active staff</td>
       <td><div class="td-actions">
-        <button class="btn btn-sm btn-teal" onclick="showAgencyAssignmentModal('${a.id}','${a.name.replace(/'/g,"\\'")}')">Edit assignments</button>
-        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffExcel('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📊 Staff list (Excel)</button>
-        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffPDF('${a.id}','${a.name.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 Staff list (PDF)</button>
+        <button class="btn btn-sm btn-teal" onclick="showAgencyAssignmentModal('${a.id}',${jsArg(a.name)})">Edit assignments</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffExcel('${a.id}',${jsArg(a.name)})" style="color:#fff;border-color:rgba(255,255,255,.2);">📊 Staff list (Excel)</button>
+        <button class="btn btn-sm btn-ghost" onclick="exportAgencyStaffPDF('${a.id}',${jsArg(a.name)})" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 Staff list (PDF)</button>
       </div></td>
     </tr>`).join('');
 }
@@ -17101,20 +17105,20 @@ async function loadPartnerUsersTable() {
   }
 
   tbody.innerHTML = data.map(u => `<tr>
-    <td>${u.full_name}</td>
-    <td style="font-size:14px;color:rgba(255,255,255,.62);">${u.email}</td>
-    <td style="font-size:14px;">${u.credtrack_agencies?.name || '—'}</td>
+    <td>${hrOnbEsc(u.full_name)}</td>
+    <td style="font-size:14px;color:rgba(255,255,255,.62);">${hrOnbEsc(u.email)}</td>
+    <td style="font-size:14px;">${hrOnbEsc(u.credtrack_agencies?.name || '—')}</td>
     <td>
       ${u.profile_id
         ? `<span style="color:${u.active ? '#4ade80' : '#f87171'};font-weight:600;font-size:14px;">${u.active ? '● Active' : '○ Inactive'}</span>`
         : `<span class="badge badge-warn">Invite pending</span>`}
     </td>
     <td><div class="td-actions">
-      <button class="btn btn-sm btn-ghost" onclick="showEditPartnerUserModal('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}','${u.agency_id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
-      <button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')">${u.profile_id ? 'Resend / Set up login' : 'Send invite'}</button>
-      ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}','${u.full_name.replace(/'/g,"\\'")}','${u.email}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      <button class="btn btn-sm btn-ghost" onclick="showEditPartnerUserModal('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)},'${u.agency_id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
+      <button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)})">${u.profile_id ? 'Resend / Set up login' : 'Send invite'}</button>
+      ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)})" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
       ${u.profile_id ? `<button class="btn btn-sm btn-gold" onclick="togglePartnerUserActive('${u.id}',${u.active})">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
-      <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}','${u.full_name.replace(/'/g,"\\'")}')">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}',${jsArg(u.full_name)})">Delete</button>
     </div></td>
   </tr>`).join('');
 }
@@ -19075,7 +19079,7 @@ async function loadCredentialingTemplates() {
           ? `<button class="btn btn-sm btn-teal" onclick="showRosterGenerateModal('${t.id}')">👥 Generate roster</button>`
           : `<button class="btn btn-sm btn-teal" onclick="revealGenerateInput('${t.id}')">📄 Generate</button>`}
       </span>
-      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')">Delete</button>` : ''}
+      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}',${jsArg(t.name)})">Delete</button>` : ''}
     </div>`;
 
   const groupKeys = Object.keys(groups);
@@ -19086,7 +19090,7 @@ async function loadCredentialingTemplates() {
     const isExpanded = previouslyExpanded.has(key);
     return `
     <div class="template-group" data-group-key="${key.replace(/"/g,'&quot;')}" data-expanded="${isExpanded}">
-      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onclick="toggleTemplateGroup('${key.replace(/'/g,"\\'")}')">
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;" onclick="toggleTemplateGroup(${jsArg(key)})">
         <span class="template-group-chevron" style="color:rgba(255,255,255,.58);font-size:13px;transition:transform .15s;transform:rotate(${isExpanded ? '90' : '0'}deg);">▶</span>
         <span style="flex:1;color:#fff;font-size:15px;font-weight:600;">${key} <span style="font-weight:400;color:rgba(255,255,255,.58);font-size:14px;">(${members.length} parts — main form + attachments)</span></span>
       </div>
@@ -19756,8 +19760,8 @@ async function loadHrTemplates() {
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
       <span style="flex:1;color:#fff;font-size:15px;">${t.name}${typeBadge}${t.company_id ? '' : ' <span style="font-size:12px;color:var(--gold);">SELKO-PROVIDED</span>'}${t.is_standalone_disclosure ? ' <span style="font-size:12px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
-      <button class="btn btn-sm btn-ghost" onclick="editHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Edit mapping</button>
-      <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+      <button class="btn btn-sm btn-ghost" onclick="editHrTemplate('${t.id}',${jsArg(t.name)})" style="font-size:13px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Edit mapping</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}',${jsArg(t.name)})" style="font-size:13px;padding:3px 8px;">Delete</button>
     </div>`;
   }).join('');
 }
@@ -19787,7 +19791,7 @@ async function loadSuperHrTemplates() {
   container.innerHTML = globalOnly.map(t => `
     <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
       <span style="flex:1;color:#fff;font-size:15px;">${t.name}${t.is_standalone_disclosure ? ' <span style="font-size:12px;color:#f59e0b;">STANDALONE</span>' : ''}</span>
-      <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}','${t.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteHrTemplate('${t.id}',${jsArg(t.name)})" style="font-size:13px;padding:3px 8px;">Delete</button>
     </div>`).join('');
 }
 
@@ -20198,7 +20202,7 @@ async function showHrEmployeeSheet(employeeId) {
         ${d.storage_path ? `<button class="btn btn-sm btn-ghost" onclick="viewHrDocument('${d.id}')" style="font-size:13px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">View</button>` : ''}
         ${d.status === 'pending_acknowledgment' ? `<button class="btn btn-sm btn-ghost" onclick="markHrDocumentAcknowledged('${d.id}','${employeeId}')" style="font-size:13px;padding:3px 8px;color:#fff;border-color:rgba(255,255,255,.2);">Mark acknowledged</button>` : ''}
         ${d.status === 'submitted_by_employee' ? `<button class="btn btn-sm btn-teal" onclick="markHrDocumentReviewed('${d.id}','${employeeId}')" style="font-size:13px;padding:3px 8px;">Mark reviewed</button>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteHrDocument('${d.id}','${(d.storage_path || '').replace(/'/g,"\\'")}','${employeeId}','${d.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteHrDocument('${d.id}',${jsArg((d.storage_path || ''))},'${employeeId}',${jsArg(d.name)})" style="font-size:13px;padding:3px 8px;">Delete</button>
       </div>`; }).join('')
     : '<div style="font-size:14px;color:rgba(255,255,255,.55);">No documents on file yet.</div>';
 
@@ -20250,12 +20254,12 @@ async function showHrEmployeeSheet(employeeId) {
         ${employee.onboarding_status && employee.onboarding_status !== 'not_started' ? `
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
           <span style="font-size:13px;color:rgba(255,255,255,.62);">Onboarding: <strong style="color:${employee.onboarding_status === 'completed' ? '#4ade80' : '#f59e0b'};">${employee.onboarding_status === 'completed' ? 'Completed' : 'Submitted, awaiting review'}</strong></span>
-          <button class="btn btn-sm btn-ghost" onclick="reopenHrOnboarding('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);" title="Lets them log back in and add or correct information — keeps what they already submitted">↺ Reopen for more info</button>
+          <button class="btn btn-sm btn-ghost" onclick="reopenHrOnboarding('${employeeId}',${jsArg(employee.full_name)})" style="font-size:13px;padding:3px 10px;color:#fff;border-color:rgba(255,255,255,.2);" title="Lets them log back in and add or correct information — keeps what they already submitted">↺ Reopen for more info</button>
         </div>` : ''}
         ${employee.active === false && !employee.offboarded_at ? `
-        <button class="btn btn-sm btn-ghost" onclick="offboardHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN — everything else (documents, reminders) stays">📁 Offboard (expunge SSN)</button>` : ''}
+        <button class="btn btn-sm btn-ghost" onclick="offboardHrEmployee('${employeeId}',${jsArg(employee.full_name)})" style="width:100%;justify-content:center;margin-bottom:8px;color:#fff;border-color:rgba(255,255,255,.2);" title="Removes their SSN — everything else (documents, reminders) stays">📁 Offboard (expunge SSN)</button>` : ''}
         ${employee.offboarded_at ? `<div style="font-size:13px;color:rgba(255,255,255,.55);padding:4px 0 8px;">Offboarded ${new Date(employee.offboarded_at).toLocaleDateString()} — SSN already expunged</div>` : ''}
-        <button class="btn btn-sm btn-danger" onclick="deleteHrEmployee('${employeeId}','${employee.full_name.replace(/'/g,"\\'")}')" style="width:100%;justify-content:center;margin-bottom:8px;">🗑 Delete employee</button>
+        <button class="btn btn-sm btn-danger" onclick="deleteHrEmployee('${employeeId}',${jsArg(employee.full_name)})" style="width:100%;justify-content:center;margin-bottom:8px;">🗑 Delete employee</button>
         <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
       </div>
       </div>
@@ -20686,7 +20690,7 @@ function renderPickPersonList(recipientType, people) {
   if (!container) return;
   if (!people.length) { container.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.55);padding:12px 0;">No matches.</div>'; return; }
   container.innerHTML = people.map(p => `
-    <div onclick="document.getElementById('pickPersonModal').remove();showAddReminderModal('${recipientType}','${p.id}','${p.name.replace(/'/g,"\\'")}')" style="padding:8px 10px;font-size:15px;color:#fff;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">${p.name}</div>`).join('');
+    <div onclick="document.getElementById('pickPersonModal').remove();showAddReminderModal('${recipientType}','${p.id}',${jsArg(p.name)})" style="padding:8px 10px;font-size:15px;color:#fff;cursor:pointer;border-radius:6px;" onmouseover="this.style.background='rgba(255,255,255,.06)'" onmouseout="this.style.background='transparent'">${p.name}</div>`).join('');
 }
 
 function filterPickPersonList(recipientType) {
@@ -21097,14 +21101,14 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
     return `
     <div class="template-mapping-row" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.06);flex-wrap:wrap;">
       <span class="template-mapping-status-dot" title="Unmapped" style="width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.2);flex-shrink:0;"></span>
-      ${hasPosition ? `<button type="button" class="btn-locate-field" onclick="locateFieldOnPreview('${fn.replace(/'/g,"\\'")}')" title="Show where this field is on the page" style="background:none;border:1px solid rgba(255,255,255,.2);border-radius:6px;color:var(--teal-l);font-size:14px;padding:2px 7px;cursor:pointer;flex-shrink:0;">📍</button>` : '<span style="width:26px;flex-shrink:0;"></span>'}
+      ${hasPosition ? `<button type="button" class="btn-locate-field" onclick="locateFieldOnPreview(${jsArg(fn)})" title="Show where this field is on the page" style="background:none;border:1px solid rgba(255,255,255,.2);border-radius:6px;color:var(--teal-l);font-size:14px;padding:2px 7px;cursor:pointer;flex-shrink:0;">📍</button>` : '<span style="width:26px;flex-shrink:0;"></span>'}
       <span style="flex:1;min-width:180px;color:#fff;font-size:16px;">${fn}${fi.isCheckbox ? ' <span style="color:rgba(255,255,255,.55);font-size:13px;">(checkbox)</span>' : ''}</span>
       <select class="inline-select template-mapping-select" data-field-name="${fn.replace(/"/g,'&quot;')}" style="width:320px;">
         <option value="">— Leave blank / fill manually —</option>
         ${fixedOptionsHtml}
         ${optionsHtml}
       </select>
-      ${fi.isCheckbox ? '' : `<button type="button" class="btn btn-sm btn-ghost template-combine-toggle" data-field-name="${fn.replace(/"/g,'&quot;')}" onclick="toggleFieldTemplateMode('${fn.replace(/'/g,"\\'")}')" title="Combine more than one field onto this single line — e.g. City, State ZIP all on one line" style="color:#fff;border-color:rgba(255,255,255,.2);padding:6px 10px;">🔗 Combine</button>`}
+      ${fi.isCheckbox ? '' : `<button type="button" class="btn btn-sm btn-ghost template-combine-toggle" data-field-name="${fn.replace(/"/g,'&quot;')}" onclick="toggleFieldTemplateMode(${jsArg(fn)})" title="Combine more than one field onto this single line — e.g. City, State ZIP all on one line" style="color:#fff;border-color:rgba(255,255,255,.2);padding:6px 10px;">🔗 Combine</button>`}
       ${fi.isCheckbox ? '' : `
       <div class="template-combine-box" data-field-name="${fn.replace(/"/g,'&quot;')}" style="display:none;width:100%;margin-top:6px;padding:10px;background:rgba(255,255,255,.04);border-radius:6px;">
         <input type="text" class="inline-input template-combine-input" data-field-name="${fn.replace(/"/g,'&quot;')}" placeholder="e.g. {company.location_1_city}, {company.location_1_state} {company.location_1_zip}" style="width:100%;box-sizing:border-box;margin-bottom:6px;" />
@@ -21147,7 +21151,7 @@ function showTemplateFieldMappingModal(name, fieldInfos, pdfBytes, fieldPosition
         </div>
       </div>
       <div style="display:flex;gap:8px;margin-top:14px;">
-        <button class="btn btn-teal" onclick="${saveFn}('${name.replace(/'/g,"\\'")}')" style="flex:1;justify-content:center;">Save template</button>
+        <button class="btn btn-teal" onclick="${saveFn}(${jsArg(name)})" style="flex:1;justify-content:center;">Save template</button>
         <button class="btn btn-ghost" onclick="document.getElementById('templateMappingModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
@@ -22265,9 +22269,9 @@ async function renderCredentialingStaffTable() {
       ${deaCells}
       <td><div class="td-actions">
         <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
-        <button class="btn btn-sm btn-gold" onclick="showNotesLog('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📝 Notes</button>
-        <button class="btn btn-sm btn-gold" onclick="showCredentialingFiles('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">📎 Files</button>
-        <button class="btn btn-sm btn-gold" onclick="showEmploymentHistory('${s.id}','${s.full_name.replace(/'/g,"\\'")}')">💼 Employment</button>
+        <button class="btn btn-sm btn-gold" onclick="showNotesLog('${s.id}',${jsArg(s.full_name)})">📝 Notes</button>
+        <button class="btn btn-sm btn-gold" onclick="showCredentialingFiles('${s.id}',${jsArg(s.full_name)})">📎 Files</button>
+        <button class="btn btn-sm btn-gold" onclick="showEmploymentHistory('${s.id}',${jsArg(s.full_name)})">💼 Employment</button>
       </div></td>
     </tr>`;
   }).join('');
@@ -24031,7 +24035,7 @@ async function showSuperAdminQuickSwitch(profile, currentCompanyRow) {
       <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:16px;">You're in <strong style="color:#fff;">${currentCompanyRow.name}</strong>. Jump to another company, or stay here.</div>
       <div style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
         ${otherCompanies.map(c => `
-          <button class="btn btn-sm btn-ghost" style="width:100%;justify-content:flex-start;margin-bottom:6px;color:#fff;border-color:rgba(255,255,255,.15);" onclick="document.getElementById('quickSwitchModal').remove(); viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}');">${c.name}</button>
+          <button class="btn btn-sm btn-ghost" style="width:100%;justify-content:flex-start;margin-bottom:6px;color:#fff;border-color:rgba(255,255,255,.15);" onclick="document.getElementById('quickSwitchModal').remove(); viewAsAdmin('${c.id}',${jsArg(c.name)});">${hrOnbEsc(c.name)}</button>
         `).join('')}
       </div>
       <button class="btn btn-teal" style="width:100%;justify-content:center;" onclick="document.getElementById('quickSwitchModal').remove();">Stay in ${currentCompanyRow.name}</button>
@@ -25023,7 +25027,8 @@ async function loadDocumentOverviewStats() {
 
   // Required documents vs. what's actually on file, respecting discipline scoping
   const { data: allTypes } = await sb.from('document_types')
-    .select('id, name, company_id, required_for_disciplines, is_required, tier');
+    .select('id, name, company_id, required_for_disciplines, is_required, tier')
+    .or(`company_id.is.null,company_id.eq.${currentCompany.id}`);
   const overviewOverrides = await getDocTypeOverrides(currentCompany.id);
   const canUseAdvancedTypes = window._isPro || currentProfile?.is_super_admin;
   const applicableTypes = (allTypes || []).filter(t => {
@@ -25318,7 +25323,7 @@ function renderMissingDocsReport() {
         <div style="font-weight:600;color:#fff;font-size:15px;">${s.staffName}</div>
         <div style="color:rgba(255,255,255,.62);font-size:14px;">Missing: ${formatMissing(s.missing)}</div>
       </div>
-      <button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.staffId}','${s.staffName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);white-space:nowrap;">📋 Send checklist</button>
+      <button class="btn btn-sm btn-ghost" onclick="sendMissingDocsChecklist('${s.staffId}',${jsArg(s.staffName)})" style="color:#fff;border-color:rgba(255,255,255,.2);white-space:nowrap;">📋 Send checklist</button>
     </div>`).join('') +
     (remaining > 0
       ? `<div style="text-align:center;padding:10px 0 0;color:rgba(255,255,255,.58);font-size:14px;">+ ${remaining} more — see the Staff tab for the full list</div>`
@@ -25489,7 +25494,7 @@ async function loadSupportRequests() {
           ${new Date(r.created_at).toLocaleString()} — <strong>${r.reporter_name || 'Unknown'}</strong> (${r.reporter_role || '—'}) at <strong>${companyNames[r.company_id] || '—'}</strong>, on "${r.current_tab || 'unknown'}" tab
         </div>
         <div style="font-size:15px;color:#fff;white-space:pre-wrap;">${r.message}</div>
-        ${r.screenshot_path ? `<button class="btn btn-sm btn-ghost" onclick="viewSupportScreenshot('${r.screenshot_path}')" style="margin-top:8px;color:#fff;border-color:rgba(255,255,255,.2);">📷 View screenshot</button>` : ''}
+        ${r.screenshot_path ? `<button class="btn btn-sm btn-ghost" onclick="viewSupportScreenshot(${jsArg(r.screenshot_path)})" style="margin-top:8px;color:#fff;border-color:rgba(255,255,255,.2);">📷 View screenshot</button>` : ''}
       </div>
       ${r.resolved
         ? `<div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;">
@@ -25630,7 +25635,7 @@ async function loadDocTypeCategories() {
   container.innerHTML = _docTypeCategoriesCache.map(c => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <span style="flex:1;color:#fff;font-size:15px;">${c.name}</span>
-      <button class="btn btn-sm btn-danger" onclick="deleteDocTypeCategory(${c.id},'${c.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteDocTypeCategory(${c.id},${jsArg(c.name)})" style="font-size:13px;padding:3px 8px;">Delete</button>
     </div>`).join('');
 }
 
@@ -25682,7 +25687,7 @@ async function loadCredTemplateCategories() {
   container.innerHTML = _credTemplateCategoriesCache.map(c => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <span style="flex:1;color:#fff;font-size:15px;">${c.name}</span>
-      <button class="btn btn-sm btn-danger" onclick="deleteCredTemplateCategory(${c.id},'${c.name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteCredTemplateCategory(${c.id},${jsArg(c.name)})" style="font-size:13px;padding:3px 8px;">Delete</button>
     </div>`).join('');
 }
 
@@ -25770,7 +25775,7 @@ async function loadPartnerRecommendationsAdmin() {
       <span style="color:#fff;font-size:15px;flex:1;min-width:120px;">${r.partner_name}</span>
       <a href="${r.url}" target="_blank" style="font-size:14px;color:var(--teal-l);">${r.link_text || 'Link'}</a>
       <button class="btn btn-sm ${r.active ? 'btn-teal' : 'btn-ghost'}" onclick="togglePartnerRecommendation('${r.id}',${!!r.active})" style="${r.active ? '' : 'color:#fff;border-color:rgba(255,255,255,.2);'}font-size:13px;padding:3px 8px;">${r.active ? 'Active' : 'Inactive'}</button>
-      <button class="btn btn-sm btn-danger" onclick="deletePartnerRecommendation('${r.id}','${r.partner_name.replace(/'/g,"\\'")}')" style="font-size:13px;padding:3px 8px;">Delete</button>
+      <button class="btn btn-sm btn-danger" onclick="deletePartnerRecommendation('${r.id}',${jsArg(r.partner_name)})" style="font-size:13px;padding:3px 8px;">Delete</button>
     </div>`).join('');
 }
 
@@ -25925,16 +25930,20 @@ async function showPromoteDocTypeModal(key) {
         <div><label class="inline-label" for="pdtExpires">Expires?</label>
           <select class="inline-select" id="pdtExpires" style="width:100%;"><option value="true" ${g.expires !== false ? 'selected' : ''}>Yes</option><option value="false" ${g.expires === false ? 'selected' : ''}>No</option></select></div>
       </div>
+      <div style="font-size:14px;color:#fff;margin-bottom:6px;font-weight:600;">Who sees it right away?</div>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0;cursor:pointer;"><input type="radio" name="pdtRollout" value="hidden" checked onchange="document.querySelectorAll('#pdtCompanies input').forEach(i=>i.disabled=true)" style="margin-top:3px;"> <span><strong>No one yet (recommended).</strong> It is hidden for every company; turn it on per company in Manage visibility.</span></label>
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0 10px;cursor:pointer;"><input type="radio" name="pdtRollout" value="all" onchange="document.querySelectorAll('#pdtCompanies input').forEach(i=>i.disabled=false)" style="margin-top:3px;"> <span>Every company now, except the ones ticked below.</span></label>
       <div style="font-size:14px;color:#fff;margin-bottom:6px;">${companies.length === 1 ? 'This company has' : 'These companies have'} their own copy. Hide the new default for ${companies.length === 1 ? 'them' : 'each one ticked'} so ${companies.length === 1 ? 'they' : 'they'} don't see it twice:</div>
       <div id="pdtCompanies" style="margin-bottom:6px;">${companies.map(([id, name]) => `<label style="display:flex;align-items:center;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0;cursor:pointer;"><input type="checkbox" class="pdt-hide" value="${hrOnbEsc(id)}" checked /> ${hrOnbEsc(name)}</label>`).join('')}</div>
       <div style="font-size:12px;color:rgba(255,255,255,.55);margin-bottom:12px;">Their own copy and every document filed under it stay exactly as they are. Nothing is moved or deleted.</div>
       <div id="pdtErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
-        <button type="button" class="btn btn-teal" id="pdtGoBtn" onclick="promoteDocTypePlatformWide()" style="flex:1;justify-content:center;">Promote to every company</button>
+        <button type="button" class="btn btn-teal" id="pdtGoBtn" onclick="promoteDocTypePlatformWide()" style="flex:1;justify-content:center;">Promote</button>
         <button type="button" class="btn btn-ghost" onclick="document.getElementById('promoteDocTypeModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
+  modal.querySelectorAll('#pdtCompanies input').forEach((i) => { i.disabled = true; });
   modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
 }
 
@@ -25951,8 +25960,16 @@ async function promoteDocTypePlatformWide() {
   if (!name) { fail('Enter a name.'); return; }
   const similar = findLikelyDuplicateDocType(name, _platformGlobalTypes);
   if (similar && !(await showCustomConfirm(`"${similar.name}" is already a platform default and looks similar to "${name}".\n\nPromoting this too would give every company two similar types. Promote it anyway?`, { okLabel: 'Promote anyway', cancelLabel: 'Go back' }))) return;
-  const hideFor = [...modal.querySelectorAll('.pdt-hide:checked')].map((c) => c.value);
+  const rollout = modal.querySelector('input[name=pdtRollout]:checked')?.value || 'hidden';
+  let hideFor = [...modal.querySelectorAll('.pdt-hide:checked')].map((c) => c.value);
   const btn = document.getElementById('pdtGoBtn'); btn.disabled = true;
+  if (rollout === 'hidden') {
+    // New default starts switched off everywhere; a platform admin turns it on per company.
+    try {
+      const all = await fetchAllRows(() => sb.from('companies').select('id').is('deleted_at', null));
+      hideFor = [...new Set([...all.map((c) => c.id), ...hideFor])];
+    } catch (e) { fail('Could not list companies to hide it for: ' + (e.message || e) + ' Nothing was promoted.'); btn.disabled = false; return; }
+  }
   const { data, error } = await sb.from('document_types').insert({
     name, expires: document.getElementById('pdtExpires').value === 'true', category: document.getElementById('pdtCategory').value,
     tier: document.getElementById('pdtTier').value, company_id: null, is_required: false, required_for_disciplines: null,
@@ -25963,13 +25980,15 @@ async function promoteDocTypePlatformWide() {
   const newId = data[0].id;
   let hideProblem = '';
   if (hideFor.length) {
-    const { error: hErr } = await sb.from('company_hidden_document_types').insert(hideFor.map((cid) => ({ document_type_id: newId, company_id: cid })));
-    if (hErr) hideProblem = hErr.message;
+    for (let i = 0; i < hideFor.length && !hideProblem; i += 500) {
+      const { error: hErr } = await sb.from('company_hidden_document_types').insert(hideFor.slice(i, i + 500).map((cid) => ({ document_type_id: newId, company_id: cid })));
+      if (hErr) hideProblem = hErr.message;
+    }
   }
   modal.remove();
   await loadPlatformDocTypes();
   if (hideProblem) toast(`✓ "${name}" is now a platform default, but it could not be hidden for the companies that already have their own copy (${hideProblem}). Use Manage visibility to hide it for them.`, true);
-  else toast(`✓ "${name}" is now a platform default for every company${hideFor.length ? `, hidden for the ${hideFor.length} compan${hideFor.length === 1 ? 'y' : 'ies'} that already had their own copy` : ''}.`);
+  else toast(`✓ "${name}" is now a platform default${rollout === 'hidden' ? ', hidden for every company until you turn it on in Manage visibility' : ' for every company'}${rollout !== 'hidden' && hideFor.length ? `, hidden for the ${hideFor.length} compan${hideFor.length === 1 ? 'y' : 'ies'} that already had their own copy` : ''}.`);
 }
 
 async function loadRecentUploads() {
@@ -26021,7 +26040,7 @@ async function loadDeletionReview() {
     <td style="font-size:14px;color:rgba(255,255,255,.62);">${fmtDate(r.expiry_date)}</td>
     <td style="font-size:14px;color:rgba(255,255,255,.62);">${fmtDate(r.archived_at)}</td>
     <td><div class="td-actions">
-      <button class="btn btn-sm btn-danger" onclick="permanentlyDeleteDoc('${r.id}','${(r.file_url||'').replace(/'/g,"\\'")}')">Permanently delete</button>
+      <button class="btn btn-sm btn-danger" onclick="permanentlyDeleteDoc('${r.id}',${jsArg((r.file_url||''))})">Permanently delete</button>
     </div></td>
   </tr>`).join('');
 }
@@ -26215,7 +26234,7 @@ async function loadSuperAdmin() {
       </label>` : ''}
 
       <div style="display:flex;gap:6px;">
-        ${!c.deleted_at ? `<button class="btn btn-sm btn-gold" style="flex:1;justify-content:center;" onclick="viewAsAdmin('${c.id}','${c.name.replace(/'/g,"\\'")}')">View as Admin</button>` : ''}
+        ${!c.deleted_at ? `<button class="btn btn-sm btn-gold" style="flex:1;justify-content:center;" onclick="viewAsAdmin('${c.id}',${jsArg(c.name)})">View as Admin</button>` : ''}
         <button class="btn btn-sm btn-ghost" style="${c.deleted_at ? 'width:100%;' : 'flex:1;'}justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);" onclick="showCompanyManageModal('${c.id}')">\u2699 Manage</button>
       </div>
     </div>`;
@@ -26242,23 +26261,23 @@ function showCompanyManageModal(companyId) {
   const c = window._companiesById[companyId];
   if (!c) { toast('Could not find that company \u2014 try refreshing.', true); return; }
 
-  const escName = c.name.replace(/'/g, "\\'");
-  const firstAdminEmail = ((c.admin_emails || [])[0] || '').replace(/'/g, "\\'");
+  const escName = jsArg(c.name);
+  const firstAdminEmail = jsArg((c.admin_emails || [])[0] || '');
 
   const actionsHtml = c.deleted_at ? `
-    <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}','${escName}')">\u21a9 Restore</button>
-    <button class="btn btn-sm btn-ghost" onclick="exportCompanyDocumentsAsZip('${c.id}','${escName}')" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Downloads every document for this company as a zip — a portable backup independent of Selko's own storage">\u2b07 Export documents (zip)</button>
+    <button class="btn btn-sm btn-teal" onclick="restoreCompany('${c.id}',${escName})">\u21a9 Restore</button>
+    <button class="btn btn-sm btn-ghost" onclick="exportCompanyDocumentsAsZip('${c.id}',${escName})" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Downloads every document for this company as a zip — a portable backup independent of Selko's own storage">\u2b07 Export documents (zip)</button>
     ${c.offboarded_at
       ? `<span style="font-size:13px;color:rgba(255,255,255,.58);align-self:center;">Offboarded ${new Date(c.offboarded_at).toLocaleDateString()} \u2014 final purge scheduled ${new Date(c.purge_scheduled_at).toLocaleDateString()}</span>`
-      : `<button class="btn btn-sm btn-gold" onclick="offboardCompanyNow('${c.id}','${escName}')">\ud83d\udcc1 Offboard now</button>`}
-    <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}','${escName}')">\u26a0 Purge now</button>
+      : `<button class="btn btn-sm btn-gold" onclick="offboardCompanyNow('${c.id}',${escName})">\ud83d\udcc1 Offboard now</button>`}
+    <button class="btn btn-sm btn-danger" onclick="purgeCompanyPermanently('${c.id}',${escName})">\u26a0 Purge now</button>
   ` : `
     <button class="btn btn-sm btn-teal" onclick="editCompany('${c.id}')">Edit</button>
-    <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}','${escName}','${firstAdminEmail}')" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2709 Resend invite</button>
-    <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}','${escName}')" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2699 Subscription Settings</button>
+    <button class="btn btn-sm btn-ghost" onclick="showResendInvitePrompt('${c.id}',${escName},${firstAdminEmail})" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2709 Resend invite</button>
+    <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}',${escName})" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2699 Subscription Settings</button>
     ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">\u21bb Reset Demo Data</button>` : ''}
-    ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}','${(c.admin_emails||[])[0]||''}')">\ud83d\udd11 Set Demo Password</button>` : ''}
-    <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}','${escName}')">Delete</button>
+    ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}',${jsArg((c.admin_emails||[])[0]||'')})">\ud83d\udd11 Set Demo Password</button>` : ''}
+    <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}',${escName})">Delete</button>
   `;
 
   const flagsHtml = `
@@ -27034,7 +27053,7 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:14px;">Subscription settings — ${companyName}</div>
 
       <label class="inline-label">Module</label>
-      <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
+      <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}',${jsArg(companyName)}, this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
         <option value="docs" ${!c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
         ${!moduleOptionHidden ? `
         <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (+$59/mo for Credentialing)</option>` : ''}
@@ -27042,12 +27061,12 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       ${moduleOptionHidden ? `<p style="font-size:13px;color:rgba(255,255,255,.58);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
       ${hrVisible() ? `<label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;margin-bottom:14px;cursor:pointer;">
-        <input type="checkbox" ${c.has_hr_addon ? 'checked' : ''} onchange="applyModalHrToggle('${companyId}','${companyName.replace(/'/g,"\\'")}', this.checked)" />
+        <input type="checkbox" ${c.has_hr_addon ? 'checked' : ''} onchange="applyModalHrToggle('${companyId}',${jsArg(companyName)}, this.checked)" />
         HR Onboarding add-on — $49/mo <span style="font-size:12px;color:var(--gold);margin-left:2px;">ADD-ON</span>
       </label>` : ''}
 
       <label class="inline-label">Plan</label>
-      <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}','${companyName.replace(/'/g,"\\'")}', this.value)">
+      <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}',${jsArg(companyName)}, this.value)">
         <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard — $49/mo</option>
         <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro — $119/mo</option>
         <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise — custom quote</option>
@@ -27057,15 +27076,15 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <label class="inline-label">Extra seat blocks ($30/mo each, +25 seats per block)</label>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
         <input type="number" class="inline-select" id="modalSeatBlocksInput" min="0" step="1" value="${c.extra_seat_blocks || 0}" style="width:80px;box-sizing:border-box;" />
-        <button class="btn btn-sm btn-teal" onclick="applyModalSeatBlocksChange('${companyId}','${companyName.replace(/'/g,"\\'")}')">Save</button>
+        <button class="btn btn-sm btn-teal" onclick="applyModalSeatBlocksChange('${companyId}',${jsArg(companyName)})">Save</button>
         <span style="font-size:13px;color:rgba(255,255,255,.58);">= ${((c.plan === 'pro' ? 50 : 25) + (c.extra_seat_blocks || 0) * 25)} total seats</span>
       </div>` : ''}
 
       <label class="inline-label">Beta pricing — $29.99/mo flat, regardless of modules enabled</label>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
         <input type="date" class="inline-select" id="modalBetaExpiryInput" value="${c.beta_pricing_expires_at || ''}" style="width:160px;box-sizing:border-box;" />
-        <button class="btn btn-sm btn-teal" onclick="applyModalBetaPricingChange('${companyId}','${companyName.replace(/'/g,"\\'")}')">Save</button>
-        ${c.beta_pricing_expires_at ? `<button class="btn btn-sm btn-ghost" onclick="clearModalBetaPricing('${companyId}','${companyName.replace(/'/g,"\\'")}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Remove</button>` : ''}
+        <button class="btn btn-sm btn-teal" onclick="applyModalBetaPricingChange('${companyId}',${jsArg(companyName)})">Save</button>
+        ${c.beta_pricing_expires_at ? `<button class="btn btn-sm btn-ghost" onclick="clearModalBetaPricing('${companyId}',${jsArg(companyName)})" style="color:#fff;border-color:rgba(255,255,255,.2);">Remove</button>` : ''}
       </div>
       <p style="font-size:13px;color:${c.beta_pricing_expires_at && new Date(c.beta_pricing_expires_at) >= new Date() ? 'var(--gold)' : 'rgba(255,255,255,.4)'};margin:0 0 16px;">
         ${c.beta_pricing_expires_at
