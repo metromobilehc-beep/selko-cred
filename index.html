@@ -2488,11 +2488,13 @@ window.selkoSharedAuthStorage = {
         <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Your company name, the email that receives alerts, reminder timing and branding. Set once; it applies everywhere.</div>
       </div>
 
-      <!-- Company settings -->
+      <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
+      <style id="settingsGroupedCss">.set-subhead{display:none}html.settings-grouped .set-subhead{display:block;grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-l);margin:10px 0 0;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}html.settings-grouped .set-subhead:first-child{margin-top:0}</style>
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="companySettingsPanel">
         <h2>Company settings</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your company's own name, contact info, and the core details used across the platform.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
+          <div class="set-subhead">Company</div>
           <div>
             <label class="inline-label">Company name</label>
             <input class="inline-input" type="text" id="setCoName" />
@@ -2501,6 +2503,7 @@ window.selkoSharedAuthStorage = {
             <label class="inline-label">Admin notification email</label>
             <input class="inline-input" type="email" id="setAdminEmail" placeholder="admin@company.com" />
           </div>
+          <div class="set-subhead">Reminder timing</div>
           <div>
             <label class="inline-label">Expiry warning — first reminder (days)</label>
             <input class="inline-input" type="number" id="setWarn1" value="30" min="1" max="365" />
@@ -2518,6 +2521,7 @@ window.selkoSharedAuthStorage = {
             <input class="inline-input" type="number" id="setOnboardingReminderInterval" value="3" min="1" max="30" />
           </div>
         </div>
+        <div class="set-subhead" style="margin-bottom:10px;">New-hire onboarding</div>
         <div style="margin-bottom:14px;" id="setOnboardingDocsWrap">
           <label class="inline-label">Documents required at onboarding</label>
           <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 8px;">New hires must have these on file — or upload them — before they can submit their onboarding form. They're saved as regular credential documents, so expiration reminders and verification apply. This list is separate from which documents are marked Required under Documents.</p>
@@ -2527,6 +2531,7 @@ window.selkoSharedAuthStorage = {
             <span id="setOnboardingDocTypesNote" style="font-size:13px;color:var(--gold);display:none;"></span>
           </div>
         </div>
+        <div class="set-subhead" style="margin-bottom:10px;">Preferences</div>
         <label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:15px;color:rgba(255,255,255,.7);cursor:pointer;">
           <input type="checkbox" id="setShowPartnerRecs" checked />
           Show occasional partner recommendations (e.g. malpractice insurance, background check providers) where relevant — never ads, never tracking beyond the link itself
@@ -25396,6 +25401,10 @@ function refreshSettingsJumpBar() {
   });
 }
 
+// TRIAL (2026-10-07): small headings inside Company settings (Company / Reminder timing / New-hire onboarding / Preferences).
+// To go back to the plain layout, change true to false. Nothing else needs to change.
+const SETTINGS_GROUPED = true;
+document.documentElement.classList.toggle('settings-grouped', SETTINGS_GROUPED);
 function jumpToSettingsGroup(id) {
   const el = document.getElementById(id);
   if (!el || getComputedStyle(el).display === 'none') { toast("That section isn't available for your plan or role.", true); return; }
