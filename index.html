@@ -12184,8 +12184,23 @@ async function saveNewStaff() {
   if (!firstName || !lastName) { err.textContent = 'First and last name are both required.'; err.style.display = 'block'; return; }
   const name = `${firstName} ${lastName}`;
 
+  // One save at a time: a second click (or Enter) before the first finishes used to add the person twice.
+  if (window._savingNewStaff) return;
+  window._savingNewStaff = true;
+  try {
   const limitMsg = await checkStaffLimitBlock(currentCompany.id);
   if (limitMsg) { err.textContent = limitMsg; err.style.display = 'block'; return; }
+
+  // Already on the staff list? Same name (ignoring capitals, spaces and punctuation) or same email, active or not.
+  const same = await findExistingStaffMatches(firstName, lastName, email);
+  if (same.length) {
+    const lines = same.map((m) => `• ${m.full_name}${m.email ? ' (' + m.email + ')' : ''}: ${m.active === false ? 'inactive' : 'active'}, matches on ${m.why}`).join('\n');
+    const goOn = await showCustomConfirm(
+      `${same.length === 1 ? 'Someone' : same.length + ' people'} already on your staff list look${same.length === 1 ? 's' : ''} like ${name}:\n\n${lines}\n\n` +
+      (same.some((m) => m.active === false) ? 'If this is the same person, close this and reactivate them from the staff list instead of adding them again.' : 'If this is the same person, close this and open their existing record instead.'),
+      { okLabel: 'Add as a new person anyway', cancelLabel: 'Cancel' });
+    if (!goOn) return;
+  }
 
   try {
     const { data: created, error } = await sb.from('credtrack_staff').insert({
@@ -12209,6 +12224,32 @@ async function saveNewStaff() {
       showCvImportReview(created.id, name, pendingCvData);
     }
   } catch(e) { err.textContent = e.message; err.style.display = 'block'; }
+  } finally { window._savingNewStaff = false; }
+}
+
+// People on this company's staff list (active or not) whose name or email matches the person being added.
+// Name match ignores capitals, spaces, dots and hyphens, so "O'Neil-Smith" and "ONeil Smith" are the same.
+const _staffDupeAlnum = (v) => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+async function findExistingStaffMatches(firstName, lastName, email) {
+  let rows = [];
+  try {
+    rows = await fetchAllRows(() => sb.from('credtrack_staff')
+      .select('id, full_name, first_name, last_name, email, active').eq('company_id', currentCompany.id).order('id'));
+  } catch (e) { return []; }   // never block adding someone because the check could not run
+  const key = _staffDupeAlnum(lastName) + '|' + _staffDupeAlnum(firstName);
+  const mail = String(email || '').trim().toLowerCase();
+  const out = [];
+  for (const r of rows) {
+    const full = String(r.full_name || '').trim();
+    const parts = full.split(/\s+/);
+    const rKey = (r.last_name || r.first_name)
+      ? _staffDupeAlnum(r.last_name) + '|' + _staffDupeAlnum(r.first_name)
+      : _staffDupeAlnum(parts.slice(1).join('')) + '|' + _staffDupeAlnum(parts[0]);
+    const byName = key !== '|' && rKey === key;
+    const byMail = !!mail && String(r.email || '').trim().toLowerCase() === mail;
+    if (byName || byMail) out.push({ ...r, why: byName && byMail ? 'name and email' : byName ? 'name' : 'email' });
+  }
+  return out;
 }
 
 async function editStaff(id) {
