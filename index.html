@@ -162,7 +162,8 @@ window.selkoSharedAuthStorage = {
     <p style="font-size:14px;color:rgba(255,255,255,.58);margin:0 0 16px;">Creates a custom document type for your company. It becomes available when uploading documents and can be set as required from the table below.</p>
     <div style="margin-bottom:12px;">
       <label class="inline-label" for="dtName">Document type name</label>
-      <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" onkeydown="if(event.key==='Enter') saveDocType()" />
+      <input class="inline-input" type="text" id="dtName" placeholder="e.g. Competency Checklist" autocomplete="off" oninput="handleDocTypeNameSearch(this)" onkeydown="if(event.key==='Enter') saveDocType()" />
+      <div id="dtNameSuggestions" style="display:none;margin-top:6px;border:1px solid rgba(255,255,255,.15);border-radius:8px;overflow:hidden;"></div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
       <div>
@@ -2134,11 +2135,22 @@ window.selkoSharedAuthStorage = {
       <!-- Platform document types (tier + global/custom management) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Platform document types</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">The default document types every company starts from. Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Type</th><th>Company</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Actions</th></tr></thead>
             <tbody id="platformDocTypesTbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="dark-panel" id="companyCustomTypesPanel" style="margin-top:16px;">
+        <h2>Company custom types</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Document types companies created for themselves, grouped when several made the same thing. Read-only here. <strong>Promote platform-wide</strong> turns one into a default every company can use; the company's own copy and its documents are left exactly as they are.</p>
+        <div class="tbl-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Companies</th><th>Category</th><th>Actions</th></tr></thead>
+            <tbody id="companyCustomTypesTbody"></tbody>
           </table>
         </div>
       </div>
@@ -12600,6 +12612,7 @@ function proGate(action) {
   toast('This feature requires a Pro plan. Contact Selko to upgrade.', true);
 }
 async function showAddDocType() {
+  _dtPool = null; renderDocTypeSuggestions([]);
   document.getElementById('addDocTypeModal').style.display = 'flex';
   document.getElementById('dtErr').style.display = 'none';
   setTimeout(() => document.getElementById('dtName')?.focus(), 50);
@@ -12611,7 +12624,77 @@ async function showAddDocType() {
   const sel = document.getElementById('dtCategory');
   sel.innerHTML = categoryOptionsHtml(categories, 'Other');
 }
+// ── As-you-type suggestions for "Add document type" ──
+// Offers what is ALREADY in the system for this company (its own types, the built-in ones, and built-ins it hid) so nobody creates a
+// duplicate by accident. It only ever shows this company's own list plus the built-in defaults: never another company's custom types,
+// whose names can reveal who that company works with.
+let _dtPool = null, _dtSearchTimer = null;
+async function loadAddDocTypePool() {
+  if (_dtPool) return _dtPool;
+  const { data } = await sb.from('document_types').select('id, name, category, company_id, tier').or(`company_id.is.null,company_id.eq.${currentCompany.id}`).order('sort_order');
+  const hidden = await getHiddenDocTypeIds();
+  const canSeePro = window._isPro || currentProfile?.is_super_admin;
+  _dtPool = (data || [])
+    .filter((t) => t.company_id === currentCompany.id || t.company_id == null)
+    .filter((t) => canSeePro || t.company_id || t.tier !== 'pro')
+    .map((t) => ({ ...t, status: t.company_id ? 'own' : (hidden.has(String(t.id)) ? 'hidden' : 'builtin') }));
+  return _dtPool;
+}
+function matchDocTypeSuggestions(query, pool) {
+  const qc = dupCompact(query);
+  const qTokens = new Set(docTypeNameTokens(query));
+  const scored = (pool || []).map((t) => {
+    const tc = dupCompact(t.name);
+    let score = 0;
+    if (qc && tc === qc) score = 100;
+    else if (qc.length >= 2 && (tc.includes(qc) || (tc.length >= 3 && qc.includes(tc)))) score = 80;
+    else { const shared = docTypeNameTokens(t.name).filter((w) => qTokens.has(w)).length; if (shared) score = 40 + shared; }
+    return { t, score };
+  }).filter((x) => x.score > 0);
+  scored.sort((a, b) => b.score - a.score || String(a.t.name).localeCompare(String(b.t.name)));
+  return scored.slice(0, 6).map((x) => x.t);
+}
+function renderDocTypeSuggestions(list) {
+  const box = document.getElementById('dtNameSuggestions');
+  if (!box) return;
+  if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+  const status = { own: 'already yours', builtin: 'built-in, already in your list', hidden: 'built-in, hidden for your company' };
+  box.innerHTML = `<div style="padding:6px 10px;font-size:12px;color:rgba(255,255,255,.62);background:rgba(255,255,255,.04);">Already in the system. Use one of these instead of creating a duplicate:</div>` + list.map((t) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-top:1px solid rgba(255,255,255,.06);">
+      <div style="flex:1;min-width:0;"><div style="color:#fff;font-size:15px;">${hrOnbEsc(t.name)}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.55);">${hrOnbEsc(t.category || 'Other')} · ${status[t.status]}</div></div>
+      <button type="button" class="btn btn-sm ${t.status === 'hidden' ? 'btn-gold' : 'btn-teal'}" onclick="${t.status === 'hidden' ? 'unhideSuggestedDocType' : 'useExistingDocType'}(${Number(t.id)})" style="font-size:13px;padding:3px 10px;">${t.status === 'hidden' ? 'Unhide it' : 'Use it'}</button>
+    </div>`).join('');
+  box.style.display = 'block';
+}
+function handleDocTypeNameSearch(input) {
+  clearTimeout(_dtSearchTimer);
+  const query = String(input.value || '').trim();
+  if (query.length < 2) { renderDocTypeSuggestions([]); return; }
+  _dtSearchTimer = setTimeout(async () => {
+    const pool = await loadAddDocTypePool();
+    if (String(document.getElementById('dtName')?.value || '').trim() !== query) return;   // they kept typing: a newer search is coming
+    renderDocTypeSuggestions(matchDocTypeSuggestions(query, pool));
+  }, 250);
+}
+function useExistingDocType(id) {
+  const t = (_dtPool || []).find((x) => Number(x.id) === Number(id));
+  hideAddDocType();
+  toast(`"${t ? t.name : 'That type'}" is already in your list: nothing new was created.`);
+}
+async function unhideSuggestedDocType(id) {
+  const t = (_dtPool || []).find((x) => Number(x.id) === Number(id));
+  const { error } = await sb.from('company_hidden_document_types').delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
+  if (error) { toast('Error: ' + error.message, true); return; }
+  hideAddDocType();
+  toast(`"${t ? t.name : 'It'}" is back in your list.`);
+  if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
+  await loadDocTypes();
+  await loadAdminFilters();
+}
+
 function hideAddDocType() {
+  _dtPool = null; clearTimeout(_dtSearchTimer); renderDocTypeSuggestions([]);
   document.getElementById('addDocTypeModal').style.display = 'none';
   document.getElementById('dtName').value = '';
   document.getElementById('dtIsGlobal').checked = false;
@@ -12637,6 +12720,10 @@ function docTypeNameTokens(name) {
 // to create a near-duplicate of something that already applies to them
 // (their own types plus Selko-wide defaults), rather than reusing it.
 function findLikelyDuplicateDocType(candidateName, existingTypes) {
+  // The same name apart from capitals, spaces and punctuation ("W4" and "W-4") is always a duplicate. The word comparison below cannot see
+  // that one: "w4" and "w" + "4" share no word.
+  const exactKey = dupCompact(candidateName);
+  if (exactKey) { const same = (existingTypes || []).find(t => dupCompact(t.name) === exactKey); if (same) return same; }
   const candidateTokens = new Set(docTypeNameTokens(candidateName));
   // A name made only of generic words (e.g. just "Insurance") has no
   // distinctive tokens to compare, so fall back to an exact normalized match
@@ -12776,10 +12863,12 @@ async function saveDocType() {
       err.style.display = 'block'; return;
     }
   }
-  const likelyDup = findLikelyDuplicateDocType(name, docTypes);
+  let dupPool = docTypes;
+  try { dupPool = await loadAddDocTypePool(); } catch (e) { /* fall back to the visible list */ }
+  const likelyDup = findLikelyDuplicateDocType(name, dupPool);
   if (likelyDup) {
     const proceed = await showCustomConfirm(
-      `"${likelyDup.name}" already exists${likelyDup.company_id == null ? ' (a platform-wide default everyone can use)' : ''} and looks similar to "${name}".\n\n` +
+      `"${likelyDup.name}" already exists${likelyDup.company_id == null ? ' (a platform-wide default everyone can use)' : ''}${likelyDup.status === 'hidden' ? ' but your company hid it, so you can simply unhide it' : ''} and looks similar to "${name}".\n\n` +
       `If this is meant to be the same document, use "${likelyDup.name}" instead of creating a new type — two similarly-named types for the same real credential is exactly what causes staff to be marked "missing" something they actually have on file, just filed under the other one.`,
       { okLabel: 'Create anyway', cancelLabel: 'Cancel' }
     );
@@ -17593,7 +17682,7 @@ const DOCS_HELP = [
   {
     title: 'Adding a new document type',
     subtitle: '+ Add document type (Pro)',
-    html: `<p>Creates a new credential type your company tracks — beyond the built-in ones like licenses or CPR cards. Once added, it can be scoped to specific disciplines (so it's only demanded of the staff it actually applies to) from Settings → Document types.</p>`,
+    html: `<p>Creates a new credential type your company tracks — beyond the built-in ones like licenses or CPR cards. Once added, it can be scoped to specific disciplines (so it's only demanded of the staff it actually applies to) from Settings → Document types.</p><p>As you type the name, anything already in the system that looks like it appears underneath: your own types, the built-in ones, and built-ins you hid earlier. Choose <strong>Use it</strong> or <strong>Unhide it</strong> instead of creating a duplicate. You can still create a new one if none of them is what you mean.</p>`,
   },
   {
     title: 'The Downloads menu',
@@ -18043,6 +18132,17 @@ const SUPER_HELP = [
         <li><strong>Support: view only / view + help until …</strong>: you're allowed in until that time. The banner shows the level and end time, and you're returned here automatically when it ends.</li>
       </ul>
       <p>Without permission you can still manage plan, modules, billing, support requests and staff and document counts, but not their records. Under view only, changes are refused. Everything you open, view or change is recorded in the company's Compliance tab, and you can't change their permission setting.</p>`,
+  },
+  {
+    title: 'Company custom types and promoting one',
+    subtitle: 'Turn a company-made document type into a default for everyone',
+    html: `<p>Under <strong>Platform document types</strong>, <strong>Company custom types</strong> lists the document types companies created for themselves. Types that are the same thing (capitals, spaces and punctuation ignored) are grouped into one row with how many companies made it. It is read-only: you cannot edit or delete another company's type from here.</p>
+      <ul>
+        <li><strong>Promote platform-wide</strong> opens a review. Check the name does not identify the company or its customers (it will be shown to everyone) and rename it if it does. Choose a shared category, the plan (Standard or Pro) and whether it expires.</li>
+        <li>The companies that already have their own copy are listed and ticked: the new default is hidden for them so they do not see it twice. Untick one to let that company see both.</li>
+        <li>Nothing is moved or deleted. Their own copy and every document filed under it stay exactly as they are.</li>
+        <li>A row marked <em>Already a platform default</em> has a default with the same name already, so there is nothing to promote.</li>
+      </ul>`,
   },
   {
     title: 'Document type categories and templates',
@@ -25724,34 +25824,152 @@ function partnerLinkHtml(rec) {
   return `<a href="${rec.url}" target="_blank" style="font-size:14px;color:var(--teal-l);display:inline-flex;align-items:center;gap:5px;text-decoration:none;">🔗 ${rec.link_text || 'Learn more'} — ${rec.partner_name}</a>`;
 }
 
+let _customTypeGroups = {}, _platformGlobalTypes = [];
 async function loadPlatformDocTypes() {
   const { data } = await sb.from('document_types')
     .select('*, companies(name)')
     .order('sort_order');
 
-  const tbody = document.getElementById('platformDocTypesTbody');
-  if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No document types found.</td></tr>';
-    return;
-  }
+  const all = data || [];
+  const globals = all.filter((t) => !t.company_id);
+  _platformGlobalTypes = globals;
 
-  tbody.innerHTML = data.map(t => `<tr>
+  const tbody = document.getElementById('platformDocTypesTbody');
+  if (!globals.length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No platform document types found.</td></tr>';
+  } else {
+    tbody.innerHTML = globals.map(t => `<tr>
     <td>${hrOnbEsc(t.name)}</td>
     <td style="font-size:13px;color:rgba(255,255,255,.62);">${hrOnbEsc(t.category || 'Other')}</td>
     <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
-    <td><span style="font-size:13px;color:rgba(255,255,255,.58);">${t.company_id ? 'Custom' : 'Global'}</span></td>
-    <td style="font-size:14px;color:rgba(255,255,255,.62);">${hrOnbEsc(t.companies?.name || '—')}</td>
     <td><div class="td-actions">
-      <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')" 
+      <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')"
         style="font-size:13px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.66);">
         ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
       </button>
-      ${!t.company_id ? `<button class="btn btn-sm btn-ghost" onclick="showManageDocTypeVisibility(${t.id},${jsArg(t.name)})" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage visibility</button>` : ''}
-      ${t.company_id
-        ? `<button class="btn btn-sm btn-danger" onclick="deleteDocType(${t.id},${jsArg(t.name)})">Delete</button>`
-        : `<button class="btn btn-sm btn-danger" onclick="deleteGlobalDocType(${t.id},${jsArg(t.name)})">Delete</button>`}
+      <button class="btn btn-sm btn-ghost" onclick="showManageDocTypeVisibility(${t.id},${jsArg(t.name)})" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage visibility</button>
+      <button class="btn btn-sm btn-danger" onclick="deleteGlobalDocType(${t.id},${jsArg(t.name)})">Delete</button>
     </div></td>
   </tr>`).join('');
+  }
+  renderCompanyCustomTypes(all.filter((t) => t.company_id), globals);
+}
+
+// Company-made types, grouped by what they are (capitals, spaces and punctuation ignored) so "Annual Review" and "annual  review!" are one row.
+function docTypeGroupKey(name) {
+  const k = String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  return k || String(name || '').trim().toLowerCase();
+}
+function renderCompanyCustomTypes(customs, globals) {
+  const tbody = document.getElementById('companyCustomTypesTbody');
+  if (!tbody) return;
+  const globalKeys = new Set((globals || []).map((t) => docTypeGroupKey(t.name)));
+  const groups = {};
+  customs.forEach((t) => {
+    const k = docTypeGroupKey(t.name);
+    const g = groups[k] = groups[k] || { key: k, spellings: {}, companies: new Map(), categories: new Set(), expires: t.expires, staff_can_upload: t.staff_can_upload, ids: [] };
+    g.spellings[t.name] = (g.spellings[t.name] || 0) + 1;
+    g.companies.set(t.company_id, (t.companies && t.companies.name) || 'A company');
+    g.categories.add(t.category || 'Other');
+    g.ids.push(t.id);
+  });
+  _customTypeGroups = groups;
+  const list = Object.values(groups).map((g) => {
+    g.display = Object.entries(g.spellings).sort((a, b) => b[1] - a[1])[0][0];
+    g.already = globalKeys.has(g.key);
+    // A renamed promotion (the usual way to remove a company's name) no longer matches exactly, so say when a similar default exists.
+    g.similar = g.already ? null : findLikelyDuplicateDocType(g.display, globals);
+    return g;
+  }).sort((a, b) => b.companies.size - a.companies.size || a.display.localeCompare(b.display));
+  if (!list.length) { tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No company has created a custom document type yet.</td></tr>'; return; }
+  tbody.innerHTML = list.map((g) => {
+    const names = [...g.companies.values()];
+    const shown = names.slice(0, 3).map(hrOnbEsc).join(', ') + (names.length > 3 ? ` +${names.length - 3} more` : '');
+    return `<tr>
+      <td>${hrOnbEsc(g.display)}${g.already ? '<div style="font-size:12px;color:#4ade80;">Already a platform default</div>' : (g.similar ? `<div style="font-size:12px;color:var(--gold);">Similar platform default: ${hrOnbEsc(g.similar.name)}</div>` : '')}</td>
+      <td>${names.length} compan${names.length === 1 ? 'y' : 'ies'}<div style="font-size:12px;color:rgba(255,255,255,.55);">${shown}</div></td>
+      <td style="font-size:13px;color:rgba(255,255,255,.62);">${[...g.categories].map(hrOnbEsc).join(', ')}</td>
+      <td>${g.already ? '<span style="font-size:13px;color:rgba(255,255,255,.55);">—</span>' : `<button class="btn btn-sm btn-teal" onclick="showPromoteDocTypeModal(${jsArg(g.key)})" style="font-size:13px;padding:3px 10px;">Promote platform-wide</button>`}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function showPromoteDocTypeModal(key) {
+  if (!currentProfile?.is_super_admin) { toast('Only a platform admin can promote a document type.', true); return; }
+  const g = _customTypeGroups[key];
+  if (!g) { toast('Could not find that type: refresh and try again.', true); return; }
+  let res = await sb.from('document_type_categories').select('name').is('company_id', null).order('sort_order');
+  if (res.error) res = await sb.from('document_type_categories').select('name').order('sort_order');
+  const shared = (res.data || []).map((c) => c.name);
+  if (!shared.some((n) => String(n).toLowerCase() === 'other')) shared.push('Other');
+  const startCat = [...g.categories].find((c) => shared.includes(c)) || 'Other';
+  document.getElementById('promoteDocTypeModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'promoteDocTypeModal';
+  modal.dataset.key = key;
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const companies = [...g.companies.entries()];
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:480px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:6px;">Promote to a platform-wide default</div>
+      <div style="background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:14px;color:var(--gold);line-height:1.45;">
+        ⚠ Every company will see this document type. Check that the name does not identify the company that made it or its customers (for example a contract partner's name), and rename it if it does.
+      </div>
+      <label class="inline-label" for="pdtName">Name everyone will see</label>
+      <input class="inline-input" type="text" id="pdtName" value="${hrOnbEsc(g.display)}" maxlength="120" style="width:100%;box-sizing:border-box;margin-bottom:10px;" />
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+        <div><label class="inline-label" for="pdtCategory">Category</label>
+          <select class="inline-select" id="pdtCategory" style="width:100%;">${shared.map((c) => `<option value="${hrOnbEsc(c)}" ${c === startCat ? 'selected' : ''}>${hrOnbEsc(c)}</option>`).join('')}</select></div>
+        <div><label class="inline-label" for="pdtTier">Plan</label>
+          <select class="inline-select" id="pdtTier" style="width:100%;"><option value="standard">Standard</option><option value="pro">Pro</option></select></div>
+        <div><label class="inline-label" for="pdtExpires">Expires?</label>
+          <select class="inline-select" id="pdtExpires" style="width:100%;"><option value="true" ${g.expires !== false ? 'selected' : ''}>Yes</option><option value="false" ${g.expires === false ? 'selected' : ''}>No</option></select></div>
+      </div>
+      <div style="font-size:14px;color:#fff;margin-bottom:6px;">${companies.length === 1 ? 'This company has' : 'These companies have'} their own copy. Hide the new default for ${companies.length === 1 ? 'them' : 'each one ticked'} so ${companies.length === 1 ? 'they' : 'they'} don't see it twice:</div>
+      <div id="pdtCompanies" style="margin-bottom:6px;">${companies.map(([id, name]) => `<label style="display:flex;align-items:center;gap:8px;font-size:14px;color:rgba(255,255,255,.85);padding:2px 0;cursor:pointer;"><input type="checkbox" class="pdt-hide" value="${hrOnbEsc(id)}" checked /> ${hrOnbEsc(name)}</label>`).join('')}</div>
+      <div style="font-size:12px;color:rgba(255,255,255,.55);margin-bottom:12px;">Their own copy and every document filed under it stay exactly as they are. Nothing is moved or deleted.</div>
+      <div id="pdtErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn btn-teal" id="pdtGoBtn" onclick="promoteDocTypePlatformWide()" style="flex:1;justify-content:center;">Promote to every company</button>
+        <button type="button" class="btn btn-ghost" onclick="document.getElementById('promoteDocTypeModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+}
+
+async function promoteDocTypePlatformWide() {
+  const modal = document.getElementById('promoteDocTypeModal');
+  const err = document.getElementById('pdtErr');
+  const fail = (m) => { err.textContent = m; err.style.display = 'block'; };
+  if (!modal) return;
+  err.style.display = 'none';
+  if (!currentProfile?.is_super_admin) { fail('Only a platform admin can promote a document type.'); return; }
+  const g = _customTypeGroups[modal.dataset.key];
+  if (!g) { fail('Could not find that type: refresh and try again.'); return; }
+  const name = document.getElementById('pdtName').value.trim().replace(/\s+/g, ' ');
+  if (!name) { fail('Enter a name.'); return; }
+  const similar = findLikelyDuplicateDocType(name, _platformGlobalTypes);
+  if (similar && !(await showCustomConfirm(`"${similar.name}" is already a platform default and looks similar to "${name}".\n\nPromoting this too would give every company two similar types. Promote it anyway?`, { okLabel: 'Promote anyway', cancelLabel: 'Go back' }))) return;
+  const hideFor = [...modal.querySelectorAll('.pdt-hide:checked')].map((c) => c.value);
+  const btn = document.getElementById('pdtGoBtn'); btn.disabled = true;
+  const { data, error } = await sb.from('document_types').insert({
+    name, expires: document.getElementById('pdtExpires').value === 'true', category: document.getElementById('pdtCategory').value,
+    tier: document.getElementById('pdtTier').value, company_id: null, is_required: false, required_for_disciplines: null,
+    staff_can_upload: g.staff_can_upload !== false, sort_order: 999,
+    description: 'Platform default, added ' + new Date().toISOString().slice(0, 10),   // deliberately names no company
+  }).select('id');
+  if (error || !data || !data.length) { fail(error ? error.message : 'Nothing was saved. You may not have permission.'); btn.disabled = false; return; }
+  const newId = data[0].id;
+  let hideProblem = '';
+  if (hideFor.length) {
+    const { error: hErr } = await sb.from('company_hidden_document_types').insert(hideFor.map((cid) => ({ document_type_id: newId, company_id: cid })));
+    if (hErr) hideProblem = hErr.message;
+  }
+  modal.remove();
+  await loadPlatformDocTypes();
+  if (hideProblem) toast(`✓ "${name}" is now a platform default, but it could not be hidden for the companies that already have their own copy (${hideProblem}). Use Manage visibility to hide it for them.`, true);
+  else toast(`✓ "${name}" is now a platform default for every company${hideFor.length ? `, hidden for the ${hideFor.length} compan${hideFor.length === 1 ? 'y' : 'ies'} that already had their own copy` : ''}.`);
 }
 
 async function loadRecentUploads() {
