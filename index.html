@@ -1655,35 +1655,8 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
-        <!-- OIG LEIE exclusion check — company-scoped self-service version
-             of the same check available in Selko Admin. Every run emails
-             the company's admins, whether or not anything was found —
-             a "checked today, all clear" email is itself the point, so
-             admins have confidence this is actually running rather than
-             wondering whether silence means "nothing wrong" or "not
-             running at all." -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
-          <h2>🗂 Earlier OIG checks (NPI only)</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Results of the older OIG check, which only covered staff with an NPI on file. The OIG exclusion check above covers every staff member and replaces it. These past results are kept as a record that those checks were done.</p>
-
-          
-          <div class="tbl-wrap">
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
-                <option value="active">Active checks</option>
-                <option value="archived">Archived</option>
-                <option value="all">All</option>
-              </select>
-            </div>
-            <table>
-              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
-              <tbody id="myOigHistoryTbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- OFAC sanctions check — same self-service pattern as OIG
-             above, using US Treasury's public SDN list instead. No
+        <!-- OFAC sanctions check — same self-service pattern as the OIG
+             check above, using US Treasury's public SDN list instead. No
              NPI-equivalent identifier exists for this list, so every
              match here is name-only (medium confidence at best) —
              worth a human reviewing before treating it as confirmed. -->
@@ -2190,33 +2163,6 @@ window.selkoSharedAuthStorage = {
         <h2>🆘 Support requests</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Submitted by users via "Report an issue" in the header, from any company.</p>
         <div id="supportRequestsList"></div>
-      </div>
-
-      <!-- OIG LEIE exclusion check — manual trigger for now. Downloads the
-           real, official OIG exclusion list and checks active staff by
-           NPI and name. Scoped per-company via the selector, or leave
-           blank to check every company at once. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🗂 Earlier OIG checks (NPI only, all companies)</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Results of the older OIG check, which only covered staff with an NPI on file. It has been replaced by the OIG Exclusion Check, which covers every staff member; each company runs it from its own Compliance tab. These past results are kept as a record.</p>
-        <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-          <select class="inline-select" id="oigCompanyFilter">
-            <option value="">All companies</option>
-          </select>
-          <select class="inline-select" id="oigArchiveFilter" onchange="loadOigExclusionHistory()" style="max-width:160px;">
-            <option value="active">Active checks</option>
-            <option value="archived">Archived</option>
-            <option value="all">All</option>
-          </select>
-          <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
-        </div>
-        <div id="oigCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Checked</th><th>Company</th><th>Staff checked</th><th>Matches</th><th>By</th><th>Actions</th></tr></thead>
-            <tbody id="oigHistoryTbody"></tbody>
-          </table>
-        </div>
       </div>
 
       <!-- Bug log (cross-app: cred, comply, billing, hep...) -->
@@ -2944,22 +2890,7 @@ window.selkoSharedAuthStorage = {
 
 <script>
 
-// OIG LEIE exclusion check — manual trigger. Calls the check-oig-exclusions
-// Edge Function, which downloads the official LEIE list and checks active
-// staff by NPI and name, then saves the results to oig_exclusion_checks
-// for a permanent, reviewable log.
-async function populateOigCompanyFilter() {
-  const sel = document.getElementById('oigCompanyFilter');
-  if (!sel || sel.dataset.loaded) return;
-  const { data } = await sb.from('companies').select('id, name').order('name');
-  (data || []).forEach(c => {
-    const opt = document.createElement('option');
-    opt.value = c.id;
-    opt.textContent = c.name;
-    sel.appendChild(opt);
-  });
-  sel.dataset.loaded = '1';
-}
+
 
 // Turns any thrown value (Error, Postgrest error object, raw object from
 // an Edge Function's JSON body, or a plain string) into a real string,
@@ -4614,131 +4545,13 @@ async function runMyCompanyOfacCheck() {
 
 
 
-// Emails whichever admin address(es) the company has on file. Failure to
-// send is logged but never blocks the check itself from completing or
-// showing its result on screen — a bounced/misconfigured email address
-// shouldn't make the actual compliance check look like it failed.
-async function emailOigCheckResult(checkRow, data) {
-  const recipients = (currentCompany?.admin_emails || []).filter(Boolean);
-  if (!recipients.length) return;
 
-  const generatedAt = new Date(checkRow.checked_at).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-  const summary = data.matches.length
-    ? `⚠ ${data.matches.length} potential match(es) found — review in Selko Cred under Credentialing.`
-    : `✓ All clear — no matches found.`;
-  const messageBody = `OIG exclusion check completed for ${currentCompany?.name || 'your company'}.\n\n` +
-    `Run at: ${generatedAt}\n` +
-    `Staff checked: ${checkRow.staff_checked_count}\n` +
-    `Result: ${summary}\n\n` +
-    `Source: ${checkRow.leie_source || 'oig.hhs.gov'}`;
 
-  try {
-    emailjs.init(EMAILJS_PUBLIC_KEY);
-    for (const to of recipients) {
-      await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-        to_email: to,
-        to_name: to,
-        subject_line: 'OIG Exclusion Check — ' + (currentCompany?.name || 'Selko Cred'),
-        message_body: messageBody,
-        tool_url: CRED_TOOL_URL,
-        company_name: currentCompany?.name || 'Selko Cred'
-      });
-    }
-    await sb.from('oig_exclusion_checks').update({ emailed_at: new Date().toISOString() }).eq('id', checkRow.id);
-  } catch (e) {
-    console.error('OIG check email failed to send:', e);
-  }
-}
 
-async function loadMyOigHistory() {
-  const tbody = document.getElementById('myOigHistoryTbody');
-  if (!tbody) return;
-  const archiveFilter = document.getElementById('myOigArchiveFilter')?.value || 'active';
 
-  let query = sb.from('oig_exclusion_checks')
-    .select('id, checked_at, staff_checked_count, match_count, emailed_at, archived')
-    .eq('company_id', currentCompany.id)
-    .order('checked_at', { ascending: false })
-    .limit(25);
-  if (archiveFilter === 'active') query = query.eq('archived', false);
-  else if (archiveFilter === 'archived') query = query.eq('archived', true);
 
-  const { data, error } = await query;
 
-  if (error) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
-    return;
-  }
-  if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="color:rgba(255,255,255,.58);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td>${new Date(r.checked_at).toLocaleString()}</td>
-      <td>${r.staff_checked_count}</td>
-      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
-      <td>${r.emailed_at ? '✓' : '—'}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">View list</button>
-        <button class="btn btn-sm btn-ghost" onclick="toggleOigCheckArchived('${r.id}', ${!r.archived}, 'self')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="deleteOigCheck('${r.id}', 'self')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>
-      </td>
-    </tr>
-  `).join('');
-}
 
-async function loadOigExclusionHistory() {
-  const tbody = document.getElementById('oigHistoryTbody');
-  if (!tbody) return;
-  const companyId = document.getElementById('oigCompanyFilter').value || null;
-  const archiveFilter = document.getElementById('oigArchiveFilter')?.value || 'active';
-
-  let query = sb.from('oig_exclusion_checks')
-    .select('id, checked_at, staff_checked_count, match_count, companies(name), profiles(full_name), archived')
-    .order('checked_at', { ascending: false })
-    .limit(25);
-  if (companyId) query = query.eq('company_id', companyId);
-  if (archiveFilter === 'active') query = query.eq('archived', false);
-  else if (archiveFilter === 'archived') query = query.eq('archived', true);
-
-  const { data, error } = await query;
-  if (error) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
-    return;
-  }
-  if (!data || !data.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`;
-    return;
-  }
-  tbody.innerHTML = data.map(r => `
-    <tr>
-      <td>${new Date(r.checked_at).toLocaleString()}</td>
-      <td>${r.companies ? r.companies.name : 'All companies'}</td>
-      <td>${r.staff_checked_count}</td>
-      <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
-      <td>${r.profiles ? r.profiles.full_name : '—'}</td>
-      <td style="white-space:nowrap;">
-        <button class="btn btn-sm btn-ghost" onclick="showOigCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">View list</button>
-        <button class="btn btn-sm btn-ghost" onclick="toggleOigCheckArchived('${r.id}', ${!r.archived}, 'admin')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="deleteOigCheck('${r.id}', 'admin')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>
-      </td>
-    </tr>
-  `).join('');
-}
-
-// Archive is a soft-hide — the row and its full checked_staff/matches
-// detail stay in the database, just filtered out of the default
-// "Active checks" view. Delete is permanent, meant for cleaning up
-// test runs (e.g. checks fired while debugging) rather than routine
-// housekeeping — hence the confirm prompt.
-async function toggleOigCheckArchived(checkId, archived, ctx) {
-  const { data: changed, error } = await sb.from('oig_exclusion_checks').update({ archived }).eq('id', checkId).select('id');
-  if (error) { toast('Could not update: ' + extractErrorMessage(error), true); return; }
-  if (!changed || !changed.length) { toast("Nothing was updated — you may not have permission to change this record.", true); return; }
-  toast(archived ? 'Check archived' : 'Check restored');
-  if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
-}
 
 async function loadMyOfacHistory() {
   const tbody = document.getElementById('myOfacHistoryTbody');
@@ -4858,14 +4671,7 @@ async function toggleOfacCheckArchived(checkId, archived, ctx) {
   if (ctx === 'self') await loadMyOfacHistory();
 }
 
-async function deleteOigCheck(checkId, ctx) {
-  if (!confirm('Permanently delete this OIG check record? This cannot be undone.')) return;
-  const { data: changed, error } = await sb.from('oig_exclusion_checks').delete().eq('id', checkId).select('id');
-  if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
-  if (!changed || !changed.length) { toast("Nothing was deleted — you may not have permission to delete this record.", true); return; }
-  toast('Check deleted');
-  if (ctx === 'self') await loadMyOigHistory(); else await loadOigExclusionHistory();
-}
+
 
 async function deleteOfacCheck(checkId, ctx) {
   if (!confirm('Permanently delete this OFAC check record? This cannot be undone.')) return;
@@ -4876,93 +4682,7 @@ async function deleteOfacCheck(checkId, ctx) {
   if (ctx === 'self') await loadMyOfacHistory();
 }
 
-// Details pop-out for a single OIG check — shows exactly which staff
-// were scanned (name + NPI) and whether each one came back clear or
-// as a potential match. Styled as the same centered card pattern used
-// by showFullProfileSheet, since that's the established "pop-out"
-// look elsewhere in the app. checked_staff is only populated for
-// checks run after this feature was added — older rows show a note
-// explaining the per-staff list wasn't captured at the time.
-async function showOigCheckDetails(checkId) {
-  const existing = document.getElementById('oigDetailsModal');
-  if (existing) existing.remove();
 
-  const { data: row, error } = await sb.from('oig_exclusion_checks')
-    .select('checked_at, staff_checked_count, match_count, matches, checked_staff, leie_source, companies(name)')
-    .eq('id', checkId)
-    .single();
-
-  if (error || !row) {
-    toast('Could not load check details' + (error ? ': ' + error.message : ''), true);
-    return;
-  }
-
-  // Index matches by staff_id so each row can show its own confidence
-  // level, not just a flat yes/no — a match's matchType/confidence only
-  // exists on checks run after the state-corroboration fix, so older
-  // checks fall back to a generic "Potential match" label.
-  const matchesById = new Map((row.matches || []).map(m => [m.staff_id, m]));
-  const confidenceLabel = {
-    high: '⚠ Match (NPI-confirmed)',
-    medium: '⚠ Match (name + license state align)',
-    low: '⚠ Possible match — name only, verify manually',
-    // Weaker than "low" on purpose — that tier means the full name matched
-    // exactly, just without state corroboration; this one means even the
-    // full name didn't match, only the last name did (the same first-name
-    // spelling-variant gap fixed in NPI lookup — Ashlee/Ashley, a maiden
-    // name, etc.), so it's flagged rather than silently reported as clear.
-    review_needed: '⚠ Review needed — last name only, first name did not match exactly',
-  };
-  const confidenceColor = { high: '#f87171', medium: '#fb923c', low: '#facc15', review_needed: '#94a3b8' };
-  const staffList = row.checked_staff || [];
-  const staffRowsHtml = staffList.length
-    ? staffList
-        .slice()
-        .sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
-        .map(s => {
-          const match = matchesById.get(s.id);
-          if (!match) {
-            return `<tr>
-              <td>${s.full_name || '—'}</td>
-              <td>${s.npi || '—'}</td>
-              <td style="color:#4ade80;">✓ Clear</td>
-            </tr>`;
-          }
-          const label = match.confidence ? confidenceLabel[match.confidence] : '⚠ Potential match';
-          const color = match.confidence ? confidenceColor[match.confidence] : '#f87171';
-          return `<tr>
-            <td>${s.full_name || '—'}</td>
-            <td>${s.npi || '—'}</td>
-            <td style="color:${color};font-weight:700;" title="${match.detail || ''}">${label}</td>
-          </tr>`;
-        }).join('')
-    : `<tr><td colspan="3" style="color:rgba(255,255,255,.58);">This check ran before per-staff detail was captured — only the summary counts are available for it.</td></tr>`;
-
-  const modal = document.createElement('div');
-  modal.id = 'oigDetailsModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1600;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;width:clamp(500px, 70vw, 800px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;">
-        <div>
-          <div style="color:#fff;font-size:20px;font-weight:700;">OIG Check Details</div>
-          <div style="color:rgba(255,255,255,.58);font-size:14px;">${row.companies ? row.companies.name : (currentCompany?.name || 'Your company')} — ${new Date(row.checked_at).toLocaleString()}</div>
-        </div>
-        <button class="btn btn-sm btn-ghost" onclick="document.getElementById('oigDetailsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button>
-      </div>
-      <div style="flex:1;overflow-y:auto;padding:20px 28px;">
-        <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:6px;">Checked ${row.staff_checked_count} staff member(s) against the OIG exclusion list downloaded from ${row.leie_source || 'oig.hhs.gov'}. ${row.match_count} potential match(es) found.</p>
-        ${row.match_count > 0 ? `<p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:14px;">NPI-confirmed matches are reliable — NPIs are unique. Name-only matches are NOT verified against anything else and can easily be coincidental for common names; treat "verify manually" results as a starting point for manual review, not a confirmed exclusion.</p>` : ''}
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Staff</th><th>NPI</th><th>Result</th></tr></thead>
-            <tbody>${staffRowsHtml}</tbody>
-          </table>
-        </div>
-      </div>
-    </div>`;
-  document.body.appendChild(modal);
-}
 
 function toggleDocsMoreMenu() {
   const menu = document.getElementById('docsMoreMenu');
@@ -9865,7 +9585,7 @@ async function renderProviderReadinessTracker(staffId) {
     sb.from('credtrack_documents').select('id', { count: 'exact', head: true }).eq('staff_id', staffId),
     sb.from('staff_employment_history').select('id', { count: 'exact', head: true }).eq('staff_id', staffId),
     sb.from('staff_education_training').select('id', { count: 'exact', head: true }).eq('staff_id', staffId),
-    sb.from('oig_exclusion_checks').select('matches').eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(1).maybeSingle(),
+    sb.from('leie_exclusion_checks').select('matches').eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
 
   // Same definition of "verified" already used by the Staff table's
@@ -18107,7 +17827,6 @@ async function loadCompliance() {
   if (currentCompany.has_credentialing_addon) {
     const oigDaySel = document.getElementById('oigPreferredDaySelect');
     if (oigDaySel) oigDaySel.value = currentCompany.oig_check_preferred_day || 1;
-    await loadMyOigHistory();
     await loadMyOfacHistory();
     await loadMySamHistory();
     await loadMyLeieHistory();
@@ -18410,7 +18129,7 @@ const COMPLIANCE_HELP = [
         <li><strong>How strong a match is:</strong> <em>NPI confirmed</em> and <em>name and date of birth agree</em> are the strongest. <em>Name and state or middle initial agree</em> needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means either the last name and first initial match in the same state, or the name, middle initial and state match but the birth dates differ (one may be mistyped: check which is right).</li>
         <li><strong>A match is a lead, never a finding.</strong> Confirm it with OIG's own online search (exclusions.oig.hhs.gov), using the person's SSN, before acting. The downloadable list covers exclusions through the end of the previous month; the online search is always current.</li>
         <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, but never before the 12th (so it uses the new list), saves the result as your record, and emails your admins. If a day is missed it catches up the next day. Every run stays in the history (View list, PDF audit log, Archive). A run with an audit log cannot be deleted.</li>
-        <li>Results from the older NPI-only check stay under &ldquo;Earlier OIG checks&rdquo; as a record. Admins run and manage checks. Office users can read the history.</li>
+        <li>This check replaces the older NPI-only OIG check. Admins run and manage checks. Office users can read the history.</li>
       </ul>`,
   },
   {
@@ -25348,7 +25067,7 @@ async function gatherGettingStartedContext() {
     currentCompany.has_credtrack ? count(sb.from('company_document_type_overrides').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
     currentCompany.has_credtrack ? count(sb.from('company_hidden_document_types').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
     currentCompany.has_credtrack ? count(sb.from('document_types').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
-    currentCompany.has_credentialing_addon ? count(sb.from('oig_exclusion_checks').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
+    currentCompany.has_credentialing_addon ? count(sb.from('leie_exclusion_checks').select('id', head).eq('company_id', cid)) : Promise.resolve(0),
   ]);
   return { activeStaff, withLogin, withNpi, docCount, oigChecks, docTypesConfigured: (overrides + hidden + custom) > 0 };
 }
@@ -26731,8 +26450,6 @@ async function loadSuperAdmin() {
   loadSuperLeieCompanies();
   await loadBugLog();
   await loadSupportRequests();
-  await populateOigCompanyFilter();
-  await loadOigExclusionHistory();
   await loadDocTypeCategories();
   await loadCredTemplateCategories();
   await loadSuperHrTemplates();
@@ -28018,7 +27735,6 @@ async function purgeCompanyPermanently(id, name) {
       ['company_memo', () => sb.from('company_memo').delete().eq('company_id', id)],
       ['credentialing_templates', () => sb.from('credentialing_templates').delete().eq('company_id', id)],
       ['error_logs', () => sb.from('error_logs').delete().eq('company_id', id)],
-      ['oig_exclusion_checks', () => sb.from('oig_exclusion_checks').delete().eq('company_id', id)],
       ['subscriptions', () => sb.from('subscriptions').delete().eq('company_id', id)],
       ['support_requests', () => sb.from('support_requests').delete().eq('company_id', id)],
       // Added the same night the HR module, task digest, and custom
