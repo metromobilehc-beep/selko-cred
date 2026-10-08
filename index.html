@@ -1162,7 +1162,7 @@ window.selkoSharedAuthStorage = {
         </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Staff</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Provider ID</th><th>Group ID</th><th>Notes</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Staff</th><th>Payer</th><th>Progress</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>IDs</th><th>Notes</th><th>Actions</th></tr></thead>
           <tbody id="payerBoardStaffTbody"></tbody>
         </table>
       </div>
@@ -1181,7 +1181,7 @@ window.selkoSharedAuthStorage = {
         </div>
       <div class="tbl-wrap">
         <table>
-          <thead><tr><th>Entity</th><th>Payer</th><th>Status</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>Conf. code</th><th>Notes</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Entity</th><th>Payer</th><th>Progress</th><th>Submitted</th><th>Confirmed</th><th>In-network</th><th>Expires</th><th>IDs</th><th>Notes</th><th>Actions</th></tr></thead>
           <tbody id="payerBoardEntityTbody"></tbody>
         </table>
       </div>
@@ -22688,6 +22688,28 @@ const PAYER_NETWORK_BADGE_LABEL = {
 // status). Only rendered for the "in progress" states (pending/
 // in_network); out_of_network and expired are terminal states that
 // don't fit a linear progress bar, so those keep the plain badge.
+// A calendar date (YYYY-MM-DD) as "Sep 18, 2026", never wrapping onto two lines. A date for something that
+// already happened (submitted, confirmed, in-network) that is later than today is almost always a typo,
+// so it is shown in amber with a warning marker.
+function fmtNetDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso + 'T00:00:00');
+  return isNaN(d) ? String(iso) : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+function netDateCell(iso, mustNotBeFuture) {
+  if (!iso) return '<span style="color:rgba(255,255,255,.35);">—</span>';
+  const future = !!mustNotBeFuture && iso > todayLocalIso();
+  return future
+    ? `<span style="white-space:nowrap;color:#fbbf24;font-weight:600;" title="This date is in the future. Check that it is right: use Edit to fix it.">⚠ ${hrOnbEsc(fmtNetDate(iso))}</span>`
+    : `<span style="white-space:nowrap;">${hrOnbEsc(fmtNetDate(iso))}</span>`;
+}
+// Provider ID, group ID and confirmation code together, only the ones that are filled in.
+function networkIdsCell(r) {
+  const parts = [['Conf. code', r.confirmation_code], ['Provider ID', r.network_provider_id], ['Group ID', r.group_id]].filter(x => x[1]);
+  if (!parts.length) return '<span style="color:rgba(255,255,255,.35);">—</span>';
+  return parts.map(([k, v]) => `<div style="font-size:13px;line-height:1.4;white-space:nowrap;"><span style="color:rgba(255,255,255,.5);">${k}:</span> ${hrOnbEsc(v)}</div>`).join('');
+}
+
 function payerNetworkStatusCell(r) {
   if (r.status === 'out_of_network' || r.status === 'expired') {
     return `<span class="badge ${PAYER_NETWORK_BADGE_CLASS[r.status]}">${PAYER_NETWORK_BADGE_LABEL[r.status]}</span>`;
@@ -22697,12 +22719,14 @@ function payerNetworkStatusCell(r) {
     { label: 'Confirmed', done: !!r.date_confirmed },
     { label: 'In-network', done: r.status === 'in_network' },
   ];
-  return `<div style="display:flex;align-items:center;gap:3px;" title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}">
+  const furthest = [...stages].reverse().find(st => st.done);
+  const stageLabel = furthest ? furthest.label : 'Not submitted yet';
+  return `<div title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}"><div style="display:flex;align-items:center;gap:3px;">
     ${stages.map((st, i) => `
       <div style="width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.08)'};color:${st.done ? '#fff' : 'rgba(255,255,255,.3)'};border:1px solid ${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};flex-shrink:0;">${st.done ? '✓' : ''}</div>
       ${i < stages.length - 1 ? `<div style="width:10px;height:1px;background:${st.done && stages[i+1] ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
     `).join('')}
-  </div>`;
+  </div><div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px;white-space:nowrap;">${stageLabel}</div></div>`;
 }
 
 // ── Provider enrollment step tracking (Juan's 8-step workflow) ────────────
@@ -22873,6 +22897,7 @@ async function showEnrollmentStepsModal(rowId, source) {
   // stashed for saveEnrollmentSteps to diff against, and so it doesn't need
   // a second fetch of the same row it just loaded
   window._enrollmentStepsPrev = steps;
+  window._enrollmentStepsRowStatus = row.status;
   ENROLLMENT_STEPS.forEach(m => paintEnrollStepSelect(m.n));
 }
 
@@ -22991,6 +23016,11 @@ async function saveEnrollmentSteps(rowId, source) {
   const updates = { enrollment_steps: newSteps };
   const step8IsYes = newSteps.find(s => s.step === 8)?.status === 'Yes';
   if (step8IsYes) updates.status = 'in_network'; // see the comment above ENROLLMENT_STEPS
+  // Undoing a mistaken "Enrollment Complete": step 8 back to No also takes the record out of In-network
+  // (otherwise the steps say "not enrolled" while the board and the in-network summary still say enrolled).
+  const approvalRemoved = !step8IsYes && window._enrollmentStepsRowStatus === 'in_network'
+    && (prevSteps.find(s => s.step === 8) || {}).status === 'Yes';
+  if (approvalRemoved) { updates.status = 'pending'; updates.verified_at = null; }
 
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   const { data: changed, error } = await sb.from('staff_payer_networks').update(updates).eq('id', rowId).select('id');
@@ -23041,7 +23071,8 @@ async function saveEnrollmentSteps(rowId, source) {
 
   document.getElementById('enrollmentStepsModal')?.remove();
   window._enrollmentStepsPrev = null;
-  toast(stepsToNotify.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
+  toast(approvalRemoved ? '✓ Steps saved. Approval removed: this record is back to Pending.'
+    : stepsToNotify.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
 }
 
 // The compact multi-step indicator shown wherever an enrollment appears —
@@ -23340,20 +23371,18 @@ function renderPayerBoard() {
   // matches its own (unmodified) thead below.
   const rowHtml = (r, nameCell) => `<tr>
     <td>${nameCell}</td>
-    <td>${r.payers?.name || '—'}</td>
+    <td>${hrOnbEsc(r.payers?.name || '—')}</td>
     <td>${r.credtrack_staff ? enrollmentStepCell(r) : payerNetworkStatusCell(r)}</td>
-    <td>${r.date_submitted  || '—'}</td>
-    <td>${r.date_confirmed  || '—'}</td>
-    <td>${r.date_in_network || '—'}</td>
-    <td>${r.expiration_date || '—'}</td>
-    <td>${r.confirmation_code || '—'}</td>
-    <td>${r.network_provider_id || '—'}</td>
-    <td>${r.group_id || '—'}</td>
+    <td>${netDateCell(r.date_submitted, true)}</td>
+    <td>${netDateCell(r.date_confirmed, true)}</td>
+    <td>${netDateCell(r.date_in_network, true)}</td>
+    <td>${netDateCell(r.expiration_date, false)}</td>
+    <td>${networkIdsCell(r)}</td>
     <td style="max-width:220px;white-space:normal;font-size:14px;color:rgba(255,255,255,.7);">${enrollmentNotesCell(r)}</td>
-    <td><div class="td-actions">
+    <td><div class="td-actions" style="flex-wrap:nowrap;">
       ${isOffice
         ? '<span style="font-size:14px;color:rgba(255,255,255,.55);">View only</span>'
-        : `${r.credtrack_staff ? `<button class="btn btn-sm btn-ghost" onclick="showEnrollmentStepsModal('${r.id}','board')">Steps</button>` : ''}<button class="btn btn-sm btn-danger" onclick="deletePayerNetwork('${r.id}')">Delete</button>`}
+        : `<button class="btn btn-sm btn-teal" onclick="showPayerNetworkEditModal('${r.id}')" title="Fix dates, status, codes or the note">Edit</button>${r.credtrack_staff ? `<button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.25);" onclick="showEnrollmentStepsModal('${r.id}','board')" title="Mark enrollment steps done and add notes">Steps</button>` : ''}<button class="btn btn-sm btn-ghost" style="color:#f87171;border-color:transparent;" onclick="deletePayerNetwork('${r.id}')" title="Delete this record (its history is kept)">Delete</button>`}
     </div></td>
   </tr>`;
 
@@ -23510,6 +23539,104 @@ async function savePayerNetwork() {
   await loadPayerBoard(); // also repopulates the payer dropdown, so a newly-added payer is there for next time
 }
 
+// ── Edit a network record from the board (status, dates, codes, note) ─────────
+// Works on the record by its id, so fixing a wrong date or taking back an approval never needs a delete and
+// re-add. Every change is kept in Notes & history (who, when, old value).
+function showPayerNetworkEditModal(id) {
+  const row = (_lastPayerBoardData || []).find(r => r.id === id);
+  if (!row) { toast('That record could not be found. Reload the page and try again.', true); return; }
+  document.getElementById('payerNetworkEditModal')?.remove();
+  const who = row.credtrack_staff?.full_name || row.entity_name || 'Company-wide';
+  const f = (label, idv, type, val, extra = '') => `<div><label for="${idv}" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${label}</label><input class="inline-input" type="${type}" id="${idv}" value="${hrOnbEsc(val || '')}" ${extra} style="width:100%;box-sizing:border-box;" /></div>`;
+  const modal = document.createElement('div');
+  modal.id = 'payerNetworkEditModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1150;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:2px;">Edit network record</div>
+      <div style="color:rgba(255,255,255,.58);font-size:14px;margin-bottom:14px;">${hrOnbEsc(who)} · ${hrOnbEsc(row.payers?.name || 'Payer')}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.6);background:rgba(255,255,255,.04);border-radius:8px;padding:10px 12px;margin-bottom:14px;line-height:1.5;">Fix anything that was entered by mistake. Every change is kept in <strong>Notes &amp; history</strong> with who made it and when. To <strong>undo an approval</strong>, set Status back to Pending and clear the In-network date.</div>
+      <div style="margin-bottom:12px;">
+        <label for="pneStatus" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Status</label>
+        <select class="inline-select" id="pneStatus" onchange="pneStatusChanged()" style="width:100%;">
+          <option value="pending">Pending</option>
+          <option value="in_network">In-network</option>
+          <option value="out_of_network">Out of network</option>
+          <option value="expired">Expired</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
+        ${f('Submitted', 'pneSubmitted', 'date', row.date_submitted)}
+        ${f('Confirmed', 'pneConfirmed', 'date', row.date_confirmed)}
+        ${f('In-network', 'pneInNetwork', 'date', row.date_in_network)}
+        ${f('Expires', 'pneExpiration', 'date', row.expiration_date)}
+        ${f('Confirmation code', 'pneConfCode', 'text', row.confirmation_code, 'maxlength="120"')}
+        ${f('Provider ID', 'pneProviderId', 'text', row.network_provider_id, 'maxlength="120"')}
+        ${f('Group ID', 'pneGroupId', 'text', row.group_id, 'maxlength="120"')}
+      </div>
+      <label for="pneNotes" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Note on the board <span style="color:rgba(255,255,255,.45);">(the earlier wording stays in Notes &amp; history)</span></label>
+      <textarea class="inline-input" id="pneNotes" rows="2" maxlength="600" style="width:100%;box-sizing:border-box;">${hrOnbEsc(row.notes || '')}</textarea>
+      <div id="pneErr" style="color:#f87171;font-size:14px;margin:10px 0 0;display:none;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-teal" id="pneSaveBtn" onclick="savePayerNetworkEdit('${row.id}')" style="flex:1;justify-content:center;">Save changes</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('payerNetworkEditModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  document.getElementById('pneStatus').value = row.status || 'pending';
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+// Moving to In-network with no in-network date fills in today (still editable).
+function pneStatusChanged() {
+  const st = document.getElementById('pneStatus').value, d = document.getElementById('pneInNetwork');
+  if (st === 'in_network' && d && !d.value) d.value = todayLocalIso();
+}
+
+async function savePayerNetworkEdit(id) {
+  const row = (_lastPayerBoardData || []).find(r => r.id === id);
+  const errEl = document.getElementById('pneErr'), btn = document.getElementById('pneSaveBtn');
+  const fail = (m) => { errEl.textContent = m; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+  if (!row) { fail('That record could not be found. Reload the page and try again.'); return; }
+  const v = (i) => (document.getElementById(i).value || '').trim();
+  const status = v('pneStatus'), submitted = v('pneSubmitted') || null, confirmed = v('pneConfirmed') || null,
+        inNet = v('pneInNetwork') || null, expires = v('pneExpiration') || null;
+  const today = todayLocalIso();
+  for (const [label, d] of [['Submitted', submitted], ['Confirmed', confirmed], ['In-network', inNet]]) {
+    if (d && d > today) { fail(`The ${label} date (${fmtNetDate(d)}) is in the future. Something that already happened can't be dated after today. Fix the date, or clear it.`); return; }
+  }
+  const order = [];
+  if (submitted && confirmed && confirmed < submitted) order.push('Confirmed is before Submitted');
+  if (confirmed && inNet && inNet < confirmed) order.push('In-network is before Confirmed');
+  if (expires && inNet && expires < inNet) order.push('Expires is before In-network');
+  if (order.length && !(await showCustomConfirm('These dates look out of order: ' + order.join('; ') + '.\n\nSave anyway?', { okLabel: 'Save anyway' }))) return;
+
+  const updates = {
+    status, date_submitted: submitted, date_confirmed: confirmed, date_in_network: inNet, expiration_date: expires,
+    confirmation_code: v('pneConfCode') || null, network_provider_id: v('pneProviderId') || null, group_id: v('pneGroupId') || null,
+    notes: v('pneNotes') || null,
+    verified_at: status === 'in_network' ? (row.verified_at || new Date().toISOString()) : null,
+  };
+  // Keep the step tracker and the status telling the same story.
+  if (Array.isArray(row.enrollment_steps)) {
+    const steps = row.enrollment_steps.map(s => ({ ...s }));
+    const s8 = steps.find(s => s.step === 8);
+    if (s8) {
+      if (status === 'in_network' && s8.status !== 'Yes') { s8.status = 'Yes'; s8.date = inNet || today; s8.updated_at = new Date().toISOString(); updates.enrollment_steps = steps; }
+      else if (status !== 'in_network' && s8.status === 'Yes') { s8.status = 'No'; s8.date = null; s8.updated_at = new Date().toISOString(); updates.enrollment_steps = steps; }
+    }
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const { data: changed, error } = await sb.from('staff_payer_networks').update(updates).eq('id', id).select('id');
+  if (btn) { btn.disabled = false; btn.textContent = 'Save changes'; }
+  if (error) { fail(friendlyError(error, 'save this record')); return; }
+  if (!changed || !changed.length) { fail("Nothing was saved. You may not have permission to edit this record."); return; }
+  document.getElementById('payerNetworkEditModal')?.remove();
+  toast('✓ Record updated');
+  await loadPayerBoard();
+}
+
 async function deletePayerNetwork(id) {
   if (!confirm('Delete this network record?\n\nIts notes and change history are kept permanently under Enrollment history, together with a final copy of the record.')) return;
   const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
@@ -23630,10 +23757,10 @@ async function loadStaffPayerNetwork(staffId) {
           ${data.map(r => `<tr style="border-top:1px solid rgba(255,255,255,.08);">
             <td style="padding:6px 8px;color:#fff;">${hrOnbEsc(r.payers?.name || '—')}</td>
             <td style="padding:6px 8px;">${enrollmentStepCell(r)}</td>
-            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_submitted  || '—'}</td>
-            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_confirmed  || '—'}</td>
-            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.date_in_network || '—'}</td>
-            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${r.expiration_date || '—'}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${netDateCell(r.date_submitted, true)}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${netDateCell(r.date_confirmed, true)}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${netDateCell(r.date_in_network, true)}</td>
+            <td style="padding:6px 8px;color:rgba(255,255,255,.75);">${netDateCell(r.expiration_date, false)}</td>
             <td style="padding:6px 8px;"><div class="td-actions">
               ${window._staffEnrollHist ? `<button class="btn btn-sm btn-ghost" onclick="showEnrollmentHistoryModal('${r.id}')">📝 Notes &amp; history${window._staffEnrollHist[r.id] ? ` (${window._staffEnrollHist[r.id]})` : ''}</button>` : ''}
               ${isOffice ? '' : `<button class="btn btn-sm btn-ghost" onclick="fillStaffPayerNetworkForm('${r.id}')">Edit</button>
