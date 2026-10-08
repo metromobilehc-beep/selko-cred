@@ -1038,7 +1038,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <h2 style="margin:0;">Reminders</h2>
+          <h2 style="margin:0;">Staff reminders</h2>
           <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('staff')">+ New reminder</button>
         </div>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">A memo you write, emailed starting at the date/time you pick, repeating weekly until marked done.</p>
@@ -1622,53 +1622,24 @@ window.selkoSharedAuthStorage = {
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Screening &amp; Exclusions</span>
       </div>
 
-<!-- OIG LEIE exclusion check — company-scoped self-service version
-             of the same check available in Selko Admin. Every run emails
-             the company's admins, whether or not anything was found —
-             a "checked today, all clear" email is itself the point, so
-             admins have confidence this is actually running rather than
-             wondering whether silence means "nothing wrong" or "not
-             running at all." -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>🚫 OIG Exclusion Check</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff (who have an NPI on file) against the official OIG List of Excluded Individuals/Entities, downloaded live from oig.hhs.gov. Every run emails your admin contact(s) with the result, whether or not anything is found. <strong>A newer check just below also covers staff without an NPI and uses date of birth to set aside look-alike names.</strong></p>
-          <button class="btn btn-sm btn-teal" id="myOigRunCheckBtn" onclick="runMyCompanyOigCheck()">Run check now</button>
-          <div id="myOigCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
-
-          <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
-            <label class="inline-label">Preferred day for the automatic monthly check</label>
-            <div style="display:flex;gap:8px;align-items:center;">
-              <select class="inline-select" id="oigPreferredDaySelect" style="max-width:120px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option></select>
-              <button class="btn btn-sm btn-teal" onclick="saveOigPreferredDay()">Save</button>
-            </div>
-            <p style="font-size:13px;color:rgba(255,255,255,.58);margin-top:6px;">The system runs an automatic check every day and only actually checks/emails your company on this day each month — capped at 28 so it always falls on a real date, even in February.</p>
-          </div>
-          <div class="tbl-wrap">
-            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
-              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
-                <option value="active">Active checks</option>
-                <option value="archived">Archived</option>
-                <option value="all">All</option>
-              </select>
-            </div>
-            <table>
-              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
-              <tbody id="myOigHistoryTbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- OIG LEIE: the monthly list. OIG publishes the whole list as one free file by the 10th of each month; Selko loads it
+<!-- OIG LEIE: the monthly list. OIG publishes the whole list as one free file by the 10th of each month; Selko loads it
              once and every company's check is matched against it here, so a run takes a moment and never calls OIG. Matches on
              NPI, or on name AND date of birth, so look-alike names are set aside instead of becoming false alarms. -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="leiePanel">
-          <h2>🚫 OIG LEIE Check (name, date of birth and NPI)</h2>
+          <h2>🚫 OIG Exclusion Check</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Checks <strong>all</strong> your active staff, not only those with an NPI, against OIG's List of Excluded Individuals/Entities (LEIE). OIG publishes a new list by the 10th of every month and Selko loads it for you. A matching NPI, or a matching name <em>and date of birth</em>, is strong. Someone with the same name but a <em>different</em> date of birth is set aside as a different person. <strong>A match is a lead to verify, never a finding.</strong></p>
           <div id="leieListFresh" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;"></div>
           <button class="btn btn-sm btn-teal" id="myLeieRunCheckBtn" onclick="runMyCompanyLeieCheck()">Run check now</button>
           <div id="myLeieCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
           <div id="myLeieMatchesList"></div>
-          <p style="font-size:13px;color:rgba(255,255,255,.5);margin:6px 0 10px;">Also runs by itself once a month, on the day you chose above for the OIG check but never before the 12th (so it always uses the new list), and emails your admins the result.</p>
+          <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
+            <label class="inline-label">Day of the month for the automatic check</label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <select class="inline-select" id="oigPreferredDaySelect" style="max-width:120px;"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option><option value="8">8</option><option value="9">9</option><option value="10">10</option><option value="11">11</option><option value="12">12</option><option value="13">13</option><option value="14">14</option><option value="15">15</option><option value="16">16</option><option value="17">17</option><option value="18">18</option><option value="19">19</option><option value="20">20</option><option value="21">21</option><option value="22">22</option><option value="23">23</option><option value="24">24</option><option value="25">25</option><option value="26">26</option><option value="27">27</option><option value="28">28</option></select>
+              <button class="btn btn-sm btn-teal" onclick="saveOigPreferredDay()">Save</button>
+            </div>
+            <p style="font-size:13px;color:rgba(255,255,255,.58);margin-top:6px;">The check runs by itself once a month, on or after this day, but never before the 12th: OIG publishes its new list by the 10th and Selko loads it on the 11th, so the check always uses the new list. Capped at 28 so it always falls on a real date, even in February. Your admins are emailed the result every time.</p>
+          </div>
           <div class="tbl-wrap">
             <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
               <select class="inline-select" id="myLeieArchiveFilter" onchange="loadMyLeieHistory()" style="max-width:160px;">
@@ -1680,6 +1651,33 @@ window.selkoSharedAuthStorage = {
             <table>
               <thead><tr><th>Checked</th><th>How</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
               <tbody id="myLeieHistoryTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- OIG LEIE exclusion check — company-scoped self-service version
+             of the same check available in Selko Admin. Every run emails
+             the company's admins, whether or not anything was found —
+             a "checked today, all clear" email is itself the point, so
+             admins have confidence this is actually running rather than
+             wondering whether silence means "nothing wrong" or "not
+             running at all." -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
+          <h2>🗂 Earlier OIG checks (NPI only)</h2>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Results of the older OIG check, which only covered staff with an NPI on file. The OIG exclusion check above covers every staff member and replaces it. These past results are kept as a record that those checks were done.</p>
+
+          
+          <div class="tbl-wrap">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+              <select class="inline-select" id="myOigArchiveFilter" onchange="loadMyOigHistory()" style="max-width:160px;">
+                <option value="active">Active checks</option>
+                <option value="archived">Archived</option>
+                <option value="all">All</option>
+              </select>
+            </div>
+            <table>
+              <thead><tr><th>Checked</th><th>Staff checked</th><th>Matches</th><th>Emailed</th><th>Actions</th></tr></thead>
+              <tbody id="myOigHistoryTbody"></tbody>
             </table>
           </div>
         </div>
@@ -2137,11 +2135,11 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <!-- OIG LEIE exclusions list: loaded once a month for every company. This is where the owner sees whether the last load
+      <!-- OIG exclusions list: loaded once a month for every company. This is where the owner sees whether the last load
            worked, can load it by hand the first time, and checks the setup without downloading anything. -->
       <div class="dark-panel" style="margin-bottom:16px;" id="superLeiePanel">
-        <h2>OIG LEIE exclusions list</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">OIG publishes the whole list as one free file by the 10th of every month. Selko loads it on the 11th and every company's OIG LEIE check is matched against it. It needs no key and has no daily limit, so you can refresh it as often as you like.</p>
+        <h2>OIG exclusions list</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">OIG publishes the whole list as one free file by the 10th of every month. Selko loads it on the 11th and every company's OIG exclusion check is matched against it. It needs no key and has no daily limit, so you can refresh it as often as you like.</p>
         <div id="superLeieStatus" style="font-size:14px;color:rgba(255,255,255,.7);margin-bottom:10px;">Loading…</div>
         <button class="btn btn-sm btn-teal" id="superLeieRefreshBtn" onclick="refreshLeieListNow()">Refresh the list now</button>
         <button class="btn btn-sm btn-ghost" id="superLeiePingBtn" onclick="checkLeieSetup()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;" title="Checks the tables, the worker, that OIG's file can be found, and which versions are installed. Downloads nothing.">Check setup</button>
@@ -2199,8 +2197,8 @@ window.selkoSharedAuthStorage = {
            NPI and name. Scoped per-company via the selector, or leave
            blank to check every company at once. -->
       <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>🚫 OIG Exclusion Check</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks active staff against the official OIG List of Excluded Individuals/Entities (LEIE), downloaded live from oig.hhs.gov. Manual check for now — not yet scheduled monthly.</p>
+        <h2>🗂 Earlier OIG checks (NPI only, all companies)</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Results of the older OIG check, which only covered staff with an NPI on file. It has been replaced by the OIG Exclusion Check, which covers every staff member; each company runs it from its own Compliance tab. These past results are kept as a record.</p>
         <div class="filter-bar" style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
           <select class="inline-select" id="oigCompanyFilter">
             <option value="">All companies</option>
@@ -2210,7 +2208,6 @@ window.selkoSharedAuthStorage = {
             <option value="archived">Archived</option>
             <option value="all">All</option>
           </select>
-          <button class="btn btn-sm btn-teal" id="oigRunCheckBtn" onclick="runOigExclusionCheck()">Run check</button>
           <button class="btn btn-sm" onclick="loadOigExclusionHistory()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);">Refresh history</button>
         </div>
         <div id="oigCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
@@ -2302,7 +2299,7 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <div class="dark-panel" data-default-open="true">
-        <h2>Reminders</h2>
+        <h2>HR reminders</h2>
         <div style="display:flex;justify-content:flex-end;margin-bottom:10px;">
           <button class="btn btn-sm btn-teal" onclick="showPickPersonForReminderModal('hr_employee')">+ New reminder</button>
         </div>
@@ -2332,7 +2329,7 @@ window.selkoSharedAuthStorage = {
         <button type="button" class="chip-btn" data-target="settingsGrp_setup" onclick="jumpToSettingsGroup('settingsGrp_setup')">Professional Setup</button>
         <button type="button" class="chip-btn" data-target="hcnSectionHeader" onclick="jumpToSettingsGroup('hcnSectionHeader')">Health Care Network</button>
         <button type="button" class="chip-btn" data-target="settingsPartnersHeader" onclick="jumpToSettingsGroup('settingsPartnersHeader')">Partners</button>
-        <button type="button" class="chip-btn" data-target="settingsGrp_system" onclick="jumpToSettingsGroup('settingsGrp_system')">Platform &amp; System</button>
+        <button type="button" class="chip-btn" data-super-setting data-target="settingsGrp_system" onclick="jumpToSettingsGroup('settingsGrp_system')" style="display:none;">Platform &amp; System</button>
       </div>
 
       <div id="settingsGrp_account" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
@@ -2746,7 +2743,7 @@ window.selkoSharedAuthStorage = {
 
       <!-- Payer network management -->
       <div class="dark-panel" style="margin-bottom:16px;" id="payersPanelSettings">
-        <h2>Health Care Network list</h2>
+        <h2>Payers you track (Health Care Network list)</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
         <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
           <div style="flex:1;position:relative;">
@@ -2863,7 +2860,7 @@ window.selkoSharedAuthStorage = {
         <div id="partnerRecsStaticList" style="display:flex;flex-direction:column;gap:8px;"></div>
       </div>
 
-      <div id="settingsGrp_recs" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
+      <div id="settingsGrp_recs" data-super-setting style="display:none;margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Recommendations</span>
         <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Optional referral links shown where you'd actually need them, such as an empty malpractice field.</div>
       </div>
@@ -2872,7 +2869,7 @@ window.selkoSharedAuthStorage = {
            insurance, CE credits, background checks) shown at the natural
            point of need, not display ads. Platform-wide by default; a
            company can opt out entirely in their own Settings. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
         <h2>🤝 Partner recommendations</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">One quiet, contextual link per category — shown right where a company would actually need it (e.g. an empty malpractice field), never as a banner or graphic. Applies to every company unless they turn it off in their own Settings.</p>
         <div id="partnerRecsList" style="margin-bottom:14px;"></div>
@@ -2901,7 +2898,7 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div id="settingsGrp_system" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
+      <div id="settingsGrp_system" data-super-setting style="display:none;margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Platform &amp; System</span>
         <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Storage your company is using and the most recent uploads.</div>
       </div>
@@ -2909,7 +2906,7 @@ window.selkoSharedAuthStorage = {
       <!-- Storage usage — per company, so it's actually useful for
            tracking growth and spotting an outlier, not just one opaque
            platform-wide total. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
         <h2>📦 Storage usage</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Uploaded credential document files, per company. Doesn't include branding logos or other non-credential uploads to this bucket.</p>
         <div id="storageUsageTotal" style="font-size:15px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
@@ -2922,7 +2919,7 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Recent uploads across every company — live view, complements the daily email digest -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
         <h2>📤 Recent uploads</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Document uploads across every company in the last 7 days, newest first.</p>
         <div class="tbl-wrap">
@@ -3021,61 +3018,7 @@ function setupMissingMessage(file) {
     : "This feature isn't switched on for your company yet. Contact Selko support.";
 }
 
-async function runOigExclusionCheck() {
-  const btn = document.getElementById('oigRunCheckBtn');
-  const statusEl = document.getElementById('oigCheckStatus');
-  const companyId = document.getElementById('oigCompanyFilter').value || null;
 
-  btn.disabled = true;
-  statusEl.textContent = 'Downloading the OIG exclusion list and checking staff — this can take a few seconds…';
-
-  try {
-    const { data, error } = await sb.functions.invoke('check-oig-exclusions', {
-      body: { company_id: companyId }
-    });
-    if (error) {
-      // supabase-js only puts a generic "non-2xx status code" message on
-      // the error itself — the actual reason is in the function's own
-      // response body, reachable via error.context (a Response object).
-      let detail = error.message;
-      if (error.context && typeof error.context.json === 'function') {
-        try {
-          const body = await error.context.json();
-          if (body && body.error) detail = extractErrorMessage(body.error);
-        } catch (parseErr) {
-          // response wasn't JSON — fall back to the generic message above
-        }
-      }
-      throw new Error(extractErrorMessage(detail));
-    }
-
-    const { error: insErr } = await sb.from('oig_exclusion_checks').insert({
-      company_id: companyId,
-      checked_by: currentProfile ? currentProfile.id : null,
-      staff_checked_count: data.checked,
-      checked_staff: data.checked_staff || null,
-      matches: data.matches,
-      match_count: data.matches.length,
-      leie_source: data.leie_source
-    });
-    if (insErr) throw insErr;
-
-    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.`;
-    if (data.matches.length) {
-      toast(`⚠ ${data.matches.length} potential OIG exclusion match(es) found — review below`, true);
-    } else {
-      toast('OIG check complete — no matches found');
-    }
-    await loadOigExclusionHistory();
-  } catch (err) {
-    statusEl.textContent = '';
-    const displayMessage = extractErrorMessage(err);
-    toast(`OIG check failed: ${displayMessage}`, true);
-    console.error('OIG check failed — full error object:', err);
-  } finally {
-    btn.disabled = false;
-  }
-}
 
 async function saveOigPreferredDay() {
   const day = parseInt(document.getElementById('oigPreferredDaySelect').value, 10);
@@ -3171,7 +3114,7 @@ async function loadSuperSamStatus() {
   }
 }
 
-// ── OIG LEIE exclusion check (the monthly list) ─────────────────────────────
+// ── OIG exclusion check (the monthly list) ─────────────────────────────
 // Same design as the SAM.gov check: OIG's whole list is loaded once a month, and every company's check is matched against it in
 // the database. Matching uses the NPI, or the name AND the date of birth (OIG gives one for 99% of people), so look-alike names with a
 // different birth date are set aside instead of becoming false alarms.
@@ -3236,7 +3179,7 @@ function leieCheckFriendlyError(msg) {
   const raw = String(msg || '');
   if (!/WORKER_RESOURCE_LIMIT|HTTP 546|not having enough compute resources/i.test(raw)) return raw;
   return (currentProfile?.is_super_admin
-    ? 'The check ran out of time or memory on Supabase, so nothing was saved. In Selko Admin, open the OIG LEIE list and press Check setup: it shows whether the matching and the check function are installed. Then look in Supabase > Edge Functions > check-leie-exclusions > Logs.'
+    ? 'The check ran out of time or memory on Supabase, so nothing was saved. In Selko Admin, open the OIG exclusions list and press Check setup: it shows whether the matching and the check function are installed. Then look in Supabase > Edge Functions > check-leie-exclusions > Logs.'
     : 'The check could not finish this time and nothing was saved. Please try again in a minute. If it keeps happening, tell Selko support.') + ' [HTTP 546]';
 }
 
@@ -3252,7 +3195,7 @@ async function runMyCompanyLeieCheck() {
     const { data, error } = await sb.functions.invoke('check-leie-exclusions', { body: { company_id: currentCompany.id } });
     if (error) throw new Error(await samInvokeError(error));
     const staleNote = data.list_stale ? ' ⚠ The OIG list is more than 40 days old, so a month of new exclusions may be missing.' : '';
-    statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + staleNote;
+    statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + (data.audit_log === 'saved' ? ' A PDF audit log of this check was saved: use "Audit log" in the history below.' : data.audit_log === 'failed' ? ' ⚠ The PDF audit log could not be saved this time. Press "Audit log" on this check in the history below to make it.' : '') + staleNote;
     const notes = leieNotes(data);
     listEl.innerHTML = leieMatchesHtml(data.matches) + (notes.length ? `<div style="font-size:13px;color:rgba(255,255,255,.58);margin-top:10px;line-height:1.5;">${notes.map(hrOnbEsc).join('<br>')}</div>` : '');
     if (data.match_count) toast(`⚠ ${data.match_count} potential OIG match(es) found. Review below.` + staleNote, true);
@@ -3275,12 +3218,12 @@ async function loadMyLeieHistory() {
   const runBtn = document.getElementById('myLeieRunCheckBtn'); if (runBtn) runBtn.style.display = canWrite ? '' : 'none';
   const archiveFilter = document.getElementById('myLeieArchiveFilter')?.value || 'active';
   let query = sb.from('leie_exclusion_checks')
-    .select('id, checked_at, staff_checked_count, match_count, archived, trigger_type, emailed_at')
+    .select('id, checked_at, staff_checked_count, match_count, archived, trigger_type, emailed_at, audit_log_path')
     .eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(25);
   if (archiveFilter === 'active') query = query.eq('archived', false);
   else if (archiveFilter === 'archived') query = query.eq('archived', true);
   const { data, error } = await query;
-  if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache/i.test(error.message || '') ? 'The OIG LEIE check is not set up yet.' : 'Could not load history: ' + hrOnbEsc(extractErrorMessage(error))}</td></tr>`; return; }
+  if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache/i.test(error.message || '') ? 'The OIG exclusion check is not set up yet.' : 'Could not load history: ' + hrOnbEsc(extractErrorMessage(error))}</td></tr>`; return; }
   if (!data || !data.length) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`; return; }
   tbody.innerHTML = data.map(r => `
     <tr>
@@ -3291,10 +3234,38 @@ async function loadMyLeieHistory() {
       <td>${r.emailed_at ? new Date(r.emailed_at).toLocaleDateString() : '—'}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-ghost" onclick="showLeieCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">View list</button>
+        <button class="btn btn-sm btn-teal" onclick="openLeieAuditLog('${r.id}', this)" title="${r.audit_log_path ? 'The PDF record of how this check was done and who was cleared' : 'This older check has no PDF yet. Pressing this makes one from the saved record.'}" style="padding:3px 10px;font-size:14px;">📄 Audit log</button>
         ${canWrite ? `<button class="btn btn-sm btn-ghost" onclick="toggleLeieCheckArchived('${r.id}', ${!r.archived})" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">${r.archived ? 'Restore' : 'Archive'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="deleteLeieCheck('${r.id}')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>` : ''}
+        ${r.audit_log_path ? '' : `<button class="btn btn-sm btn-ghost" onclick="deleteLeieCheck('${r.id}')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>`}` : ''}
       </td>
     </tr>`).join('');
+}
+
+// Opens (downloads) the PDF audit log of one check. A check made before audit logs existed has none yet: the server makes one from the saved record.
+async function openLeieAuditLog(checkId, btn) {
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const { data: row, error: rowErr } = await sb.from('leie_exclusion_checks').select('audit_log_path, checked_at').eq('id', checkId).single();
+    if (rowErr || !row) throw new Error(rowErr ? extractErrorMessage(rowErr) : 'That check could not be found.');
+    let path = row.audit_log_path;
+    if (!path) {
+      const { data, error } = await sb.functions.invoke('check-leie-exclusions', { body: { action: 'audit_log', check_id: checkId } });
+      if (error) throw new Error(await samInvokeError(error));
+      if (data?.error) throw new Error(data.error);
+      path = data.path;
+    }
+    const day = new Date(row.checked_at).toISOString().slice(0, 10);
+    const fileName = `OIG-LEIE-audit-log-${String(currentCompany?.name || 'company').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${day}.pdf`;
+    const { data: signed, error: urlErr } = await sb.storage.from('compliance-audit-logs').createSignedUrl(path, 120, { download: fileName });
+    if (urlErr || !signed?.signedUrl) throw new Error('The audit log file could not be opened' + (urlErr ? ' (' + extractErrorMessage(urlErr) + ')' : '') + '. Try again, and if it keeps happening contact Selko support.');
+    const a = document.createElement('a'); a.href = signed.signedUrl; a.download = fileName; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    if (!row.audit_log_path) await loadMyLeieHistory();
+  } catch (e) {
+    toast(friendlyError(e, 'open the audit log'), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
 }
 
 async function showLeieCheckDetails(checkId) {
@@ -3316,7 +3287,7 @@ async function showLeieCheckDetails(checkId) {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1600;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:clamp(500px,70vw,800px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);flex-shrink:0;">
-      <div><div style="color:#fff;font-size:20px;font-weight:700;">OIG LEIE Check Details</div><div style="color:rgba(255,255,255,.58);font-size:14px;">${hrOnbEsc(currentCompany?.name || '')} · ${new Date(row.checked_at).toLocaleString()} · ${row.trigger_type === 'scheduled' ? 'monthly, automatic' : 'run by hand'}</div></div>
+      <div><div style="color:#fff;font-size:20px;font-weight:700;">OIG Exclusion Check Details</div><div style="color:rgba(255,255,255,.58);font-size:14px;">${hrOnbEsc(currentCompany?.name || '')} · ${new Date(row.checked_at).toLocaleString()} · ${row.trigger_type === 'scheduled' ? 'monthly, automatic' : 'run by hand'}</div></div>
       <button class="btn btn-sm btn-ghost" onclick="document.getElementById('leieDetailsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button></div>
     <div style="flex:1;overflow-y:auto;padding:20px 28px;">
       <p style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:6px;">Checked ${row.staff_checked_count} staff member(s) against OIG's exclusions list${row.source ? ` (${hrOnbEsc(row.source)})` : ''}.</p>
@@ -3337,7 +3308,7 @@ async function toggleLeieCheckArchived(checkId, archived) {
 }
 
 async function deleteLeieCheck(checkId) {
-  if (!confirm('Permanently delete this OIG LEIE check record? This cannot be undone.')) return;
+  if (!confirm('Permanently delete this OIG exclusion check record? This cannot be undone.')) return;
   const { data: changed, error } = await sb.from('leie_exclusion_checks').delete().eq('id', checkId).select('id');
   if (error) { toast('Could not delete: ' + extractErrorMessage(error), true); return; }
   if (!changed || !changed.length) { toast('Nothing was deleted. You may not have permission to delete this record.', true); return; }
@@ -3414,7 +3385,7 @@ async function runLeieForCompany(companyId, companyName) {
 
 async function runLeieForAll() {
   if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
-  if (!confirm('Run the OIG LEIE check for every company that has the Credentialing add-on now?\n\nEach run is saved in that company\'s own history. A company\'s admins are emailed only if there is a possible match.')) return;
+  if (!confirm('Run the OIG exclusion check for every company that has the Credentialing add-on now?\n\nEach run is saved in that company\'s own history. A company\'s admins are emailed only if there is a possible match.')) return;
   const btn = document.getElementById('superLeieRunAllBtn'); const out = document.getElementById('superLeieRunAllOut');
   btn.disabled = true; out.style.color = 'rgba(255,255,255,.66)'; out.textContent = 'Checking every company…';
   try {
@@ -4010,19 +3981,19 @@ function buildAttentionItems(d, now = Date.now()) {
     const unready = d.samOverview.filter((r) => r.has_addon && !r.notify_count);
     if (unready.length) add('warn', `${unready.length} compan${unready.length === 1 ? 'y' : 'ies'} with the Credentialing add-on ${unready.length === 1 ? 'has' : 'have'} nobody to email SAM.gov results to: ${attnList(unready.map((r) => r.company_name))}`, 'superSamPanel');
   }
-  // The OIG LEIE list (loaded monthly): a failed or old load, and companies whose last OIG check found possible matches
+  // The OIG exclusions list (loaded monthly): a failed or old load, and companies whose last OIG check found possible matches
   if (d.leieMeta) {
     const last = d.leieMeta[0], ok = d.leieMeta.find((m) => m.status === 'ok');
-    if (!ok) add('info', 'The OIG LEIE list has not been loaded yet', 'superLeiePanel');
+    if (!ok) add('info', 'The OIG exclusions list has not been loaded yet', 'superLeiePanel');
     else {
       const age = (now - new Date(ok.loaded_at).getTime()) / 86400000;
       if (last && last.status === 'failed') add('bad', `The last OIG list load failed: ${String(last.error || 'unknown error').slice(0, 140)}`, 'superLeiePanel');
-      else if (age > 40) add('warn', `The OIG LEIE list is ${Math.floor(age)} days old (it should be refreshed every month)`, 'superLeiePanel');
+      else if (age > 40) add('warn', `The OIG exclusions list is ${Math.floor(age)} days old (it should be refreshed every month)`, 'superLeiePanel');
     }
   }
   if (d.leieOverview && d.leieOverview.length) {
     const withMatches = d.leieOverview.filter((r) => r.has_addon && r.last_matches > 0);
-    if (withMatches.length) add('warn', `${withMatches.length} compan${withMatches.length === 1 ? 'y has' : 'ies have'} possible OIG LEIE matches in their last check: ${attnList(withMatches.map((r) => `${r.company_name} (${r.last_matches})`))}`, 'superLeiePanel');
+    if (withMatches.length) add('warn', `${withMatches.length} compan${withMatches.length === 1 ? 'y has' : 'ies have'} possible OIG matches in their last check: ${attnList(withMatches.map((r) => `${r.company_name} (${r.last_matches})`))}`, 'superLeiePanel');
   }
   // Payments and trials (owner only)
   if (d.subs) {
@@ -4641,60 +4612,7 @@ async function runMyCompanyOfacCheck() {
   }
 }
 
-async function runMyCompanyOigCheck() {
-  const btn = document.getElementById('myOigRunCheckBtn');
-  const statusEl = document.getElementById('myOigCheckStatus');
-  const companyId = currentCompany.id;
 
-  btn.disabled = true;
-  statusEl.textContent = 'Downloading the OIG exclusion list and checking staff — this can take a few seconds…';
-
-  try {
-    const { data, error } = await sb.functions.invoke('check-oig-exclusions', {
-      body: { company_id: companyId }
-    });
-    if (error) {
-      let detail = error.message;
-      if (error.context && typeof error.context.json === 'function') {
-        try {
-          const body = await error.context.json();
-          if (body && body.error) detail = extractErrorMessage(body.error);
-        } catch (parseErr) {
-          // response wasn't JSON — fall back to the generic message above
-        }
-      }
-      throw new Error(extractErrorMessage(detail));
-    }
-
-    const { data: inserted, error: insErr } = await sb.from('oig_exclusion_checks').insert({
-      company_id: companyId,
-      checked_by: currentProfile ? currentProfile.id : null,
-      staff_checked_count: data.checked,
-      checked_staff: data.checked_staff || null,
-      matches: data.matches,
-      match_count: data.matches.length,
-      leie_source: data.leie_source
-    }).select().single();
-    if (insErr) throw insErr;
-
-    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.`;
-    if (data.matches.length) {
-      toast(`⚠ ${data.matches.length} potential OIG exclusion match(es) found — review below`, true);
-    } else {
-      toast('OIG check complete — no matches found');
-    }
-
-    await emailOigCheckResult(inserted, data);
-    await loadMyOigHistory();
-  } catch (err) {
-    statusEl.textContent = '';
-    const displayMessage = extractErrorMessage(err);
-    toast(`OIG check failed: ${displayMessage}`, true);
-    console.error('OIG check failed — full error object:', err);
-  } finally {
-    btn.disabled = false;
-  }
-}
 
 // Emails whichever admin address(es) the company has on file. Failure to
 // send is logged but never blocks the check itself from completing or
@@ -16117,6 +16035,10 @@ async function loadSettings() {
   document.getElementById('myAccountName').value = currentProfile.full_name || '';
   loadBillingStatus();
   loadPartnerRecsStatic();
+  // Platform-wide panels (partner links, storage, recent uploads across every company) belong to the platform owner only.
+  const isOwner = !!currentProfile?.is_super_admin;
+  document.querySelectorAll('[data-super-setting]').forEach(el => { el.style.display = isOwner ? '' : 'none'; });
+  if (isOwner) { loadPartnerRecommendationsAdmin(); loadStorageUsage(); loadRecentUploads(); }
 
   loadDisciplinesPanel();
   loadEntitiesPanel();
@@ -18473,12 +18395,12 @@ const COMPLIANCE_HELP = [
         <li><strong>How strong a match is:</strong> <em>NPI-confirmed</em> is the strongest. <em>Name and state or middle initial agree</em> is likely but needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means the last name and first initial match in the same state.</li>
         <li><strong>Other names are checked too.</strong> SAM.gov lists other names for 14% of the people on it. A staff member's <em>maiden / previously used name</em> and <em>other aliases</em> (Staff profile, Background Check Intake Info), either half of a double surname, and the first of several given names are all compared. SAM.gov gives no date of birth, so a match through a former name or alias is at most <em>medium</em> (when the state agrees) and otherwise <em>low</em>: always a lead to look at.</li>
         <li><strong>A match is a lead, never a finding.</strong> Many people share a name. Open the person on sam.gov, compare the details, and only then act.</li>
-        <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, saves the result as your record, and emails your admins. Every run stays in the history (View list, Archive, Delete).</li>
+        <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, saves the result as your record, and emails your admins. Every run stays in the history (View list, PDF audit log, Archive). A run with an audit log cannot be deleted.</li>
         <li>Admins run and manage checks. Office users can read the history.</li>
       </ul>`,
   },
   {
-    title: 'The OIG LEIE check (name, date of birth and NPI)',
+    title: 'The OIG exclusion check',
     subtitle: 'The federal health care exclusion list',
     html: `<p>OIG (the HHS Office of Inspector General) keeps the List of Excluded Individuals/Entities (LEIE): people who may not work for anyone paid by Medicare or Medicaid. OIG publishes a new list by the 10th of every month, and Selko loads it for you. This check compares your <strong>active</strong> staff against it, <strong>including staff with no NPI</strong>.</p>
       <ul>
@@ -18487,8 +18409,8 @@ const COMPLIANCE_HELP = [
         <li><strong>Date of birth is what makes it accurate.</strong> OIG gives a date of birth for 99% of the people on its list. Someone with your staff member's name but a <em>different</em> birth date is a different person, so they are set aside (the result says how many). If a staff member has <strong>no date of birth on file</strong>, look-alike names cannot be set aside, so add it on their profile.</li>
         <li><strong>How strong a match is:</strong> <em>NPI confirmed</em> and <em>name and date of birth agree</em> are the strongest. <em>Name and state or middle initial agree</em> needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means either the last name and first initial match in the same state, or the name, middle initial and state match but the birth dates differ (one may be mistyped: check which is right).</li>
         <li><strong>A match is a lead, never a finding.</strong> Confirm it with OIG's own online search (exclusions.oig.hhs.gov), using the person's SSN, before acting. The downloadable list covers exclusions through the end of the previous month; the online search is always current.</li>
-        <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, but never before the 12th (so it uses the new list), saves the result as your record, and emails your admins. If a day is missed it catches up the next day. Every run stays in the history (View list, Archive, Delete).</li>
-        <li>The original OIG check above is kept for now so the two can be compared. Admins run and manage checks. Office users can read the history.</li>
+        <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, but never before the 12th (so it uses the new list), saves the result as your record, and emails your admins. If a day is missed it catches up the next day. Every run stays in the history (View list, PDF audit log, Archive). A run with an audit log cannot be deleted.</li>
+        <li>Results from the older NPI-only check stay under &ldquo;Earlier OIG checks&rdquo; as a record. Admins run and manage checks. Office users can read the history.</li>
       </ul>`,
   },
   {
@@ -18662,9 +18584,9 @@ const SUPER_HELP = [
       <p><strong>Remove a stray login</strong> cleans up an orphaned account left behind by an email change made the old way, before a safe "Change login email" tool existed on the Staff tab. Only removes the exact email typed in — it never affects that person's current, in-use login, and nothing happens without typing the email and confirming.</p>`,
   },
   {
-    title: 'The OIG LEIE exclusions list',
+    title: 'The OIG exclusions list',
     subtitle: 'Setup and monthly load',
-    html: `<p>OIG publishes its whole exclusions list (the LEIE) as one free file by the 10th of every month. Selko downloads it <strong>once a month, on the 11th</strong>, and every company's OIG LEIE check is matched against it. It needs <strong>no key and has no daily limit</strong>, so you can press <strong>Refresh the list now</strong> as often as you like. If the 11th fails it tries again every day, and emails you.</p>
+    html: `<p>OIG publishes its whole exclusions list (the LEIE) as one free file by the 10th of every month. Selko downloads it <strong>once a month, on the 11th</strong>, and every company's OIG exclusion check is matched against it. It needs <strong>no key and has no daily limit</strong>, so you can press <strong>Refresh the list now</strong> as often as you like. If the 11th fails it tries again every day, and emails you.</p>
       <p><strong>Where the work happens.</strong> Like the SAM.gov list, the download is done by a small Vercel function, <strong>/api/leie-refresh</strong>, started by the Supabase function <strong>leie-exclusions-refresh</strong>. It uses the same <strong>SAM_WORKER_SECRET</strong> and the same Vercel settings as the SAM.gov one, so there is nothing new to add. The company checks run in <strong>check-leie-exclusions</strong>.</p>
       <ul>
         <li><strong>Check setup</strong> downloads nothing. It checks the tables, the worker, that OIG's file can be found (and its size and date), which matching and function versions are installed, and whether an alert address is set. Run it before the first refresh.</li>
@@ -18699,7 +18621,7 @@ const SUPER_HELP = [
       <ul>
         <li><strong>Support requests</strong> that are still open, and how many arrived since you last pressed View.</li>
         <li><strong>Errors</strong> logged in the last 24 hours, by app.</li>
-        <li><strong>OIG LEIE</strong>: a failed or old monthly list load, and companies whose last check found possible matches (names and counts only).</li>
+        <li><strong>OIG exclusions list</strong>: a failed or old monthly list load, and companies whose last check found possible matches (names and counts only).</li>
         <li><strong>SAM.gov</strong>: a failed or old refresh, an API key close to expiring, companies with possible matches, and companies with nobody to email the results to (company names and counts only, never staff names).</li>
         <li><strong>Payments</strong> past due, and trials ending within 7 days (owner only).</li>
         <li><strong>Support access</strong> requests still waiting for a company to answer, and <strong>new companies</strong> this week.</li>
