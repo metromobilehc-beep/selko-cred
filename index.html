@@ -1153,12 +1153,10 @@ window.selkoSharedAuthStorage = {
         <h2>Individual staff</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">The full network status board, one row per staff member per payer, filterable by person or payer. Every note and change is kept permanently: use <strong>📝 Notes &amp; history</strong> on a row, or <button class="btn btn-sm btn-ghost" onclick="showAllEnrollmentHistory()" style="font-size:12px;padding:2px 8px;color:#fff;border-color:rgba(255,255,255,.2);">📜 All enrollment history</button> for everything, including deleted records.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-          <select class="filter-sel" id="fInsuranceStaff" onchange="renderPayerBoard()" style="max-width:240px;">
-            <option value="">All staff</option>
-          </select>
-          <select class="filter-sel" id="fInsurancePayer" onchange="renderPayerBoard()" style="max-width:240px;">
-            <option value="">All insurance</option>
-          </select>
+          <input type="search" class="filter-sel" id="fInsuranceStaff" list="dlInsuranceStaff" oninput="renderPayerBoard()" placeholder="Search staff: start typing a name" autocomplete="off" aria-label="Search by staff name" style="width:260px;max-width:100%;" />
+          <datalist id="dlInsuranceStaff"></datalist>
+          <input type="search" class="filter-sel" id="fInsurancePayer" list="dlInsurancePayer" oninput="renderPayerBoard()" placeholder="Search insurance: start typing" autocomplete="off" aria-label="Search by insurance" style="width:260px;max-width:100%;" />
+          <datalist id="dlInsurancePayer"></datalist>
         </div>
       <div class="tbl-wrap">
         <table>
@@ -1172,12 +1170,9 @@ window.selkoSharedAuthStorage = {
         <h2>🏢 Company / agency entities</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">The same board, scoped to company-wide or agency-level network records instead of individual providers.</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-          <select class="filter-sel" id="fInsuranceEntity" onchange="renderPayerBoard()" style="max-width:240px;">
-            <option value="">All entities</option>
-          </select>
-          <select class="filter-sel" id="fInsuranceEntityPayer" onchange="renderPayerBoard()" style="max-width:240px;">
-            <option value="">All insurance</option>
-          </select>
+          <input type="search" class="filter-sel" id="fInsuranceEntity" list="dlInsuranceEntity" oninput="renderPayerBoard()" placeholder="Search entities: start typing" autocomplete="off" aria-label="Search by company or agency" style="width:260px;max-width:100%;" />
+          <datalist id="dlInsuranceEntity"></datalist>
+          <input type="search" class="filter-sel" id="fInsuranceEntityPayer" list="dlInsurancePayer" oninput="renderPayerBoard()" placeholder="Search insurance: start typing" autocomplete="off" aria-label="Search by insurance" style="width:260px;max-width:100%;" />
         </div>
       <div class="tbl-wrap">
         <table>
@@ -8092,9 +8087,9 @@ async function loadAdminFilters() {
   const fEmp    = document.getElementById('fEmp');
   const fExpEmp = document.getElementById('fExpEmp');
   const fStaffPerson = document.getElementById('fStaffPerson');
-  const fInsuranceStaff = document.getElementById('fInsuranceStaff');
   const fType   = document.getElementById('fType');
-  [fEmp, fExpEmp, fStaffPerson, fInsuranceStaff].forEach(sel => {
+  { const dl = document.getElementById('dlInsuranceStaff'); if (dl) dl.innerHTML = staffList.map(s => `<option value="${hrOnbEsc(s.full_name)}"></option>`).join(''); }
+  [fEmp, fExpEmp, fStaffPerson].forEach(sel => {
     sel.innerHTML = '<option value="">All staff</option>';
     staffList.forEach(s => {
       const o = document.createElement('option');
@@ -22618,9 +22613,8 @@ async function loadPayerBoard() {
     knownEntities.map(e => `<option value="${e.replace(/"/g,'&quot;')}">${e}</option>`).join('') +
     (isAdmin ? '<option value="__new_entity__">+ Add a new entity...</option>' : '');
   onPnEntitySelectChanged();
-  const entityFilterSel = document.getElementById('fInsuranceEntity');
-  entityFilterSel.innerHTML = '<option value="">All entities</option>' +
-    knownEntities.map(e => `<option value="${e.replace(/"/g,'&quot;')}">${e}</option>`).join('');
+  const entityDl = document.getElementById('dlInsuranceEntity');
+  if (entityDl) entityDl.innerHTML = knownEntities.map(e => `<option value="${hrOnbEsc(e)}"></option>`).join('');
 
   // populate payer dropdown directly (don't depend on the Settings tab having loaded)
   const { data: payerData } = await sb.from('payers')
@@ -22630,12 +22624,8 @@ async function loadPayerBoard() {
   const payerSel = document.getElementById('pnPayer');
   payerSel.innerHTML = (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('') +
     '<option value="__new_payer__">+ Add a new insurance...</option>';
-  const payerFilterSel = document.getElementById('fInsurancePayer');
-  payerFilterSel.innerHTML = '<option value="">All insurance</option>' +
-    (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
-  const entityPayerFilterSel = document.getElementById('fInsuranceEntityPayer');
-  entityPayerFilterSel.innerHTML = '<option value="">All insurance</option>' +
-    (payerData || []).map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+  const payerDl = document.getElementById('dlInsurancePayer');
+  if (payerDl) payerDl.innerHTML = (payerData || []).map(p => `<option value="${hrOnbEsc(p.name)}"></option>`).join('');
 
   const { data, error } = await sb.from('staff_payer_networks')
     .select('*, credtrack_staff(full_name), payers(name)')
@@ -22721,12 +22711,12 @@ function payerNetworkStatusCell(r) {
   ];
   const furthest = [...stages].reverse().find(st => st.done);
   const stageLabel = furthest ? furthest.label : 'Not submitted yet';
-  return `<div title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}"><div style="display:flex;align-items:center;gap:3px;">
+  return `<div title="${stages.filter(s=>s.done).map(s=>s.label).join(' → ') || 'Not yet submitted'}" style="min-width:200px;"><div style="display:flex;align-items:center;gap:4px;">
     ${stages.map((st, i) => `
-      <div style="width:16px;height:16px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.08)'};color:${st.done ? '#fff' : 'rgba(255,255,255,.3)'};border:1px solid ${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};flex-shrink:0;">${st.done ? '✓' : ''}</div>
-      ${i < stages.length - 1 ? `<div style="width:10px;height:1px;background:${st.done && stages[i+1] ? 'rgba(255,255,255,.15)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
+      <div style="width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.08)'};color:${st.done ? '#fff' : 'rgba(255,255,255,.3)'};border:1px solid ${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};flex-shrink:0;">${st.done ? '✓' : ''}</div>
+      ${i < stages.length - 1 ? `<div style="width:16px;height:2px;background:${st.done ? 'var(--teal)' : 'rgba(255,255,255,.15)'};"></div>` : ''}
     `).join('')}
-  </div><div style="font-size:12px;color:rgba(255,255,255,.6);margin-top:3px;white-space:nowrap;">${stageLabel}</div></div>`;
+  </div><div style="font-size:14px;color:rgba(255,255,255,.75);margin-top:5px;white-space:nowrap;">${stageLabel}</div></div>`;
 }
 
 // ── Provider enrollment step tracking (Juan's 8-step workflow) ────────────
@@ -23100,11 +23090,11 @@ function enrollmentStepCell(r) {
     const color = isComplete ? 'var(--teal)' : (isDefault ? 'rgba(255,255,255,.15)' : '#f59e0b');
     const noteTip = note ? ' — ' + hrOnbEsc(note.length > 140 ? note.slice(0, 140) + '…' : note) : '';
     const dateTip = (!isDefault && dateOf(meta)) ? ' · ' + fmtStepDate(dateOf(meta)) : '';
-    return `<div title="${stepDisplayNumber(meta)}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}${dateTip}${noteTip}" style="width:11px;height:11px;border-radius:50%;background:${color};flex-shrink:0;"></div>`;
+    return `<div title="${stepDisplayNumber(meta)}. ${hrOnbEsc(meta.name)}: ${hrOnbEsc(val)}${dateTip}${noteTip}" style="width:20px;height:20px;border-radius:50%;background:${color};flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:${isComplete ? '#fff' : 'rgba(255,255,255,.7)'};">${isComplete ? '✓' : stepDisplayNumber(meta)}</div>`;
   }).join('');
-  return `<div style="display:flex;flex-direction:column;gap:3px;">
-    <div style="display:flex;gap:3px;">${dots}</div>
-    <div style="font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;">${summary}</div>
+  return `<div style="display:flex;flex-direction:column;gap:5px;min-width:200px;">
+    <div style="display:flex;gap:6px;">${dots}</div>
+    <div style="font-size:14px;color:rgba(255,255,255,.75);max-width:260px;">${summary}</div>
   </div>`;
 }
 
@@ -23386,17 +23376,18 @@ function renderPayerBoard() {
     </div></td>
   </tr>`;
 
-  const staffFilter = document.getElementById('fInsuranceStaff')?.value || '';
-  const payerFilter = document.getElementById('fInsurancePayer')?.value || '';
+  // Type part of a name and the board narrows as you go; the browser also suggests full names.
+  const q = (id) => (document.getElementById(id)?.value || '').trim().toLowerCase();
+  const has = (text, term) => String(text || '').toLowerCase().includes(term);
+  const staffFilter = q('fInsuranceStaff'), payerFilter = q('fInsurancePayer');
   let staffRows = _lastPayerBoardData.filter(r => r.credtrack_staff);
-  if (staffFilter) staffRows = staffRows.filter(r => r.staff_id === staffFilter);
-  if (payerFilter) staffRows = staffRows.filter(r => r.payer_id === payerFilter);
+  if (staffFilter) staffRows = staffRows.filter(r => has(r.credtrack_staff.full_name, staffFilter));
+  if (payerFilter) staffRows = staffRows.filter(r => has(r.payers?.name, payerFilter));
 
-  const entityFilter = document.getElementById('fInsuranceEntity')?.value || '';
-  const entityPayerFilter = document.getElementById('fInsuranceEntityPayer')?.value || '';
+  const entityFilter = q('fInsuranceEntity'), entityPayerFilter = q('fInsuranceEntityPayer');
   let entityRows = _lastPayerBoardData.filter(r => !r.credtrack_staff);
-  if (entityFilter) entityRows = entityRows.filter(r => r.entity_name === entityFilter);
-  if (entityPayerFilter) entityRows = entityRows.filter(r => r.payer_id === entityPayerFilter);
+  if (entityFilter) entityRows = entityRows.filter(r => has(r.entity_name || 'Company-wide', entityFilter));
+  if (entityPayerFilter) entityRows = entityRows.filter(r => has(r.payers?.name, entityPayerFilter));
 
   staffTbody.innerHTML = staffRows.length
     ? staffRows.map(r => rowHtml(r, r.credtrack_staff.full_name)).join('')
