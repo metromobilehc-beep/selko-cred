@@ -680,7 +680,7 @@ window.selkoSharedAuthStorage = {
         </div>
 
         <div id="ovAttentionSection" style="display:none;">
-          <h3 style="font-size:16px;color:rgba(255,255,255,.66);margin-bottom:10px;">Needs attention</h3>
+          <h3 style="font-size:16px;color:rgba(255,255,255,.66);margin-bottom:10px;">Documents that need attention</h3>
           <div id="ovAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:20px;"></div>
           <button class="btn btn-sm btn-ghost" onclick="switchTab('exp')" style="color:#fff;border-color:rgba(255,255,255,.2);">View full expiration tracker →</button>
         </div>
@@ -719,7 +719,7 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
-        <h3 style="font-size:16px;color:rgba(255,255,255,.66);margin-bottom:10px;">Needs attention</h3>
+        <h3 style="font-size:16px;color:rgba(255,255,255,.66);margin-bottom:10px;">Providers that need attention</h3>
         <input type="text" id="ovCredAttentionSearch" placeholder="Search by name..." oninput="renderOvCredAttentionList()" style="width:100%;box-sizing:border-box;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);border-radius:8px;color:#fff;padding:8px 12px;font-size:15px;margin-bottom:12px;" />
         <div id="ovCredAttentionList" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px;max-height:300px;overflow-y:auto;padding-right:4px;"></div>
         <div id="ovCredAllClear" style="display:none;text-align:center;padding:20px 0;color:rgba(255,255,255,.58);">✓ Nothing needs attention right now.</div>
@@ -1216,7 +1216,30 @@ window.selkoSharedAuthStorage = {
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-top:12px;">Contact Selko to upgrade to Full.</p>
         </div>
 
-        <!-- Org-level credentialing info -->
+        <!-- Find-and-manage entry point for a provider's full credentialing
+             record. Originally just CAQH/DEA (hence the table columns
+             below), but since Full Profile now covers everything and the
+             old separate Edit modal was removed, this search is really the
+             front door to a provider's whole record, not a CAQH/DEA-
+             specific tool anymore — header updated to match. -->
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+          <h2>Provider credentialing</h2>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Find a provider to view or edit their full credentialing record — CAQH, DEA, license, and everything else lives in their Full Profile.</p>
+          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
+            <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
+            <select class="inline-select" id="credStaffDisciplineFilter" style="max-width:180px;" onchange="renderCredentialingStaffTable()">
+              <option value="">All disciplines</option>
+            </select>
+          </div>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Staff</th><th>CAQH ID</th><th>CAQH re-attestation due</th><th>DEA number</th><th>DEA expiration</th><th>Actions</th></tr></thead>
+              <tbody id="credentialingStaffTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+                <!-- Org-level credentialing info -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Organization credentialing profile</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">This is what gets pulled into payer credentialing applications automatically — fill it out once, reuse it on every form.</p>
@@ -1384,7 +1407,7 @@ window.selkoSharedAuthStorage = {
         <!-- Organization Notes — an always-visible running list, not a
              pop-out, so anyone in the Credentialing tab sees the current
              state of things without needing to click into anything. -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
           <h2>📝 Organization Notes</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">General organization-level credentialing notes — visible to your whole team at a glance.</p>
           <div style="display:flex;gap:8px;margin-bottom:14px;">
@@ -1418,7 +1441,7 @@ window.selkoSharedAuthStorage = {
              than one physical site. Matches how payer forms actually ask
              for this (Curative's own roster has Primary/Secondary/Tertiary
              Practice Location as separate fields). -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
           <h2>Practice locations</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Every physical location you see patients from. Mark one as Primary — that's the one payer forms usually ask for first, with additional locations as Secondary/Tertiary.</p>
           <div id="locationsListCred" style="margin-bottom:14px;"></div>
@@ -1457,7 +1480,7 @@ window.selkoSharedAuthStorage = {
         </div>
 
         <!-- Accreditations -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
+        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
           <h2>Accreditations</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Organization-level accreditation(s) — not tied to any one staff member.</p>
           <div id="accreditationsListCred" style="margin-bottom:14px;"></div>
@@ -1488,30 +1511,7 @@ window.selkoSharedAuthStorage = {
           </div>
         </div>
 
-        <!-- Find-and-manage entry point for a provider's full credentialing
-             record. Originally just CAQH/DEA (hence the table columns
-             below), but since Full Profile now covers everything and the
-             old separate Edit modal was removed, this search is really the
-             front door to a provider's whole record, not a CAQH/DEA-
-             specific tool anymore — header updated to match. -->
-        <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>Provider credentialing</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Find a provider to view or edit their full credentialing record — CAQH, DEA, license, and everything else lives in their Full Profile.</p>
-          <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-            <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
-            <select class="inline-select" id="credStaffDisciplineFilter" style="max-width:180px;" onchange="renderCredentialingStaffTable()">
-              <option value="">All disciplines</option>
-            </select>
-          </div>
-          <div class="tbl-wrap">
-            <table>
-              <thead><tr><th>Staff</th><th>CAQH ID</th><th>CAQH re-attestation due</th><th>DEA number</th><th>DEA expiration</th><th>Actions</th></tr></thead>
-              <tbody id="credentialingStaffTbody"></tbody>
-            </table>
-          </div>
-        </div>
-
-        <!-- Guides & Resources — process reference material, not staff/
+                <!-- Guides & Resources — process reference material, not staff/
              company data entry. Content lives in CRED_GUIDES (a plain JS
              array) rather than being hand-written per guide here, so
              adding the next one (revalidation, 855B, etc.) is just
@@ -1737,8 +1737,8 @@ window.selkoSharedAuthStorage = {
            "Acknowledge" only adds metadata (who/when reviewed it) and
            hides it from the default view — the row itself is untouched
            and always fully visible again via the toggle below. -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-        <h2>🔍 Sensitive data access log</h2>
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
+        <h2>🔍 SSN and CAQH login access log</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Every time anyone at your company views or enters a Social Security Number, it's logged here: who, when, and why. Acknowledging an entry marks it reviewed and hides it from the default view. Once an entry has been reviewed, one of your company's own admins can delete it. Unreviewed entries can't be deleted from here (removing a staff member also removes their entries, and that is recorded below too), Selko staff can never delete your entries, and every deletion is itself recorded permanently in the history below.</p>
         <div id="sensitiveLogDeleteBar" style="display:none;margin-bottom:10px;">
           <button class="btn btn-sm btn-ghost" onclick="showDeleteSensitiveLogModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">🗑 Delete reviewed entries…</button>
@@ -1765,8 +1765,8 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Document access audit log -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-        <h2>📋 Access log</h2>
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false">
+        <h2>📋 Document access log</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Who viewed or downloaded which staff documents, and when — including agency partners. Archiving hides old entries from the view below but never deletes them — the full record stays in the database permanently.</p>
         <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
           <select class="filter-sel" id="fAccessLogRole" onchange="loadAccessLog()">
@@ -1801,10 +1801,10 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <!-- Selko platform access: what Selko super admins did inside THIS company -->
-      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="platformAccessPanel">
-        <h2>🛡 Selko platform access</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">When someone from the Selko platform team opens your account, looks at it, or changes anything in it, it's recorded here automatically: who, when and what. Entries can't be edited or deleted in the app. Documents they open or download also appear in the Access log above. Your own admins' activity isn't listed here.</p>
+      <!-- Selko support activity: what Selko super admins did inside THIS company -->
+      <div class="dark-panel" style="margin-bottom:16px;" data-default-open="false" id="platformAccessPanel">
+        <h2>🛡 Selko support activity</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">When someone from the Selko platform team opens your account, looks at it, or changes anything in it, it's recorded here automatically: who, when and what. Entries can't be edited or deleted in the app. Documents they open or download also appear in the Document access log above. Your own admins' activity isn't listed here.</p>
         <div class="filter-bar" style="margin-bottom:10px;flex-wrap:wrap;">
           <select class="filter-sel" id="fPlatformLogKind" onchange="_paginationState.platformAccessLog = 1; loadPlatformAccessLog()">
             <option value="">Everything</option>
@@ -2397,7 +2397,7 @@ window.selkoSharedAuthStorage = {
 
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="supportAccessPanel">
         <h2>Selko support access</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko platform access. The one exception: Selko can always see the <em>names and categories</em> of document types your company creates, and how many companies made the same one, to decide what to add to the shared defaults. It never sees which company made them, or any documents or staff.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko support activity. The one exception: Selko can always see the <em>names and categories</em> of document types your company creates, and how many companies made the same one, to decide what to add to the shared defaults. It never sees which company made them, or any documents or staff.</p>
         <div id="supportAccessStatus"></div>
         <div id="supportAccessRequests"></div>
         <div id="supportAccessGrantForm"></div>
@@ -15421,7 +15421,7 @@ async function removeCompanyAccreditation(id, name) {
   toast(`Removed ${name}`);
 }
 
-// ── Deleting reviewed entries from the Sensitive data access log ───────────
+// ── Deleting reviewed entries from the SSN and CAQH login access log ───────────
 // Allowed only for an admin of THIS company (never for Selko staff viewing it),
 // only for entries that were already reviewed, and every deletion is recorded
 // permanently by the database (see "Deletion history"). The database enforces
@@ -17738,7 +17738,7 @@ async function loadCredentialingTab() {
   await loadCredentialingTemplates();
 }
 
-// ── Selko platform access panel (Compliance) ───────────────────────────────
+// ── Selko support activity panel (Compliance) ───────────────────────────────
 const PLATFORM_RECORD_NAMES = {
   companies: 'company settings', profiles: 'user account', company_locations: 'practice location',
   company_accreditations: 'accreditation', company_entities: 'entity', credtrack_staff: 'staff record',
@@ -17985,7 +17985,7 @@ const STAFF_HELP = [
       <ul>
         <li><strong>License state</strong> is a dropdown, and a license number can't be saved without one. It stays blank until you choose it, so a provider is never silently marked as Oklahoma.</li>
         <li><strong>Search NPI Registry</strong> first asks which state to search, pre-set to the profile's license state. Results say which state was searched and offer <strong>Search all states</strong> or <strong>Change state</strong>. A provider who lives in one state but is licensed in another is found by choosing the license state. Selecting a match fills in the NPI and marks it verified, since picking a specific name-and-location match from the official CMS registry is itself the verification.</li>
-        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is logged (see Compliance &gt; Sensitive data access log). Your admins can also be emailed each time (see Settings &gt; Sensitive data alerts).</li>
+        <li><strong>Enter SSN</strong> and <strong>CAQH credentials</strong> are both encrypted on save, and every view or entry is logged (see Compliance &gt; SSN and CAQH login access log). Your admins can also be emailed each time (see Settings &gt; Sensitive data alerts).</li>
       </ul>`,
   },
   {
@@ -18136,11 +18136,11 @@ const COMPLIANCE_HELP = [
     title: 'The access logs',
     subtitle: 'Who looked at what',
     html: `<ul>
-        <li><strong>Sensitive data access log</strong>: every time anyone views or enters a Social Security number or a CAQH login, with who, when and the reason they gave. <strong>Acknowledge</strong> marks an entry reviewed and hides it from the default view (tick <em>Show acknowledged entries</em> to see it again).</li>
+        <li><strong>SSN and CAQH login access log</strong>: every time anyone views or enters a Social Security number or a CAQH login, with who, when and the reason they gave. <strong>Acknowledge</strong> marks an entry reviewed and hides it from the default view (tick <em>Show acknowledged entries</em> to see it again).</li>
         <li><strong>Deleting reviewed entries</strong>: only an admin of your own company can delete entries, and only ones already reviewed. Use <strong>Delete reviewed entries…</strong> for everything older than a number of days, or <strong>Delete</strong> on a single reviewed row. You give a reason and type DELETE. Selko staff can never delete your entries. Every deletion is recorded permanently in the <strong>Deletion history</strong> under the log (who, when, how many, which dates and the reason), and that record can't be edited or removed. Removing a staff member also removes their entries, and that shows up in the history too.</li>
-        <li><strong>Access log</strong>: who viewed or downloaded which documents, including agency partners, with filters and an exportable PDF or CSV. Archiving hides old entries but never deletes them.</li>
+        <li><strong>Document access log</strong>: who viewed or downloaded which documents, including agency partners, with filters and an exportable PDF or CSV. Archiving hides old entries but never deletes them.</li>
         <li><strong>Screening checks</strong> (OIG, OFAC and SAM.gov): each has a <strong>Run check now</strong> button and a history of every run, which is your record that the check was done. They also run by themselves once a month. A match is a lead to investigate, never a finding.</li>
-        <li><strong>Selko platform access</strong>: whenever someone from the Selko team opens your account, looks at a tab or changes anything in it, it is recorded here with their name, the time and what they did. Entries can't be edited or deleted in the app, and you can export them as a CSV. Your own admins' activity isn't listed here.</li>
+        <li><strong>Selko support activity</strong>: whenever someone from the Selko team opens your account, looks at a tab or changes anything in it, it is recorded here with their name, the time and what they did. Entries can't be edited or deleted in the app, and you can export them as a CSV. Your own admins' activity isn't listed here.</li>
       </ul>`,
   },
 ];
@@ -18256,7 +18256,7 @@ const SETTINGS_HELP = [
     subtitle: 'Settings > Privacy & Access',
     html: `<p>You decide whether Selko support can open your account to help you, what they can do and for how long.</p>
       <ul>
-        <li><strong>Require my permission</strong> (recommended) means support has to ask first. If you turn it off, support can open your account without asking, though every visit is still recorded under Compliance &gt; Selko platform access. Only an admin of your company can change this.</li>
+        <li><strong>Require my permission</strong> (recommended) means support has to ask first. If you turn it off, support can open your account without asking, though every visit is still recorded under Compliance &gt; Selko support activity. Only an admin of your company can change this.</li>
         <li><strong>Allow access</strong>: choose <em>View only</em> (they can look but not change anything) or <em>View and help</em> (they can also make changes), and how long: 1 hour up to 7 days. Add a note about what you need help with.</li>
         <li><strong>Requests</strong>: when support asks, you see a banner on Overview and the request in this panel. You choose Allow (with your own level and duration, which can be less than they asked for) or Deny.</li>
         <li><strong>End access now</strong> stops it immediately. Access also ends by itself at the time shown, and the History table keeps every request, approval, denial and expiry.</li>
@@ -19637,6 +19637,33 @@ async function startRosterTemplateUpload() {
   }
 }
 
+// When pdf-lib finds no form fields, there are two very different causes: the PDF really is flat
+// (scanned or printed), or it DOES contain form fields but is damaged or saved by an unusual tool
+// so pdf-lib cannot read them. The raw file shows the difference: a real form carries
+// "/AcroForm" or "/Widget" markers. Say which it is, so nobody concludes a good form is useless.
+function pdfLooksLikeItHasFormFields(bytes) {
+  try {
+    const u8 = new Uint8Array(bytes);
+    let txt = '';
+    for (let i = 0; i < u8.length; i += 32768) txt += String.fromCharCode.apply(null, u8.subarray(i, Math.min(i + 32768, u8.length)));
+    return /\/AcroForm|\/Widget/.test(txt);
+  } catch (_) { return false; }
+}
+function noFillableFieldsHtml(bytes, nextSteps) {
+  if (pdfLooksLikeItHasFormFields(bytes)) {
+    return `This PDF looks like it has form fields, but they could not be read. The file may be damaged, or saved by a program that writes forms in an unusual way.
+        <br><br>
+        <strong>Try this:</strong>
+        <br>&bull; Open the PDF in Chrome or Adobe Reader, choose <strong>Print &rarr; Save as PDF</strong> (or Save As in Acrobat), and upload the new copy.
+        <br>&bull; If it still fails, ask the payer to send the form again.
+        <br>&bull; You can always keep the original on file instead: ${nextSteps}`;
+  }
+  return `This PDF has no fillable form fields. It looks like a scanned or printed page, not a fillable form. Only PDFs with real form fields can be filled in automatically.
+        <br><br>
+        <strong>What to do instead:</strong>
+        <br>&bull; ${nextSteps}`;
+}
+
 async function processTemplateFile(name, file, err) {
   try {
     const bytes = await file.arrayBuffer();
@@ -19657,11 +19684,7 @@ async function processTemplateFile(name, file, err) {
       // Previously a dead end here — the error correctly explained why it
       // failed but gave no next step, leaving someone with a scanned/flat
       // PDF with nowhere to go. Now gives two real options instead.
-      err.innerHTML = `This PDF has no fillable form fields — it looks like a static or scanned document, not a fillable form. Only PDFs with real form fields can be auto-filled this way.
-        <br><br>
-        <strong>What to do instead:</strong>
-        <br>• Ask the payer if they have a fillable version of this same form — many payers have both, and only send the flat one by default.
-        <br>• If not, you can still keep this PDF on file for reference — upload it under <strong>Credentialing Files</strong> above instead of trying to auto-fill it.`;
+      err.innerHTML = noFillableFieldsHtml(bytes, `upload it under <strong>Credentialing Files</strong> above and fill it in by hand. Or ask the payer for a fillable version of the same form; many have both.`);
       err.style.display = 'block';
       return;
     }
@@ -19750,11 +19773,7 @@ async function processHrTemplateFile(name, file, err) {
     }));
 
     if (!fieldNames.length) {
-      err.innerHTML = `This PDF has no fillable form fields — it looks like a static or scanned document, not a fillable form. Only PDFs with real form fields can be auto-filled this way.
-        <br><br>
-        <strong>What to do instead:</strong>
-        <br>• Run it through Acrobat's "Prepare Form" tool (Tools → Prepare Form) to auto-detect and add real fillable fields, then re-upload the result.
-        <br>• If that's not an option, upload it as a custom document instead — employees can still acknowledge it, just without auto-fill.`;
+      err.innerHTML = noFillableFieldsHtml(bytes, `upload it as a custom document instead. Employees can still acknowledge it, just without auto-fill. For a scanned form, Acrobat&#39;s <strong>Tools &rarr; Prepare Form</strong> can add fields.`);
       err.style.display = 'block';
       return;
     }
@@ -24282,9 +24301,9 @@ async function showSuperAdminQuickSwitch(profile, currentCompanyRow) {
   document.body.appendChild(modal);
 }
 
-// ── Selko platform access log ──────────────────────────────────────────────
+// ── Selko support activity log ──────────────────────────────────────────────
 // When a super admin works inside a company that isn't their own, that company
-// gets a record of it (Compliance > Selko platform access). Data CHANGES are
+// gets a record of it (Compliance > Selko support activity). Data CHANGES are
 // recorded by the database itself, so they can't be skipped by any screen in
 // this app. What the database can't see — a super admin merely OPENING an
 // account or looking at a tab — is recorded here through the logging function.
@@ -24521,7 +24540,7 @@ async function loadSupportAccessPanel() {
 
   // 1. current state, in plain words
   if (!required) {
-    statusEl.innerHTML = `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;font-size:14px;color:#fbbf24;">Right now Selko support can open your account <strong>without asking</strong>. Every visit is still recorded under Compliance &gt; Selko platform access. Turn on "Require my permission" below to change that.</div>`;
+    statusEl.innerHTML = `<div style="background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;font-size:14px;color:#fbbf24;">Right now Selko support can open your account <strong>without asking</strong>. Every visit is still recorded under Compliance &gt; Selko support activity. Turn on "Require my permission" below to change that.</div>`;
   } else if (active.length) {
     statusEl.innerHTML = active.map(g => `<div style="background:rgba(74,222,128,.1);border:1px solid rgba(74,222,128,.35);border-radius:8px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
       <div style="font-size:14px;color:#fff;"><strong style="color:#4ade80;">Selko support can access your account</strong> until ${fmtSupportDate(g.expires_at)}<div style="font-size:13px;color:rgba(255,255,255,.62);">${g.scope === 'edit' ? 'View and help: they can also make changes' : 'View only: they can look but not change anything'}${g.decided_by_name ? ' · allowed by ' + hrOnbEsc(g.decided_by_name) : ''}${g.note ? ' · “' + hrOnbEsc(g.note) + '”' : ''}</div></div>
@@ -24585,7 +24604,7 @@ async function grantSupportAccessNow() {
   const note = document.getElementById('supportGrantNote').value.trim();
   const label = SUPPORT_DURATIONS.find(d => d[0] === hours)?.[1] || hours + ' hours';
   const ok = await showCustomConfirm(
-    `Allow Selko support to ${scope === 'edit' ? 'view your account and make changes in it' : 'view your account (they will not be able to change anything)'} for ${label}?\n\nEvery visit and change is recorded under Compliance > Selko platform access, and you can end access at any time.`,
+    `Allow Selko support to ${scope === 'edit' ? 'view your account and make changes in it' : 'view your account (they will not be able to change anything)'} for ${label}?\n\nEvery visit and change is recorded under Compliance > Selko support activity, and you can end access at any time.`,
     { okLabel: 'Allow access', cancelLabel: 'Cancel' });
   if (!ok) return;
   const { error } = await sb.rpc('grant_support_access', { p_scope: scope, p_hours: hours, p_note: note || null });
@@ -24616,7 +24635,7 @@ async function revokeSupportAccessGrant(grantId) {
 async function setSupportConsentRequired(required) {
   const box = document.getElementById('supportConsentToggle');
   if (!required) {
-    const ok = await showCustomConfirm('Let Selko support open your account without asking first?\n\nEvery visit and change will still be recorded in Compliance > Selko platform access, but you will no longer approve each visit.', { okLabel: 'Stop requiring permission', cancelLabel: 'Keep requiring it', danger: true });
+    const ok = await showCustomConfirm('Let Selko support open your account without asking first?\n\nEvery visit and change will still be recorded in Compliance > Selko support activity, but you will no longer approve each visit.', { okLabel: 'Stop requiring permission', cancelLabel: 'Keep requiring it', danger: true });
     if (!ok) { if (box) box.checked = true; return; }
   }
   const { data: changed, error } = await sb.from('companies').update({ support_consent_required: required }).eq('id', currentCompany.id).select('id');
