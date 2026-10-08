@@ -2984,6 +2984,43 @@ function extractErrorMessage(x) {
   return String(x);
 }
 
+// Plain-language version of an error for people who are not developers. Says what it means and what to do; keeps a short technical detail
+// at the end so a screenshot is still useful to Selko support. Messages the app wrote itself (already readable sentences) pass through as-is.
+function friendlyError(err, action) {
+  const raw = String(extractErrorMessage(err) || '').trim();
+  const code = String((err && err.code) || '');
+  const low = raw.toLowerCase();
+  const did = action ? `Couldn't ${action}. ` : '';
+  const detail = raw ? ` (Details: ${raw.length > 140 ? raw.slice(0, 140) + '…' : raw})` : '';
+  if (/failed to fetch|networkerror|load failed|network request failed|timeout|timed out|fetch failed/.test(low))
+    return did + "Couldn't reach the server. Check your internet connection and try again.";
+  if (/jwt expired|not authenticated|invalid jwt|refresh token|session.*(expired|missing)|auth session missing/.test(low))
+    return did + 'Your session has expired. Sign in again, then retry.';
+  // A sentence the app itself wrote (an Error thrown without a database code) already explains what happened: keep it, it is more specific.
+  if (err instanceof Error && !code && !err.hint && !err.details && /\s/.test(raw) && raw.length > 20) return raw;
+  if (code === '42501' || /row-level security|permission denied|not allowed|violates row/.test(low))
+    return did + "You don't have permission to do this. Ask an admin on your account, or contact Selko support if you think you should.";
+  if (code === '23505' || /duplicate key|already exists/.test(low))
+    return did + 'That already exists, so nothing new was added.';
+  if (code === '23503' || /foreign key/.test(low))
+    return did + "It's still in use somewhere else, so it can't be changed or removed yet.";
+  if (code === '23502' || code === '23514' || /null value in column|violates check constraint/.test(low))
+    return did + 'A required field is missing or has a value that is not allowed. Check the form and try again.';
+  if (code === '42P01' || code === 'PGRST202' || code === 'PGRST204' || /does not exist|schema cache|could not find the/.test(low))
+    return did + "This feature isn't switched on for your account yet. Contact Selko support." + detail;
+  // Raw database/API errors carry a code or hint; anything else is something the app (or the browser) wrote.
+  const looksDatabase = !!(err && typeof err === 'object' && (err.code || err.hint || err.details) && !(err instanceof Error && !err.code));
+  if (!looksDatabase && raw) return raw;
+  return did + 'Something went wrong. Try again, and if it keeps happening contact Selko support.' + detail;
+}
+
+// "Run this .sql file" only means something to the platform owner. Everyone else is told to contact support.
+function setupMissingMessage(file) {
+  return currentProfile?.is_super_admin
+    ? `Not set up yet: run ${file} in Supabase first.`
+    : "This feature isn't switched on for your company yet. Contact Selko support.";
+}
+
 async function runOigExclusionCheck() {
   const btn = document.getElementById('oigRunCheckBtn');
   const statusEl = document.getElementById('oigCheckStatus');
@@ -3043,7 +3080,7 @@ async function runOigExclusionCheck() {
 async function saveOigPreferredDay() {
   const day = parseInt(document.getElementById('oigPreferredDaySelect').value, 10);
   const { error } = await sb.from('companies').update({ oig_check_preferred_day: day }).eq('id', currentCompany.id);
-  if (error) { toast('Could not save: ' + error.message, true); return; }
+  if (error) { toast('Could not save: ' + friendlyError(error), true); return; }
   currentCompany.oig_check_preferred_day = day;
   toast(`Preferred check day saved — day ${day} of each month.`);
 }
@@ -3130,7 +3167,7 @@ async function loadSuperSamStatus() {
     }
     el.innerHTML = html;
   } catch (e) {
-    el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? 'The SAM.gov check is not installed yet (run sam-exclusions.sql).' : 'Could not read the list status: ' + ((e && e.message) || e);
+    el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? setupMissingMessage('sam-exclusions.sql') : 'Could not read the list status: ' + ((e && e.message) || e);
   }
 }
 
@@ -3325,7 +3362,7 @@ async function loadSuperLeieStatus() {
     if (lastRow.status === 'failed') html += `<div style="margin-top:6px;color:#f87171;">Latest attempt failed (${new Date(lastRow.loaded_at).toLocaleString()}): ${hrOnbEsc(lastRow.error || 'unknown error')}</div>`;
     el.innerHTML = html;
   } catch (e) {
-    el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? 'The OIG LEIE check is not installed yet (run leie-exclusions.sql).' : 'Could not read the list status: ' + ((e && e.message) || e);
+    el.textContent = /does not exist|schema cache/i.test((e && e.message) || '') ? setupMissingMessage('leie-exclusions.sql') : 'Could not read the list status: ' + ((e && e.message) || e);
   }
 }
 
@@ -3334,7 +3371,7 @@ async function loadSuperLeieCompanies() {
   if (!tbody) return;
   const { data, error } = await sb.rpc('platform_leie_overview');
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run leie-exclusions.sql).' : 'Could not load: ' + hrOnbEsc(error.message || '')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache|could not find/i.test(error.message || '') ? setupMissingMessage('leie-exclusions.sql') : 'Could not load: ' + hrOnbEsc(error.message || '')}</td></tr>`;
     return;
   }
   if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:rgba(255,255,255,.58);">No companies.</td></tr>'; return; }
@@ -4063,7 +4100,7 @@ async function loadSecretsPanel() {
   if (!body) return;
   if (!currentProfile?.is_super_admin) { body.textContent = 'Platform owner only.'; return; }
   const { data, error } = await sb.from('cron_secret_registry').select('*').order('label');
-  if (error) { body.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run cron-secret-registry.sql).' : 'Could not load: ' + (error.message || ''); return; }
+  if (error) { body.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? setupMissingMessage('cron-secret-registry.sql') : 'Could not load: ' + (error.message || ''); return; }
   _secretRows = data || [];
   renderSecretsPanel();
 }
@@ -4207,7 +4244,7 @@ async function loadSamKeyStatus() {
   const el = document.getElementById('superSamKeyStatus');
   if (!el) return;
   const { data, error } = await sb.rpc('sam_key_get');
-  if (error) { el.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run sam-exclusions.sql).' : 'Could not load: ' + (error.message || ''); return; }
+  if (error) { el.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? setupMissingMessage('sam-exclusions.sql') : 'Could not load: ' + (error.message || ''); return; }
   const row = Array.isArray(data) ? data[0] : data;
   el.innerHTML = samKeyStatusHtml(row);
   const setOn = document.getElementById('samKeySetOn'), exp = document.getElementById('samKeyExpires');
@@ -4251,7 +4288,7 @@ async function loadSuperSamCompanies() {
   if (!tbody) return;
   const { data, error } = await sb.rpc('platform_sam_overview');
   if (error) {
-    tbody.innerHTML = `<tr><td colspan="8" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache|could not find/i.test(error.message || '') ? 'Not installed yet (run sam-exclusions.sql).' : 'Could not load: ' + hrOnbEsc(error.message || '')}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache|could not find/i.test(error.message || '') ? setupMissingMessage('sam-exclusions.sql') : 'Could not load: ' + hrOnbEsc(error.message || '')}</td></tr>`;
     return;
   }
   if (!data || !data.length) { tbody.innerHTML = '<tr><td colspan="8" style="color:rgba(255,255,255,.58);">No companies.</td></tr>'; return; }
@@ -5616,7 +5653,7 @@ async function submitLoginIssueReport() {
     message,
     screenshot_path: screenshotPath,
   });
-  if (error) { toast('Could not submit: ' + error.message, true); return; }
+  if (error) { toast('Could not submit: ' + friendlyError(error), true); return; }
 
   window._loginIssueScreenshotDataUrl = null;
   document.getElementById('loginIssueModal')?.remove();
@@ -5715,7 +5752,7 @@ async function submitIssueReport() {
     message,
     screenshot_path: screenshotPath,
   });
-  if (error) { toast('Could not submit: ' + error.message, true); return; }
+  if (error) { toast('Could not submit: ' + friendlyError(error), true); return; }
 
   window._reportIssueScreenshotDataUrl = null;
   document.getElementById('reportIssueModal')?.remove();
@@ -5850,7 +5887,7 @@ async function reopenHrOnboarding(employeeId, employeeName) {
   if (!confirm(`Reopen onboarding for ${employeeName}?\n\nThey'll be able to log in and add or correct information — whatever they already submitted stays filled in, so they're not starting over.`)) return;
 
   const { error } = await sb.from('hr_employees').update({ onboarding_status: 'not_started' }).eq('id', employeeId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   toast(`✓ Reopened — ${employeeName} will see the onboarding form next time they log in`);
   document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
@@ -8380,7 +8417,7 @@ async function generateAuditPacket() {
   } catch (e) {
     setStatus('');
     goBtn.disabled = false;
-    toast('Could not generate packet: ' + e.message, true);
+    toast('Could not generate packet: ' + friendlyError(e), true);
   }
 }
 
@@ -8639,7 +8676,7 @@ async function loadAdminDocs() {
 
 async function unarchiveDoc(id) {
   const { data: changed, error } = await sb.from('credtrack_documents').update({ archived: false, archived_at: null }).eq('id', id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
   toast('Moved back to active documents');
   await loadAdminDocs();
@@ -8729,7 +8766,7 @@ async function saveDocLabel(docId) {
   const fail = (m) => { errEl.textContent = m; errEl.style.display = 'block'; };
   if (!value) { fail('Enter which one this is, for example TX.'); return; }
   const { data: changed, error } = await sb.from('credtrack_documents').update({ qualifier: value }).eq('id', docId).select('id');
-  if (error) { fail(/qualifier/i.test(error.message || '') ? 'Not set up yet: run supersede-documents.sql in Supabase first.' : error.message); return; }
+  if (error) { fail(/qualifier/i.test(error.message || '') ? setupMissingMessage('supersede-documents.sql') : error.message); return; }
   if (!changed || !changed.length) { fail("Nothing was saved. You may not have permission to edit this document."); return; }
   document.getElementById('editLabelModal')?.remove();
   await loadAdminDocs();
@@ -8754,7 +8791,11 @@ function editDocType(docId, currentTypeId) {
       <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:18px;">Fixes a document that was accidentally uploaded under the wrong type — e.g. a license verification screenshot uploaded as a plain "License" instead of "License Verification Record," which is why the verified checkmark wasn't showing.</div>
       <div style="margin-bottom:18px;">
         <label class="inline-label">Document type</label>
-        <select class="inline-select" id="editTypeSelect" style="width:100%;">${options}</select>
+        <select class="inline-select" id="editTypeSelect" style="width:100%;" onchange="onEditTypeSelectChanged()">${options}</select>
+      </div>
+      <div id="editTypeOtherWrap" style="display:none;margin:-6px 0 18px;">
+        <label class="inline-label">What is this document? <span style="color:#fca5a5;">*</span></label>
+        <input class="inline-input" type="text" id="editTypeOther" maxlength="60" placeholder="e.g. Driver certification" autocomplete="off" style="width:100%;box-sizing:border-box;" />
       </div>
       <div id="editTypeErr" style="color:#f87171;font-size:14px;margin-bottom:10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
@@ -8766,12 +8807,34 @@ function editDocType(docId, currentTypeId) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
+function onEditTypeSelectChanged() {
+  const t = docTypes.find((d) => d.id == document.getElementById('editTypeSelect').value);
+  document.getElementById('editTypeOtherWrap').style.display = isOtherDocType(t) ? 'block' : 'none';
+}
+
+// The label is the name lists and reminders show. It follows the type when the type is corrected, unless someone
+// gave the document a name of their own, which is kept.
+function labelAfterTypeChange(currentLabel, oldTypeName, newTypeName, otherName) {
+  if (otherName) return otherName;
+  const cur = String(currentLabel || '').trim();
+  const isDefault = !cur || cur === 'Document' || cur.toLowerCase() === 'other' || (oldTypeName && cur === oldTypeName);
+  return isDefault ? newTypeName : cur;
+}
+
 async function saveDocTypeAssignment(docId) {
   const newTypeId = document.getElementById('editTypeSelect').value;
   const errEl = document.getElementById('editTypeErr');
+  const newType = docTypes.find((d) => d.id == newTypeId);
+  const otherName = isOtherDocType(newType) ? cleanOtherDescription(document.getElementById('editTypeOther')?.value) : '';
+  if (isOtherDocType(newType) && !otherName) { errEl.textContent = 'Say what this document is (for example "Driver certification"). "Other" does not say.'; errEl.style.display = 'block'; return; }
+
+  const { data: cur } = await sb.from('credtrack_documents').select('label, document_type_id').eq('id', docId).maybeSingle();
+  const oldTypeName = (docTypes.find((d) => d.id == (cur && cur.document_type_id)) || {}).name || '';
+  const newLabel = labelAfterTypeChange(cur && cur.label, oldTypeName, (newType && newType.name) || 'Document', otherName);
 
   const { data: changed, error } = await sb.from('credtrack_documents').update({
     document_type_id: newTypeId,
+    label: newLabel,
   }).eq('id', docId).select('id');
 
   if (error) {
@@ -8795,7 +8858,7 @@ async function verifyDoc(id) {
   const { data: changed, error } = await sb.from('credtrack_documents').update({
     verified: true, verified_by: currentProfile.full_name, verified_at: new Date().toISOString()
   }).eq('id', id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
   toast('Document verified');
   await loadAdminDocs();
@@ -8810,7 +8873,7 @@ async function unverifyDoc(id, staffName, typeName) {
   const { data: changed, error } = await sb.from('credtrack_documents').update({
     verified: false, verified_by: null, verified_at: null
   }).eq('id', id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
   toast('Document unverified');
   await loadAdminDocs();
@@ -8871,7 +8934,7 @@ async function viewFile(filePath, documentId) {
     logDocumentAccess(documentId, 'view');
   } catch(e) {
     if (newTab) newTab.close();
-    toast('Could not open file: ' + e.message, true);
+    toast('Could not open file: ' + friendlyError(e), true);
   }
 }
 
@@ -8887,7 +8950,7 @@ async function downloadFile(filePath, fileName, documentId) {
     a.remove();
     logDocumentAccess(documentId, 'download');
   } catch(e) {
-    toast('Could not download file: ' + e.message, true);
+    toast('Could not download file: ' + friendlyError(e), true);
   }
 }
 
@@ -8921,7 +8984,7 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
     URL.revokeObjectURL(url);
     toast('✓ Download ready');
   } catch(e) {
-    toast('Download failed: ' + e.message, true);
+    toast('Download failed: ' + friendlyError(e), true);
   }
 }
 
@@ -8937,7 +9000,7 @@ async function deleteDoc(id, filePath) {
     toast('Document deleted');
     await loadAdminDocs();
     if (docRow?.staff_id) await checkStaffCompliance(docRow.staff_id);
-  } catch(e) { toast('Error: ' + e.message, true); }
+  } catch(e) { toast(friendlyError(e), true); }
 }
 
 // ── Bulk document download (Pro) ──
@@ -9860,7 +9923,7 @@ async function toggleExemptCheck(staffId, checkKey, makeExempt) {
     : current.filter(k => k !== checkKey);
 
   const { data: changed, error } = await sb.from('credtrack_staff').update({ exempt_from_checks: updated }).eq('id', staffId).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
 
   s.exempt_from_checks = updated;
@@ -10500,7 +10563,7 @@ async function handlePayrollScreenshotSelected(input) {
 
     showPayrollImportReviewModal(result.staff);
   } catch (e) {
-    toast('Screenshot scan failed: ' + e.message, true);
+    toast('Screenshot scan failed: ' + friendlyError(e), true);
   }
 }
 
@@ -12012,7 +12075,7 @@ function handleCsvFileSelected(input) {
         const rows = XLSX.utils.sheet_to_json(sheet, { defval: '' }); // uses row 1 as headers automatically
         processCsvRows(rows);
       } catch (err) {
-        toast('Could not read that Excel file: ' + err.message, true);
+        toast('Could not read that Excel file: ' + friendlyError(err), true);
       }
     };
     reader.readAsArrayBuffer(file);
@@ -12025,7 +12088,7 @@ function handleCsvFileSelected(input) {
         processCsvRows(results.data);
       },
       error: (err) => {
-        toast('Could not read that CSV file: ' + err.message, true);
+        toast('Could not read that CSV file: ' + friendlyError(err), true);
       },
     });
   }
@@ -12137,7 +12200,7 @@ async function confirmCsvImport() {
   }));
 
   const { error } = await sb.from('credtrack_staff').insert(rows);
-  if (error) { document.getElementById('csvPreviewModal')?.remove(); toast('Import failed: ' + error.message, true); return; }
+  if (error) { document.getElementById('csvPreviewModal')?.remove(); toast('Import failed: ' + friendlyError(error), true); return; }
 
   await loadStaffTable();
   await loadAdminFilters();
@@ -12286,41 +12349,84 @@ async function findExistingStaffMatches(firstName, lastName, email) {
   return out;
 }
 
-async function editStaff(id) {
+// One form instead of a chain of browser pop-ups (name, then email, then title, one box at a time, where cancelling any box lost the others).
+function editStaff(id) {
   const s = staffList.find(s => s.id === id);
   if (!s) return;
+  document.getElementById('editStaffModal')?.remove();
+  const synthetic = isSyntheticStaffEmail(s.email);
+  const modal = document.createElement('div');
+  modal.id = 'editStaffModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);max-height:90vh;overflow-y:auto;">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:14px;">Edit ${hrOnbEsc(s.full_name || 'staff member')}</div>
+      <label class="inline-label" for="esName">Full name</label>
+      <input type="text" class="inline-input" id="esName" value="${hrOnbEsc(s.full_name || '')}" style="width:100%;box-sizing:border-box;margin-bottom:10px;" />
+      <label class="inline-label" for="esEmail">Email</label>
+      <input type="email" class="inline-input" id="esEmail" value="${hrOnbEsc(s.email || '')}" style="width:100%;box-sizing:border-box;margin-bottom:${synthetic ? '4' : '10'}px;" />
+      ${synthetic ? `<div style="font-size:13px;color:#fcd34d;margin-bottom:10px;">This is an internal login ID (no real email address). Changing or clearing it will break their existing login. Leave it as it is unless you are deliberately replacing their login.</div>` : ''}
+      <label class="inline-label" for="esTitle">Job title</label>
+      <input type="text" class="inline-input" id="esTitle" value="${hrOnbEsc(s.job_title || '')}" style="width:100%;box-sizing:border-box;margin-bottom:10px;" />
+      <div id="esErr" style="color:#f87171;font-size:13px;margin-bottom:8px;display:none;"></div>
+      <div id="esLoginNotice" style="display:none;background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4);border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:13px;color:#fde68a;"></div>
+      <div id="esButtons" style="display:flex;gap:8px;">
+        <button class="btn btn-teal" id="esSave" onclick="saveEditStaff('${hrOnbEsc(id)}')" style="flex:1;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('editStaffModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', (e) => { if (e.target === modal) modal.remove(); });
+  modal.addEventListener('keydown', (e) => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') { e.preventDefault(); saveEditStaff(id); } });
+  document.getElementById('esName').focus();
+}
 
-  const name  = prompt('Full name:', s.full_name);
-  if (name === null) return;
-  const email = isSyntheticStaffEmail(s.email)
-    ? prompt(`Email:\n\nThis is currently an internal login ID (no real email), not an address — changing or clearing it will break their existing login. Leave it as-is unless you're intentionally replacing their login.`, s.email)
-    : prompt('Email:', s.email || '');
-  if (email === null) return;
-  const title = prompt('Job title:', s.job_title || '');
-  if (title === null) return;
+// loginChoice: undefined on the first press; 'change' or 'keep' after the person answers the login-email notice shown in the form.
+async function saveEditStaff(id, loginChoice) {
+  const s = staffList.find(s => s.id === id);
+  if (!s) return;
+  const errEl = document.getElementById('esErr'), notice = document.getElementById('esLoginNotice');
+  errEl.style.display = 'none';
+  const name = document.getElementById('esName').value.trim();
+  const emailIn = document.getElementById('esEmail').value.trim();
+  const title = document.getElementById('esTitle').value.trim();
+  if (!name) { errEl.textContent = 'Enter a name.'; errEl.style.display = 'block'; return; }
+  if (emailIn && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailIn)) { errEl.textContent = 'That does not look like an email address. Check it for a typo.'; errEl.style.display = 'block'; return; }
 
   // Editing the email HERE changes only this staff record. If the person already has a login, that login stays under the old address, so
   // they would be told to sign in with an email that does not exist as a login, and any invitation or password would still go to the old
-  // address. That is how a corrected email ends up not working. Offer "Change login email" (which changes both) instead.
-  let finalEmail = email.trim() || null;
+  // address. Offer "Change login email" (which changes both) instead.
+  let finalEmail = emailIn || null;
   let openChangeLogin = false;
   const wasEmail = String(s.email || '').trim();
   if (s.profile_id && !isSyntheticStaffEmail(s.email) && (finalEmail || '').toLowerCase() !== wasEmail.toLowerCase()) {
-    openChangeLogin = confirm(`${s.full_name} already has a login under ${wasEmail || 'this email'}.\n\nEditing the email here changes only this staff record, NOT their login. They would still have to sign in as ${wasEmail}, and invitations and passwords would still go there.\n\nPress OK to open "Change login email" (it changes both), or Cancel to keep their email as it is. Your other edits are saved either way.`);
+    if (!loginChoice) {
+      notice.innerHTML = `<strong>${hrOnbEsc(s.full_name)}</strong> already has a login under <strong>${hrOnbEsc(wasEmail || 'this email')}</strong>. Editing the email here changes only this staff record, <strong>not their login</strong>. They would still sign in as ${hrOnbEsc(wasEmail)}, and invitations and passwords would still go there.
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+          <button class="btn btn-sm btn-teal" onclick="saveEditStaff('${hrOnbEsc(id)}','change')">Save and open "Change login email"</button>
+          <button class="btn btn-sm btn-ghost" onclick="saveEditStaff('${hrOnbEsc(id)}','keep')" style="color:#fff;border-color:rgba(255,255,255,.2);">Keep their email as it is</button>
+        </div>
+        <div style="margin-top:6px;opacity:.8;">Your other edits are saved either way.</div>`;
+      notice.style.display = 'block';
+      document.getElementById('esButtons').style.display = 'none';
+      return;
+    }
+    openChangeLogin = loginChoice === 'change';
     finalEmail = s.email || null;                       // never change only half of it
   }
 
   const { data: changed, error } = await sb.from('credtrack_staff').update({
-    full_name: name.trim() || s.full_name,
+    full_name: name,
     email:     finalEmail,
-    job_title: title.trim() || null,
+    job_title: title || null,
   }).eq('id', id).select('id');
 
-  if (error) { toast('Error: ' + error.message, true); return; }
-  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
+  if (error) { errEl.textContent = friendlyError(error, 'save these changes'); errEl.style.display = 'block'; return; }
+  if (!changed || !changed.length) { errEl.textContent = "Nothing was saved. You may not have permission to edit this person's record."; errEl.style.display = 'block'; return; }
+  document.getElementById('editStaffModal')?.remove();
   toast(name + ' updated');
   await loadStaffTable();
-  if (openChangeLogin) showManageLoginModal(s.id, (name.trim() || s.full_name), s.profile_id, wasEmail);
+  if (openChangeLogin) showManageLoginModal(s.id, name, s.profile_id, wasEmail);
 }
 
 async function toggleActive(id, active) {
@@ -12439,7 +12545,7 @@ async function deleteStaff(id, fullName) {
 
     toast(fullName + ' deleted');
     await loadStaffTable();
-  } catch(e) { toast('Delete failed: ' + e.message, true); }
+  } catch(e) { toast('Delete failed: ' + friendlyError(e), true); }
 }
 
 // ── Staff type picker (clinician / office / admin) ──
@@ -12490,7 +12596,7 @@ async function confirmDisciplineCred(id) {
   // showing the correct value.
   const { data: changed, error } = await sb.from('credtrack_staff')
     .update({ discipline: newDiscipline, license_type: newDiscipline }).eq('id', id).select('id');
-  if (error) { document.getElementById('disciplineModalCred').remove(); toast('Error: ' + error.message, true); return; }
+  if (error) { document.getElementById('disciplineModalCred').remove(); toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { document.getElementById('disciplineModalCred').remove(); toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   await logStaffFieldChanges(id, [
     { field: 'discipline',   old: before.discipline,   new: newDiscipline },
@@ -12583,7 +12689,7 @@ async function confirmStaffTypeCred(id, name) {
   // Nothing was actually written here, so there's no stale data risk in
   // closing immediately — the reordering below only matters for the
   // paths after a write genuinely succeeds.
-  if (error) { document.getElementById('staffTypeModalCred')?.remove(); toast('Error: ' + error.message, true); return; }
+  if (error) { document.getElementById('staffTypeModalCred')?.remove(); toast(friendlyError(error), true); return; }
 
   await logStaffFieldChanges(id, [
     { field: 'staff_type', old: before.staff_type, new: newType },
@@ -12637,7 +12743,7 @@ async function confirmStaffTypeCred(id, name) {
 async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
   const { data: changed, error } = await sb.from('credtrack_staff')
     .update({ exclude_from_compliance: !currentlyExcluded }).eq('id', staffId).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   toast(currentlyExcluded
     ? 'Back to normal compliance tracking'
@@ -12697,7 +12803,7 @@ async function runNpiSearch(staffId, fullName, state) {
     if (result.error) { toast('NPI lookup failed: ' + result.error, true); return; }
     showNpiResultsModal(staffId, fullName, result.results || [], result.usedLastNameOnlyFallback, state || '');
   } catch (e) {
-    toast('NPI lookup failed: ' + e.message, true);
+    toast('NPI lookup failed: ' + friendlyError(e), true);
   }
 }
 
@@ -12751,7 +12857,7 @@ async function applyNpiResult(staffId, npi) {
     npi_verified_at: new Date().toISOString(),
   }).eq('id', staffId).select('id');
   document.getElementById('npiResultsModal')?.remove();
-  if (error) { toast('Error saving NPI: ' + error.message, true); return; }
+  if (error) { toast('Error saving NPI: ' + friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
   // The lookup is opened from right next to this same input, inside the
   // still-open profile form — without updating it directly here, the box
@@ -12789,7 +12895,7 @@ async function sendMissingDocsChecklist(staffId, fullName) {
       toast(`No required document types are configured yet — set some as Required in Settings first.`, true);
     }
   } catch(e) {
-    toast('Send failed: ' + e.message, true);
+    toast('Send failed: ' + friendlyError(e), true);
   }
 }
 
@@ -12868,7 +12974,7 @@ async function resetPassword(email, fullName, staffId) {
 
     showTempPasswordModal(fullName, email, tempPassword, result.email_sent, result.email_error);
   } catch(e) {
-    toast('Reset failed: ' + e.message, true);
+    toast('Reset failed: ' + friendlyError(e), true);
   }
 }
 
@@ -12967,7 +13073,7 @@ async function reissueStaffPassword(staffId, fullName, profileId, email, skipCon
     if (result.error) throw new Error(result.error);
     showTempPasswordModal(fullName, email, tempPassword, result.notification_sent, result.notification_error);
   } catch (e) {
-    toast('Reissue failed: ' + e.message, true);
+    toast('Reissue failed: ' + friendlyError(e), true);
   }
 }
 
@@ -13049,7 +13155,7 @@ function useExistingDocType(id) {
 async function unhideSuggestedDocType(id) {
   const t = (_dtPool || []).find((x) => Number(x.id) === Number(id));
   const { error } = await sb.from('company_hidden_document_types').delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   hideAddDocType();
   toast(`"${t ? t.name : 'It'}" is back in your list.`);
   if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
@@ -13986,7 +14092,7 @@ async function exportAccessLogCsv() {
   if (actionFilter) q = q.eq('action', actionFilter);
 
   const { data, error } = await q;
-  if (error) { toast('Export failed: ' + error.message, true); return; }
+  if (error) { toast('Export failed: ' + friendlyError(error), true); return; }
   if (!data?.length) { toast('No access log entries to export', true); return; }
 
   const escapeCsv = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
@@ -14071,7 +14177,7 @@ async function bulkArchiveAccessLog() {
     .is('archived_at', null)
     .select('id');
 
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`✓ Archived ${data?.length || 0} entr${(data?.length || 0) === 1 ? 'y' : 'ies'}`);
   await loadAccessLog();
 }
@@ -14175,7 +14281,7 @@ async function saveCaqhReminderSetting(field, value) {
   const { data, error } = await sb.from('companies').update({ [field]: value }).eq('id', currentCompany.id).select('id');
   if (error) {
     const missing = /column .* does not exist|schema cache/i.test(error.message || '');
-    if (msg) { msg.style.color = '#f87171'; msg.textContent = missing ? 'Not set up yet: run caqh-reminders.sql in Supabase first.' : 'Could not save: ' + extractErrorMessage(error); }
+    if (msg) { msg.style.color = '#f87171'; msg.textContent = missing ? setupMissingMessage('caqh-reminders.sql') : 'Could not save: ' + extractErrorMessage(error); }
     back(); return;
   }
   if (!data || !data.length) { if (msg) { msg.style.color = '#f87171'; msg.textContent = "Nothing was saved. You may not have permission to change this company's settings."; } back(); return; }
@@ -14191,7 +14297,7 @@ async function toggleCaqhExempt(discipline, isExempt) {
     : current.filter(d => d !== discipline);
 
   const { error } = await sb.from('companies').update({ caqh_exempt_disciplines: updated }).eq('id', currentCompany.id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   currentCompany.caqh_exempt_disciplines = updated;
   loadDisciplinesPanel();
@@ -14240,7 +14346,7 @@ async function addCompanyDiscipline() {
 
   const updated = [...current, value];
   const { error } = await sb.from('companies').update({ available_disciplines: updated }).eq('id', currentCompany.id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   currentCompany.available_disciplines = updated;
   input.value = '';
@@ -14348,7 +14454,7 @@ async function removeCompanyDiscipline(discipline) {
 
   const updated = getCompanyDisciplines().filter(d => d !== discipline);
   const { error } = await sb.from('companies').update({ available_disciplines: updated }).eq('id', currentCompany.id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   currentCompany.available_disciplines = updated;
   loadDisciplinesPanel();
@@ -14423,7 +14529,7 @@ async function removeCompanyEntity(id, name) {
   if (!confirm(`Permanently delete "${name}" from your entities list? Any existing insurance records already under this name are untouched — this only removes it from the list.`)) return;
 
   const { error } = await sb.from('company_entities').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   loadEntitiesPanel();
   toast(`✓ "${name}" deleted`);
 }
@@ -14553,7 +14659,7 @@ async function addProfessionalReference(staffId) {
 async function deleteProfessionalReference(id, staffId) {
   if (!confirm('Delete this reference?')) return;
   const { error } = await sb.from('staff_professional_references').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Reference deleted');
   await loadProfessionalReferences(staffId);
 }
@@ -14598,7 +14704,7 @@ async function submitVerifyReference(referenceId, staffId) {
     verification_method: document.getElementById('verifyMethod').value,
     verification_notes: document.getElementById('verifyNotes').value.trim() || null,
   }).eq('id', referenceId).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this reference.", true); return; }
 
   await loadProfessionalReferences(staffId);
@@ -14744,7 +14850,7 @@ async function addEmploymentHistory(staffId) {
 async function deleteEmploymentHistory(id, staffId) {
   if (!confirm('Delete this employment record?')) return;
   const { error } = await sb.from('staff_employment_history').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Removed');
   await loadEmploymentHistory(staffId);
 }
@@ -14852,7 +14958,7 @@ async function addAdditionalLicense(staffId) {
 async function deleteAdditionalLicense(id, staffId) {
   if (!confirm('Delete this license record?')) return;
   const { error } = await sb.from('staff_additional_licenses').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Removed');
   await loadAdditionalLicenses(staffId);
 }
@@ -14995,7 +15101,7 @@ async function addEducationTraining(staffId) {
 async function deleteEducationTraining(id, staffId) {
   if (!confirm('Delete this education/training record?')) return;
   const { error } = await sb.from('staff_education_training').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Removed');
   await loadEducationTraining(staffId);
 }
@@ -15113,7 +15219,7 @@ async function addHospitalPrivilege(staffId) {
 async function deleteHospitalPrivilege(id, staffId) {
   if (!confirm('Delete this hospital privilege record?')) return;
   const { error } = await sb.from('staff_hospital_privileges').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Removed');
   await loadHospitalPrivileges(staffId);
 }
@@ -15228,7 +15334,7 @@ async function addMalpracticeClaim(staffId) {
 async function deleteMalpracticeClaim(id, staffId) {
   if (!confirm('Delete this claim record?')) return;
   const { error } = await sb.from('staff_malpractice_claims').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Removed');
   await loadMalpracticeClaims(staffId);
 }
@@ -15346,7 +15452,7 @@ async function addCredentialingNote(staffId) {
     note_text: text,
     created_by: currentProfile.full_name || currentProfile.email,
   });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   input.value = '';
   await loadNotesLog(staffId || null);
@@ -15355,7 +15461,7 @@ async function addCredentialingNote(staffId) {
 async function deleteCredentialingNote(noteId, staffId) {
   if (!confirm('Delete this note?')) return;
   const { error } = await sb.from('credentialing_notes').delete().eq('id', noteId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   await loadNotesLog(staffId);
 }
 
@@ -15426,7 +15532,7 @@ async function uploadCredentialingFile(staffId) {
 
 async function downloadCredentialingFile(fileId, storagePath) {
   const { data, error } = await sb.storage.from(CREDENTIALING_FILES_BUCKET).createSignedUrl(storagePath, 60);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   window.open(data.signedUrl, '_blank');
 }
 
@@ -15434,7 +15540,7 @@ async function deleteCredentialingFile(fileId, storagePath, staffId) {
   if (!confirm('Delete this file?')) return;
   await sb.storage.from(CREDENTIALING_FILES_BUCKET).remove([storagePath]);
   const { error } = await sb.from('credentialing_files').delete().eq('id', fileId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('File deleted');
   if (staffId) {
     await renderCredentialingFilesList(document.getElementById('providerCredFilesList'), staffId);
@@ -15505,7 +15611,7 @@ async function addOrgNoteInline() {
     note_text: text,
     created_by: currentProfile.full_name || currentProfile.email,
   });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   input.value = '';
   await loadOrgNotesInline();
@@ -15514,7 +15620,7 @@ async function addOrgNoteInline() {
 async function deleteOrgNoteInline(noteId) {
   if (!confirm('Delete this note?')) return;
   const { error } = await sb.from('credentialing_notes').delete().eq('id', noteId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   await loadOrgNotesInline();
 }
 
@@ -15585,7 +15691,7 @@ async function addCompanyLocation() {
     is_primary: isFirst, // the very first location added is automatically Primary
     sort_order: count || 0,
   });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   ['newLocationName','newLocationAddress','newLocationCity','newLocationState','newLocationZip','newLocationCounty','newLocationPhone'].forEach(id => {
     document.getElementById(id).value = '';
@@ -15598,7 +15704,7 @@ async function setPrimaryLocation(locationId) {
   // Only one location can be Primary at a time — clear the old one first.
   await sb.from('company_locations').update({ is_primary: false }).eq('company_id', currentCompany.id);
   const { error } = await sb.from('company_locations').update({ is_primary: true }).eq('id', locationId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Primary location updated');
   await loadCompanyLocationsPanel();
 }
@@ -15606,7 +15712,7 @@ async function setPrimaryLocation(locationId) {
 async function deleteCompanyLocation(locationId, name) {
   if (!confirm(`Delete ${name}?`)) return;
   const { error } = await sb.from('company_locations').delete().eq('id', locationId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`Removed ${name}`);
   await loadCompanyLocationsPanel();
 }
@@ -15659,7 +15765,7 @@ async function addCompanyAccreditation() {
     effective_date: effective,
     expiration_date: expiry,
   });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   document.getElementById('accBodyCustom').value = '';
   document.getElementById('accNumber').value = '';
@@ -15672,7 +15778,7 @@ async function addCompanyAccreditation() {
 async function removeCompanyAccreditation(id, name) {
   if (!confirm(`Remove ${name} from your accreditations?`)) return;
   const { error } = await sb.from('company_accreditations').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   loadAccreditationsPanel();
   toast(`Removed ${name}`);
 }
@@ -15844,7 +15950,7 @@ async function acknowledgeAccessLogEntry(id) {
     acknowledged_at: new Date().toISOString(),
     acknowledged_by: currentProfile.full_name || currentProfile.email,
   }).eq('id', id).eq('company_id', currentCompany.id).select('id'); // same scoping: an entry from another company can't be marked reviewed from here
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   // The database quietly changes nothing (and reports no error) for someone who isn't allowed
   // to review — e.g. the platform owner inside another company. Don't claim success then.
   if (!changed || !changed.length) { toast("Nothing was changed — only this company's own admins can mark an entry reviewed.", true); return; }
@@ -16155,7 +16261,7 @@ async function saveSupersedeSetting(value) {
   const { data, error } = await sb.from('companies').update({ supersede_old_documents: value }).eq('id', currentCompany.id).select('id');
   if (error) {
     const missing = /column .* does not exist|schema cache/i.test(error.message || '');
-    if (msg) { msg.style.color = '#f87171'; msg.textContent = missing ? 'Not set up yet: run supersede-documents.sql in Supabase first.' : 'Could not save: ' + extractErrorMessage(error); }
+    if (msg) { msg.style.color = '#f87171'; msg.textContent = missing ? setupMissingMessage('supersede-documents.sql') : 'Could not save: ' + extractErrorMessage(error); }
     back(); return;
   }
   if (!data || !data.length) { if (msg) { msg.style.color = '#f87171'; msg.textContent = "Nothing was saved. You may not have permission to change this company's settings."; } back(); return; }
@@ -16175,7 +16281,7 @@ function renderCompanyCategoriesPanel(opts, overridesMap) {
   _companyCategoriesCache = opts.own || [];
   const btn = document.getElementById('addCompanyCategoryBtn');
   if (!opts.supported) {
-    list.innerHTML = '<div style="font-size:14px;color:#fbbf24;">Not set up yet: run company-doc-type-categories.sql in Supabase to turn this on.</div>';
+    list.innerHTML = `<div style="font-size:14px;color:#fbbf24;">${setupMissingMessage('company-doc-type-categories.sql')}</div>`;
     if (btn) btn.disabled = true;
     return;
   }
@@ -16202,7 +16308,7 @@ async function addCompanyDocTypeCategory() {
   if (!name) { companyCategoryMsg('Enter a category name first.', false); return; }
   if (name.length > 60) { companyCategoryMsg('Keep the name to 60 characters or fewer.', false); return; }
   const opts = await loadCategoryOptions();
-  if (!opts.supported) { companyCategoryMsg('Not set up yet: run company-doc-type-categories.sql in Supabase first.', false); return; }
+  if (!opts.supported) { companyCategoryMsg(setupMissingMessage('company-doc-type-categories.sql'), false); return; }
   const lower = name.toLowerCase();
   if (lower === 'other') { companyCategoryMsg('"Other" already exists for everyone, so just pick that one.', false); return; }
   if (opts.shared.some((c) => String(c.name).trim().toLowerCase() === lower)) { companyCategoryMsg(`"${name}" is already a shared category available to you: just pick it from the list.`, false); return; }
@@ -16517,7 +16623,7 @@ async function updateDocTypeCategory(id, category) {
     if (existing) ({ error } = await sb.from('company_document_type_overrides').update({ category: value }).eq('id', existing.id));
     else if (value !== null) ({ error } = await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, category: value }));
     if (error) {
-      toast(/category/i.test(error.message || '') ? 'Company categories are not set up yet: run company-doc-type-categories.sql in Supabase first.' : 'Error: ' + error.message, true);
+      toast(/category/i.test(error.message || '') ? setupMissingMessage('company-doc-type-categories.sql') : 'Error: ' + error.message, true);
       await loadDocTypesTable(); return;
     }
     toast(value ? `Filed under "${value}" for your company only` : `Back to the shared heading "${picked.category || 'Other'}"`);
@@ -16527,7 +16633,7 @@ async function updateDocTypeCategory(id, category) {
   }
   if (blockedFromEditingGlobalDocType(id)) return;
   const { error } = await sb.from('document_types').update({ category }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Moved to ' + category);
   await loadDocTypesTable();
 }
@@ -16536,7 +16642,7 @@ async function updateDocTypeName(id, name) {
   if (blockedFromEditingGlobalDocType(id)) { await loadDocTypesTable(); return; } // revert the input's stale edited text back to the real value
   if (!name.trim()) return;
   const { error } = await sb.from('document_types').update({ name: name.trim() }).eq('id', id);
-  if (error) toast('Error: ' + error.message, true);
+  if (error) toast(friendlyError(error), true);
   else toast('Document type updated');
 }
 
@@ -16558,10 +16664,10 @@ async function toggleDocTypeRequired(id, currentlyRequired, isGlobal, isProOnly)
     const { error } = existing
       ? await sb.from('company_document_type_overrides').update({ is_required: newValue }).eq('id', existing.id)
       : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, is_required: newValue });
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   } else {
     const { error } = await sb.from('document_types').update({ is_required: newValue }).eq('id', id);
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   }
   toast(newValue ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
   await loadDocTypesTable();
@@ -16576,7 +16682,7 @@ function effectiveMultiple(t, overridesMap) {
 // A company's choice for a built-in type is its own override; the platform default is changed only by Selko.
 async function toggleDocTypeMultiple(id, current, isGlobal) {
   const newValue = !current;
-  const notSetUp = (e) => /allow_multiple|qualifier/i.test((e && e.message) || '') ? 'Not set up yet: run supersede-documents.sql in Supabase first.' : 'Error: ' + e.message;
+  const notSetUp = (e) => /allow_multiple|qualifier/i.test((e && e.message) || '') ? setupMissingMessage('supersede-documents.sql') : 'Error: ' + e.message;
   if (isGlobal && !currentProfile?.is_super_admin) {
     const { data: existing } = await sb.from('company_document_type_overrides').select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
     const { error } = existing
@@ -16595,7 +16701,7 @@ async function toggleDocTypeMultiple(id, current, isGlobal) {
 async function toggleDocTypeStaffUpload(id, currentlyAllowed) {
   if (blockedFromEditingGlobalDocType(id)) return;
   const { error } = await sb.from('document_types').update({ staff_can_upload: !currentlyAllowed }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(currentlyAllowed
     ? 'Now admin-only — staff will no longer see this in their upload form'
     : 'Staff can now upload this themselves again');
@@ -16644,14 +16750,14 @@ async function bulkSetDocTypeVisibility(typeId, typeName, showForAll) {
   // panel visibility bulk actions: no rows means visible to everyone
   // (existing behavior), so "Show for all" just needs the delete.
   const { error: delErr } = await sb.from('company_hidden_document_types').delete().eq('document_type_id', typeId);
-  if (delErr) { toast('Error: ' + delErr.message, true); return; }
+  if (delErr) { toast(friendlyError(delErr), true); return; }
 
   if (!showForAll) {
     const { data: allCompanies } = await sb.from('companies').select('id');
     const rows = (allCompanies || []).map(c => ({ document_type_id: typeId, company_id: c.id }));
     if (rows.length) {
       const { error: insErr } = await sb.from('company_hidden_document_types').insert(rows);
-      if (insErr) { toast('Error: ' + insErr.message, true); return; }
+      if (insErr) { toast(friendlyError(insErr), true); return; }
     }
   }
 
@@ -16663,11 +16769,11 @@ async function toggleDocTypeVisibilityForCompany(typeId, companyId, nowVisible) 
   if (nowVisible) {
     const { error } = await sb.from('company_hidden_document_types')
       .delete().eq('document_type_id', typeId).eq('company_id', companyId);
-    if (error) toast('Error: ' + error.message, true);
+    if (error) toast(friendlyError(error), true);
   } else {
     const { error } = await sb.from('company_hidden_document_types')
       .insert({ document_type_id: typeId, company_id: companyId });
-    if (error) toast('Error: ' + error.message, true);
+    if (error) toast(friendlyError(error), true);
   }
 }
 
@@ -16675,7 +16781,7 @@ async function toggleDocTypeHidden(id, currentlyHidden) {
   if (currentlyHidden) {
     const { error } = await sb.from('company_hidden_document_types')
       .delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
     toast('Unhidden — back in your uploads and reports');
   } else {
     // Hiding a type does not delete its documents, but they stop showing in compliance checks and their expiry reminders stop. Say so first.
@@ -16689,7 +16795,7 @@ async function toggleDocTypeHidden(id, currentlyHidden) {
     }
     const { error } = await sb.from('company_hidden_document_types')
       .insert({ document_type_id: id, company_id: currentCompany.id });
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
     toast('Hidden from your uploads and reports — other companies are unaffected');
   }
   await loadDocTypesTable();
@@ -16777,7 +16883,7 @@ async function duplicateDocTypeToCustomize(id) {
     await loadDocTypes();
     await loadAdminFilters();
   } catch (e) {
-    toast('Error: ' + e.message, true);
+    toast(friendlyError(e), true);
   }
 }
 
@@ -16799,7 +16905,7 @@ async function toggleDocTypePartnerVisible(id, currentlyVisible) {
   const t = docTypes.find(x => x.id === id);
   if (partnerVisibilityLockedFor(t)) { explainPartnerVisibilityLocked(); return; }
   const { data: changed, error } = await sb.from('document_types').update({ partner_visible: !currentlyVisible }).eq('id', id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to change this document type.", true); return; }
   toast(!currentlyVisible ? 'Now visible to agency partners' : 'Hidden from agency partners');
   // The partner panel draws from the in-memory docTypes list, so that list has
@@ -16868,7 +16974,7 @@ async function showDocTypePartnerScopeModal(id, name, currentAgencyIds) {
 async function confirmDocTypePartnerScope(id) {
   const checked = Array.from(document.querySelectorAll('input[name="partnerScopeOption"]:checked')).map(el => el.value);
   const { data: changed, error } = await sb.from('document_types').update({ partner_visible_agencies: checked.length ? checked : null }).eq('id', id).select('id');
-  if (error) { document.getElementById('partnerScopeModalCred').remove(); toast('Error: ' + error.message, true); return; }
+  if (error) { document.getElementById('partnerScopeModalCred').remove(); toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { document.getElementById('partnerScopeModalCred').remove(); toast("Nothing was saved — you may not have permission to change this document type.", true); return; }
   await loadDocTypes();
   await loadDocTypesTable();
@@ -16949,7 +17055,7 @@ async function confirmDocTypeScope(id, isGlobal, scope) {
   if (editingPlatformWide) {
     if (!confirm(`This changes the "applies to" default for this document type for EVERY company on the platform, not just the one you're currently viewing.\n\nChange the platform-wide default anyway?`)) return;
     const { error } = await sb.from('document_types').update({ required_for_disciplines: newDisciplines }).eq('id', id);
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   } else if (isGlobal) {
     // Company-scoped, whether the caller is a regular admin (the only path
     // they've ever had) or a super admin choosing "my company only" —
@@ -16960,12 +17066,12 @@ async function confirmDocTypeScope(id, isGlobal, scope) {
     const { error } = existing
       ? await sb.from('company_document_type_overrides').update({ required_for_disciplines: newDisciplines }).eq('id', existing.id)
       : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, required_for_disciplines: newDisciplines, is_required: true });
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   } else {
     // A company-owned (non-global) type: the company already owns this row
     // outright, so this has always safely edited it directly — unchanged.
     const { error } = await sb.from('document_types').update({ required_for_disciplines: newDisciplines }).eq('id', id);
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   }
 
   await loadDocTypesTable();
@@ -16976,7 +17082,7 @@ async function confirmDocTypeScope(id, isGlobal, scope) {
 async function toggleDocTypeTier(id, currentTier) {
   const newTier = currentTier === 'pro' ? 'standard' : 'pro';
   const { error } = await sb.from('document_types').update({ tier: newTier }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Tier updated to ' + newTier);
   if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
   if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
@@ -16998,7 +17104,7 @@ async function deleteDocType(id, name) {
   const { error } = await sb.from('document_types').delete().eq('id', id);
   if (error) {
     if (error.code === '23503' || /foreign key/i.test(error.message || '')) { await showCustomConfirm(docTypeInUseMessage(name, 0), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
-    toast('Error: ' + error.message, true); return;
+    toast(friendlyError(error), true); return;
   }
   toast(name + ' deleted');
   if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
@@ -17014,7 +17120,7 @@ async function deleteDocType(id, name) {
 async function deleteGlobalDocType(id, name) {
   const { count, error: countErr } = await sb.from('credtrack_documents')
     .select('id', { count: 'exact', head: true }).eq('document_type_id', id);
-  if (countErr) { toast('Error checking usage: ' + countErr.message, true); return; }
+  if (countErr) { toast('Error checking usage: ' + friendlyError(countErr), true); return; }
 
   if (count > 0) {
     alert(`Can't delete "${name}" — it's actively in use. ${count} uploaded document${count === 1 ? '' : 's'} across your companies ${count === 1 ? 'is' : 'are'} tagged with this type, and deleting it would orphan ${count === 1 ? 'that reference' : 'those references'}.\n\nIf this type genuinely shouldn't exist anymore, use "Manage visibility" to hide it company by company instead — that's reversible and doesn't touch anything already uploaded.`);
@@ -17031,7 +17137,7 @@ async function deleteGlobalDocType(id, name) {
   if (error) {
     // The count above can miss companies the platform owner is not allowed to see into, so the database has the last word.
     if (error.code === '23503' || /foreign key/i.test(error.message || '')) { await showCustomConfirm(docTypeInUseMessage(name, 0), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
-    toast('Error: ' + error.message, true); return;
+    toast(friendlyError(error), true); return;
   }
   toast(`✓ "${name}" deleted platform-wide`);
   await loadPlatformDocTypes();
@@ -17133,7 +17239,7 @@ async function deletePayer(id, name) {
     if (!ok) return;
   } else if (!confirm(`Delete payer "${name}"? Nothing is attached to it, so no records will be lost.`)) return;
   const { error } = await sb.from('payers').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(name + ' deleted');
   await loadPayersTable();
   await loadPayerBoard();
@@ -17356,7 +17462,7 @@ async function updateCredtrackAgencyName(id, name) {
   if (!trimmed) { toast('Agency name cannot be empty', true); await loadCredtrackAgencies(); return; }
   if (!(await confirmIfDuplicateName('credtrack_agencies', trimmed, 'agency', id))) { await loadCredtrackAgencies(); return; }
   const { error } = await sb.from('credtrack_agencies').update({ name: trimmed }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Agency name updated');
   await loadCredtrackAgencies();
   await loadAgencyAssignmentsTable();
@@ -17364,7 +17470,7 @@ async function updateCredtrackAgencyName(id, name) {
 
 async function toggleCredtrackAgencyActive(id, active) {
   const { error } = await sb.from('credtrack_agencies').update({ active: !active }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(active ? 'Agency deactivated' : 'Agency reactivated');
   await loadCredtrackAgencies();
   await loadAgencyAssignmentsTable();
@@ -17382,7 +17488,7 @@ async function deleteCredtrackAgency(id, name) {
   await sb.from('agency_partner_users').delete().eq('agency_id', id);
   await sb.from('credtrack_staff_agencies').delete().eq('agency_id', id);
   const { error } = await sb.from('credtrack_agencies').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(name + ' deleted');
   await loadCredtrackAgencies();
   await loadAgencyAssignmentsTable();
@@ -17568,12 +17674,12 @@ async function saveAgencyAssignments(agencyId) {
     const { error } = await sb.from('credtrack_staff_agencies').insert(
       toAdd.map(staffId => ({ company_id: currentCompany.id, staff_id: staffId, agency_id: agencyId }))
     );
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   }
   if (toRemove.length) {
     const { error } = await sb.from('credtrack_staff_agencies')
       .delete().eq('agency_id', agencyId).eq('company_id', currentCompany.id).in('staff_id', toRemove);
-    if (error) { toast('Error: ' + error.message, true); return; }
+    if (error) { toast(friendlyError(error), true); return; }
   }
 
   await loadAgencyAssignmentsTable();
@@ -17735,7 +17841,7 @@ async function sendPartnerInvite(id, name, email) {
     }
     await loadPartnerUsersTable();
   } catch(e) {
-    toast('Setup failed: ' + e.message, true);
+    toast('Setup failed: ' + friendlyError(e), true);
   }
 }
 
@@ -17772,13 +17878,13 @@ async function resetPartnerPassword(id, name, email) {
 
     showTempPasswordModal(name, email, tempPassword, result.email_sent, result.email_error);
   } catch(e) {
-    toast('Reset failed: ' + e.message, true);
+    toast('Reset failed: ' + friendlyError(e), true);
   }
 }
 
 async function togglePartnerUserActive(id, active) {
   const { error } = await sb.from('agency_partner_users').update({ active: !active }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(active ? 'Partner login deactivated' : 'Partner login reactivated');
   await loadPartnerUsersTable();
 }
@@ -17786,7 +17892,7 @@ async function togglePartnerUserActive(id, active) {
 async function deletePartnerUser(id, name) {
   if (!confirm(`Remove partner login for ${name}? This cannot be undone.`)) return;
   const { error } = await sb.from('agency_partner_users').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(name + ' removed');
   await loadPartnerUsersTable();
 }
@@ -18050,7 +18156,7 @@ async function loadPlatformAccessLog() {
 
 async function exportPlatformAccessLogCsv() {
   const { data, error } = await fetchPlatformAccessLog(10000);
-  if (error) { toast('Export failed: ' + error.message, true); return; }
+  if (error) { toast('Export failed: ' + friendlyError(error), true); return; }
   if (!data?.length) { toast('Nothing to export', true); return; }
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   let csv = 'Date/Time,Who,Email,Type,What happened,Table,Fields changed\n';
@@ -19464,7 +19570,7 @@ function guessHrDefaultMapping(fieldName) {
 
 async function updateCredTemplateCategory(id, category) {
   const { error } = await sb.from('credentialing_templates').update({ category: category || null }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   // Update the in-memory cache directly rather than a full re-fetch —
   // same reasoning as everywhere else this cache is used: keeps the
   // template list fast even as more get added.
@@ -20104,7 +20210,7 @@ async function editHrTemplate(id, name) {
       updateMappingProgress(); // reflect the actual saved mapping just applied above, not the fresh guesses it overrode
     }
   } catch (e) {
-    toast('Could not open this template for editing: ' + e.message, true);
+    toast('Could not open this template for editing: ' + friendlyError(e), true);
     _editingHrTemplateId = null;
   }
 }
@@ -20218,7 +20324,7 @@ async function deleteHrTemplate(id, name) {
   if (!confirm(`Delete the "${name}" template? Any documents already generated from it are unaffected.`)) return;
   const { data: tmpl } = await sb.from('hr_templates').select('storage_path').eq('id', id).maybeSingle();
   const { error } = await sb.from('hr_templates').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (tmpl?.storage_path) await sb.storage.from('hr-documents').remove([tmpl.storage_path]);
   toast(`Deleted "${name}"`);
   _hrTemplatesCache = null;
@@ -20431,7 +20537,7 @@ async function generateFilledHrForm(templateId, employeeId) {
       : `✓ ${tmpl.name} generated and filed for ${employee.full_name}`);
     await showHrEmployeeSheet(employeeId); // refresh so the new document shows in their file list
   } catch (e) {
-    toast('Could not generate form: ' + e.message, true);
+    toast('Could not generate form: ' + friendlyError(e), true);
   }
 }
 
@@ -20790,7 +20896,7 @@ async function deleteHrEmployee(employeeId, employeeName) {
     _hrEmployeesCache = null;
     await loadHrEmployees();
   } catch (e) {
-    toast('Delete failed: ' + e.message, true);
+    toast('Delete failed: ' + friendlyError(e), true);
   }
 }
 
@@ -20999,7 +21105,7 @@ async function markHrDocumentAcknowledged(docId, employeeId) {
     acknowledged_at: new Date().toISOString(),
     acknowledged_by: currentProfile.id,
   }).eq('id', docId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Marked acknowledged');
   await showHrEmployeeSheet(employeeId);
 }
@@ -21013,7 +21119,7 @@ async function markHrDocumentReviewed(docId, employeeId) {
     acknowledged_at: new Date().toISOString(),
     acknowledged_by: currentProfile.id,
   }).eq('id', docId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Marked reviewed');
   await showHrEmployeeSheet(employeeId);
 }
@@ -21080,7 +21186,7 @@ async function deleteHrDocument(docId, storagePath, employeeId, docName) {
     toast(`✓ "${docName}" deleted`);
     await showHrEmployeeSheet(employeeId);
   } catch (e) {
-    toast('Error: ' + e.message, true);
+    toast(friendlyError(e), true);
   }
 }
 
@@ -21253,7 +21359,7 @@ async function loadAllRemindersFor(recipientType) {
 async function deleteReminder(reminderId, recipientType) {
   if (!confirm('Delete this reminder? This cannot be undone.')) return;
   const { error } = await sb.from('staff_reminders').delete().eq('id', reminderId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Reminder deleted');
   await loadAllRemindersFor(recipientType);
 }
@@ -21272,7 +21378,7 @@ async function markReminderDone(reminderId, recipientType) {
     acknowledged_at: new Date().toISOString(),
     acknowledged_by: currentProfile.id,
   }).eq('id', reminderId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Marked done');
   await loadAllRemindersFor(recipientType);
 }
@@ -22008,7 +22114,7 @@ async function deleteCredentialingTemplate(id, name) {
   if (!confirm(`Delete the "${name}" template? Any forms already generated from it are unaffected.`)) return;
   const { data: tmpl } = await sb.from('credentialing_templates').select('storage_path').eq('id', id).maybeSingle();
   const { error } = await sb.from('credentialing_templates').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (tmpl?.storage_path) await sb.storage.from('credentialing-templates').remove([tmpl.storage_path]);
   toast(`Deleted "${name}"`);
   _credTemplatesCache = null; // template removed — force a fresh fetch
@@ -22296,7 +22402,7 @@ async function generateFilledForm(templateId) {
       : `✓ Filled form generated for ${staff.full_name}`);
     showGenerationGuidance('Filled form');
   } catch (e) {
-    toast('Could not generate form: ' + e.message, true);
+    toast('Could not generate form: ' + friendlyError(e), true);
   }
 }
 
@@ -22327,7 +22433,7 @@ async function generateCompanyOnlyForm(templateId) {
       : `✓ Filled form generated`);
     showGenerationGuidance('Filled form');
   } catch (e) {
-    toast('Could not generate form: ' + e.message, true);
+    toast('Could not generate form: ' + friendlyError(e), true);
   }
 }
 
@@ -22523,7 +22629,7 @@ async function generateBatchFilledForms() {
       : `✓ ${templates.length} form(s) generated and zipped for ${staff.full_name}`);
     showGenerationGuidance('Forms');
   } catch (e) {
-    toast('Could not generate forms: ' + e.message, true);
+    toast('Could not generate forms: ' + friendlyError(e), true);
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '📦 Generate selected as zip'; }
   }
@@ -22618,7 +22724,7 @@ async function togglePrescriberDiscipline(discipline, turnOn) {
   // different setting saved moments ago (same approach as the enrollment
   // notification setting).
   const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
-  if (readErr) { toast('Error: ' + readErr.message, true); return; }
+  if (readErr) { toast(friendlyError(readErr), true); return; }
   const cv = { ...((fresh && fresh.custom_vars) || {}) };
   const same = x => String(x).trim().toLowerCase() === discipline.trim().toLowerCase();
   const cur = cv.prescriberOverrides || {};
@@ -22631,7 +22737,7 @@ async function togglePrescriberDiscipline(discipline, turnOn) {
   cv.prescriberOverrides = { on, off };
 
   const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this company's settings.", true); return; }
   currentCompany.custom_vars = cv;
   loadDisciplinesPanel();
@@ -22777,7 +22883,7 @@ async function emailInNetworkSummary() {
     .eq('status', 'in_network')
     .order('created_at', { ascending: false });
 
-  if (error) { toast('Could not load network data: ' + error.message, true); return; }
+  if (error) { toast('Could not load network data: ' + friendlyError(error), true); return; }
 
   const inNetwork = data || [];
   if (!inNetwork.length) { toast('No staff are confirmed in-network yet.', true); return; }
@@ -23528,7 +23634,7 @@ async function exportEnrollmentHistoryCsv(networkId) {
   let q = sb.from('enrollment_history').select('*').eq('company_id', currentCompany.id).order('created_at', { ascending: true }).limit(50000);
   if (networkId) q = q.eq('network_id', networkId);
   const { data, error } = await q;
-  if (error) { toast('Export failed: ' + error.message, true); return; }
+  if (error) { toast('Export failed: ' + friendlyError(error), true); return; }
   if (!data?.length) { toast('Nothing to export yet', true); return; }
   const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   let csv = 'Date/Time,Person or entity,Payer,Type,Detail,Status,By,Archived on,Archived by,Archive reason,Enrollment record deleted\n';
@@ -23775,7 +23881,7 @@ async function savePayerNetwork() {
 async function deletePayerNetwork(id) {
   if (!confirm('Delete this network record?\n\nIts notes and change history are kept permanently under Enrollment history, together with a final copy of the record.')) return;
   const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Record deleted');
   await loadPayerBoard();
 }
@@ -23967,7 +24073,7 @@ async function saveStaffPayerNetworkRecord(staffId) {
 async function deleteStaffPayerNetworkRecord(id, staffId) {
   if (!confirm('Delete this network record?\n\nIts notes and change history are kept permanently under Enrollment history, together with a final copy of the record.')) return;
   const { error } = await sb.from('staff_payer_networks').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Record deleted');
   await loadStaffPayerNetwork(staffId);
 }
@@ -24715,10 +24821,10 @@ async function saveSensitiveAlertSettings() {
   }
   // Re-read custom_vars first so this can't overwrite another setting saved a moment ago.
   const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
-  if (readErr) { toast('Error: ' + readErr.message, true); return; }
+  if (readErr) { toast(friendlyError(readErr), true); return; }
   const cv = { ...((fresh && fresh.custom_vars) || {}), sensitiveAlerts: { level, extra_emails: emails } };
   const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved. Only a company admin can change this.", true); return; }
   currentCompany.custom_vars = cv;
   toast(level === 'off' ? 'Sensitive data alerts are off' : 'Alert settings saved');
@@ -24739,7 +24845,7 @@ async function sendSensitiveAlertTest() {
     if (!res.ok || result.error) throw new Error(result.error || 'Could not send the test.');
     toast(`Test email sent to ${result.sent_to}. Real alerts go to ${result.alert_recipients} ${result.alert_recipients === 1 ? 'person' : 'people'}.`);
   } catch (e) {
-    toast('Test email failed: ' + e.message, true);
+    toast('Test email failed: ' + friendlyError(e), true);
   } finally {
     btn.disabled = false; btn.textContent = label;
   }
@@ -24842,7 +24948,7 @@ async function grantSupportAccessNow() {
     { okLabel: 'Allow access', cancelLabel: 'Cancel' });
   if (!ok) return;
   const { error } = await sb.rpc('grant_support_access', { p_scope: scope, p_hours: hours, p_note: note || null });
-  if (error) { toast('Could not allow access: ' + error.message, true); return; }
+  if (error) { toast('Could not allow access: ' + friendlyError(error), true); return; }
   toast('Selko support can now access your account for ' + label);
   loadSupportAccessPanel();
 }
@@ -24851,7 +24957,7 @@ async function answerSupportRequest(requestId, approve) {
   const scope = document.getElementById(`supportRespScope_${requestId}`)?.value || 'view';
   const hours = parseInt(document.getElementById(`supportRespHours_${requestId}`)?.value || '24', 10);
   const { error } = await sb.rpc('respond_support_access', { p_request: requestId, p_approve: approve, p_hours: hours, p_scope: scope });
-  if (error) { toast('Could not answer the request: ' + error.message, true); return; }
+  if (error) { toast('Could not answer the request: ' + friendlyError(error), true); return; }
   toast(approve ? 'Access allowed' : 'Request denied');
   loadSupportAccessPanel();
   renderSupportRequestBanner().catch(() => {});
@@ -24861,7 +24967,7 @@ async function revokeSupportAccessGrant(grantId) {
   const ok = await showCustomConfirm('End Selko support\'s access to your account now?', { okLabel: 'End access', cancelLabel: 'Cancel', danger: true });
   if (!ok) return;
   const { error } = await sb.rpc('revoke_support_access', { p_grant: grantId });
-  if (error) { toast('Could not end access: ' + error.message, true); return; }
+  if (error) { toast('Could not end access: ' + friendlyError(error), true); return; }
   toast('Access ended');
   loadSupportAccessPanel();
 }
@@ -24948,7 +25054,7 @@ async function sendSupportAccessRequest(companyId) {
   btn.disabled = true;
   const { error } = await sb.rpc('request_support_access', { p_company: companyId, p_scope: scope, p_note: note || null });
   btn.disabled = false;
-  if (error) { toast('Could not send the request: ' + error.message, true); return; }
+  if (error) { toast('Could not send the request: ' + friendlyError(error), true); return; }
   document.getElementById('supportAccessGateModal')?.remove();
   toast('Request sent. Their admin can approve it from Settings > Support access.');
   loadSuperAdmin();   // refresh the access labels on the company cards
@@ -25439,14 +25545,14 @@ async function saveGettingStarted(patch, opts = {}) {
   // Re-read custom_vars first so this can never overwrite a different setting
   // saved a moment ago (same approach as the other per-company settings).
   const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
-  if (readErr) { toast('Error: ' + readErr.message, true); return false; }
+  if (readErr) { toast(friendlyError(readErr), true); return false; }
   const cv = { ...((fresh && fresh.custom_vars) || {}) };
   const cur = cv.gettingStarted || {};
   cv.gettingStarted = opts.replace
     ? { ...patch, done: { ...(patch.done || {}) } }                                                   // reset: start clean
     : { ...cur, ...patch, done: { ...(cur.done || {}), ...(patch.done || {}) } };                      // normal: merge
   const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
-  if (error) { toast('Error: ' + error.message, true); return false; }
+  if (error) { toast(friendlyError(error), true); return false; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this company's settings.", true); return false; }
   currentCompany.custom_vars = cv;
   return true;
@@ -26080,13 +26186,13 @@ async function loadSupportRequests() {
 
 async function viewSupportScreenshot(path) {
   const { data, error } = await sb.storage.from('support-screenshots').createSignedUrl(path, 300); // 5-minute link, not a permanently public one
-  if (error) { toast('Could not load screenshot: ' + error.message, true); return; }
+  if (error) { toast('Could not load screenshot: ' + friendlyError(error), true); return; }
   window.open(data.signedUrl, '_blank');
 }
 
 async function markSupportRequestResolved(id) {
   const { error } = await sb.from('support_requests').update({ resolved: true }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   await loadSupportRequests();
 }
 
@@ -26098,7 +26204,7 @@ async function markSupportRequestResolved(id) {
 async function deleteSupportRequest(id) {
   if (!confirm('Permanently delete this resolved support request? This cannot be undone.')) return;
   const { error } = await sb.from('support_requests').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Support request deleted');
   await loadSupportRequests();
 }
@@ -26162,7 +26268,7 @@ async function clearBugLog() {
   if (appFilter)  countQ = countQ.eq('source_app', appFilter);
   if (typeFilter) countQ = countQ.eq('error_type', typeFilter);
   const { count, error: countErr } = await countQ;
-  if (countErr) { toast('Error: ' + countErr.message, true); return; }
+  if (countErr) { toast(friendlyError(countErr), true); return; }
 
   if (!count) { toast('No matching log entries to clear.'); return; }
 
@@ -26182,7 +26288,7 @@ async function clearBugLog() {
   if (typeFilter) delQ = delQ.eq('error_type', typeFilter);
 
   const { error } = await delQ;
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   toast(`✓ Cleared ${count} log entr${count === 1 ? 'y' : 'ies'}${appFilter ? ' for ' + scopeLabel : ' across all apps'}`);
   await loadBugLog();
@@ -26222,7 +26328,7 @@ async function addDocTypeCategory() {
     : 0;
 
   const { error } = await sb.from('document_type_categories').insert({ name, sort_order: nextSort });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   input.value = '';
   toast(`✓ "${name}" added — every company can now file a type under it`);
@@ -26237,7 +26343,7 @@ async function deleteDocTypeCategory(id, name) {
   }
   if (!confirm(`Delete the "${name}" category?`)) return;
   const { error } = await sb.from('document_type_categories').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`Deleted "${name}"`);
   await loadDocTypeCategories();
 }
@@ -26274,7 +26380,7 @@ async function addCredTemplateCategory() {
     : 0;
 
   const { error } = await sb.from('credentialing_template_categories').insert({ name, sort_order: nextSort });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   input.value = '';
   toast(`✓ "${name}" added — any template can now be filed under it`);
@@ -26289,7 +26395,7 @@ async function deleteCredTemplateCategory(id, name) {
   }
   if (!confirm(`Delete the "${name}" category?`)) return;
   const { error } = await sb.from('credentialing_template_categories').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`Deleted "${name}"`);
   await loadCredTemplateCategories();
 }
@@ -26363,7 +26469,7 @@ async function addPartnerRecommendation() {
   const { error } = await sb.from('partner_recommendations').insert({
     category, partner_name: name, url, link_text: text || 'Learn more', active: true,
   });
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   document.getElementById('newPartnerName').value = '';
   document.getElementById('newPartnerUrl').value = '';
@@ -26374,14 +26480,14 @@ async function addPartnerRecommendation() {
 
 async function togglePartnerRecommendation(id, currentlyActive) {
   const { error } = await sb.from('partner_recommendations').update({ active: !currentlyActive }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   await loadPartnerRecommendationsAdmin();
 }
 
 async function deletePartnerRecommendation(id, name) {
   if (!confirm(`Remove the ${name} recommendation?`)) return;
   const { error } = await sb.from('partner_recommendations').delete().eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`Removed ${name}`);
   await loadPartnerRecommendationsAdmin();
 }
@@ -26644,7 +26750,7 @@ async function permanentlyDeleteDoc(id, filePath) {
     if (error) throw error;
     toast('Record permanently deleted');
     await loadDeletionReview();
-  } catch(e) { toast('Delete failed: ' + e.message, true); }
+  } catch(e) { toast('Delete failed: ' + friendlyError(e), true); }
 }
 
 async function loadSidebarMemo() {
@@ -26661,7 +26767,7 @@ async function saveSidebarMemo() {
     { company_id: currentCompany.id, memo_text: text, updated_at: new Date().toISOString() },
     { onConflict: 'company_id' }
   );
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Memo saved');
 }
 
@@ -26671,7 +26777,7 @@ async function clearSidebarMemo() {
     { company_id: currentCompany.id, memo_text: '', updated_at: new Date().toISOString() },
     { onConflict: 'company_id' }
   );
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Memo cleared');
 }
 
@@ -26687,7 +26793,7 @@ async function toggleJuanAgencyAccess(companyId, granted) {
   const { error } = await sb.from('profiles')
     .update({ restricted_agency_ids: Array.from(existing) })
     .eq('id', window._juanProfileId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
 
   toast(granted ? '✓ Juan granted access to this agency' : '✓ Juan\'s access to this agency removed');
 }
@@ -27218,7 +27324,7 @@ async function resetDemoCompanyData(companyId) {
     toast('✓ Demo data reset — fresh fictional staff and sample credentials loaded');
     await loadSuperAdmin();
   } catch (e) {
-    toast('Demo reset failed: ' + e.message, true);
+    toast('Demo reset failed: ' + friendlyError(e), true);
   } finally {
     // Always re-enable, whether this succeeded, failed, or loadSuperAdmin()
     // re-rendered the card entirely (in which case this exact button is
@@ -27556,7 +27662,7 @@ async function saveCompanyConfig(id) {
 
 async function toggleCompanyFlag(id, flag, current) {
   const { error } = await sb.from('companies').update({ [flag]: !current }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('Updated');
   await loadSuperAdmin();
 }
@@ -27580,7 +27686,7 @@ async function setCompanyModules(id, mode) {
   if (!updates) return;
 
   const { error } = await sb.from('companies').update(updates).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   const labels = { docs: 'Document tracking only', both: 'Both' };
   toast(`✓ Set to: ${labels[mode]}`);
   await loadSuperAdmin();
@@ -27605,7 +27711,7 @@ async function setCompanyModules(id, mode) {
 // on the card. Now all three live together in one place.
 async function setCompanyPlan(id, plan) {
   const { error } = await sb.from('companies').update({ plan }).eq('id', id);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   const labels = { standard: 'Standard', pro: 'Pro', enterprise: 'Enterprise' };
   toast(`✓ Plan set to: ${labels[plan]}`);
   await loadSuperAdmin();
@@ -27711,7 +27817,7 @@ async function applyModalSeatBlocksChange(companyId, companyName) {
   const val = parseInt(document.getElementById('modalSeatBlocksInput').value, 10);
   const blocks = Number.isFinite(val) && val >= 0 ? val : 0;
   const { error } = await sb.from('companies').update({ extra_seat_blocks: blocks }).eq('id', companyId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`✓ Set to ${blocks} extra seat block${blocks !== 1 ? 's' : ''} ($${blocks * 30}/mo)`);
   await showSubscriptionSettingsModal(companyId, companyName);
 }
@@ -27720,7 +27826,7 @@ async function applyModalBetaPricingChange(companyId, companyName) {
   const dateVal = document.getElementById('modalBetaExpiryInput').value;
   if (!dateVal) { toast('Set an expiration date first, or use Remove to take them off beta pricing.', true); return; }
   const { error } = await sb.from('companies').update({ beta_pricing_expires_at: dateVal }).eq('id', companyId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast(`✓ Beta pricing set — $29.99/mo flat until ${dateVal}`);
   await showSubscriptionSettingsModal(companyId, companyName);
 }
@@ -27728,7 +27834,7 @@ async function applyModalBetaPricingChange(companyId, companyName) {
 async function clearModalBetaPricing(companyId, companyName) {
   if (!confirm(`Remove beta pricing for ${companyName}? They'll move to standard pricing immediately.`)) return;
   const { error } = await sb.from('companies').update({ beta_pricing_expires_at: null }).eq('id', companyId);
-  if (error) { toast('Error: ' + error.message, true); return; }
+  if (error) { toast(friendlyError(error), true); return; }
   toast('✓ Beta pricing removed');
   await showSubscriptionSettingsModal(companyId, companyName);
 }
@@ -27765,7 +27871,7 @@ async function softDeleteCompany(id, name) {
       },
     }).catch(e => console.error('Deletion notification failed to send:', e));
   } catch(e) {
-    toast('Delete failed: ' + e.message, true);
+    toast('Delete failed: ' + friendlyError(e), true);
   }
 }
 
@@ -27785,7 +27891,7 @@ async function restoreCompany(id, name) {
     document.getElementById('companyManageModal')?.remove();
     toast(`${name} restored`);
   } catch(e) {
-    toast('Restore failed: ' + e.message, true);
+    toast('Restore failed: ' + friendlyError(e), true);
   }
 }
 
@@ -27855,7 +27961,7 @@ async function exportCompanyDocumentsAsZip(companyId, companyName) {
     URL.revokeObjectURL(url);
     toast(`✓ Export ready — ${fileCount} file${fileCount!==1?'s':''}`);
   } catch (e) {
-    toast('Export failed: ' + e.message, true);
+    toast('Export failed: ' + friendlyError(e), true);
   }
 }
 
@@ -27888,7 +27994,7 @@ async function offboardCompanyNow(id, name) {
     document.getElementById('companyManageModal')?.remove();
     toast(...successMsg);
   } catch (e) {
-    toast('Offboarding failed: ' + e.message, true);
+    toast('Offboarding failed: ' + friendlyError(e), true);
   }
 }
 
@@ -28048,7 +28154,7 @@ async function purgeCompanyPermanently(id, name) {
     document.getElementById('companyManageModal')?.remove();
     toast(name + ' permanently purged');
   } catch(e) {
-    toast('Purge failed: ' + e.message, true);
+    toast('Purge failed: ' + friendlyError(e), true);
   }
 }
 
@@ -28373,7 +28479,7 @@ async function setupStaffLogin(staffId, fullName, email) {
     }
     await loadStaffTable();
   } catch(e) {
-    toast('Setup failed: ' + e.message, true);
+    toast('Setup failed: ' + friendlyError(e), true);
   }
 }
 
@@ -28424,7 +28530,7 @@ async function setupStaffLoginNoEmail(staffId, fullName) {
     showNoEmailTempPasswordModal(fullName, syntheticId, tempPassword);
     await loadStaffTable();
   } catch(e) {
-    toast('Setup failed: ' + e.message, true);
+    toast('Setup failed: ' + friendlyError(e), true);
   }
 }
 
@@ -28464,7 +28570,7 @@ async function resetPasswordNoEmail(staffId, fullName) {
     showNoEmailTempPasswordModal(fullName, syntheticId, tempPassword);
     await loadStaffTable();
   } catch(e) {
-    toast('Reset failed: ' + e.message, true);
+    toast('Reset failed: ' + friendlyError(e), true);
   }
 }
 
