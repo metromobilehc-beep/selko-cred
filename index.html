@@ -87,7 +87,6 @@ window.selkoSharedAuthStorage = {
 <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
@@ -2455,6 +2454,11 @@ window.selkoSharedAuthStorage = {
           <div>
             <label class="inline-label">Admin notification email</label>
             <input class="inline-input" type="email" id="setAdminEmail" placeholder="admin@company.com" />
+          </div>
+          <div>
+            <label class="inline-label">Also send admin emails to (optional)</label>
+            <input class="inline-input" type="text" id="setAdminEmailsExtra" placeholder="second@company.com, third@company.com" autocomplete="off" />
+            <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px;">Everyone listed here, and the address above, gets the same admin emails: expiry warnings, enrollment updates and compliance results. Separate addresses with commas. Remove someone by deleting their address and saving.</div>
           </div>
           <div class="set-subhead">Reminder timing</div>
           <div>
@@ -4837,11 +4841,6 @@ const STORAGE_BUCKET    = 'compliance-documents';
 // same-looking path for the same company.
 const PUBLIC_ASSETS_BUCKET = 'public-assets';
 const CRED_LOGO_PREFIX = 'cred/logos';
-// ── EMAILJS CONFIG (same account/template used across Selko apps) ──
-const EMAILJS_SERVICE_ID  = 'service_wnhqs7e';
-const EMAILJS_TEMPLATE_ID = 'template_gq1z2x6';
-const EMAILJS_PUBLIC_KEY  = 'kc6pC-rqwD0xph-A0';
-const CRED_TOOL_URL = 'https://cred.selko360.com';
 
 // Shared cookie-based storage (scoped to .selko360.com, the parent domain)
 // replaces the previous localStorage-only session, and 'selko-shared-auth'
@@ -15819,6 +15818,8 @@ async function loadSettings() {
   // Company settings
   document.getElementById('setCoName').value    = c.name || '';
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
+  const extraEl = document.getElementById('setAdminEmailsExtra');
+  if (extraEl) extraEl.value = (c.admin_emails || []).slice(1).join(', ');
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
   document.getElementById('setTaskDigestInterval').value = c.custom_vars?.taskDigestIntervalDays || 7;
@@ -22534,46 +22535,17 @@ async function renderCredentialingStaffTable() {
 
 async function emailInNetworkSummary() {
   const defaultTo = currentProfile?.email || '';
-  const to = prompt('Send the current in-network summary to which email address?', defaultTo);
+  const to = (prompt('Send the current in-network summary to which email address?', defaultTo) || '').trim();
   if (!to) return;
-
-  const { data, error } = await sb.from('staff_payer_networks')
-    .select('*, credtrack_staff(full_name), payers(name)')
-    .eq('company_id', currentCompany.id)
-    .eq('status', 'in_network')
-    .order('created_at', { ascending: false });
-
-  if (error) { toast('Could not load network data: ' + friendlyError(error), true); return; }
-
-  const inNetwork = data || [];
-  if (!inNetwork.length) { toast('No staff are confirmed in-network yet.', true); return; }
-
-  const byPayer = {};
-  inNetwork.forEach(r => {
-    const payerName = r.payers?.name || 'Unknown payer';
-    (byPayer[payerName] ||= new Set()).add(r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide')));
-  });
-
-  const lines = Object.keys(byPayer).sort().map(payerName =>
-    payerName + ':\n  ' + [...byPayer[payerName]].sort().join(', ')
-  );
-  const generatedAt = new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
-  const messageBody = 'In-network insurance summary — ' + (currentCompany?.name || 'Selko Cred') +
-    '\nGenerated ' + generatedAt + '\n\n' + lines.join('\n\n');
-
+  // Built and sent by the server from this company's own records, so it goes out from the
+  // normal Selko Cred sender with this company's name on it (not from anyone else's mailbox).
   try {
-    emailjs.init(EMAILJS_PUBLIC_KEY);
-    await emailjs.send(EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, {
-      to_email: to,
-      to_name: to,
-      subject_line: 'In-Network Insurance Summary — ' + (currentCompany?.name || 'Selko Cred'),
-      message_body: messageBody,
-      tool_url: CRED_TOOL_URL,
-      company_name: currentCompany?.name || 'Selko Cred'
-    });
+    const { data, error } = await sb.functions.invoke('send-in-network-summary', { body: { to, company_id: currentCompany.id } });
+    if (error) throw new Error((await samInvokeError(error)).replace(/\s*\[HTTP \d+\]$/, ''));
+    if (data?.error) throw new Error(data.error);
     toast('✓ Summary emailed to ' + to);
-  } catch(e) {
-    toast('Send failed: ' + (e?.text || e?.message || 'unknown error'), true);
+  } catch (e) {
+    toast('Could not send the summary: ' + friendlyError(e, 'send the summary'), true);
   }
 }
 
@@ -24040,8 +24012,23 @@ async function obPickSave() {
   }
 }
 
+// The main admin address plus any extra ones typed in Settings: trimmed, de-duplicated (ignoring
+// capitals), and each checked. Returns { list, bad } where bad is the first entry that is not an email address.
+function parseAdminEmailList(main, extraText) {
+  const seen = new Set(), list = []; let bad = null;
+  const add = (raw) => {
+    const e = String(raw || '').trim(); if (!e) return;
+    if (!/^[^\s@<>",;()]+@[^\s@<>",;()]+\.[^\s@<>",;()]+$/.test(e)) { if (!bad) bad = e; return; }
+    const k = e.toLowerCase(); if (seen.has(k)) return; seen.add(k); list.push(e);
+  };
+  add(main);
+  String(extraText || '').split(/[,;\s]+/).forEach(add);
+  return { list, bad };
+}
+
 async function saveCompanySettings() {
   const adminEmail = document.getElementById('setAdminEmail').value.trim();
+  const adminEmailParsed = parseAdminEmailList(adminEmail, document.getElementById('setAdminEmailsExtra')?.value || '');
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
   const taskDigestIntervalDays = parseInt(document.getElementById('setTaskDigestInterval').value) || 7;
@@ -24053,13 +24040,16 @@ async function saveCompanySettings() {
   const statusEl = [document.getElementById('setCoStatus'), document.getElementById('setCoStatus2')]
     .find(el => el && el.offsetParent !== null) || document.getElementById('setCoStatus');
 
+  if (adminEmailParsed.bad) {
+    if (statusEl) { statusEl.textContent = `"${adminEmailParsed.bad}" doesn't look like an email address. Nothing was saved.`; statusEl.className = 'up-status up-err'; statusEl.style.display = 'block'; }
+    return;
+  }
+
   // Only super admins can change company name
   const isSuperAdmin = currentProfile.is_super_admin && !_superProfile;
   const updates = {
-    // The form edits only the primary address; keep any other admins on the list.
-    admin_emails: adminEmail
-      ? [adminEmail, ...(currentCompany.admin_emails || []).slice(1).filter((e) => String(e).trim().toLowerCase() !== adminEmail.toLowerCase())]
-      : currentCompany.admin_emails,
+    // The main address first, then any extra addresses shown in the box under it (so nobody is on the list unseen).
+    admin_emails: adminEmail ? adminEmailParsed.list : currentCompany.admin_emails,
     custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays },
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
