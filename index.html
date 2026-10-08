@@ -536,6 +536,11 @@ window.selkoSharedAuthStorage = {
           <datalist id="upQualList"></datalist>
           <div style="font-size:13px;color:var(--muted,#64748b);margin-top:4px;">You can hold more than one of these (for example a license in each state). Say which this is. A renewal with the same answer replaces the older one.</div>
         </div>
+        <div class="form-group" id="upOtherGroup" style="display:none;">
+          <label class="field-label">What is this document? <span style="color:var(--danger);">*</span></label>
+          <input type="text" id="upOther" maxlength="60" placeholder="e.g. Driver certification" autocomplete="off" />
+          <div style="font-size:13px;color:var(--muted,#64748b);margin-top:4px;">"Other" needs a name so your admin and your reminders say what it is.</div>
+        </div>
         <div class="form-group">
           <label class="field-label">Notes (optional)</label>
           <input type="text" id="upNotes" placeholder="e.g. License #OK12345" />
@@ -795,6 +800,11 @@ window.selkoSharedAuthStorage = {
             <label class="inline-label">Expiration date</label>
             <input class="inline-input" type="date" id="auExpiry" />
           </div>
+        </div>
+        <div id="auOtherGroup" style="display:none;margin-bottom:12px;max-width:380px;">
+          <label class="inline-label">What is this document? <span style="color:#fca5a5;">*</span></label>
+          <input class="inline-input" type="text" id="auOther" maxlength="60" placeholder="e.g. Driver certification" autocomplete="off" />
+          <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:3px;">"Other" needs a name so lists and reminders say what it is.</div>
         </div>
         <div id="auQualGroup" style="display:none;margin-bottom:12px;max-width:380px;">
           <label class="inline-label">Which one? <span style="color:#fca5a5;">*</span></label>
@@ -7144,11 +7154,23 @@ async function refreshQualSuggestions(prefix, staffId, typeId, stateCode) {
   }
   list.innerHTML = [...found].map((q) => `<option value="${hrOnbEsc(q)}"></option>`).join('');
 }
+// "Other" says nothing about what the document is, so it must be named. The name becomes the document's
+// label (what lists and reminders show) and, when the type can be held more than once, its "which one".
+function isOtherDocType(t) { return !!(t && String(t.name || '').trim().toLowerCase() === 'other'); }
+function cleanOtherDescription(v) { return String(v || '').replace(/[<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60); }
+function otherFieldFor(prefix, typeId) {
+  const group = document.getElementById(`${prefix}OtherGroup`);
+  if (!group) return false;
+  const on = isOtherDocType(docTypes.find((d) => d.id == typeId));
+  group.style.display = on ? 'block' : 'none';
+  if (!on) { const el = document.getElementById(`${prefix}Other`); if (el) el.value = ''; }
+  return on;
+}
 function qualFieldFor(prefix, typeId) {
   const t = docTypes.find((d) => d.id == typeId);
   const group = document.getElementById(`${prefix}QualGroup`);
   if (!group) return false;
-  const on = docTypeAllowsMultiple(t);
+  const on = docTypeAllowsMultiple(t) && !isOtherDocType(t);   // for "Other" the description already says which one
   group.style.display = on ? 'block' : 'none';
   if (!on) { const el = document.getElementById(`${prefix}Qual`); if (el) el.value = ''; }
   return on;
@@ -7165,6 +7187,7 @@ function onUpTypeChanged() {
   const typeId = document.getElementById('upType').value;
   const docType = docTypes.find(d => d.id == typeId);
   document.getElementById('upLicenseGroup').style.display = isLicenseDocType(docType) ? 'block' : 'none';
+  otherFieldFor('up', typeId);
   if (qualFieldFor('up', typeId)) refreshQualSuggestions('up', window._staffId, typeId);
 }
 
@@ -7178,6 +7201,7 @@ function onAuTypeChanged(prefix = 'au') {
     : 'License #';
   const stateEl = document.getElementById(`${prefix}LicenseState`);
   const staffEl = document.getElementById(`${prefix}Staff`);
+  otherFieldFor(prefix, typeId);
   if (qualFieldFor(prefix, typeId)) refreshQualSuggestions(prefix, staffEl ? staffEl.value : window._pauStaffId, typeId, stateEl ? stateEl.value : '');
 }
 
@@ -7438,8 +7462,11 @@ async function uploadDoc() {
     return;
   }
   if (!window._staffId) { showUpStatus('Your staff record is not set up. Contact your admin.', 'err'); return; }
+  const isOther = isOtherDocType(docTypeForValidation);
+  const otherName = isOther ? cleanOtherDescription(document.getElementById('upOther')?.value) : '';
+  if (isOther && !otherName) { showUpStatus('Please say what this document is (for example "Driver certification"), because "Other" does not say.', 'err'); return; }
   const multiType = docTypeAllowsMultiple(docTypeForValidation);
-  const qual = multiType ? cleanQualifier(document.getElementById('upQual')?.value) : '';
+  const qual = multiType ? (isOther ? cleanQualifier(otherName) : cleanQualifier(document.getElementById('upQual')?.value)) : '';
   if (multiType && !qual) { showUpStatus('Please say which one this is (for example the state), because you can hold more than one of this type.', 'err'); return; }
 
   btn.disabled = true;
@@ -7472,7 +7499,7 @@ async function uploadDoc() {
       company_id:       currentCompany.id,
       staff_id:         window._staffId,
       document_type_id: parseInt(typeId),
-      label:            docType?.name || 'Document',
+      label:            otherName || docType?.name || 'Document',
       expiry_date:      expDate || null,
       file_url:         path,
       file_name:        file.name,
@@ -7493,6 +7520,8 @@ async function uploadDoc() {
     document.getElementById('upNotes').value = '';
     document.getElementById('upLicense').value = '';
     if (document.getElementById('upQual')) document.getElementById('upQual').value = '';
+    if (document.getElementById('upOther')) document.getElementById('upOther').value = '';
+    otherFieldFor('up', '');
     document.getElementById('upLicenseGroup').style.display = 'none';
     clearPhoto();
     await renderStatCards(window._staffId);
@@ -13749,8 +13778,11 @@ async function saveCredentialDoc(prefix, presetStaffId) {
   }
 
   const docType = docTypes.find(d => d.id == typeId);
+  const isOther = isOtherDocType(docType);
+  const otherName = isOther ? cleanOtherDescription(document.getElementById(`${prefix}Other`)?.value) : '';
+  if (isOther && !otherName) { showAuStatus('Say what this document is in "What is this document?" (for example "Driver certification"). "Other" does not say.', 'err', prefix); return; }
   const multiType = docTypeAllowsMultiple(docType);
-  const qual = multiType ? cleanQualifier(document.getElementById(`${prefix}Qual`)?.value) : '';
+  const qual = multiType ? (isOther ? cleanQualifier(otherName) : cleanQualifier(document.getElementById(`${prefix}Qual`)?.value)) : '';
   if (multiType && !qual) { showAuStatus('This document type can be held more than once. Say which one this is (for example the state) in "Which one?".', 'err', prefix); return; }
 
   try {
@@ -13787,7 +13819,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
       company_id:       currentCompany.id,
       staff_id:         staffId,
       document_type_id: parseInt(typeId),
-      label:            docType?.name || 'Document',
+      label:            otherName || docType?.name || 'Document',
       issued_date:      issued || null,
       expiry_date:      expiry || null,
       file_url:         fileUrl,
@@ -13814,10 +13846,11 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     showAuStatus('✓ Credential saved successfully.', 'ok', prefix);
     // Reset form
     const staffIdField = presetStaffId ? [] : [`${prefix}Staff`];
-    [...staffIdField, `${prefix}Type`, `${prefix}Issued`, `${prefix}Expiry`, `${prefix}Notes`, `${prefix}License`].forEach(id => {
+    [...staffIdField, `${prefix}Type`, `${prefix}Issued`, `${prefix}Expiry`, `${prefix}Notes`, `${prefix}License`, `${prefix}Other`].forEach(id => {
       const el = document.getElementById(id);
       if (el) el.value = '';
     });
+    otherFieldFor(prefix, '');
     document.getElementById(`${prefix}File`).value = '';
     document.getElementById(`${prefix}FileName`).textContent = 'No file selected';
     const file2Input = document.getElementById(`${prefix}File2`);
@@ -13887,6 +13920,10 @@ async function openProfileDocUpload(staffId, staffName) {
             <option value="OTHER">Other</option>
           </select>
         </div>
+      </div>
+      <div id="pauOtherGroup" style="display:none;margin-bottom:12px;">
+        <label class="inline-label">What is this document? <span style="color:#fca5a5;">*</span></label>
+        <input class="inline-input" type="text" id="pauOther" maxlength="60" placeholder="e.g. Driver certification" autocomplete="off" style="width:100%;box-sizing:border-box;" />
       </div>
       <div id="pauQualGroup" style="display:none;margin-bottom:12px;">
         <label class="inline-label">Which one? <span style="color:#fca5a5;">*</span></label>
