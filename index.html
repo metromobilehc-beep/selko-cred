@@ -600,7 +600,7 @@ window.selkoSharedAuthStorage = {
       <span style="color:#fde68a;font-size:15px;font-weight:700;" id="credExpiryBannerText"></span>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm" onclick="closeCredExpiryBanner();switchTab('credentialing');" style="background:#f59e0b;color:#1c1917;font-weight:700;">View in Credentialing</button>
-        <button class="btn btn-sm btn-ghost" onclick="closeCredExpiryBanner()" style="color:#fde68a;border-color:rgba(253,230,138,.4);">Dismiss</button>
+        <button class="btn btn-sm btn-ghost" onclick="closeCredExpiryBanner()" title="Hides this for 7 days" style="color:#fde68a;border-color:rgba(253,230,138,.4);">Dismiss</button>
       </div>
     </div>
 
@@ -7602,13 +7602,19 @@ async function initAdmin() {
   if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
 }
 
-// Surfaces CAQH/DEA items due within 30 days as a dismissible banner on
-// login, rather than relying on someone remembering to open Credentialing
-// and check the table. Shown once per browser session — dismissing (or
-// clicking through) won't nag again until the next fresh login.
+// Surfaces CAQH/DEA items due within 30 days (or already past due) as a dismissible
+// banner on login. Dismiss, or click through, and it stays away for 7 days on this
+// browser, so it isn't repeated at every login. A provider with a CAQH ID but no
+// re-attestation date is NOT in the banner: that shows as "Not set: no reminders" in
+// the Credentialing table and in the monthly admin email.
 let _credExpiryBannerShown = false;
+const CRED_BANNER_SNOOZE_DAYS = 7;
+function credBannerSnoozeKey() { return 'cred_expiry_banner_snooze_' + (currentCompany?.id || '') + '_' + (currentProfile?.id || currentProfile?.user_id || ''); }
+function credBannerSnoozed() {
+  try { const t = Number(localStorage.getItem(credBannerSnoozeKey()) || 0); return t && Date.now() < t; } catch (e) { return false; }
+}
 async function checkCredentialingExpirations() {
-  if (_credExpiryBannerShown) return;
+  if (_credExpiryBannerShown || credBannerSnoozed()) return;
 
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() + 30);
@@ -7618,8 +7624,7 @@ async function checkCredentialingExpirations() {
     (s.caqh_expiration_date && s.caqh_expiration_date <= cutoffStr) ||
     (s.dea_expiration_date && s.dea_expiration_date <= cutoffStr && isPrescribingDiscipline(s.discipline))
   ));
-  const noDate = staffList.filter(caqhDateMissing);
-  if (!dueSoon.length && !noDate.length) return;
+  if (!dueSoon.length) return;
 
   const overdue = dueSoon.filter(s =>
     (s.caqh_expiration_date && s.caqh_expiration_date < new Date().toISOString().slice(0,10)) ||
@@ -7629,9 +7634,7 @@ async function checkCredentialingExpirations() {
   const banner = document.getElementById('credExpiryBanner');
   const text = document.getElementById('credExpiryBannerText');
   const recs = await getActivePartnerRecommendations();
-  const dueMsg = dueSoon.length ? `${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.' : '';
-  const noDateMsg = noDate.length ? `${noDate.length} provider${noDate.length !== 1 ? 's have' : ' has'} a CAQH ID but no re-attestation date, so no reminder can be sent. Open their profile and fill in the date.` : '';
-  const mainMsg = '⚠ ' + [dueMsg, noDateMsg].filter(Boolean).join(' ');
+  const mainMsg = `⚠ ${dueSoon.length} staff member${dueSoon.length !== 1 ? 's have' : ' has'} CAQH or DEA credentials due within 30 days` + (overdue ? ` (${overdue} already past due)` : '') + '.';
   text.innerHTML = mainMsg + (recs.ce_credits ? `<br/><span style="font-weight:400;">${partnerLinkHtml(recs.ce_credits)}</span>` : '');
   banner.style.display = 'flex';
   _credExpiryBannerShown = true;
@@ -7639,6 +7642,7 @@ async function checkCredentialingExpirations() {
 
 function closeCredExpiryBanner() {
   document.getElementById('credExpiryBanner').style.display = 'none';
+  try { localStorage.setItem(credBannerSnoozeKey(), String(Date.now() + CRED_BANNER_SNOOZE_DAYS * 86400000)); } catch (e) {}
 }
 
 async function loadPartnerRecsStatic() {
@@ -18063,7 +18067,7 @@ const CREDENTIALING_HELP = [
         <li><strong>When:</strong> 30, 14, 7 and 1 days before, on the day, and every week while overdue (for 12 weeks). Each reminder is sent once. It arrives around 9 AM.</li>
         <li><strong>Who:</strong> the <em>provider</em> gets their own email with the steps (sign in at proview.caqh.org, review, attest). The <em>admins</em> get one summary email per day with everyone who is due, overdue first.</li>
         <li><strong>After a provider re-attests,</strong> open their profile and press <em>Just re-attested? Set attested to today and due in 120 days</em> beside the date, then Save. That also stops the reminders for the old date.</li>
-        <li><strong>A CAQH ID but no date</strong> is flagged here as <em>Not set: no reminders</em>, in the banner at the top, and once a month in an email to the admins, because nothing can be reminded without a date.</li>
+        <li><strong>A CAQH ID but no date</strong> is flagged here as <em>Not set: no reminders</em> and once a month in an email to the admins, because nothing can be reminded without a date.</li>
         <li><strong>Who is skipped:</strong> inactive staff, disciplines you marked CAQH-exempt in Settings, and anyone marked exempt on their own profile.</li>
         <li><strong>Settings:</strong> turn the reminders off, or turn off just the emails to providers, under Settings, CAQH-exempt disciplines.</li>
       </ul>`,
