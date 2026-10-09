@@ -575,7 +575,7 @@
 .fp-pane.on { display: block; }
 
 /* Professional roles: one table, one row per role */
-.roles-table-wrap { overflow-x: auto; margin: 4px 0 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; }
+.roles-table-wrap { overflow: visible; margin: 4px 0 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; }
 .roles-table { width: 100%; border-collapse: collapse; min-width: 560px; }
 .roles-table th { text-align: left; font-size: 13px; font-weight: 700; color: #fff; padding: 12px 14px; background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.12); vertical-align: bottom; }
 .roles-table .rt-sub { display: block; font-size: 12px; font-weight: 400; color: rgba(255,255,255,.55); margin-top: 3px; line-height: 1.4; max-width: 28ch; }
@@ -598,3 +598,11 @@
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .roles-table th { white-space: normal; }
 .roles-table .rt-sub { white-space: normal; text-transform: none; letter-spacing: normal; font-family: inherit; font-size: 12.5px; max-width: 30ch; }
+
+.help-tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 6px; border-radius: 50%; border: 1px solid rgba(255,255,255,.45); color: rgba(255,255,255,.85); font-size: 12px; font-weight: 700; cursor: help; vertical-align: middle; text-transform: none; letter-spacing: 0; font-family: inherit; }
+.help-tip:hover, .help-tip:focus { background: rgba(255,255,255,.16); outline: none; border-color: #fff; }
+.help-tip::after { content: attr(data-tip); display: none; position: absolute; top: calc(100% + 8px); left: -8px; width: 270px; padding: 10px 12px; border-radius: 8px; background: #0b1220; border: 1px solid rgba(255,255,255,.25); box-shadow: 0 8px 24px rgba(0,0,0,.5); color: rgba(255,255,255,.9); font-size: 13px; font-weight: 400; line-height: 1.45; text-align: left; white-space: normal; z-index: 20; }
+.help-tip:hover::after, .help-tip:focus::after { display: block; }
+.roles-table .rt-sub { display: none; }
+@media (max-width: 700px) { .roles-table-wrap { overflow-x: auto; } }
+.roles-table thead th:first-child { border-top-left-radius: 9px; } .roles-table thead th:last-child { border-top-right-radius: 9px; }

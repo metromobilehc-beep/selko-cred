@@ -1217,10 +1217,10 @@ window.selkoSharedAuthStorage = {
              front door to a provider's whole record, not a CAQH/DEA-
              specific tool anymore — header updated to match. -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
-          <h2>Provider credentialing</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Find a provider to view or edit their full credentialing record — CAQH, DEA, license, and everything else lives in their Full Profile.</p>
+          <h2>Find a provider</h2>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Search for a provider to open their full credentialing record. CAQH, DEA, license and everything else lives in their Full Profile.</p>
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
-            <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
+            <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search providers by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
             <select class="inline-select" id="credStaffDisciplineFilter" style="max-width:180px;" onchange="renderCredentialingStaffTable()">
               <option value="">All disciplines</option>
             </select>
@@ -2554,7 +2554,7 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="rolesPanelSettings">
         <h2 id="disciplinesPanelTitle">Professional roles</h2>
 
-        <p class="set-help" style="max-width:none;">The licensed or credentialed roles your company uses (PT, PTA, OT, COTA, SLP, or MD, DO, PA, NP, RN). They appear wherever a role is chosen: adding staff, editing a staff member, and scoping which documents apply to which roles.</p>
+        <p class="set-help" style="max-width:none;">The licensed roles your company uses. They appear wherever a role is chosen: adding or editing staff, and scoping which documents apply to which roles.</p>
         <p class="set-note" style="max-width:none;">Licensed or credentialed roles only (PT, RN, DO, LPN). Not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile.</p>
 
         <div class="roles-table-wrap">
@@ -2562,8 +2562,8 @@ window.selkoSharedAuthStorage = {
             <thead>
               <tr>
                 <th>Role</th>
-                <th class="rt-caqh">Needs a CAQH profile<span class="rt-sub">Off for roles like PTA or COTA working under a supervising clinician. They won't show as "Missing CAQH ID".</span></th>
-                <th class="rt-rx">Can hold a DEA registration<span class="rt-sub">On adds the DEA &amp; Controlled Substances section and prescriber fields to their profile.</span></th>
+                <th class="rt-caqh">CAQH profile active? <span class="help-tip" tabindex="0" role="note" aria-label="About CAQH profile active" data-tip="Yes means this role needs a CAQH profile. Turn it off for roles like PTA or COTA working under a supervising clinician; they won't show as &quot;Missing CAQH ID&quot; anywhere in the app.">?</span></th>
+                <th class="rt-rx">DEA registration active? <span class="help-tip" tabindex="0" role="note" aria-label="About DEA registration active" data-tip="Yes means this role can hold a DEA registration, so it gets the DEA &amp; Controlled Substances section and prescriber fields on the profile. MD, DO, PA, NP and common NP spellings start on. Whatever you set here wins.">?</span></th>
                 <th class="rt-act"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
@@ -2574,7 +2574,6 @@ window.selkoSharedAuthStorage = {
           <input class="inline-input" type="text" id="newDisciplineInput" placeholder="Add a role, e.g. RN or LPN" onkeydown="if(event.key==='Enter'){event.preventDefault();addCompanyDiscipline();}" />
           <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add role</button>
         </div>
-        <p class="set-help rt-rx-note" style="margin-top:10px;max-width:none;">MD, DO, PA, NP and common NP spellings (FNP, APRN, PMHNP) start with DEA turned on. Whatever you set here wins.</p>
 
         <div id="caqhExemptSection" class="set-block" style="margin-top:14px;">
           <div class="set-text">
@@ -13888,7 +13887,6 @@ function loadDisciplinesPanel() {
   const showRx = addon && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')));
   const table = document.getElementById('rolesTable');
   if (table) { table.classList.toggle('hide-caqh', !showCaqh); table.classList.toggle('hide-rx', !showRx); }
-  document.querySelectorAll('.rt-rx-note').forEach(n => { n.style.display = showRx ? '' : 'none'; });
 
   const exemptList = getCaqhExemptDisciplines();
   const sw = (on, onclick, label) => `<button type="button" role="switch" aria-checked="${on}" class="role-switch${on ? ' on' : ''}" onclick="${onclick}" aria-label="${hrOnbEsc(label)}"><span class="rs-knob"></span><span class="rs-text">${on ? 'Yes' : 'No'}</span></button>`;
