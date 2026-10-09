@@ -573,3 +573,28 @@
 .fp-subtab.on { background: var(--teal); border-color: var(--teal); color: #fff; box-shadow: 0 1px 6px rgba(13,148,136,.45); cursor: default; }
 .fp-pane { display: none; }
 .fp-pane.on { display: block; }
+
+/* Professional roles: one table, one row per role */
+.roles-table-wrap { overflow-x: auto; margin: 4px 0 14px; border: 1px solid rgba(255,255,255,.12); border-radius: 10px; }
+.roles-table { width: 100%; border-collapse: collapse; min-width: 560px; }
+.roles-table th { text-align: left; font-size: 13px; font-weight: 700; color: #fff; padding: 12px 14px; background: rgba(255,255,255,.04); border-bottom: 1px solid rgba(255,255,255,.12); vertical-align: bottom; }
+.roles-table .rt-sub { display: block; font-size: 12px; font-weight: 400; color: rgba(255,255,255,.55); margin-top: 3px; line-height: 1.4; max-width: 28ch; }
+.roles-table td { padding: 10px 14px; border-top: 1px solid rgba(255,255,255,.08); vertical-align: middle; }
+.roles-table tbody tr:first-child td { border-top: 0; }
+.roles-table tbody tr:hover td { background: rgba(255,255,255,.03); }
+.roles-table .rt-role { font-size: 17px; font-weight: 700; color: #fff; }
+.roles-table .rt-act { text-align: right; white-space: nowrap; }
+.roles-table .rt-act .btn { color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.25); margin-left: 6px; }
+.roles-table .rt-act .rt-remove { color: #fca5a5; border-color: rgba(252,165,165,.35); }
+.roles-table.hide-caqh .rt-caqh, .roles-table.hide-rx .rt-rx { display: none; }
+.role-switch { display: inline-flex; align-items: center; gap: 10px; background: none; border: 0; padding: 4px 0; cursor: pointer; color: rgba(255,255,255,.65); font-size: 14px; font-weight: 600; }
+.role-switch .rs-knob { position: relative; width: 40px; height: 22px; border-radius: 11px; background: rgba(255,255,255,.18); transition: background .15s; flex: none; }
+.role-switch .rs-knob::after { content: ''; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.role-switch.on .rs-knob { background: var(--teal); }
+.role-switch.on .rs-knob::after { transform: translateX(18px); }
+.role-switch.on { color: #fff; }
+.role-switch:focus-visible { outline: 2px solid var(--teal-l, #5eead4); outline-offset: 3px; border-radius: 6px; }
+.roles-add-row { margin-top: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.roles-table th { white-space: normal; }
+.roles-table .rt-sub { white-space: normal; text-transform: none; letter-spacing: normal; font-family: inherit; font-size: 12.5px; max-width: 30ch; }

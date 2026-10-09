@@ -2554,51 +2554,37 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="rolesPanelSettings">
         <h2 id="disciplinesPanelTitle">Professional roles</h2>
 
-        <div class="set-block first">
-          <div class="set-text">
-          <div class="set-title">Your roles</div>
-          <p class="set-help">The licensed or credentialed roles your company uses, for example PT, PTA, OT, COTA and SLP, or MD, DO, PA, NP and RN. They appear wherever a role is chosen: adding staff, editing a staff member, and scoping which documents apply to which roles.</p>
-          <p class="set-note">Licensed or credentialed roles only (PT, RN, DO, LPN). Not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile.</p>
-          </div>
-          <div class="set-controls">
-          <div id="disciplinesListCred" class="set-chips" style="margin-bottom:14px;"></div>
-          <div class="set-row">
-            <input class="inline-input" type="text" id="newDisciplineInput" placeholder="e.g. RN or LPN" />
-            <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add role</button>
-          </div>
-          </div>
-        </div>
+        <p class="set-help" style="max-width:none;">The licensed or credentialed roles your company uses (PT, PTA, OT, COTA, SLP, or MD, DO, PA, NP, RN). They appear wherever a role is chosen: adding staff, editing a staff member, and scoping which documents apply to which roles.</p>
+        <p class="set-note" style="max-width:none;">Licensed or credentialed roles only (PT, RN, DO, LPN). Not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile.</p>
 
-        <div id="caqhExemptSection">
-          <div class="set-block">
-            <div class="set-text">
-            <div class="set-title">Exempt from CAQH</div>
-            <p class="set-help">Highlighted roles don't need a CAQH profile (for example PTA or COTA working under a supervising clinician). They won't show as "Missing CAQH ID" anywhere in the app.</p>
-            </div>
-            <div class="set-controls">
-            <div id="caqhExemptListCred" class="set-chips"></div>
-            </div>
-          </div>
-          <div class="set-block">
-            <div class="set-text">
+        <div class="roles-table-wrap">
+          <table class="roles-table" id="rolesTable">
+            <thead>
+              <tr>
+                <th>Role</th>
+                <th class="rt-caqh">Needs a CAQH profile<span class="rt-sub">Off for roles like PTA or COTA working under a supervising clinician. They won't show as "Missing CAQH ID".</span></th>
+                <th class="rt-rx">Can hold a DEA registration<span class="rt-sub">On adds the DEA &amp; Controlled Substances section and prescriber fields to their profile.</span></th>
+                <th class="rt-act"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="rolesTableBody"></tbody>
+          </table>
+        </div>
+        <div class="set-row roles-add-row">
+          <input class="inline-input" type="text" id="newDisciplineInput" placeholder="Add a role, e.g. RN or LPN" onkeydown="if(event.key==='Enter'){event.preventDefault();addCompanyDiscipline();}" />
+          <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add role</button>
+        </div>
+        <p class="set-help rt-rx-note" style="margin-top:10px;max-width:none;">MD, DO, PA, NP and common NP spellings (FNP, APRN, PMHNP) start with DEA turned on. Whatever you set here wins.</p>
+
+        <div id="caqhExemptSection" class="set-block" style="margin-top:14px;">
+          <div class="set-text">
             <div class="set-title">CAQH re-attestation reminders</div>
             <p class="set-help">Each provider is emailed 30, 14, 7 and 1 days before the due date, on the day, and weekly while overdue. Admins get one summary email.</p>
-            </div>
-            <div class="set-controls">
+          </div>
+          <div class="set-controls">
             <label class="set-check"><input type="checkbox" id="caqhRemindersEnabled" onchange="saveCaqhReminderSetting('caqh_reminders_enabled', this.checked)" /> Send CAQH re-attestation reminders</label>
             <label class="set-check"><input type="checkbox" id="caqhRemindProviders" onchange="saveCaqhReminderSetting('caqh_remind_providers', this.checked)" /> Also email the provider directly</label>
             <div id="caqhReminderSettingMsg" class="set-msg"></div>
-            </div>
-          </div>
-        </div>
-
-        <div id="prescriberSection" class="set-block">
-          <div class="set-text">
-            <div class="set-title">Prescribing roles</div>
-          <p class="set-help">Highlighted roles can hold a DEA registration, so they get the DEA &amp; Controlled Substances section and the prescriber credentialing fields on their profile. MD, DO, PA, NP and common NP spellings (FNP, APRN, PMHNP) start highlighted, but whatever you set here wins.</p>
-          </div>
-            <div class="set-controls">
-            <div id="prescriberListCred" class="set-chips"></div>
           </div>
         </div>
       </div>
@@ -13894,43 +13880,39 @@ function showPreviewAccessLogPDF() {
 }
 
 function loadDisciplinesPanel() {
-  const container = document.getElementById('disciplinesListCred');
+  const body = document.getElementById('rolesTableBody');
+  if (!body) return;
   const disciplines = getCompanyDisciplines();
-  container.innerHTML = disciplines.map(d => `
-    <span class="role-chip">${hrOnbEsc(d)}
-      <button type="button" onclick="showRenameDisciplineForm(${jsArg(d)})" title="Rename ${hrOnbEsc(d)}" aria-label="Rename ${hrOnbEsc(d)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>
-      <button type="button" onclick="removeCompanyDiscipline(${jsArg(d)})" title="Remove ${hrOnbEsc(d)}" aria-label="Remove ${hrOnbEsc(d)}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
-    </span>`).join('');
+  const addon = !!currentCompany.has_credentialing_addon;
+  const showCaqh = addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'));
+  const showRx = addon && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')));
+  const table = document.getElementById('rolesTable');
+  if (table) { table.classList.toggle('hide-caqh', !showCaqh); table.classList.toggle('hide-rx', !showRx); }
+  document.querySelectorAll('.rt-rx-note').forEach(n => { n.style.display = showRx ? '' : 'none'; });
 
-  // CAQH is a credentialing concept, not a general staff/discipline one —
-  // this whole sub-section was showing regardless of module, even to a
-  // pure Documents-only or non-healthcare company with no use for it.
+  const exemptList = getCaqhExemptDisciplines();
+  const sw = (on, onclick, label) => `<button type="button" role="switch" aria-checked="${on}" class="role-switch${on ? ' on' : ''}" onclick="${onclick}" aria-label="${hrOnbEsc(label)}"><span class="rs-knob"></span><span class="rs-text">${on ? 'Yes' : 'No'}</span></button>`;
+  body.innerHTML = disciplines.length ? disciplines.map(d => {
+    const needsCaqh = !exemptList.includes(d);
+    const rx = isPrescribingDiscipline(d);
+    return `<tr>
+      <td class="rt-role">${hrOnbEsc(d)}</td>
+      <td class="rt-caqh">${sw(needsCaqh, `toggleCaqhExempt(${jsArg(d)}, ${needsCaqh})`, d + ' needs a CAQH profile')}</td>
+      <td class="rt-rx">${sw(rx, `togglePrescriberDiscipline(${jsArg(d)}, ${!rx})`, d + ' can hold a DEA registration')}</td>
+      <td class="rt-act">
+        <button type="button" class="btn btn-sm btn-ghost" onclick="showRenameDisciplineForm(${jsArg(d)})" aria-label="Rename ${hrOnbEsc(d)}">Rename</button>
+        <button type="button" class="btn btn-sm btn-ghost rt-remove" onclick="removeCompanyDiscipline(${jsArg(d)})" aria-label="Remove ${hrOnbEsc(d)}">Remove</button>
+      </td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="4" class="empty-state" style="padding:18px;">No roles yet. Add the first one below, for example PT or RN.</td></tr>';
+
+  // The reminders box only means something when CAQH is in use.
   const caqhSection = document.getElementById('caqhExemptSection');
-  if (caqhSection) caqhSection.style.display = (currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'))) ? 'block' : 'none';
-
-  const exemptContainer = document.getElementById('caqhExemptListCred');
-  if (exemptContainer) {
-    const exemptList = getCaqhExemptDisciplines();
-    exemptContainer.innerHTML = disciplines.map(d => {
-      const isExempt = exemptList.includes(d);
-      return `<button type="button" class="toggle-chip${isExempt ? ' on' : ''}" onclick="toggleCaqhExempt(${jsArg(d)}, ${!isExempt})">${isExempt ? '✓ ' : ''}${hrOnbEsc(d)}</button>`;
-    }).join('');
-  }
-
+  if (caqhSection) caqhSection.style.display = showCaqh ? '' : 'none';
   const remOn = currentCompany?.caqh_reminders_enabled !== false, remProv = currentCompany?.caqh_remind_providers !== false;
   const remEl = document.getElementById('caqhRemindersEnabled'), remProvEl = document.getElementById('caqhRemindProviders');
   if (remEl) remEl.checked = remOn;
   if (remProvEl) { remProvEl.checked = remProv; remProvEl.disabled = !remOn; }
-
-  const prescriberSection = document.getElementById('prescriberSection');
-  if (prescriberSection) prescriberSection.style.display = (currentCompany.has_credentialing_addon && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')))) ? '' : 'none';
-  const prescriberContainer = document.getElementById('prescriberListCred');
-  if (prescriberContainer) {
-    prescriberContainer.innerHTML = disciplines.map(d => {
-      const on = isPrescribingDiscipline(d);
-      return `<button type="button" class="toggle-chip${on ? ' on' : ''}" onclick="togglePrescriberDiscipline(${jsArg(d)}, ${!on})">${on ? '✓ ' : ''}${hrOnbEsc(d)}</button>`;
-    }).join('');
-  }
 }
 
 function getCaqhExemptDisciplines() {
