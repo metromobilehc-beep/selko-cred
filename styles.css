@@ -1,4 +1,4 @@
-:root {
+  :root {
     --navy:      #0f1f2e;
     --navy2:     #172333;
     --navy3:     #1e2d3d;
@@ -363,6 +363,18 @@
   .panel-chevron { display: inline-block; font-size: 13px; color: inherit; opacity: .4; transition: transform .18s ease; margin-left: 10px; }
   .panel-chevron.open { transform: rotate(90deg); }
   .panel-body { overflow: hidden; }
+  .panel-header-collapsible:hover { background: rgba(255,255,255,.04); }
+  .panel-header-collapsible:focus-visible { outline: 2px solid var(--teal-l, #5eead4); outline-offset: 2px; }
+  .panel-chevron-pill { opacity: 1; transform: none !important; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; letter-spacing: .02em; padding: 4px 11px; border-radius: 999px; border: 1px solid rgba(255,255,255,.28); color: rgba(255,255,255,.82); background: rgba(255,255,255,.06); white-space: nowrap; }
+  .panel-chevron-pill::before { content: '\25B8'; display: inline-block; transition: transform .18s ease; }
+  .panel-chevron-pill::after { content: 'Show'; }
+  .panel-chevron-pill.open::before { transform: rotate(90deg); }
+  .panel-chevron-pill.open::after { content: 'Hide'; }
+  .panel-header-collapsible:hover .panel-chevron-pill { background: rgba(255,255,255,.14); border-color: rgba(255,255,255,.5); }
+  .panel-toggle-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; font-size: 13px; color: rgba(255,255,255,.7); }
+  .panel-toggle-bar .btn-ghost { color: rgba(255,255,255,.85); border-color: rgba(255,255,255,.3); }
+  .panel-toggle-bar .btn-ghost:hover { background: rgba(255,255,255,.1); }
+  .panel-toggle-hint { margin-right: auto; }
   .btn-more-item { display: block; width: 100%; text-align: left; font-size: 15px; padding: 8px 10px; border: none; background: none; color: #fff; cursor: pointer; border-radius: var(--radius-sm); }
   .btn-more-item:hover { background: rgba(255,255,255,.08); }
 
@@ -520,46 +532,6 @@
   .flash-highlight { animation: flashHighlight 2.2s ease-out; }
   @keyframes flashHighlight { 0% { box-shadow: 0 0 0 3px rgba(20,184,166,.9); } 100% { box-shadow: 0 0 0 3px rgba(20,184,166,0); } }
 
-
-/* ── Settings sections: a title, one short help line capped at a readable
-   width, then the controls. Replaces long full-width paragraphs. ── */
-.set-block { padding: 18px 0; border-top: 1px solid rgba(255,255,255,.1); }
-.set-block.first { border-top: 0; padding-top: 4px; }
-.set-title { font-size: 16px; font-weight: 600; color: #fff; margin: 0 0 4px; }
-.set-help { font-size: 14px; line-height: 1.5; color: rgba(255,255,255,.62); max-width: 66ch; margin: 0 0 12px; }
-.set-note { font-size: 14px; line-height: 1.5; color: var(--gold); max-width: 66ch; margin: 0 0 14px; padding: 8px 12px; border-left: 3px solid var(--gold); background: rgba(255,255,255,.04); border-radius: 0 6px 6px 0; }
-.set-chips { display: flex; flex-wrap: wrap; gap: 10px; }
-.set-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.set-row input.inline-input { flex: 1 1 180px; max-width: 240px; }
-.set-check { display: flex; align-items: center; gap: 10px; font-size: 15px; color: #fff; padding: 6px 0; cursor: pointer; }
-.set-msg { font-size: 13px; margin-top: 2px; }
-.role-chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 6px 4px 14px; border-radius: 20px; font-weight: 600; font-size: 15px; background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.2); color: #fff; }
-.role-chip button { background: none; border: 0; color: rgba(255,255,255,.6); cursor: pointer; font-size: 15px; line-height: 1; padding: 6px 8px; border-radius: 50%; min-width: 30px; min-height: 30px; }
-.role-chip button:hover { background: rgba(255,255,255,.14); color: #fff; }
-.toggle-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 20px; font-size: 15px; cursor: pointer; font-weight: 600; background: transparent; color: rgba(255,255,255,.7); border: 1px solid rgba(255,255,255,.25); }
-.toggle-chip.on { background: var(--teal); color: #fff; border-color: var(--teal); }
-@media (max-width: 600px) { .set-row input.inline-input { max-width: none; } .set-row .btn { flex: 1 1 100%; } }
-
-/* Wide screens: explanation on the left, controls on the right, so the page
-   isn't a narrow column with a blank right half. */
-.set-block { display: grid; grid-template-columns: 1fr; gap: 4px 40px; }
-.set-text .set-help { margin-bottom: 12px; }
-.set-text .set-note { margin-bottom: 0; }
-@media (min-width: 900px) {
-  .set-block { grid-template-columns: minmax(260px, 380px) 1fr; align-items: start; padding: 22px 0; }
-  .set-controls { padding-top: 2px; }
-  .set-text .set-help, .set-text .set-note { margin-bottom: 12px; }
-}
-.set-row .btn { padding: 11px 18px; font-size: 15px; }
-.role-chip button { display: inline-flex; align-items: center; justify-content: center; }
-
-/* Staff profile, Info page: sub-tabs so one long scroll becomes a few short pages. */
-.fp-subtabs { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 18px; border-bottom: 1px solid rgba(255,255,255,.12); }
-.fp-subtab { background: none; border: 0; border-bottom: 2px solid transparent; color: rgba(255,255,255,.62); font-size: 15px; font-weight: 600; padding: 10px 14px; cursor: pointer; margin-bottom: -1px; }
-.fp-subtab:hover { color: #fff; }
-.fp-subtab.on { color: var(--teal-l); border-bottom-color: var(--teal-l); }
-.fp-pane { display: none; }
-.fp-pane.on { display: block; }
 
 /* ── Settings sections: a title, one short help line capped at a readable
    width, then the controls. Replaces long full-width paragraphs. ── */

@@ -4730,9 +4730,11 @@ function initCollapsiblePanels() {
     panel.appendChild(body);
 
     h2.classList.add('panel-header-collapsible');
+    h2.setAttribute('role', 'button');
+    h2.setAttribute('tabindex', '0');
     const chevron = document.createElement('span');
-    chevron.className = 'panel-chevron';
-    chevron.textContent = '▸';
+    chevron.className = 'panel-chevron panel-chevron-pill';
+    chevron.setAttribute('aria-hidden', 'true');
     h2.appendChild(chevron);
 
     const storageKey = 'cred_panel_open_' + h2.textContent.trim().replace(/\s+/g, '_').toLowerCase();
@@ -4740,15 +4742,44 @@ function initCollapsiblePanels() {
     const saved = localStorage.getItem(storageKey);
     const isOpen = saved !== null ? saved === '1' : defaultOpen;
 
-    body.style.display = isOpen ? '' : 'none';
-    if (isOpen) chevron.classList.add('open');
+    const setOpen = (open, persist) => {
+      body.style.display = open ? '' : 'none';
+      chevron.classList.toggle('open', open);
+      h2.setAttribute('aria-expanded', open ? 'true' : 'false');
+      h2.title = open ? 'Click to hide this section' : 'Click to show this section';
+      if (persist) { try { localStorage.setItem(storageKey, open ? '1' : '0'); } catch (e) {} }
+    };
+    setOpen(isOpen, false);
+    panel._setPanelOpen = setOpen;
 
-    h2.addEventListener('click', () => {
-      const nowOpen = body.style.display === 'none';
-      body.style.display = nowOpen ? '' : 'none';
-      chevron.classList.toggle('open', nowOpen);
-      localStorage.setItem(storageKey, nowOpen ? '1' : '0');
+    h2.addEventListener('click', () => setOpen(body.style.display === 'none', true));
+    h2.addEventListener('keydown', e => {
+      if (e.target !== h2) return;
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen(body.style.display === 'none', true); }
     });
+  });
+
+  // One "Show all / Hide all" bar at the top of any tab with several sections,
+  // so the click-to-hide behavior is explained in words where people look first.
+  ['tabSettings', 'tabSuper', 'tabCredentialing', 'tabCompliance', 'tabHr'].forEach(id => {
+    const tab = document.getElementById(id);
+    if (!tab || tab.querySelector(':scope > .panel-toggle-bar')) return;
+    const panels = Array.from(tab.querySelectorAll('.dark-panel')).filter(p => p._setPanelOpen);
+    if (panels.length < 3) return;
+    const bar = document.createElement('div');
+    bar.className = 'panel-toggle-bar';
+    bar.innerHTML = '<span class="panel-toggle-hint">Click a section title to show or hide it.</span>' +
+      '<button type="button" class="btn btn-sm btn-ghost" data-panel-all="1">Show all</button>' +
+      '<button type="button" class="btn btn-sm btn-ghost" data-panel-all="0">Hide all</button>';
+    bar.addEventListener('click', e => {
+      const b = e.target.closest('button[data-panel-all]');
+      if (!b) return;
+      const open = b.dataset.panelAll === '1';
+      panels.forEach(p => p._setPanelOpen(open, true));
+    });
+    const kids = Array.from(tab.children).slice(0, 3);
+    const intro = kids.find(k => k.tagName === 'P');
+    if (intro) intro.after(bar); else tab.insertBefore(bar, tab.firstChild);
   });
 }
 // Panels above this point are already parsed into the DOM by the time this
