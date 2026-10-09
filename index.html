@@ -1218,7 +1218,7 @@ window.selkoSharedAuthStorage = {
              specific tool anymore — header updated to match. -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>Find a provider</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Search for a provider to open their full credentialing record. CAQH, DEA, license and everything else lives in their Full Profile.</p>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Search for a provider, check their CAQH and DEA at a glance, then open their Full Profile. Notes, files, employment and everything else are in the menu on the left of the profile.</p>
           <div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;">
             <input class="inline-input" type="text" id="credStaffSearch" placeholder="Search providers by name..." style="flex:1;min-width:180px;" oninput="renderCredentialingStaffTable()" />
             <select class="inline-select" id="credStaffDisciplineFilter" style="max-width:180px;" onchange="renderCredentialingStaffTable()">
@@ -22531,9 +22531,6 @@ async function renderCredentialingStaffTable() {
       ${deaCells}
       <td><div class="td-actions">
         <button class="btn btn-sm btn-teal" onclick="showFullProfileSheet('${s.id}')">📄 Full Profile</button>
-        <button class="btn btn-sm btn-gold" onclick="showNotesLog('${s.id}',${jsArg(s.full_name)})">📝 Notes</button>
-        <button class="btn btn-sm btn-gold" onclick="showCredentialingFiles('${s.id}',${jsArg(s.full_name)})">📎 Files</button>
-        <button class="btn btn-sm btn-gold" onclick="showEmploymentHistory('${s.id}',${jsArg(s.full_name)})">💼 Employment</button>
       </div></td>
     </tr>`;
   }).join('');
