@@ -1061,8 +1061,13 @@ window.selkoSharedAuthStorage = {
       <div class="dark-panel" id="pnQuickRefPanel" data-default-open="true">
         <h2>Quick reference — who's in-network</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">A condensed, shareable summary of every provider's current network status, built for sending to someone who just needs the answer, not the full detail below.</p>
-        <div style="margin-bottom:12px;">
-          <button class="btn btn-sm btn-teal" onclick="emailInNetworkSummary()">📧 Email This Summary</button>
+        <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px;">
+          <div class="seg-toggle" role="group" aria-label="Group the quick reference by">
+            <button type="button" id="pnQrByPayerBtn" class="seg-on" onclick="setQuickRefMode('payer')">By insurance</button>
+            <button type="button" id="pnQrByStaffBtn" onclick="setQuickRefMode('provider')">By provider</button>
+          </div>
+          <input class="inline-input" type="search" id="pnQrSearch" placeholder="Search a provider or insurance..." oninput="renderQuickRef()" style="flex:1;min-width:200px;max-width:340px;" />
+          <button class="btn btn-sm btn-teal" onclick="emailInNetworkSummary()" style="margin-left:auto;">📧 Email This Summary</button>
         </div>
         <div id="pnQuickRef" style="display:flex;flex-direction:column;gap:10px;"></div>
       </div>
@@ -22552,25 +22557,55 @@ async function emailInNetworkSummary() {
   }
 }
 
+let _quickRefRecords = [];
+let _quickRefMode = 'payer';
+function setQuickRefMode(mode) {
+  _quickRefMode = mode;
+  document.getElementById('pnQrByPayerBtn')?.classList.toggle('seg-on', mode === 'payer');
+  document.getElementById('pnQrByStaffBtn')?.classList.toggle('seg-on', mode === 'provider');
+  renderQuickRef();
+}
 function renderQuickRef(records) {
+  if (Array.isArray(records)) _quickRefRecords = records;
   const el = document.getElementById('pnQuickRef');
-  const inNetwork = records.filter(r => r.status === 'in_network');
-  if (!inNetwork.length) {
-    el.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.55);">No staff confirmed in-network yet.</div>';
+  if (!el) return;
+  const all = _quickRefRecords;
+  const q = (document.getElementById('pnQrSearch')?.value || '').trim().toLowerCase();
+  const nameOf = r => r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide'));
+  const payerOf = r => r.payers?.name || 'Unknown payer';
+  const chip = t => `<span class="badge badge-verified">${hrOnbEsc(t)}</span>`;
+  const empty = t => `<div style="font-size:14px;color:rgba(255,255,255,.55);">${t}</div>`;
+
+  if (_quickRefMode === 'provider') {
+    // One row per person (or company entity): everything they are in-network with.
+    const people = {};
+    all.forEach(r => {
+      const n = nameOf(r);
+      const p = (people[n] ||= { inNet: [], other: 0 });
+      if (r.status === 'in_network') p.inNet.push(payerOf(r)); else p.other++;
+    });
+    const names = Object.keys(people).filter(n => !q || n.toLowerCase().includes(q) || people[n].inNet.some(p => p.toLowerCase().includes(q))).sort();
+    if (!names.length) { el.innerHTML = empty(q ? 'No provider or insurance matches that search.' : 'No network records yet.'); return; }
+    el.innerHTML = names.map(n => {
+      const p = people[n];
+      const chips = p.inNet.length ? [...new Set(p.inNet)].sort().map(chip).join('') : '<span style="font-size:14px;color:rgba(255,255,255,.55);">Not in-network with any insurance yet</span>';
+      const more = p.other ? `<span style="font-size:13px;color:rgba(255,255,255,.5);margin-left:6px;">${p.other} other record${p.other !== 1 ? 's' : ''} pending or not in-network</span>` : '';
+      return `<div><div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">${hrOnbEsc(n)}${more}</div><div style="display:flex;flex-wrap:wrap;gap:6px;">${chips}</div></div>`;
+    }).join('');
     return;
   }
+
+  const inNetwork = all.filter(r => r.status === 'in_network');
+  if (!inNetwork.length) { el.innerHTML = empty('No staff confirmed in-network yet.'); return; }
   const byPayer = {};
-  inNetwork.forEach(r => {
-    const payerName = r.payers?.name || 'Unknown payer';
-    (byPayer[payerName] ||= []).push(r.credtrack_staff?.full_name || ('🏢 ' + (r.entity_name || 'Company-wide')));
-  });
-  el.innerHTML = Object.keys(byPayer).sort().map(payerName => `
+  inNetwork.forEach(r => { (byPayer[payerOf(r)] ||= []).push(nameOf(r)); });
+  const payers = Object.keys(byPayer).filter(p => !q || p.toLowerCase().includes(q) || byPayer[p].some(n => n.toLowerCase().includes(q))).sort();
+  if (!payers.length) { el.innerHTML = empty('No provider or insurance matches that search.'); return; }
+  el.innerHTML = payers.map(payerName => `
     <div>
-      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">${payerName}</div>
+      <div style="font-size:14px;font-weight:600;color:#fff;margin-bottom:4px;">${hrOnbEsc(payerName)}</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;">
-        ${byPayer[payerName].sort().map(name =>
-          `<span class="badge badge-verified">${name}</span>`
-        ).join('')}
+        ${byPayer[payerName].sort().map(chip).join('')}
       </div>
     </div>
   `).join('');

@@ -606,3 +606,8 @@
 .roles-table .rt-sub { display: none; }
 @media (max-width: 700px) { .roles-table-wrap { overflow-x: auto; } }
 .roles-table thead th:first-child { border-top-left-radius: 9px; } .roles-table thead th:last-child { border-top-right-radius: 9px; }
+
+.seg-toggle { display: inline-flex; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; overflow: hidden; }
+.seg-toggle button { background: transparent; color: rgba(255,255,255,.75); border: 0; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.seg-toggle button + button { border-left: 1px solid rgba(255,255,255,.25); }
+.seg-toggle button.seg-on { background: var(--teal); color: #fff; }
