@@ -5199,7 +5199,6 @@ async function initSession(user) {
       // company (has_credentialing_addon but not has_credtrack) never sees
       updateModuleTabVisibility(company, profile);
       if (!company.has_credtrack) switchTab(company.has_credentialing_addon ? 'credentialing' : 'staff');
-      if (profile.is_super_admin) await showSuperAdminQuickSwitch(profile, company);
     } else {
       showScreen('staffScreen');
       await initStaff();
@@ -7176,7 +7175,8 @@ async function uploadDoc() {
     const file2 = document.getElementById('upFile2').files[0];
     if (file2) {
       if (file2.size > 10 * 1024 * 1024) { showUpStatus('Back-of-document file must be under 10MB.', 'err'); return; }
-      const uploadFile2 = await compressImageFile(file2);
+      stage = 'file';
+      const uploadFile2 = await readFileStable(await compressImageFile(file2));
       const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}_back.${ext2}`;
       const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, uploadFile2, { contentType: uploadFile2.type });
@@ -8200,6 +8200,7 @@ function setDocViewMode(mode) {
 }
 
 async function updateDocViewCounts() {
+  if (!currentCompany?.id) return;
   const { count: needsCount } = await sb.from('credtrack_documents')
     .select('id', { count: 'exact', head: true })
     .eq('company_id', currentCompany.id)
@@ -8263,6 +8264,9 @@ document.addEventListener('visibilitychange', () => {
 });
 
 async function loadAdminDocs() {
+  // The 60-second, focus and tab-visible refreshes keep firing after sign-out or an expired
+  // session, when there is no company loaded. Nothing to refresh then; bail quietly.
+  if (!currentCompany?.id) return;
   const emp      = document.getElementById('fEmp')?.value      || '';
   const type     = document.getElementById('fType')?.value     || '';
   const verified = document.getElementById('fVerified')?.value || '';
@@ -13503,6 +13507,21 @@ function populateAdminUploadSelects(prefix = 'au', skipStaffDropdown = false) {
 // license-number requirement, auto-verification, staff license sync — so
 // a document added either way is genuinely the same thing, not two
 // similar implementations quietly free to drift apart from each other.
+// Reads the chosen file fully into memory before uploading. A file that was moved,
+// renamed, still syncing from OneDrive/Google Drive, or edited after it was picked
+// makes the browser fail the upload with just "Failed to fetch"; reading it first
+// turns that into a clear message and a stable copy to upload.
+async function readFileStable(f) {
+  try {
+    const buf = await f.arrayBuffer();
+    return new File([buf], f.name, { type: f.type, lastModified: f.lastModified });
+  } catch (e) {
+    const err = new Error(`Couldn't read "${f.name}" from your computer. If it is in OneDrive or Google Drive, make sure it has finished downloading, or choose the file again, then press Save.`);
+    err.stage = 'read';
+    throw err;
+  }
+}
+
 async function saveCredentialDoc(prefix, presetStaffId) {
   const staffId  = presetStaffId || document.getElementById(`${prefix}Staff`).value;
   const typeId   = document.getElementById(`${prefix}Type`).value;
@@ -13548,6 +13567,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
   const qual = multiType ? (isOther ? cleanQualifier(otherName) : cleanQualifier(document.getElementById(`${prefix}Qual`)?.value)) : '';
   if (multiType && !qual) { showAuStatus('This document type can be held more than once. Say which one this is (for example the state) in "Which one?".', 'err', prefix); return; }
 
+  let stage = 'save';
   try {
     let fileUrl  = null;
     let fileName = null;
@@ -13555,7 +13575,8 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     // Upload file if provided
     if (file) {
       if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err', prefix); return; }
-      const uploadFile = await compressImageFile(file);
+      stage = 'file';
+      const uploadFile = await readFileStable(await compressImageFile(file));
       const ext  = uploadFile.name.split('.').pop();
       const path = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
       const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, uploadFile, { contentType: uploadFile.type });
@@ -13578,6 +13599,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
       fileName2 = file2.name;
     }
 
+    stage = 'save';
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
       company_id:       currentCompany.id,
       staff_id:         staffId,
@@ -13626,7 +13648,13 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     await checkStaffCompliance(staffId);
     await loadAdminDocs();
   } catch(e) {
-    showAuStatus('Error: ' + e.message, 'err', prefix);
+    const unreachable = /failed to fetch|networkerror|load failed|network request failed/i.test(e?.message || '');
+    const msg = e?.stage === 'read' ? e.message
+      : unreachable ? (stage === 'file'
+          ? "The file didn't upload because the connection to the server failed. Nothing was saved. Check your internet, turn off any ad or privacy blocker for this site, and press Save again. If it keeps failing, try a smaller file or a different browser."
+          : "The record didn't save because the connection to the server failed. Nothing was saved. Check your internet and press Save again.")
+      : friendlyError(e, 'save this document');
+    showAuStatus(msg, 'err', prefix);
   }
 }
 
@@ -24413,47 +24441,6 @@ async function previewAsPartner(agencyId, agencyName) {
 function exitPartnerPreview() {
   document.getElementById('partnerPreviewBanner').style.display = 'none';
   showScreen('adminScreen');
-}
-
-// Skippable "quick switch" prompt shown right after a super admin's
-// normal login lands them in their own default company — the actual
-// friction being solved: today, reaching any OTHER company means
-// navigating to Selko Admin and finding it in a card grid, every
-// single session, with no memory of what you looked at last time.
-// This surfaces the same switch (reusing viewAsAdmin unchanged) right
-// where it's needed, without forcing anyone to use it.
-async function showSuperAdminQuickSwitch(profile, currentCompanyRow) {
-  const { data: myProfile } = await sb.from('profiles')
-    .select('restricted_agency_ids').eq('id', profile.id).maybeSingle();
-  const restrictedIds = myProfile?.restricted_agency_ids;
-
-  let query = sb.from('companies').select('id, name').neq('id', currentCompanyRow.id).is('deleted_at', null);
-  if (restrictedIds && restrictedIds.length) {
-    query = query.in('id', restrictedIds);
-  } else if (restrictedIds && restrictedIds.length === 0) {
-    return; // explicitly restricted to zero other companies - nothing to offer
-  }
-  // restrictedIds === null (unrestricted, e.g. Stephen/Evan) falls through
-  // with no .in() filter at all - every other company is a valid switch target.
-
-  const { data: otherCompanies } = await query.order('name');
-  if (!otherCompanies?.length) return; // nothing else to switch to - skip silently, no empty modal
-
-  const modal = document.createElement('div');
-  modal.id = 'quickSwitchModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1200;display:flex;align-items:center;justify-content:center;padding:20px;';
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:420px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Switch company?</div>
-      <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:16px;">You're in <strong style="color:#fff;">${currentCompanyRow.name}</strong>. Jump to another company, or stay here.</div>
-      <div style="max-height:260px;overflow-y:auto;margin-bottom:16px;">
-        ${otherCompanies.map(c => `
-          <button class="btn btn-sm btn-ghost" style="width:100%;justify-content:flex-start;margin-bottom:6px;color:#fff;border-color:rgba(255,255,255,.15);" onclick="document.getElementById('quickSwitchModal').remove(); viewAsAdmin('${c.id}',${jsArg(c.name)});">${hrOnbEsc(c.name)}</button>
-        `).join('')}
-      </div>
-      <button class="btn btn-teal" style="width:100%;justify-content:center;" onclick="document.getElementById('quickSwitchModal').remove();">Stay in ${currentCompanyRow.name}</button>
-    </div>`;
-  document.body.appendChild(modal);
 }
 
 // ── Selko support activity log ──────────────────────────────────────────────
