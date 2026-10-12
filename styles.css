@@ -628,3 +628,7 @@ html[data-theme="light"] .keep-colors { filter: invert(1) hue-rotate(180deg); }
 #hdrTheme:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.35); }
 /* Neutral surfaces so Light reads as clean white and light grey, not tinted blue. */
 html[data-theme="light"] { --navy: #000000; --navy2: #0b0b0b; --navy3: #1c1c1c; }
+/* The sign-in page is already a designed light/dark split, so it keeps that look in both themes. */
+html[data-theme="light"] #loginScreen { filter: invert(1) hue-rotate(180deg); }
+html[data-theme="light"] #loginScreen { --navy: #0f1f2e; --navy2: #172333; --navy3: #1e2d3d; }
+html[data-theme="light"] #loginScreen img { filter: none; }
