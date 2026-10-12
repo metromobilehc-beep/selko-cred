@@ -4774,7 +4774,7 @@ function initCollapsiblePanels() {
 
   // One "Show all / Hide all" bar at the top of any tab with several sections,
   // so the click-to-hide behavior is explained in words where people look first.
-  ['tabSettings', 'tabSuper', 'tabCredentialing', 'tabCompliance', 'tabHr'].forEach(id => {
+  ['tabSettings', 'tabSuper', 'tabCredentialing', 'tabCompliance', 'tabHr', 'tabInsurance'].forEach(id => {
     const tab = document.getElementById(id);
     if (!tab || tab.querySelector(':scope > .panel-toggle-bar')) return;
     const panels = Array.from(tab.querySelectorAll('.dark-panel')).filter(p => p._setPanelOpen);
