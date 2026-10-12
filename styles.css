@@ -611,3 +611,8 @@
 .seg-toggle button { background: transparent; color: rgba(255,255,255,.75); border: 0; padding: 8px 14px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .seg-toggle button + button { border-left: 1px solid rgba(255,255,255,.25); }
 .seg-toggle button.seg-on { background: var(--teal); color: #fff; }
+
+/* Sections merged inside one Settings panel */
+.set-sub { margin: 0 0 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.1); }
+.panel-body > .set-sub:first-child { border-top: 0; padding-top: 0; }
+.set-sub-title { font-size: 15px; font-weight: 600; color: #fff; margin: 0 0 10px; }

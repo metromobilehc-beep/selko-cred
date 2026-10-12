@@ -2303,8 +2303,10 @@ window.selkoSharedAuthStorage = {
            admin managing it on their behalf. Actual dollar amounts live
            entirely in Stripe (via lookup keys), never hardcoded here, so
            pricing can change without touching this code. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="billingPanelSettings">
-        <h2>Billing</h2>
+      <div class="dark-panel" id="planBillingPanel" style="margin-bottom:16px;">
+  <h2>Plan &amp; billing</h2>
+<div class="set-sub" style="margin-bottom:16px;" id="billingPanelSettings">
+        <h3 class="set-sub-title">Billing</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your current plan, usage, and the tools to change or manage it.</p>
         <div id="billingCurrentStatus" style="font-size:15px;color:rgba(255,255,255,.7);margin-bottom:14px;"></div>
 
@@ -2367,8 +2369,8 @@ window.selkoSharedAuthStorage = {
            features. Shown regardless of current tier so a Standard
            company can see what upgrading unlocks, and a Pro company can
            confirm they already have everything. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="proComparisonPanelSettings">
-        <h2>Standard vs Pro — document features</h2>
+      <div class="set-sub" style="margin-bottom:16px;" id="proComparisonPanelSettings">
+        <h3 class="set-sub-title">Standard vs Pro — document features</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">You're currently on <span id="proComparisonCurrentTier" style="font-weight:700;color:#fff;"></span>. Here's exactly what changes on Pro.</p>
         <div class="tbl-wrap">
           <table>
@@ -2388,14 +2390,17 @@ window.selkoSharedAuthStorage = {
         </div>
         <p id="proComparisonUpgradeNote" style="font-size:14px;color:rgba(255,255,255,.58);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
       </div>
+</div>
 
       <div id="settingsGrp_support" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Privacy &amp; Access</span>
         <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Decide whether Selko support can open your account, and who is emailed when sensitive staff information is viewed or changed.</div>
       </div>
 
-      <div class="dark-panel" style="margin-bottom:16px;" id="supportAccessPanel">
-        <h2>Selko support access</h2>
+      <div class="dark-panel" id="privacyAlertsPanel" style="margin-bottom:16px;">
+  <h2>Privacy, access &amp; alerts</h2>
+<div class="set-sub" style="margin-bottom:16px;" id="supportAccessPanel">
+        <h3 class="set-sub-title">Selko support access</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko support activity. The one exception: Selko can always see the <em>names and categories</em> of document types your company creates, and how many companies made the same one, to decide what to add to the shared defaults. It never sees which company made them, or any documents or staff.</p>
         <div id="supportAccessStatus"></div>
         <div id="supportAccessRequests"></div>
@@ -2410,8 +2415,8 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div class="dark-panel" style="margin-bottom:16px;" id="adminNotificationsPanel">
-        <h2>Notifications</h2>
+      <div class="set-sub" style="margin-bottom:16px;" id="adminNotificationsPanel">
+        <h3 class="set-sub-title">Notifications</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
           How you hear about credentials that are expired or about to expire. This is your own choice: other admins set theirs.
           Staff still get their own reminders either way.
@@ -2422,8 +2427,8 @@ window.selkoSharedAuthStorage = {
         </div>
       </div>
 
-      <div class="dark-panel" style="margin-bottom:16px;" id="sensitiveAlertsPanel">
-        <h2>Sensitive data alerts</h2>
+      <div class="set-sub" style="margin-bottom:16px;" id="sensitiveAlertsPanel">
+        <h3 class="set-sub-title">Sensitive data alerts</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Get an email whenever someone views or enters a staff member's Social Security number or CAQH login, so you always know. The email says who, what and when, and never includes the sensitive information itself.</p>
         <div id="sensitiveAlertsForm"></div>
         <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin:16px 0 6px;">Recent alerts</div>
@@ -2434,6 +2439,7 @@ window.selkoSharedAuthStorage = {
           </table>
         </div>
       </div>
+</div>
 
       <div id="settingsGrp_company" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Profile</span>
@@ -2442,8 +2448,10 @@ window.selkoSharedAuthStorage = {
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsGroupedCss">.set-subhead{display:none}html.settings-grouped .set-subhead{display:block;grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-l);margin:10px 0 0;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}html.settings-grouped .set-subhead:first-child{margin-top:0}</style>
-      <div class="dark-panel" style="margin-bottom:16px;" id="companySettingsPanel">
-        <h2>Company settings</h2>
+      <div class="dark-panel" id="companyProfilePanel" style="margin-bottom:16px;">
+  <h2>Company profile</h2>
+<div class="set-sub" style="margin-bottom:16px;" id="companySettingsPanel">
+        <h3 class="set-sub-title">Company settings</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your company's own name, contact info, and the core details used across the platform.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div class="set-subhead">Company</div>
@@ -2498,8 +2506,8 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Branding (Pro only) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
-        <h2>Branding <span id="brandingProTag" style="font-size:12px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h2>
+      <div class="set-sub" style="margin-bottom:16px;">
+        <h3 class="set-sub-title">Branding <span id="brandingProTag" style="font-size:12px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Make the parts your staff and partners see — emails, the header, login screen — look like your own company's, not Selko's.</p>
         <div id="brandingLocked" style="display:none;">
           <p style="color:rgba(255,255,255,.66);font-size:15px;margin-bottom:14px;">Make it look like your own software, not ours — upgrade to Pro to unlock:</p>
@@ -2538,13 +2546,14 @@ window.selkoSharedAuthStorage = {
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
       </div>
 
-      <div class="dark-panel" style="margin-bottom:16px;" id="gettingStartedSettingsPanel">
-        <h2>Getting-started checklist</h2>
+      <div class="set-sub" style="margin-bottom:16px;" id="gettingStartedSettingsPanel">
+        <h3 class="set-sub-title">Getting-started checklist</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">A short checklist on your Overview that walks a new admin through setup: company settings, roles, staff, document types, a first upload, logins, a provider profile and a first exclusion check. It ticks steps off by itself from what you've actually done.</p>
         <div id="gettingStartedSettingsStatus" style="font-size:14px;color:rgba(255,255,255,.78);margin-bottom:12px;"></div>
         <div id="gettingStartedSettingsButtons" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
         <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px;line-height:1.5;">Hiding removes it from your Overview completely, and this page is where you bring it back. Reset clears anything you marked done by hand and shows the checklist again. Steps that are done in your real data (staff added, documents uploaded, a provider with an NPI, an exclusion check run) stay checked, because they are done.</div>
       </div>
+</div>
 
       <div id="settingsGrp_setup" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Professional Setup</span>
@@ -2556,8 +2565,10 @@ window.selkoSharedAuthStorage = {
            different values here. Healthcare-only: Selko Cred no longer covers
            other verticals, so every example here should read as a clinical
            credential, never a role from an unrelated industry. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="rolesPanelSettings">
-        <h2 id="disciplinesPanelTitle">Professional roles</h2>
+      <div class="dark-panel" id="rolesDocsPanel" style="margin-bottom:16px;">
+  <h2>Roles &amp; documents</h2>
+<div class="set-sub" style="margin-bottom:16px;" id="rolesPanelSettings">
+        <h3 class="set-sub-title" id="disciplinesPanelTitle">Professional roles</h3>
 
         <p class="set-help" style="max-width:none;">The licensed roles your company uses. They appear wherever a role is chosen: adding or editing staff, and scoping which documents apply to which roles.</p>
         <p class="set-note" style="max-width:none;">Licensed or credentialed roles only (PT, RN, DO, LPN). Not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile.</p>
@@ -2598,8 +2609,8 @@ window.selkoSharedAuthStorage = {
            has no Documents tab, no Missing Docs report, and no Expiration
            Tracker for this to feed into — their actual file needs are now
            served by the separate, simpler Credentialing Files system. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
-        <h2>Document types</h2>
+      <div class="set-sub" style="margin-bottom:16px;" id="docTypesPanelSettings">
+        <h3 class="set-sub-title">Document types</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:6px;">Manage which credential types are available to your staff. <a href="#docTypeOptionsBox" onclick="document.getElementById('docTypeOptionsBox')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:var(--teal-l);">Options for your own categories and for renewals are at the bottom ↓</a></p>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;margin:0;">
@@ -2653,6 +2664,7 @@ window.selkoSharedAuthStorage = {
         </div>
         </div>
       </div>
+</div>
 
       <div id="hcnSectionHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Health Care Network</span>
@@ -2664,8 +2676,10 @@ window.selkoSharedAuthStorage = {
            an individual staff member. A real master list, not just derived
            from existing data, so entries can be added ahead of any actual
            insurance record and renamed without breaking history. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="entitiesPanelSettings">
-        <h2>Company & Agency Entities</h2>
+      <div class="dark-panel" id="hcnSetupPanel" style="margin-bottom:16px;">
+  <h2>Health Care Network setup</h2>
+<div class="set-sub" style="margin-bottom:16px;" id="entitiesPanelSettings">
+        <h3 class="set-sub-title">Company & Agency Entities</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
           The offices, locations, or agencies you can add below — each one then shows up as a "Company-wide" option when adding a network record on the Health Care Network tab, so a payer relationship can be tracked for a whole office instead of one staff member. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
         </p>
@@ -2677,8 +2691,8 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Payer network management -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="payersPanelSettings">
-        <h2>Payers you track (Health Care Network list)</h2>
+      <div class="set-sub" style="margin-bottom:16px;" id="payersPanelSettings">
+        <h3 class="set-sub-title">Payers you track (Health Care Network list)</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
         <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
           <div style="flex:1;position:relative;">
@@ -2707,6 +2721,7 @@ window.selkoSharedAuthStorage = {
           <div id="enrollmentNotifStatus" style="font-size:13px;color:var(--teal-l);margin-top:6px;display:none;"></div>
         </div>
       </div>
+</div>
 
       <div id="settingsPartnersHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
@@ -2841,8 +2856,10 @@ window.selkoSharedAuthStorage = {
       <!-- Storage usage — per company, so it's actually useful for
            tracking growth and spotting an outlier, not just one opaque
            platform-wide total. -->
-      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
-        <h2>📦 Storage usage</h2>
+      <div class="dark-panel" id="storageGroupPanel" data-super-setting style="display:none;margin-bottom:16px;">
+  <h2>Storage</h2>
+<div class="set-sub" style="margin-bottom:16px;">
+        <h3 class="set-sub-title">📦 Storage usage</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Uploaded credential document files, per company. Doesn't include branding logos or other non-credential uploads to this bucket.</p>
         <div id="storageUsageTotal" style="font-size:15px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
         <div class="tbl-wrap">
@@ -2854,8 +2871,8 @@ window.selkoSharedAuthStorage = {
       </div>
 
       <!-- Recent uploads across every company — live view, complements the daily email digest -->
-      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
-        <h2>📤 Recent uploads</h2>
+      <div class="set-sub" style="margin-bottom:16px;">
+        <h3 class="set-sub-title">📤 Recent uploads</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Document uploads across every company in the last 7 days, newest first.</p>
         <div class="tbl-wrap">
           <table>
@@ -2864,6 +2881,7 @@ window.selkoSharedAuthStorage = {
           </table>
         </div>
       </div>
+</div>
 
       </div>
 
@@ -25434,11 +25452,19 @@ function goToPanel(tab, targetId) {
   setTimeout(() => {
     const el = document.getElementById(targetId);
     if (!el) return;
-    const body = el.querySelector(':scope > .panel-body');
-    if (body && body.style.display === 'none') {
-      const head = el.querySelector(':scope > h2');
-      if (head) head.click();
+    // Sections can sit inside a bigger panel (e.g. Roles & documents), so open
+    // every collapsed panel around the target, outermost first.
+    const chain = [];
+    for (let p = el; p && p.id !== 'tabSettings'; p = p.parentElement) {
+      if (p.classList && p.classList.contains('dark-panel')) chain.unshift(p);
     }
+    chain.forEach(pn => {
+      const body = pn.querySelector(':scope > .panel-body');
+      if (body && body.style.display === 'none') {
+        const head = pn.querySelector(':scope > h2');
+        if (head) head.click();
+      }
+    });
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     el.classList.add('flash-highlight');
     setTimeout(() => el.classList.remove('flash-highlight'), 2400);
