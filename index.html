@@ -6962,6 +6962,10 @@ function onUpFilesMultiSelected(input) {
   setHiddenFile('upFile',  files[0] || null);
   setHiddenFile('upFile2', files[1] || null);
   refreshUpFileDisplay();
+  // Say right away if a file can't be used, rather than only after pressing Upload.
+  const problems = [uploadFileProblem(files[0], 'Front file'), uploadFileProblem(files[1], 'Back file')].filter(Boolean);
+  if (files.length > 2) problems.push('Only two files can be attached (front and back). The first two were kept; the rest were left out.');
+  if (problems.length) showUpStatus(problems.join(' '), 'err'); else document.getElementById('upStatus').style.display = 'none';
 }
 
 function onUpCameraSingleSelected(input) {
@@ -7145,7 +7149,8 @@ async function uploadDoc() {
 
   if (!typeId) { showUpStatus('Please select a document type.', 'err'); return; }
   if (!file)   { showUpStatus('Please attach a file.', 'err'); return; }
-  if (file.size > 10 * 1024 * 1024) { showUpStatus('File must be under 10MB.', 'err'); return; }
+  { const p = uploadFileProblem(file, 'Front file'); if (p) { showUpStatus(p, 'err'); return; } }
+  { const p2 = uploadFileProblem(document.getElementById('upFile2').files[0], 'Back file'); if (p2) { showUpStatus(p2, 'err'); return; } }
   if (isLicenseDocType(docTypeForValidation) && !license) {
     showUpStatus('Please enter your license number for this document type.', 'err');
     return;
@@ -7161,9 +7166,11 @@ async function uploadDoc() {
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> Uploading…';
 
+  let stage = 'file';
   try {
     const docType = docTypes.find(d => d.id == typeId);
-    const uploadFile = await compressImageFile(file);
+    stage = 'file';
+    const uploadFile = await readFileStable(await compressImageFile(file));
     const ext  = uploadFile.name.split('.').pop();
     const path = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}.${ext}`;
 
@@ -7174,8 +7181,6 @@ async function uploadDoc() {
     let fileUrl2 = null, fileName2 = null;
     const file2 = document.getElementById('upFile2').files[0];
     if (file2) {
-      if (file2.size > 10 * 1024 * 1024) { showUpStatus('Back-of-document file must be under 10MB.', 'err'); return; }
-      stage = 'file';
       const uploadFile2 = await readFileStable(await compressImageFile(file2));
       const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}_back.${ext2}`;
@@ -7185,6 +7190,7 @@ async function uploadDoc() {
       fileName2 = file2.name;
     }
 
+    stage = 'save';
     const { error: dbErr } = await sb.from('credtrack_documents').insert({
       company_id:       currentCompany.id,
       staff_id:         window._staffId,
@@ -7219,7 +7225,7 @@ async function uploadDoc() {
     await checkStaffCompliance(window._staffId);
     toast('Document uploaded');
   } catch(e) {
-    showUpStatus('Upload failed: ' + e.message, 'err');
+    showUpStatus(uploadErrorMessage(e, stage), 'err');
   }
   btn.disabled = false;
   btn.textContent = 'Upload document';
@@ -13511,6 +13517,47 @@ function populateAdminUploadSelects(prefix = 'au', skipStaffDropdown = false) {
 // renamed, still syncing from OneDrive/Google Drive, or edited after it was picked
 // makes the browser fail the upload with just "Failed to fetch"; reading it first
 // turns that into a clear message and a stable copy to upload.
+// ── Shared checks for any file being attached (staff screen and admin upload) ──
+const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+function uploadFileProblem(f, label) {
+  if (!f) return '';
+  const who = label ? label + ' ' : '';
+  const name = String(f.name || 'file');
+  const low = name.toLowerCase();
+  const type = String(f.type || '').toLowerCase();
+  if (/\.(heic|heif)$/.test(low) || /image\/hei[cf]/.test(type)) {
+    return `${who}"${name}" is an iPhone HEIC photo, which can't be uploaded. Use the Take photo button instead, or change the iPhone setting Settings > Camera > Formats > Most Compatible and take it again.`;
+  }
+  const okExt = /\.(pdf|jpe?g|png|webp)$/.test(low);
+  const okType = /^(application\/pdf|image\/(jpeg|png|webp))$/.test(type);
+  if (!okExt && !okType) {
+    const ext = (low.match(/\.([a-z0-9]+)$/) || [])[1];
+    return `${who}"${name}" is ${ext ? 'a .' + ext : 'an unsupported'} file. Please upload a PDF, JPG or PNG. A Word document or other file needs to be saved or printed as PDF first.`;
+  }
+  if (f.size > UPLOAD_MAX_BYTES) {
+    const mb = (f.size / 1048576).toFixed(1);
+    return `${who}"${name}" is ${mb} MB and the limit is 10 MB. For a photo, use Take photo. For a PDF, re-save or scan it at a lower quality (or scan fewer pages), then try again.`;
+  }
+  if (f.size === 0) return `${who}"${name}" is empty. Choose the file again.`;
+  return '';
+}
+
+// What to tell someone when an upload or save throws.
+function uploadErrorMessage(e, stage) {
+  if (e && e.stage === 'read') return e.message;
+  const raw = String((e && e.message) || e || '');
+  if (/failed to fetch|networkerror|load failed|network request failed/i.test(raw)) {
+    return stage === 'file'
+      ? "The file didn't upload because the connection to the server failed. Nothing was saved. Check your internet, turn off any ad or privacy blocker for this site, and try again. If it keeps failing, try a smaller file or a different browser."
+      : "The record didn't save because the connection to the server failed. Nothing was saved. Check your internet and try again.";
+  }
+  if (/mime type|not supported|invalid.*type/i.test(raw)) return "That file type isn't accepted. Please upload a PDF, JPG or PNG.";
+  if (/exceeded the maximum allowed size|payload too large|too large|413/i.test(raw)) return 'That file is too large. The limit is 10 MB. Use a smaller or lower-quality version and try again.';
+  if (/row-level security|violates row|permission denied|not authorized|unauthorized/i.test(raw)) return "You don't have permission to upload this. Sign out and back in, then try again. If it still fails, tell your admin.";
+  if (/jwt|session|expired/i.test(raw)) return 'Your session has expired. Sign in again, then retry.';
+  return friendlyError(e, 'upload this document');
+}
+
 async function readFileStable(f) {
   try {
     const buf = await f.arrayBuffer();
@@ -13574,7 +13621,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
 
     // Upload file if provided
     if (file) {
-      if (file.size > 10 * 1024 * 1024) { showAuStatus('File must be under 10MB.', 'err', prefix); return; }
+      { const p = uploadFileProblem(file, 'File'); if (p) { showAuStatus(p, 'err', prefix); return; } }
       stage = 'file';
       const uploadFile = await readFileStable(await compressImageFile(file));
       const ext  = uploadFile.name.split('.').pop();
@@ -13589,8 +13636,9 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     let fileUrl2 = null, fileName2 = null;
     const file2 = document.getElementById(`${prefix}File2`)?.files[0] || document.getElementById(`${prefix}Camera2`)?.files[0];
     if (file2) {
-      if (file2.size > 10 * 1024 * 1024) { showAuStatus('Back-of-document file must be under 10MB.', 'err', prefix); return; }
-      const uploadFile2 = await compressImageFile(file2);
+      { const p2 = uploadFileProblem(file2, 'Back file'); if (p2) { showAuStatus(p2, 'err', prefix); return; } }
+      stage = 'file';
+      const uploadFile2 = await readFileStable(await compressImageFile(file2));
       const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}_back.${ext2}`;
       const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, uploadFile2, { contentType: uploadFile2.type });
@@ -13648,12 +13696,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     await checkStaffCompliance(staffId);
     await loadAdminDocs();
   } catch(e) {
-    const unreachable = /failed to fetch|networkerror|load failed|network request failed/i.test(e?.message || '');
-    const msg = e?.stage === 'read' ? e.message
-      : unreachable ? (stage === 'file'
-          ? "The file didn't upload because the connection to the server failed. Nothing was saved. Check your internet, turn off any ad or privacy blocker for this site, and press Save again. If it keeps failing, try a smaller file or a different browser."
-          : "The record didn't save because the connection to the server failed. Nothing was saved. Check your internet and press Save again.")
-      : friendlyError(e, 'save this document');
+    const msg = uploadErrorMessage(e, stage);
     showAuStatus(msg, 'err', prefix);
   }
 }
