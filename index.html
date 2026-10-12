@@ -103,6 +103,10 @@ window.selkoSharedAuthStorage = {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 </script>
 <link rel="stylesheet" href="styles.css">
+<script>
+// Light/Dark choice is applied before first paint so the page never flashes the wrong theme.
+try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
+</script>
 </head>
 <body>
 
@@ -135,6 +139,7 @@ window.selkoSharedAuthStorage = {
     <span id="hdrRole"></span>
     <button id="hdrMyCreds" onclick="toggleMyCredsView()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:14px;cursor:pointer;display:none;">My Credentials</button>
     <button id="hdrReportIssueBtn" onclick="showReportIssueModal()" style="display:none;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:14px;cursor:pointer;">🆘 Report an issue</button>
+    <button id="hdrTheme" type="button" onclick="toggleTheme()" aria-label="Switch between light and dark">Light mode</button>
     <button id="hdrLogout" onclick="logout()">Sign out</button>
   </div>
   </div>
@@ -25436,6 +25441,23 @@ function refreshSettingsJumpBar() {
 
 // TRIAL (2026-10-07): small headings inside Company settings (Company / Reminder timing / New-hire onboarding / Preferences).
 // To go back to the plain layout, change true to false. Nothing else needs to change.
+
+// Light / Dark toggle. Dark is the default look. The choice is remembered on this device.
+function applyTheme(t) {
+  if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+  const b = document.getElementById('hdrTheme');
+  if (b) {
+    b.textContent = t === 'light' ? 'Dark mode' : 'Light mode';
+    b.title = t === 'light' ? 'Switch to the dark look' : 'Switch to the light look';
+  }
+}
+function toggleTheme() {
+  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+  try { localStorage.setItem('cred_theme', next); } catch (e) {}
+  applyTheme(next);
+}
+applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 const SETTINGS_GROUPED = true;
 document.documentElement.classList.toggle('settings-grouped', SETTINGS_GROUPED);
 function jumpToSettingsGroup(id) {

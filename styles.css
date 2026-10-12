@@ -358,7 +358,7 @@
   .ov-stat-card.ov-stat-danger .ov-stat-num { color: #ef4444; }
   .ov-attention-row { display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,.03); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 15px; }
   .ov-attention-row .ov-days-badge { font-weight: 700; font-size: 14px; padding: 3px 9px; border-radius: 12px; }
-  .dark-panel h2 { font-size: 17px; color: var(--teal-l); margin-bottom: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; }
+  .dark-panel h2 { font-size: 21px; color: var(--teal-l); margin-bottom: 16px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
   .panel-header-collapsible { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; }
   .panel-chevron { display: inline-block; font-size: 13px; color: inherit; opacity: .4; transition: transform .18s ease; margin-left: 10px; }
   .panel-chevron.open { transform: rotate(90deg); }
@@ -615,4 +615,16 @@
 /* Sections merged inside one Settings panel */
 .set-sub { margin: 0 0 18px; padding-top: 16px; border-top: 1px solid rgba(255,255,255,.1); }
 .panel-body > .set-sub:first-child { border-top: 0; padding-top: 0; }
-.set-sub-title { font-size: 15px; font-weight: 600; color: #fff; margin: 0 0 10px; }
+.set-sub-title { font-size: 18px; font-weight: 600; color: #fff; margin: 0 0 10px; }
+
+/* LIGHT THEME. The app is built light-on-navy, so Light flips the whole page
+   (including inline colors) and puts photos, logos and previews back the right
+   way round. Dark is the normal look and needs no rules. */
+html[data-theme="light"] { filter: invert(1) hue-rotate(180deg); background: #fff; }
+html[data-theme="light"] img, html[data-theme="light"] video, html[data-theme="light"] canvas,
+html[data-theme="light"] iframe, html[data-theme="light"] embed, html[data-theme="light"] object,
+html[data-theme="light"] .keep-colors { filter: invert(1) hue-rotate(180deg); }
+#hdrTheme { background: transparent; border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.7); padding: 4px 12px; border-radius: var(--radius-sm); font-size: 14px; cursor: pointer; transition: all .15s; white-space: nowrap; }
+#hdrTheme:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.35); }
+/* Neutral surfaces so Light reads as clean white and light grey, not tinted blue. */
+html[data-theme="light"] { --navy: #000000; --navy2: #0b0b0b; --navy3: #1c1c1c; }
