@@ -18312,7 +18312,7 @@ const SETTINGS_HELP = [
   {
     title: 'Document types',
     subtitle: '',
-    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped.</p>
+    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped. <strong>Document type categories</strong> nearby groups these into organized sections rather than one long flat list.</p>
       <ul>
         <li>The box above the table explains the columns. Click a badge to change it: <strong>Required / Optional</strong>, <strong>Applies to</strong> (which roles), <strong>Self-upload</strong> (whether staff can upload it themselves) and <strong>Hide</strong> (take it off your list).</li>
         <li><strong>+ Add document type</strong> (Pro plan) creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
@@ -18367,12 +18367,18 @@ const SETTINGS_HELP = [
     html: `<p>Shows, hides or resets the setup checklist on your Overview. Reset clears anything you marked done by hand and shows it again, and steps that are done in your real data stay checked. It never changes your staff, documents or any other records. See the Overview help for what the checklist covers.</p>`,
   },
   {
-    title: 'Storage and uploads',
+    title: 'Storage, uploads, and deletion',
     subtitle: '',
     html: `<ul>
         <li><strong>Storage usage</strong> — how much space your uploaded files are taking up.</li>
         <li><strong>Recent uploads</strong> — a quick log of what's been added lately, useful for spotting something that landed in the wrong place.</li>
+        <li><strong>Records eligible for permanent deletion</strong> — anything past its retention period that can now be permanently removed. Nothing here is deleted automatically without this step.</li>
       </ul>`,
+  },
+  {
+    title: 'Support and the bug log',
+    subtitle: '',
+    html: `<p><strong>Support requests</strong> is where to reach out if something's wrong or you need help beyond what these Help panels cover. <strong>Bug log</strong> is a running record of issues found and fixed, mostly useful if you want to see what's changed recently.</p>`,
   },
 ];
 
@@ -18484,11 +18490,6 @@ const SUPER_HELP = [
     title: 'Bug log',
     subtitle: '',
     html: `<p>Errors logged across every Selko app that writes to this table, not just Credentialing — useful for spotting a platform-wide pattern rather than one company's own issue.</p>`,
-  },
-  {
-    title: 'Records eligible for permanent deletion',
-    subtitle: '',
-    html: `<p>Anything past its retention period that can now be permanently removed. Nothing is deleted automatically; it only happens when you confirm it here.</p>`,
   },
 ];
 
