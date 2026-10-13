@@ -103,10 +103,6 @@ window.selkoSharedAuthStorage = {
   pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
 </script>
 <link rel="stylesheet" href="styles.css">
-<script>
-// Light/Dark choice is applied before first paint so the page never flashes the wrong theme.
-try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
-</script>
 </head>
 <body>
 
@@ -139,7 +135,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
     <span id="hdrRole"></span>
     <button id="hdrMyCreds" onclick="toggleMyCredsView()" style="background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:14px;cursor:pointer;display:none;">My Credentials</button>
     <button id="hdrReportIssueBtn" onclick="showReportIssueModal()" style="display:none;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.7);padding:4px 12px;border-radius:6px;font-size:14px;cursor:pointer;">🆘 Report an issue</button>
-    <button id="hdrTheme" type="button" onclick="toggleTheme()" aria-label="Switch between light and dark">Light mode</button>
     <button id="hdrLogout" onclick="logout()">Sign out</button>
   </div>
   </div>
@@ -1634,6 +1629,7 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Checks <strong>all</strong> your active staff, not only those with an NPI, against OIG's List of Excluded Individuals/Entities (LEIE). OIG publishes a new list by the 10th of every month and Selko loads it for you. A matching NPI, or a matching name <em>and date of birth</em>, is strong. Someone with the same name but a <em>different</em> date of birth is set aside as a different person. <strong>A match is a lead to verify, never a finding.</strong></p>
           <div id="leieListFresh" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;"></div>
           <button class="btn btn-sm btn-teal" id="myLeieRunCheckBtn" onclick="runMyCompanyLeieCheck()">Run check now</button>
+          <button class="btn btn-sm btn-ghost" onclick="showLeieClearedNames()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;">Cleared names</button>
           <div id="myLeieCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
           <div id="myLeieMatchesList"></div>
           <div style="border-top:1px solid rgba(255,255,255,.1);margin-top:16px;padding-top:14px;">
@@ -2308,10 +2304,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
            admin managing it on their behalf. Actual dollar amounts live
            entirely in Stripe (via lookup keys), never hardcoded here, so
            pricing can change without touching this code. -->
-      <div class="dark-panel" id="planBillingPanel" style="margin-bottom:16px;">
-  <h2>Plan &amp; billing</h2>
-<div class="set-sub" style="margin-bottom:16px;" id="billingPanelSettings">
-        <h3 class="set-sub-title">Billing</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="billingPanelSettings">
+        <h2>Billing</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your current plan, usage, and the tools to change or manage it.</p>
         <div id="billingCurrentStatus" style="font-size:15px;color:rgba(255,255,255,.7);margin-bottom:14px;"></div>
 
@@ -2374,8 +2368,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
            features. Shown regardless of current tier so a Standard
            company can see what upgrading unlocks, and a Pro company can
            confirm they already have everything. -->
-      <div class="set-sub" style="margin-bottom:16px;" id="proComparisonPanelSettings">
-        <h3 class="set-sub-title">Standard vs Pro — document features</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="proComparisonPanelSettings">
+        <h2>Standard vs Pro — document features</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">You're currently on <span id="proComparisonCurrentTier" style="font-weight:700;color:#fff;"></span>. Here's exactly what changes on Pro.</p>
         <div class="tbl-wrap">
           <table>
@@ -2395,17 +2389,14 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         </div>
         <p id="proComparisonUpgradeNote" style="font-size:14px;color:rgba(255,255,255,.58);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
       </div>
-</div>
 
       <div id="settingsGrp_support" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Privacy &amp; Access</span>
         <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Decide whether Selko support can open your account, and who is emailed when sensitive staff information is viewed or changed.</div>
       </div>
 
-      <div class="dark-panel" id="privacyAlertsPanel" style="margin-bottom:16px;">
-  <h2>Privacy, access &amp; alerts</h2>
-<div class="set-sub" style="margin-bottom:16px;" id="supportAccessPanel">
-        <h3 class="set-sub-title">Selko support access</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="supportAccessPanel">
+        <h2>Selko support access</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Selko support can only open your account to help you if you allow it. You choose whether they can just look or also make changes, and for how long. You can end it at any time. Everything they do is recorded under Compliance &gt; Selko support activity. The one exception: Selko can always see the <em>names and categories</em> of document types your company creates, and how many companies made the same one, to decide what to add to the shared defaults. It never sees which company made them, or any documents or staff.</p>
         <div id="supportAccessStatus"></div>
         <div id="supportAccessRequests"></div>
@@ -2420,8 +2411,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         </div>
       </div>
 
-      <div class="set-sub" style="margin-bottom:16px;" id="adminNotificationsPanel">
-        <h3 class="set-sub-title">Notifications</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="adminNotificationsPanel">
+        <h2>Notifications</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
           How you hear about credentials that are expired or about to expire. This is your own choice: other admins set theirs.
           Staff still get their own reminders either way.
@@ -2432,8 +2423,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         </div>
       </div>
 
-      <div class="set-sub" style="margin-bottom:16px;" id="sensitiveAlertsPanel">
-        <h3 class="set-sub-title">Sensitive data alerts</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="sensitiveAlertsPanel">
+        <h2>Sensitive data alerts</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Get an email whenever someone views or enters a staff member's Social Security number or CAQH login, so you always know. The email says who, what and when, and never includes the sensitive information itself.</p>
         <div id="sensitiveAlertsForm"></div>
         <div style="font-size:13px;font-weight:700;color:rgba(255,255,255,.55);text-transform:uppercase;margin:16px 0 6px;">Recent alerts</div>
@@ -2444,7 +2435,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           </table>
         </div>
       </div>
-</div>
 
       <div id="settingsGrp_company" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Company Profile</span>
@@ -2453,10 +2443,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsGroupedCss">.set-subhead{display:none}html.settings-grouped .set-subhead{display:block;grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-l);margin:10px 0 0;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}html.settings-grouped .set-subhead:first-child{margin-top:0}</style>
-      <div class="dark-panel" id="companyProfilePanel" style="margin-bottom:16px;">
-  <h2>Company profile</h2>
-<div class="set-sub" style="margin-bottom:16px;" id="companySettingsPanel">
-        <h3 class="set-sub-title">Company settings</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="companySettingsPanel">
+        <h2>Company settings</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Your company's own name, contact info, and the core details used across the platform.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
           <div class="set-subhead">Company</div>
@@ -2511,8 +2499,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
       </div>
 
       <!-- Branding (Pro only) -->
-      <div class="set-sub" style="margin-bottom:16px;">
-        <h3 class="set-sub-title">Branding <span id="brandingProTag" style="font-size:12px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h3>
+      <div class="dark-panel" style="margin-bottom:16px;">
+        <h2>Branding <span id="brandingProTag" style="font-size:12px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Make the parts your staff and partners see — emails, the header, login screen — look like your own company's, not Selko's.</p>
         <div id="brandingLocked" style="display:none;">
           <p style="color:rgba(255,255,255,.66);font-size:15px;margin-bottom:14px;">Make it look like your own software, not ours — upgrade to Pro to unlock:</p>
@@ -2551,14 +2539,13 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
       </div>
 
-      <div class="set-sub" style="margin-bottom:16px;" id="gettingStartedSettingsPanel">
-        <h3 class="set-sub-title">Getting-started checklist</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="gettingStartedSettingsPanel">
+        <h2>Getting-started checklist</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">A short checklist on your Overview that walks a new admin through setup: company settings, roles, staff, document types, a first upload, logins, a provider profile and a first exclusion check. It ticks steps off by itself from what you've actually done.</p>
         <div id="gettingStartedSettingsStatus" style="font-size:14px;color:rgba(255,255,255,.78);margin-bottom:12px;"></div>
         <div id="gettingStartedSettingsButtons" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
         <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:10px;line-height:1.5;">Hiding removes it from your Overview completely, and this page is where you bring it back. Reset clears anything you marked done by hand and shows the checklist again. Steps that are done in your real data (staff added, documents uploaded, a provider with an NPI, an exclusion check run) stay checked, because they are done.</div>
       </div>
-</div>
 
       <div id="settingsGrp_setup" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Professional Setup</span>
@@ -2570,10 +2557,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
            different values here. Healthcare-only: Selko Cred no longer covers
            other verticals, so every example here should read as a clinical
            credential, never a role from an unrelated industry. -->
-      <div class="dark-panel" id="rolesDocsPanel" style="margin-bottom:16px;">
-  <h2>Roles &amp; documents</h2>
-<div class="set-sub" style="margin-bottom:16px;" id="rolesPanelSettings">
-        <h3 class="set-sub-title" id="disciplinesPanelTitle">Professional roles</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="rolesPanelSettings">
+        <h2 id="disciplinesPanelTitle">Professional roles</h2>
 
         <p class="set-help" style="max-width:none;">The licensed roles your company uses. They appear wherever a role is chosen: adding or editing staff, and scoping which documents apply to which roles.</p>
         <p class="set-note" style="max-width:none;">Licensed or credentialed roles only (PT, RN, DO, LPN). Not job titles or access levels. Someone with no such role should be set to "N/A" on their own profile.</p>
@@ -2614,8 +2599,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
            has no Documents tab, no Missing Docs report, and no Expiration
            Tracker for this to feed into — their actual file needs are now
            served by the separate, simpler Credentialing Files system. -->
-      <div class="set-sub" style="margin-bottom:16px;" id="docTypesPanelSettings">
-        <h3 class="set-sub-title">Document types</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="docTypesPanelSettings">
+        <h2>Document types</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:6px;">Manage which credential types are available to your staff. <a href="#docTypeOptionsBox" onclick="document.getElementById('docTypeOptionsBox')?.scrollIntoView({behavior:'smooth',block:'start'});return false;" style="color:var(--teal-l);">Options for your own categories and for renewals are at the bottom ↓</a></p>
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <label style="display:flex;align-items:center;gap:6px;font-size:14px;color:rgba(255,255,255,.66);cursor:pointer;margin:0;">
@@ -2669,7 +2654,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         </div>
         </div>
       </div>
-</div>
 
       <div id="hcnSectionHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Health Care Network</span>
@@ -2681,10 +2665,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
            an individual staff member. A real master list, not just derived
            from existing data, so entries can be added ahead of any actual
            insurance record and renamed without breaking history. -->
-      <div class="dark-panel" id="hcnSetupPanel" style="margin-bottom:16px;">
-  <h2>Health Care Network setup</h2>
-<div class="set-sub" style="margin-bottom:16px;" id="entitiesPanelSettings">
-        <h3 class="set-sub-title">Company & Agency Entities</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="entitiesPanelSettings">
+        <h2>Company & Agency Entities</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">
           The offices, locations, or agencies you can add below — each one then shows up as a "Company-wide" option when adding a network record on the Health Care Network tab, so a payer relationship can be tracked for a whole office instead of one staff member. Renaming keeps existing insurance records in sync; removing one only stops it from being offered for new entries — it never touches historical data.
         </p>
@@ -2696,8 +2678,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
       </div>
 
       <!-- Payer network management -->
-      <div class="set-sub" style="margin-bottom:16px;" id="payersPanelSettings">
-        <h3 class="set-sub-title">Payers you track (Health Care Network list)</h3>
+      <div class="dark-panel" style="margin-bottom:16px;" id="payersPanelSettings">
+        <h2>Payers you track (Health Care Network list)</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Manage which insurance payers your company tracks network status for. Global payers cannot be deleted.</p>
         <div class="inline-form" id="addPayerForm" style="display:flex;gap:10px;margin-bottom:14px;position:relative;">
           <div style="flex:1;position:relative;">
@@ -2726,7 +2708,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           <div id="enrollmentNotifStatus" style="font-size:13px;color:var(--teal-l);margin-top:6px;display:none;"></div>
         </div>
       </div>
-</div>
 
       <div id="settingsPartnersHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
@@ -2861,10 +2842,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
       <!-- Storage usage — per company, so it's actually useful for
            tracking growth and spotting an outlier, not just one opaque
            platform-wide total. -->
-      <div class="dark-panel" id="storageGroupPanel" data-super-setting style="display:none;margin-bottom:16px;">
-  <h2>Storage</h2>
-<div class="set-sub" style="margin-bottom:16px;">
-        <h3 class="set-sub-title">📦 Storage usage</h3>
+      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
+        <h2>📦 Storage usage</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Uploaded credential document files, per company. Doesn't include branding logos or other non-credential uploads to this bucket.</p>
         <div id="storageUsageTotal" style="font-size:15px;color:rgba(255,255,255,.66);margin-bottom:10px;"></div>
         <div class="tbl-wrap">
@@ -2876,8 +2855,8 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
       </div>
 
       <!-- Recent uploads across every company — live view, complements the daily email digest -->
-      <div class="set-sub" style="margin-bottom:16px;">
-        <h3 class="set-sub-title">📤 Recent uploads</h3>
+      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
+        <h2>📤 Recent uploads</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Document uploads across every company in the last 7 days, newest first.</p>
         <div class="tbl-wrap">
           <table>
@@ -2886,7 +2865,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           </table>
         </div>
       </div>
-</div>
 
       </div>
 
@@ -3102,12 +3080,146 @@ async function loadLeieListFreshness() {
   }
 }
 
+// ── Clearing a flagged name ────────────────────────────────────────────────────────────────────────
+// A flag is a lead. When an admin has searched OIG's own online database and confirmed the person is not excluded, they record that
+// here: who, when, how they checked and why. The record is kept (undoing it only marks it undone). A clearance only covers the exact
+// match that was reviewed; if the check later reports a DIFFERENT match for the same person, it shows as a new flag.
+let _leieClearances = new Map();     // `${staff_id}|${match_key}` -> active clearance row
+let _leieMatchRegistry = [];         // matches currently drawn on screen, so a button can refer to one by number
+let _lastLeieRunMatches = null;
+const LEIE_VERIFY_LABELS = { oig_online_ssn: "OIG's online search, using the SSN", oig_online_name_dob: "OIG's online search, using name and date of birth", other: 'Another way (explained in the note)' };
+function leieMatchKey(m) { return `${m.basis || ''}|${String(m.detail || '').trim().toLowerCase().replace(/\s+/g, ' ')}`; }
+async function loadLeieClearances() {
+  _leieClearances = new Map();
+  if (!currentCompany?.id) return;
+  const { data, error } = await sb.from('leie_match_clearances').select('*').eq('company_id', currentCompany.id).is('revoked_at', null);
+  if (error || !data) return;     // table not installed yet: nothing is cleared, every flag still shows
+  data.forEach(r => _leieClearances.set(`${r.staff_id}|${r.match_key}`, r));
+}
+function leieClearanceFor(m) { return _leieClearances.get(`${m.staff_id}|${leieMatchKey(m)}`) || null; }
+function leieClearNote(c) {
+  return `✓ Cleared by ${hrOnbEsc(c.cleared_by_name || 'an admin')} on ${new Date(c.cleared_at).toLocaleDateString()}. Checked with ${hrOnbEsc(LEIE_VERIFY_LABELS[c.verified_method] || c.verified_method)} on ${hrOnbEsc(c.verified_on)}. "${hrOnbEsc(c.reason)}"`;
+}
+function leieClearControlHtml(m) {
+  const c = leieClearanceFor(m);
+  const canWrite = currentProfile?.role === 'admin' || currentProfile?.is_super_admin;
+  const idx = _leieMatchRegistry.push(m) - 1;
+  if (c) return `<div style="font-size:13px;color:#4ade80;margin-top:6px;line-height:1.45;">${leieClearNote(c)}${canWrite ? ` <button class="btn btn-sm btn-ghost" onclick="undoLeieClearance('${c.id}')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:1px 8px;font-size:12px;margin-left:6px;">Undo</button>` : ''}</div>`;
+  if (!canWrite) return '';
+  return `<div style="margin-top:8px;"><button class="btn btn-sm btn-teal" onclick="showClearLeieMatchModal(${idx})" style="padding:3px 12px;font-size:14px;">Clear this name…</button></div>`;
+}
 function leieMatchesHtml(matches) {
-  return (matches || []).map(m => `
-    <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-top:8px;">
-      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${LEIE_CONF_COLOR[m.confidence] || '#f87171'};font-size:13px;">${hrOnbEsc(leieLabel(m))}</span>
+  _leieMatchRegistry = [];
+  return (matches || []).map(m => {
+    const c = leieClearanceFor(m);
+    return `
+    <div style="background:${c ? 'rgba(74,222,128,.07)' : 'rgba(239,68,68,.1)'};border:1px solid ${c ? 'rgba(74,222,128,.3)' : 'rgba(239,68,68,.3)'};border-radius:8px;padding:10px 12px;margin-top:8px;">
+      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${c ? '#4ade80' : (LEIE_CONF_COLOR[m.confidence] || '#f87171')};font-size:13px;">${c ? 'Cleared' : hrOnbEsc(leieLabel(m))}</span>
       <div style="font-size:14px;color:rgba(255,255,255,.66);">${hrOnbEsc(m.detail || '')}</div>
-    </div>`).join('');
+      ${leieClearControlHtml(m)}
+    </div>`;
+  }).join('');
+}
+function showClearLeieMatchModal(idx) {
+  const m = _leieMatchRegistry[idx];
+  if (!m) { toast('Could not find that match. Close this and open it again.', true); return; }
+  document.getElementById('leieClearModal')?.remove();
+  const today = new Date().toISOString().slice(0, 10);
+  const modal = document.createElement('div');
+  modal.id = 'leieClearModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1700;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="color:#fff;font-size:19px;font-weight:700;margin-bottom:4px;">Clear ${hrOnbEsc(m.full_name)}</div>
+    <div style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:14px;">${hrOnbEsc(leieLabel(m))}<br>${hrOnbEsc(m.detail || '')}</div>
+    <p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:14px;line-height:1.5;">Only clear this name after you searched OIG's own database at <a href="https://exclusions.oig.hhs.gov/" target="_blank" rel="noopener noreferrer" style="color:var(--teal-l);">exclusions.oig.hhs.gov</a> and confirmed this staff member is not the person on the list. Your name, today's date and what you write are saved as the record. This clears only this exact match: if a different match is found for this person later, it will show as a new flag.</p>
+    <label class="inline-label">How did you check?</label>
+    <select class="inline-select" id="leieClearMethod" style="width:100%;margin-bottom:12px;">
+      <option value="oig_online_ssn">${hrOnbEsc(LEIE_VERIFY_LABELS.oig_online_ssn)} (best)</option>
+      <option value="oig_online_name_dob">${hrOnbEsc(LEIE_VERIFY_LABELS.oig_online_name_dob)}</option>
+      <option value="other">${hrOnbEsc(LEIE_VERIFY_LABELS.other)}</option>
+    </select>
+    <label class="inline-label">Date you checked</label>
+    <input type="date" class="inline-input" id="leieClearDate" value="${today}" max="${today}" style="width:100%;margin-bottom:12px;box-sizing:border-box;" />
+    <label class="inline-label">What did you find? (required)</label>
+    <textarea class="inline-input" id="leieClearReason" rows="3" placeholder="Example: OIG online search by SSN returned no result. The excluded person with this name has a different date of birth and lives in another state." style="width:100%;box-sizing:border-box;margin-bottom:12px;"></textarea>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;color:rgba(255,255,255,.8);margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="leieClearConfirm" style="margin-top:3px;" /> I searched OIG's database myself and this staff member is not on the exclusion list.</label>
+    <div id="leieClearErr" style="color:#f87171;font-size:13px;margin-bottom:10px;display:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-teal" id="leieClearSaveBtn" onclick="saveLeieClearance(${idx})" style="flex:1;justify-content:center;">Clear this name</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('leieClearModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+async function saveLeieClearance(idx) {
+  const m = _leieMatchRegistry[idx];
+  const errEl = document.getElementById('leieClearErr');
+  const fail = t => { errEl.textContent = t; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+  if (!m) return fail('Could not find that match. Close this and open it again.');
+  const reason = document.getElementById('leieClearReason').value.trim();
+  const verifiedOn = document.getElementById('leieClearDate').value;
+  if (reason.length < 10) return fail('Please write what you found (at least a sentence), so the record means something later.');
+  if (!verifiedOn) return fail('Please enter the date you checked.');
+  if (!document.getElementById('leieClearConfirm').checked) return fail('Tick the box to confirm you searched OIG yourself.');
+  if (!m.staff_id) return fail('This match has no staff member attached, so it cannot be cleared.');
+  const btn = document.getElementById('leieClearSaveBtn'); btn.disabled = true;
+  const { data: saved, error } = await sb.from('leie_match_clearances').insert({
+    company_id: currentCompany.id, staff_id: m.staff_id, staff_name: m.full_name || '',
+    match_key: leieMatchKey(m), match_snapshot: m,
+    verified_method: document.getElementById('leieClearMethod').value, verified_on: verifiedOn, reason,
+    cleared_by: currentProfile.id, cleared_by_name: currentProfile.full_name || currentProfile.email || null,
+  }).select('id');
+  btn.disabled = false;
+  if (error) {
+    const missing = /does not exist|schema cache/i.test(error.message || '');
+    return fail(missing ? 'Clearing is not set up yet. Run leie-match-clearances-migration.sql in Supabase first.' : /duplicate|unique/i.test(error.message || '') ? 'This match was already cleared. Close this and refresh.' : 'Could not save: ' + extractErrorMessage(error));
+  }
+  if (!saved || !saved.length) return fail('Nothing was saved. You may not have permission to clear names.');
+  await refreshLeieClearedViews();
+  document.getElementById('leieClearModal')?.remove();
+  toast(`✓ ${m.full_name} cleared`);
+}
+async function undoLeieClearance(id) {
+  const note = prompt('Undo this clearance? The name will show as flagged again. Briefly say why (kept in the record):');
+  if (note === null) return;
+  const { data: changed, error } = await sb.from('leie_match_clearances').update({
+    revoked_at: new Date().toISOString(), revoked_by: currentProfile.id,
+    revoked_by_name: currentProfile.full_name || currentProfile.email || null, revoke_note: note.trim() || null,
+  }).eq('id', id).select('id');
+  if (error) { toast('Could not undo: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast('Nothing was changed. You may not have permission.', true); return; }
+  await refreshLeieClearedViews();
+  toast('Clearance undone. The name shows as flagged again.');
+}
+// Redraws whatever is on screen that shows clearance state, after a clear or an undo.
+async function refreshLeieClearedViews() {
+  await loadLeieClearances();
+  const listEl = document.getElementById('myLeieMatchesList');
+  if (listEl && _lastLeieRunMatches) listEl.innerHTML = leieMatchesHtml(_lastLeieRunMatches);
+  if (document.getElementById('leieDetailsModal') && window._leieDetailsCheckId) await showLeieCheckDetails(window._leieDetailsCheckId);
+  if (document.getElementById('leieClearedModal')) await showLeieClearedNames();
+}
+async function showLeieClearedNames() {
+  document.getElementById('leieClearedModal')?.remove();
+  const { data, error } = await sb.from('leie_match_clearances').select('*').eq('company_id', currentCompany.id).order('cleared_at', { ascending: false }).limit(200);
+  if (error) { toast(/does not exist|schema cache/i.test(error.message || '') ? 'Clearing is not set up yet. Run leie-match-clearances-migration.sql in Supabase.' : 'Could not load: ' + extractErrorMessage(error), true); return; }
+  const canWrite = currentProfile?.role === 'admin' || currentProfile?.is_super_admin;
+  const rows = (data || []).map(c => `<tr style="${c.revoked_at ? 'opacity:.55;' : ''}">
+    <td>${hrOnbEsc(c.staff_name)}</td>
+    <td style="font-size:13px;">${hrOnbEsc((c.match_snapshot && c.match_snapshot.detail) || '')}</td>
+    <td style="font-size:13px;">${leieClearNote(c).replace(/^✓ /, '')}${c.revoked_at ? `<div style="color:#fbbf24;margin-top:4px;">Undone by ${hrOnbEsc(c.revoked_by_name || 'an admin')} on ${new Date(c.revoked_at).toLocaleDateString()}${c.revoke_note ? ': ' + hrOnbEsc(c.revoke_note) : ''}</div>` : ''}</td>
+    <td>${!c.revoked_at && canWrite ? `<button class="btn btn-sm btn-ghost" onclick="undoLeieClearance('${c.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">Undo</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="4" style="color:rgba(255,255,255,.58);">No names have been cleared yet.</td></tr>';
+  const modal = document.createElement('div');
+  modal.id = 'leieClearedModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1650;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:clamp(500px,80vw,960px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div><div style="color:#fff;font-size:20px;font-weight:700;">Cleared names (OIG)</div><div style="color:rgba(255,255,255,.58);font-size:14px;">Flagged matches an admin checked on OIG's website and cleared. Undone ones stay listed, dimmed.</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('leieClearedModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button></div>
+    <div style="flex:1;overflow-y:auto;padding:20px 28px;"><div class="tbl-wrap"><table><thead><tr><th>Staff</th><th>Match that was flagged</th><th>Record</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+  document.body.appendChild(modal);
 }
 
 // The two things worth telling the admin after a check: how many look-alikes were set aside, and how many staff have no date of birth.
@@ -3140,8 +3252,12 @@ async function runMyCompanyLeieCheck() {
     const staleNote = data.list_stale ? ' ⚠ The OIG list is more than 40 days old, so a month of new exclusions may be missing.' : '';
     statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + (data.audit_log === 'saved' ? ' A PDF audit log of this check was saved: use "Audit log" in the history below.' : data.audit_log === 'failed' ? ' ⚠ The PDF audit log could not be saved this time. Press "Audit log" on this check in the history below to make it.' : '') + staleNote;
     const notes = leieNotes(data);
+    _lastLeieRunMatches = data.matches || [];
+    await loadLeieClearances();
     listEl.innerHTML = leieMatchesHtml(data.matches) + (notes.length ? `<div style="font-size:13px;color:rgba(255,255,255,.58);margin-top:10px;line-height:1.5;">${notes.map(hrOnbEsc).join('<br>')}</div>` : '');
-    if (data.match_count) toast(`⚠ ${data.match_count} potential OIG match(es) found. Review below.` + staleNote, true);
+    const openMatches = (data.matches || []).filter(m => !leieClearanceFor(m)).length;
+    if (data.match_count && !openMatches) toast(`All ${data.match_count} flagged match(es) were already cleared earlier. Review below.` + staleNote, !!data.list_stale);
+    else if (data.match_count) toast(`⚠ ${openMatches} potential OIG match(es) found. Review below.` + staleNote, true);
     else toast('OIG check complete: no matches found.' + staleNote, !!data.list_stale);
     await loadMyLeieHistory();
     await loadLeieListFreshness();
@@ -3213,6 +3329,9 @@ async function openLeieAuditLog(checkId, btn) {
 
 async function showLeieCheckDetails(checkId) {
   document.getElementById('leieDetailsModal')?.remove();
+  window._leieDetailsCheckId = checkId;
+  await loadLeieClearances();
+  _leieMatchRegistry = [];
   const { data: row, error } = await sb.from('leie_exclusion_checks')
     .select('checked_at, staff_checked_count, match_count, matches, checked_staff, source, trigger_type, ruled_out_count, staff_without_dob').eq('id', checkId).single();
   if (error || !row) { toast('Could not load check details' + (error ? ': ' + error.message : ''), true); return; }
@@ -3220,8 +3339,9 @@ async function showLeieCheckDetails(checkId) {
   const rows = (row.checked_staff || []).slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(s => {
     const m = byId.get(s.id);
     const dob = s.has_dob === false ? ' <span style="font-size:12px;color:rgba(255,255,255,.45);" title="No date of birth on file: this person is matched by name only, so look-alikes cannot be ruled out.">(no date of birth)</span>' : '';
+    const cl = m ? leieClearanceFor(m) : null;
     return m
-      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}${dob}</td><td style="color:${LEIE_CONF_COLOR[m.confidence] || '#f87171'};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${hrOnbEsc(leieLabel(m))}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div></td></tr>`
+      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}${dob}</td><td style="color:${cl ? '#4ade80' : (LEIE_CONF_COLOR[m.confidence] || '#f87171')};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${cl ? 'Cleared' : hrOnbEsc(leieLabel(m))}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div>${leieClearControlHtml(m)}</td></tr>`
       : `<tr><td>${hrOnbEsc(s.full_name || '—')}${dob}</td><td style="color:#4ade80;">✓ Clear</td></tr>`;
   }).join('') || '<tr><td colspan="2" style="color:rgba(255,255,255,.58);">No per-staff detail was kept for this check.</td></tr>';
   const notes = leieNotes({ ruled_out_count: row.ruled_out_count, staff_without_dob: row.staff_without_dob, checked: row.staff_checked_count });
@@ -4774,7 +4894,7 @@ function initCollapsiblePanels() {
 
   // One "Show all / Hide all" bar at the top of any tab with several sections,
   // so the click-to-hide behavior is explained in words where people look first.
-  ['tabSettings', 'tabSuper', 'tabCredentialing', 'tabCompliance', 'tabHr', 'tabInsurance'].forEach(id => {
+  ['tabSettings', 'tabSuper', 'tabCredentialing', 'tabCompliance', 'tabHr'].forEach(id => {
     const tab = document.getElementById(id);
     if (!tab || tab.querySelector(':scope > .panel-toggle-bar')) return;
     const panels = Array.from(tab.querySelectorAll('.dark-panel')).filter(p => p._setPanelOpen);
@@ -18238,6 +18358,7 @@ const COMPLIANCE_HELP = [
         <li><strong>Date of birth is what makes it accurate.</strong> OIG gives a date of birth for 99% of the people on its list. Someone with your staff member's name but a <em>different</em> birth date is a different person, so they are set aside (the result says how many). If a staff member has <strong>no date of birth on file</strong>, look-alike names cannot be set aside, so add it on their profile.</li>
         <li><strong>How strong a match is:</strong> <em>NPI confirmed</em> and <em>name and date of birth agree</em> are the strongest. <em>Name and state or middle initial agree</em> needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means either the last name and first initial match in the same state, or the name, middle initial and state match but the birth dates differ (one may be mistyped: check which is right).</li>
         <li><strong>A match is a lead, never a finding.</strong> Confirm it with OIG's own online search (exclusions.oig.hhs.gov), using the person's SSN, before acting. The downloadable list covers exclusions through the end of the previous month; the online search is always current.</li>
+        <li><strong>Clearing a name.</strong> After a staff member is flagged, search OIG's own website (exclusions.oig.hhs.gov), ideally by SSN. If they are not the person on the list, press <em>Clear this name</em> on the match (in the result after a check, or in <em>View list</em>). You choose how you checked and the date, and write what you found; your name and the date are saved with it. A cleared match shows green and does not alarm again on later checks. It only covers that exact match: a different match for the same person shows as a new flag. <em>Cleared names</em> lists every clearance, and <em>Undo</em> puts a name back to flagged (the clearance stays in the record, marked undone). Admins can clear and undo; Office users can read.</li>
         <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, but never before the 12th (so it uses the new list), saves the result as your record, and emails your admins. If a day is missed it catches up the next day. Every run stays in the history (View list, PDF audit log, Archive). A run with an audit log cannot be deleted.</li>
         <li>This check replaces the older NPI-only OIG check. Admins run and manage checks. Office users can read the history.</li>
       </ul>`,
@@ -18335,7 +18456,7 @@ const SETTINGS_HELP = [
   {
     title: 'Document types',
     subtitle: '',
-    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped. <strong>Document type categories</strong> nearby groups these into organized sections rather than one long flat list.</p>
+    html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped.</p>
       <ul>
         <li>The box above the table explains the columns. Click a badge to change it: <strong>Required / Optional</strong>, <strong>Applies to</strong> (which roles), <strong>Self-upload</strong> (whether staff can upload it themselves) and <strong>Hide</strong> (take it off your list).</li>
         <li><strong>+ Add document type</strong> (Pro plan) creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
@@ -18390,18 +18511,12 @@ const SETTINGS_HELP = [
     html: `<p>Shows, hides or resets the setup checklist on your Overview. Reset clears anything you marked done by hand and shows it again, and steps that are done in your real data stay checked. It never changes your staff, documents or any other records. See the Overview help for what the checklist covers.</p>`,
   },
   {
-    title: 'Storage, uploads, and deletion',
+    title: 'Storage and uploads',
     subtitle: '',
     html: `<ul>
         <li><strong>Storage usage</strong> — how much space your uploaded files are taking up.</li>
         <li><strong>Recent uploads</strong> — a quick log of what's been added lately, useful for spotting something that landed in the wrong place.</li>
-        <li><strong>Records eligible for permanent deletion</strong> — anything past its retention period that can now be permanently removed. Nothing here is deleted automatically without this step.</li>
       </ul>`,
-  },
-  {
-    title: 'Support and the bug log',
-    subtitle: '',
-    html: `<p><strong>Support requests</strong> is where to reach out if something's wrong or you need help beyond what these Help panels cover. <strong>Bug log</strong> is a running record of issues found and fixed, mostly useful if you want to see what's changed recently.</p>`,
   },
 ];
 
@@ -18513,6 +18628,11 @@ const SUPER_HELP = [
     title: 'Bug log',
     subtitle: '',
     html: `<p>Errors logged across every Selko app that writes to this table, not just Credentialing — useful for spotting a platform-wide pattern rather than one company's own issue.</p>`,
+  },
+  {
+    title: 'Records eligible for permanent deletion',
+    subtitle: '',
+    html: `<p>Anything past its retention period that can now be permanently removed. Nothing is deleted automatically; it only happens when you confirm it here.</p>`,
   },
 ];
 
@@ -25441,23 +25561,6 @@ function refreshSettingsJumpBar() {
 
 // TRIAL (2026-10-07): small headings inside Company settings (Company / Reminder timing / New-hire onboarding / Preferences).
 // To go back to the plain layout, change true to false. Nothing else needs to change.
-
-// Light / Dark toggle. Dark is the default look. The choice is remembered on this device.
-function applyTheme(t) {
-  if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
-  else document.documentElement.removeAttribute('data-theme');
-  const b = document.getElementById('hdrTheme');
-  if (b) {
-    b.textContent = t === 'light' ? 'Dark mode' : 'Light mode';
-    b.title = t === 'light' ? 'Switch to the dark look' : 'Switch to the light look';
-  }
-}
-function toggleTheme() {
-  const next = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
-  try { localStorage.setItem('cred_theme', next); } catch (e) {}
-  applyTheme(next);
-}
-applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 const SETTINGS_GROUPED = true;
 document.documentElement.classList.toggle('settings-grouped', SETTINGS_GROUPED);
 function jumpToSettingsGroup(id) {
@@ -25474,19 +25577,11 @@ function goToPanel(tab, targetId) {
   setTimeout(() => {
     const el = document.getElementById(targetId);
     if (!el) return;
-    // Sections can sit inside a bigger panel (e.g. Roles & documents), so open
-    // every collapsed panel around the target, outermost first.
-    const chain = [];
-    for (let p = el; p && p.id !== 'tabSettings'; p = p.parentElement) {
-      if (p.classList && p.classList.contains('dark-panel')) chain.unshift(p);
+    const body = el.querySelector(':scope > .panel-body');
+    if (body && body.style.display === 'none') {
+      const head = el.querySelector(':scope > h2');
+      if (head) head.click();
     }
-    chain.forEach(pn => {
-      const body = pn.querySelector(':scope > .panel-body');
-      if (body && body.style.display === 'none') {
-        const head = pn.querySelector(':scope > h2');
-        if (head) head.click();
-      }
-    });
     el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     el.classList.add('flash-highlight');
     setTimeout(() => el.classList.remove('flash-highlight'), 2400);
