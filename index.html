@@ -2303,6 +2303,11 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           <button class="btn btn-sm btn-teal" onclick="saveMyAccountName()">Save</button>
         </div>
         <div id="myAccountNameErr" style="color:#f87171;font-size:14px;margin-top:8px;display:none;"></div>
+        <div class="set-sub" style="margin-top:18px;">
+          <h3 class="set-sub-title">Two-step sign-in</h3>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">After your password, you type a 6-digit code from an authenticator app on your phone. It keeps your staff's records safe even if your password is guessed.</p>
+          <div id="mfaSettingsBody" style="font-size:14px;color:rgba(255,255,255,.58);">Loading…</div>
+        </div>
       </div>
 
       <!-- Billing — admin/office of the company being billed, or a super
@@ -3280,7 +3285,7 @@ async function runMyCompanyLeieCheck() {
     listEl.innerHTML = leieMatchesHtml(data.matches) + (notes.length ? `<div style="font-size:13px;color:rgba(255,255,255,.58);margin-top:10px;line-height:1.5;">${notes.map(hrOnbEsc).join('<br>')}</div>` : '');
     const openMatches = (data.matches || []).filter(m => !leieClearanceFor(m)).length;
     if (data.match_count && !openMatches) toast(`All ${data.match_count} flagged match(es) were already cleared earlier. Review below.` + staleNote, !!data.list_stale);
-    else if (data.match_count) toast(`⚠ ${openMatches} potential OIG match(es) found. Review below.` + staleNote, true);
+    else if (data.match_count) toast(`⚠ ${openMatches} potential OIG match(es) found. Review below.` + staleNote, true, true);
     else toast('OIG check complete: no matches found.' + staleNote, !!data.list_stale);
     await loadMyLeieHistory();
     await loadLeieListFreshness();
@@ -5100,14 +5105,14 @@ function daysLabel(d) {
 }
 
 let toastTimer;
-function toast(msg, isErr) {
+function toast(msg, isErr, noLog) {
   const el = document.getElementById('toast');
   el.textContent = msg;
   el.style.borderLeftColor = isErr ? 'var(--danger)' : 'var(--teal)';
   el.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => el.classList.remove('show'), 3500);
-  if (isErr) logError('toast', msg);
+  if (isErr && !noLog) logError('toast', msg);
 }
 
 // Shown once after any credentialing form/roster is generated. A toast
@@ -5184,6 +5189,21 @@ function showScreen(id) {
 function showAlert(el, msg) { el.textContent = msg; el.style.display = 'block'; }
 
 // ══ AUTH ══
+// A mistyped password is normal and used to be logged (and emailed to the platform owner) every time. Now it is logged once someone has
+// failed 3 times within 15 minutes with the same address, which is the point where they are probably stuck and may need help.
+// (Real guessing attacks do not go through this page; Supabase's own Auth logs and limits cover those.)
+function noteLoginFailure(email, message) {
+  const key = 'cred_login_fail';
+  let n = 1;
+  try {
+    const prev = JSON.parse(localStorage.getItem(key) || 'null');
+    const same = prev && prev.email === String(email).toLowerCase() && Date.now() - prev.t < 15 * 60000;
+    n = same ? prev.n + 1 : 1;
+    localStorage.setItem(key, JSON.stringify({ email: String(email).toLowerCase(), n, t: Date.now() }));
+  } catch (e) { n = 3; }   // storage unavailable: log it rather than lose the signal
+  if (n >= 3) logError('login_failed', message + ` (failed ${n} times in a row)`, 'attempted_email:' + email);
+}
+
 async function doLogin() {
   const email = document.getElementById('loginEmail').value.trim();
   const pass  = document.getElementById('loginPassword').value;
@@ -5202,7 +5222,7 @@ async function doLogin() {
     await initSession(data.user);
   } catch(e) {
     showAlert(alertEl, 'Login error: ' + e.message);
-    logError('login_failed', e.message, 'attempted_email:' + email);
+    noteLoginFailure(email, e.message);
     btn.disabled = false;
     btn.textContent = 'Sign in';
   }
@@ -5265,8 +5285,186 @@ async function findMyStaffRecord(companyId, profile, columns) {
   return (data && data[0]) || null;
 }
 
+// ══ TWO-STEP SIGN-IN (authenticator app) ══════════════════════════════════════════════════════════════════
+// A password alone is not enough for someone who has set this up: after the password, a 6-digit code from an authenticator app
+// (Google/Microsoft Authenticator, Authy, 1Password…) is asked for. Platform owners must have it; company admins are asked to set it
+// up (set MFA_ENFORCE_ADMINS to true to require it). The database also refuses an enrolled person's data requests until the code
+// has been entered (sql/require-mfa.sql), so the code cannot be skipped by calling the API directly.
+const MFA_ENFORCE_ADMINS = false;
+const MFA_NUDGE_SNOOZE_DAYS = 7;
+function mfaNudgeKey() { return 'cred_mfa_nudge_' + (currentProfile?.id || 'x'); }
+function mfaNudgeSnoozed() {
+  try { const t = parseInt(localStorage.getItem(mfaNudgeKey()) || '0', 10); return t && Date.now() - t < MFA_NUDGE_SNOOZE_DAYS * 86400000; } catch (e) { return false; }
+}
+function mfaModal(id, inner) {
+  document.getElementById(id)?.remove();
+  const m = document.createElement('div');
+  m.id = id;
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = `<div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:440px;max-height:92vh;overflow-y:auto;border:1px solid rgba(255,255,255,.12);color:#fff;">${inner}</div>`;
+  document.body.appendChild(m);
+  return m;
+}
+async function mfaSignOutAndReload() { try { await sb.auth.signOut(); } catch (e) {} location.reload(); }
+function mfaFriendlyError(e) {
+  const m = String((e && e.message) || e || '');
+  if (/invalid.*(totp|code)|code.*(invalid|incorrect|expired)|verification/i.test(m)) return "That code didn't work. Codes change every 30 seconds, so type the one showing now. Check that your phone's clock is set to automatic.";
+  if (/too many|rate limit|over_request_rate/i.test(m)) return 'Too many tries. Please wait a few minutes and try again.';
+  if (/mfa.*(not enabled|disabled)|enrol.*disabled|not enabled/i.test(m)) return 'Two-step sign-in is not switched on for this Supabase project yet (Authentication > Sign In / Providers > Multi-Factor).';
+  return friendlyError(e, 'check that code');
+}
+// Asks for the 6-digit code. Resolves once it is accepted. "Sign out" is the only other way out.
+function promptMfaCode() {
+  return new Promise(async (resolve) => {
+    let factorId = null;
+    try { const { data } = await sb.auth.mfa.listFactors(); factorId = data?.totp?.[0]?.id || null; } catch (e) {}
+    if (!factorId) { resolve(); return; }
+    const m = mfaModal('mfaCodeModal', `
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Enter your 6-digit code</div>
+      <p style="font-size:15px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:14px;">Open your authenticator app and type the code shown for Selko Cred.</p>
+      <input id="mfaCodeInput" class="inline-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="width:100%;font-size:24px;letter-spacing:6px;text-align:center;box-sizing:border-box;" />
+      <div id="mfaCodeErr" style="color:#f87171;font-size:14px;margin-top:10px;display:none;line-height:1.4;"></div>
+      <div style="display:flex;gap:8px;margin-top:16px;">
+        <button class="btn btn-teal" id="mfaCodeBtn" style="flex:1;justify-content:center;">Verify</button>
+        <button class="btn btn-ghost" id="mfaCodeOut" style="color:#fff;border-color:rgba(255,255,255,.25);">Sign out</button>
+      </div>`);
+    const input = m.querySelector('#mfaCodeInput'), err = m.querySelector('#mfaCodeErr'), btn = m.querySelector('#mfaCodeBtn');
+    input.focus();
+    const go = async () => {
+      const code = input.value.replace(/\D/g, '');
+      err.style.display = 'none';
+      if (code.length !== 6) { err.textContent = 'Type the 6 digits from your app.'; err.style.display = 'block'; return; }
+      btn.disabled = true;
+      try {
+        const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code });
+        if (error) throw error;
+        m.remove(); resolve();
+      } catch (e) {
+        btn.disabled = false; err.textContent = mfaFriendlyError(e); err.style.display = 'block'; input.select();
+        logError('mfa_code_failed', String((e && e.message) || e), 'sign_in');
+      }
+    };
+    btn.onclick = go;
+    input.addEventListener('input', () => { if (input.value.replace(/\D/g, '').length === 6) go(); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    m.querySelector('#mfaCodeOut').onclick = mfaSignOutAndReload;
+  });
+}
+// Called first in initSession: if this person has two-step sign-in and this session has not passed it yet, ask for the code.
+async function mfaGate() {
+  let aal = null;
+  try { const r = await sb.auth.mfa.getAuthenticatorAssuranceLevel(); aal = r.data; } catch (e) { return; }
+  if (aal && aal.nextLevel === 'aal2' && aal.currentLevel !== 'aal2') await promptMfaCode();
+}
+async function mfaVerifiedFactors() {
+  const { data, error } = await sb.auth.mfa.listFactors();
+  if (error) throw error;
+  return data?.totp || [];
+}
+// Set up (or add another device). Resolves when finished or, if allowed, skipped.
+function showMfaEnroll({ required = false, allowLater = false } = {}) {
+  return new Promise(async (resolve) => {
+    const close = () => { document.getElementById('mfaEnrollModal')?.remove(); resolve(); };
+    let enr;
+    try {
+      const { data: all } = await sb.auth.mfa.listFactors();
+      for (const f of (all?.all || []).filter(f => f.status === 'unverified')) { try { await sb.auth.mfa.unenroll({ factorId: f.id }); } catch (e) {} }   // abandoned earlier attempts
+      const r = await sb.auth.mfa.enroll({ factorType: 'totp', friendlyName: 'Authenticator ' + new Date().toISOString().slice(0, 10) + ' ' + Math.random().toString(36).slice(2, 6) });
+      if (r.error) throw r.error;
+      enr = r.data;
+    } catch (e) {
+      toast(mfaFriendlyError(e), true);
+      if (required) { await mfaSignOutAndReload(); } else { resolve(); }
+      return;
+    }
+    const secret = enr.totp?.secret || '';
+    const m = mfaModal('mfaEnrollModal', `
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px;">${required ? 'Set up two-step sign-in' : 'Protect your account with a second step'}</div>
+      <p style="font-size:14px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:12px;">${required ? 'Your role requires it. ' : ''}After your password, you will type a 6-digit code from an app on your phone. This keeps your staff's records safe even if your password is guessed.</p>
+      <ol style="font-size:14px;color:rgba(255,255,255,.85);line-height:1.6;padding-left:20px;margin-bottom:12px;">
+        <li>Install an authenticator app (Google Authenticator, Microsoft Authenticator, Authy or 1Password).</li>
+        <li>Scan this picture with it, or type the key under it.</li>
+        <li>Type the 6-digit code it shows.</li>
+      </ol>
+      <div style="background:#fff;border-radius:10px;padding:10px;width:176px;height:176px;margin:0 auto 10px;"><img class="keep-colors" id="mfaQr" alt="Scan with your authenticator app" style="width:156px;height:156px;display:block;" /></div>
+      <div style="font-size:12px;color:rgba(255,255,255,.6);text-align:center;margin-bottom:12px;">Can't scan? Type this key: <code id="mfaSecret" style="color:#fff;user-select:all;word-break:break-all;"></code></div>
+      <input id="mfaEnrollCode" class="inline-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="width:100%;font-size:22px;letter-spacing:6px;text-align:center;box-sizing:border-box;" />
+      <div id="mfaEnrollErr" style="color:#f87171;font-size:14px;margin-top:10px;display:none;line-height:1.4;"></div>
+      <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
+        <button class="btn btn-teal" id="mfaEnrollBtn" style="flex:1;justify-content:center;">Turn on</button>
+        ${required ? '<button class="btn btn-ghost" id="mfaEnrollOut" style="color:#fff;border-color:rgba(255,255,255,.25);">Sign out</button>' : (allowLater ? '<button class="btn btn-ghost" id="mfaEnrollLater" style="color:#fff;border-color:rgba(255,255,255,.25);">Remind me later</button>' : '<button class="btn btn-ghost" id="mfaEnrollCancel" style="color:#fff;border-color:rgba(255,255,255,.25);">Cancel</button>')}
+      </div>
+      <p style="font-size:12px;color:rgba(255,255,255,.5);margin-top:12px;line-height:1.5;">Tip: add a second device afterward (Settings > My account) so losing a phone does not lock you out.</p>`);
+    m.querySelector('#mfaQr').src = enr.totp?.qr_code || '';
+    m.querySelector('#mfaSecret').textContent = secret;
+    const input = m.querySelector('#mfaEnrollCode'), err = m.querySelector('#mfaEnrollErr'), btn = m.querySelector('#mfaEnrollBtn');
+    const abandon = async () => { try { await sb.auth.mfa.unenroll({ factorId: enr.id }); } catch (e) {} };
+    const go = async () => {
+      const code = input.value.replace(/\D/g, '');
+      err.style.display = 'none';
+      if (code.length !== 6) { err.textContent = 'Type the 6 digits from your app.'; err.style.display = 'block'; return; }
+      btn.disabled = true;
+      try {
+        const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: enr.id, code });
+        if (error) throw error;
+        toast('✓ Two-step sign-in is on');
+        close();
+        loadMfaSettings();
+      } catch (e) {
+        btn.disabled = false; err.textContent = mfaFriendlyError(e); err.style.display = 'block'; input.select();
+      }
+    };
+    btn.onclick = go;
+    input.addEventListener('input', () => { if (input.value.replace(/\D/g, '').length === 6) go(); });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+    const out = m.querySelector('#mfaEnrollOut'); if (out) out.onclick = async () => { await abandon(); await mfaSignOutAndReload(); };
+    const later = m.querySelector('#mfaEnrollLater');
+    if (later) later.onclick = async () => { await abandon(); try { localStorage.setItem(mfaNudgeKey(), String(Date.now())); } catch (e) {} close(); };
+    const cancel = m.querySelector('#mfaEnrollCancel'); if (cancel) cancel.onclick = async () => { await abandon(); close(); };
+    input.focus();
+  });
+}
+// After sign-in: platform owners must have two-step sign-in; company admins are asked (or required, see MFA_ENFORCE_ADMINS).
+async function mfaEnrollmentGate(profile) {
+  if (!profile) return;
+  let factors;
+  try { factors = await mfaVerifiedFactors(); } catch (e) { return; }      // not available: carry on
+  if (factors.length) return;
+  const must = !!profile.is_super_admin || (MFA_ENFORCE_ADMINS && profile.role === 'admin');
+  if (must) await showMfaEnroll({ required: true });
+  else if (profile.role === 'admin' && !mfaNudgeSnoozed()) await showMfaEnroll({ required: false, allowLater: true });
+}
+// Settings > My account
+async function loadMfaSettings() {
+  const box = document.getElementById('mfaSettingsBody');
+  if (!box) return;
+  let factors = [];
+  try { factors = await mfaVerifiedFactors(); }
+  catch (e) { box.innerHTML = '<span style="color:rgba(255,255,255,.58);">Two-step sign-in is not available right now.</span>'; return; }
+  const mustKeep = !!currentProfile?.is_super_admin || (MFA_ENFORCE_ADMINS && currentProfile?.role === 'admin');
+  const on = factors.length > 0;
+  box.innerHTML = `
+    <div style="font-size:15px;color:${on ? '#4ade80' : 'rgba(255,255,255,.75)'};margin-bottom:8px;">${on ? `✓ On (${factors.length} device${factors.length === 1 ? '' : 's'})` : 'Off. Your password is the only protection on this account.'}</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn btn-sm btn-teal" onclick="showMfaEnroll({})">${on ? 'Add another device' : 'Set up'}</button>
+      ${on && !mustKeep ? '<button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.25);" onclick="turnOffMfa()">Turn off</button>' : ''}
+    </div>
+    ${on && factors.length < 2 ? '<div style="font-size:13px;color:#fbbf24;margin-top:8px;">Add a second device so losing one phone does not lock you out.</div>' : ''}
+    ${mustKeep && on ? '<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:8px;">Your role requires two-step sign-in, so it cannot be turned off.</div>' : ''}`;
+}
+async function turnOffMfa() {
+  if (!confirm('Turn off two-step sign-in? Your password will be the only protection on this account.')) return;
+  try {
+    const factors = await mfaVerifiedFactors();
+    for (const f of factors) { const { error } = await sb.auth.mfa.unenroll({ factorId: f.id }); if (error) throw error; }
+    toast('Two-step sign-in turned off');
+  } catch (e) { toast(mfaFriendlyError(e), true); }
+  loadMfaSettings();
+}
+
 async function initSession(user) {
   try {
+    await mfaGate();   // two-step sign-in: ask for the code before anything else is loaded
     const { data: profile, error: profErr } = await sb.from('profiles').select('*').eq('id', user.id).single();
     if (profErr) throw new Error('Profile error: ' + profErr.message);
     if (!profile) throw new Error('No profile found for this account.');
@@ -5321,6 +5519,8 @@ async function initSession(user) {
       showForceChangePasswordScreen();
       return;
     }
+
+    await mfaEnrollmentGate(profile);
 
     if (company.branding_enabled && company.branding && Object.keys(company.branding).length) {
       applyBranding(company.branding, company.logo_url);
@@ -7333,6 +7533,7 @@ async function uploadDoc() {
   btn.innerHTML = '<span class="spinner"></span> Uploading…';
 
   let stage = 'file';
+  const uploaded = [];
   try {
     const docType = docTypes.find(d => d.id == typeId);
     stage = 'file';
@@ -7340,8 +7541,7 @@ async function uploadDoc() {
     const ext  = uploadFile.name.split('.').pop();
     const path = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}.${ext}`;
 
-    const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, uploadFile, { contentType: uploadFile.type });
-    if (stErr) throw stErr;
+    await uploadWithRetry(path, uploadFile, uploaded);
 
     // Optional second file (e.g. back of a license/ID)
     let fileUrl2 = null, fileName2 = null;
@@ -7350,8 +7550,7 @@ async function uploadDoc() {
       const uploadFile2 = await readFileStable(await compressImageFile(file2));
       const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${window._staffId}/${Date.now()}_${typeId}_back.${ext2}`;
-      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, uploadFile2, { contentType: uploadFile2.type });
-      if (stErr2) throw stErr2;
+      await uploadWithRetry(path2, uploadFile2, uploaded);
       fileUrl2  = path2;
       fileName2 = file2.name;
     }
@@ -7391,6 +7590,7 @@ async function uploadDoc() {
     await checkStaffCompliance(window._staffId);
     toast('Document uploaded');
   } catch(e) {
+    await removeStrayFiles(uploaded);
     showUpStatus(uploadErrorMessage(e, stage), 'err');
   }
   btn.disabled = false;
@@ -13204,9 +13404,11 @@ function onAuFileSelected(input) {
     return;
   }
   document.getElementById('auFileName').textContent = file.name;
-  // Show scan button for images and PDFs
+  // The AI scan reads images and PDFs. The free quick scan only reads images, so it is not offered for a PDF (it used to be offered,
+  // then refused with an error that was logged as a bug and emailed to the platform owner).
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
   document.getElementById('scanBtn').style.display = 'inline-flex';
-  document.getElementById('freeScanBtn').style.display = 'inline-flex';
+  document.getElementById('freeScanBtn').style.display = isPdf ? 'none' : 'inline-flex';
 }
 
 function onAuFile2Selected(input) {
@@ -13363,9 +13565,9 @@ async function scanCredential() {
 // empty, and always leaves the actual saving decision to a human review.
 async function freeScanCredential() {
   const file = document.getElementById('auFile').files[0];
-  if (!file) { toast('Please select a file first', true); return; }
+  if (!file) { toast('Please select a file first'); return; }
   if (file.type === 'application/pdf') {
-    toast('Free quick scan only works on images (JPG/PNG) — use the AI scan above for PDFs', true);
+    toast('Free quick scan only works on images (JPG/PNG). Use the AI scan for PDFs.');   // guidance, not a bug: not logged
     return;
   }
 
@@ -13709,6 +13911,31 @@ function uploadFileProblem(f, label) {
   return '';
 }
 
+// Uploads one file; on a dropped connection tries once more. If the first try
+// actually landed, the retry's "already exists" counts as success. Every path
+// that made it to storage is recorded so it can be removed if the record
+// then fails to save.
+async function uploadWithRetry(path, file, uploaded) {
+  const NET = /failed to fetch|networkerror|load failed|network request failed/i;
+  const put = async () => {
+    try { return (await sb.storage.from(STORAGE_BUCKET).upload(path, file, { contentType: file.type })).error; }
+    catch (e) { return e; }
+  };
+  let err = await put();
+  if (err && NET.test(String(err.message || err))) {
+    await new Promise(r => setTimeout(r, 1500));
+    err = await put();
+    if (err && /already exists|duplicate/i.test(String(err.message || err))) err = null;
+  }
+  if (err) throw err;
+  uploaded.push(path);
+}
+// Deletes files from this attempt that never got a record. Never throws.
+async function removeStrayFiles(paths) {
+  if (!paths || !paths.length) return;
+  try { await sb.storage.from(STORAGE_BUCKET).remove(paths); } catch (e) { console.warn('Stray file cleanup failed', e); }
+}
+
 // What to tell someone when an upload or save throws.
 function uploadErrorMessage(e, stage) {
   if (e && e.stage === 'read') return e.message;
@@ -13782,6 +14009,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
   if (multiType && !qual) { showAuStatus('This document type can be held more than once. Say which one this is (for example the state) in "Which one?".', 'err', prefix); return; }
 
   let stage = 'save';
+  const uploaded = [];
   try {
     let fileUrl  = null;
     let fileName = null;
@@ -13793,8 +14021,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
       const uploadFile = await readFileStable(await compressImageFile(file));
       const ext  = uploadFile.name.split('.').pop();
       const path = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}.${ext}`;
-      const { error: stErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, uploadFile, { contentType: uploadFile.type });
-      if (stErr) throw stErr;
+      await uploadWithRetry(path, uploadFile, uploaded);
       fileUrl  = path;  // store path, not public URL
       fileName = file.name;
     }
@@ -13803,13 +14030,12 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     let fileUrl2 = null, fileName2 = null;
     const file2 = document.getElementById(`${prefix}File2`)?.files[0] || document.getElementById(`${prefix}Camera2`)?.files[0];
     if (file2) {
-      { const p2 = uploadFileProblem(file2, 'Back file'); if (p2) { showAuStatus(p2, 'err', prefix); return; } }
+      { const p2 = uploadFileProblem(file2, 'Back file'); if (p2) { await removeStrayFiles(uploaded); showAuStatus(p2, 'err', prefix); return; } }
       stage = 'file';
       const uploadFile2 = await readFileStable(await compressImageFile(file2));
       const ext2  = uploadFile2.name.split('.').pop();
       const path2 = `credtrack/${currentCompany.id}/${staffId}/${Date.now()}_${typeId}_back.${ext2}`;
-      const { error: stErr2 } = await sb.storage.from(STORAGE_BUCKET).upload(path2, uploadFile2, { contentType: uploadFile2.type });
-      if (stErr2) throw stErr2;
+      await uploadWithRetry(path2, uploadFile2, uploaded);
       fileUrl2  = path2;
       fileName2 = file2.name;
     }
@@ -13863,6 +14089,7 @@ async function saveCredentialDoc(prefix, presetStaffId) {
     await checkStaffCompliance(staffId);
     await loadAdminDocs();
   } catch(e) {
+    await removeStrayFiles(uploaded);
     const msg = uploadErrorMessage(e, stage);
     showAuStatus(msg, 'err', prefix);
   }
@@ -16005,6 +16232,7 @@ async function loadSettings() {
   const c = currentCompany;
 
   document.getElementById('myAccountName').value = currentProfile.full_name || '';
+  loadMfaSettings();
   loadBillingStatus();
   loadPartnerRecsStatic();
   // Platform-wide panels (partner links, storage, recent uploads across every company) belong to the platform owner only.
@@ -28715,6 +28943,7 @@ function showForceChangePasswordScreen() {
     errEl.textContent = '';
     if (p1.length < 6) { errEl.textContent = 'Password must be at least 6 characters.'; return; }
     if (p1 !== p2) { errEl.textContent = 'Passwords do not match.'; return; }
+    try { await mfaGate(); } catch (e) {}
     const { error: updErr } = await sb.auth.updateUser({ password: p1 });
     if (updErr) { errEl.textContent = updErr.message; return; }
     if (currentProfile?.id) {
@@ -28741,6 +28970,8 @@ function showSetNewPasswordForm() {
       document.getElementById('passErr').textContent = 'Password must be at least 6 characters.';
       return;
     }
+    // Someone with two-step sign-in must enter their code before the password can be changed (Supabase refuses it otherwise).
+    try { await mfaGate(); } catch (e) { /* carry on: Supabase will say if the code is still needed */ }
     const { error } = await sb.auth.updateUser({ password: pw });
     if (error) {
       document.getElementById('passErr').textContent = error.message;
