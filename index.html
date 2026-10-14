@@ -13493,20 +13493,24 @@ function applyAiScanType() {
 
 async function scanCredential() {
   const file = document.getElementById('auFile').files[0];
-  if (!file) { toast('Please select a file first', true); return; }
+  if (!file) { toast('Please select a file first'); return; }
+  // Same file checks as an upload (type, 10 MB, empty, iPhone HEIC), before any paid scan.
+  { const problem = uploadFileProblem(file, 'This file'); if (problem) { showAuStatus(problem, 'err'); return; } }
 
   const btn = document.getElementById('scanBtn');
   btn.textContent = '⏳ Scanning…';
   btn.disabled = true;
   showAuStatus('Scanning document with AI — this takes a few seconds…', 'ok');
+  const busy = startImportBusy('Scanning document');
 
   try {
-    // Convert file to base64
+    // Read a stable copy first, then convert to base64
+    const stable = await readFileStable(file);
     const base64 = await new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(reader.result.split(',')[1]);
       reader.onerror = reject;
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(stable);
     });
 
     // Determine media type
@@ -13523,9 +13527,12 @@ async function scanCredential() {
         'Authorization': `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ fileBase64: base64, mediaType, fileName: file.name }),
+      signal: busy.signal,
     });
 
-    const result = await res.json();
+    let result = null;
+    try { result = await res.json(); } catch (_e) { /* not JSON */ }
+    if (!result) throw new Error('The scan service did not answer properly. Please try again, or enter the details by hand.');
     if (result.error) throw new Error(result.error);
 
     const e = result.extracted;
@@ -13551,7 +13558,15 @@ async function scanCredential() {
     toast('Document scanned successfully');
 
   } catch(e) {
-    showAuStatus('Scan failed: ' + e.message, 'err');
+    let msg;
+    if (busy.timedOut()) msg = 'The scan took too long (over 2 minutes). Try a smaller or clearer file, or enter the details by hand.';
+    else if (e && e.name === 'AbortError') msg = 'Scan cancelled.';
+    else if (e && e.stage === 'read') msg = e.message;
+    else if (/failed to fetch|networkerror|load failed|network request failed/i.test(String((e && e.message) || e))) msg = "The scan couldn't reach the server. Check your internet and try again, or enter the details by hand.";
+    else msg = 'Scan failed: ' + ((e && e.message) || e);
+    showAuStatus(msg, 'err');
+  } finally {
+    busy.stop();
   }
 
   btn.textContent = '🔍 Scan document';
