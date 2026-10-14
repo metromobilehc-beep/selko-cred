@@ -110,6 +110,9 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
 </head>
 <body>
 
+<button id="mobileMenuFab" type="button" aria-label="Menu" onclick="toggleAdminSidebar()"><i class="ti ti-menu-2"></i></button>
+<div id="appVersionTag" style="position:fixed;right:8px;bottom:4px;font-size:11px;color:#8a94a6;opacity:.7;pointer-events:none;z-index:5;font-family:monospace;">Selko Cred v2026-10-13-i</div>
+
 <header>
   <!-- TRIAL: logo moved to center, search moved to the far left. The two
        outer zones both get flex:1 so they occupy equal space regardless
@@ -5150,6 +5153,10 @@ function showGenerationGuidance(fileLabel) {
   document.body.appendChild(modal);
 }
 
+// Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
+const APP_VERSION = '2026-10-13-i';
+window.SELKO_VERSION = APP_VERSION;
+
 async function logError(errorType, message, context) {
   try {
     await sb.from('error_logs').insert({
@@ -5158,7 +5165,7 @@ async function logError(errorType, message, context) {
       user_email:    (typeof currentProfile !== 'undefined' && currentProfile) ? currentProfile.email : null,
       error_type:    errorType,
       error_message: String(message).slice(0, 2000),
-      context:       context ? String(context).slice(0, 2000) : null,
+      context:       ((context ? String(context) : '') + ' [v' + APP_VERSION + ']').trim().slice(0, 2000),
       url:           window.location.href,
       // ip_address is populated server-side by a trigger reading the
       // real request headers, not sent from here — a client-reported
@@ -25593,6 +25600,20 @@ function applyBranding(branding, logoUrl) {
   }
 }
 
+// Phone header: it is three rows tall (see styles.css), so on phones it scrolls away with the page instead of staying pinned and
+// eating the screen. While it is out of sight a small floating menu button takes its place.
+function setupMobileMenuButton() {
+  const h = document.querySelector('header'), fab = document.getElementById('mobileMenuFab');
+  if (!h || !fab || !('IntersectionObserver' in window)) return;
+  const update = (visible) => {
+    const shown = !visible && window.innerWidth <= 900 && h.offsetHeight > 0;
+    fab.classList.toggle('show', shown);
+  };
+  new IntersectionObserver(entries => update(entries[entries.length - 1].isIntersecting), { threshold: 0 }).observe(h);
+  window.addEventListener('resize', () => update(h.getBoundingClientRect().bottom > 0));
+}
+window.addEventListener('load', setupMobileMenuButton);
+
 // ══ TABS ══
 // Only actually does anything at the responsive breakpoint (the
 // button itself is display:none above 900px, matching the CSS media
@@ -28354,7 +28375,7 @@ async function exportCompanyDocumentsAsZip(companyId, companyName) {
 
 async function offboardCompanyNow(id, name) {
   if (!currentProfile?.is_super_admin) { toast('Only super admins can offboard a company.', true); return; }
-  if (!confirm(`Offboard ${name}?\n\nThis saves a permanent audit trail (logs and document metadata, no file content), then permanently deletes their actual document files and encrypted SSN/CAQH credentials. The company record and staff roster stay, stripped of sensitive content, until the final purge date (3 years out).\n\nThis cannot be undone. Type the company name to confirm.`)) return;
+  if (!confirm(`Offboard ${name}?\n\nThis saves a permanent audit trail (logs and document metadata, no file content), then permanently deletes their encrypted SSN and CAQH credentials. Their uploaded document files are NOT deleted here; they age out through the normal records-retention review. The company record and staff roster stay until the final purge date (3 years out).\n\nThis cannot be undone. Type the company name to confirm.`)) return;
   const confirmName = prompt(`Type "${name}" to confirm offboarding:`);
   if (confirmName !== name) { toast('Name did not match — offboarding cancelled'); return; }
 
