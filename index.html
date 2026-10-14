@@ -8383,6 +8383,7 @@ async function generateAuditPacket() {
     const packet = await PDFDocument.load(coverBytes);
 
     const skipped = [];
+    const embeddedDocs = [];
     let fileCount = 0;
     for (const d of verifiedFiles) {
       const typeName = docDisplayName(d, 'Document').replace(' · ', ' - ');
@@ -8420,6 +8421,7 @@ async function generateAuditPacket() {
             const imgPage = packet.addPage([612, 792]);
             imgPage.drawImage(img, { x: (612 - w) / 2, y: (792 - h) / 2, width: w, height: h });
           }
+          embeddedDocs.push(d);
         } catch (fileErr) {
           console.warn('Skipping file in audit packet:', f.path, fileErr);
           skipped.push(`${typeName} (${f.name})`);
@@ -8438,6 +8440,7 @@ async function generateAuditPacket() {
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 30000);
+    await logBulkDocumentAccess(embeddedDocs, staff.full_name);
 
     document.getElementById('auditPacketModal')?.remove();
     toast(skipped.length
@@ -8940,6 +8943,32 @@ async function logDocumentAccess(documentId, action) {
   }
 }
 
+// Bulk exports (audit packet, zip downloads, company export) hand over many documents at once. Each one that was actually
+// included gets its own entry in the Document access log, so a bulk pull is as visible as opening one file.
+// Best-effort like logDocumentAccess: a logging failure never blocks the export.
+async function logBulkDocumentAccess(docs, staffNameFallback) {
+  try {
+    const seen = new Set();
+    const rows = (docs || []).filter(d => d && d.id && !seen.has(d.id) && seen.add(d.id)).map(d => ({
+      document_id: d.id,
+      staff_id: d.staff_id || null,
+      company_id: d.company_id || currentCompany?.id || currentProfile?.company_id,
+      accessed_by_profile_id: currentProfile.id,
+      accessed_by_name: currentProfile.full_name,
+      accessed_by_role: currentProfile.role || (currentProfile.is_super_admin ? 'super_admin' : null),
+      action: 'download',
+      document_type_name: d.document_types?.name || d.label || null,
+      staff_full_name: d.credtrack_staff?.full_name || staffNameFallback || null,
+    }));
+    for (let i = 0; i < rows.length; i += 200) {
+      const { error } = await sb.from('credtrack_access_log').insert(rows.slice(i, i + 200));
+      if (error) throw error;
+    }
+  } catch (e) {
+    console.warn('Bulk access log write failed (non-blocking):', e);
+  }
+}
+
 async function viewFile(filePath, documentId) {
   // Open the tab synchronously, before the await below — some browsers'
   // popup blockers will silently block window.open() if it happens after
@@ -8973,7 +9002,7 @@ async function viewFile(filePath, documentId) {
 
 async function downloadFile(filePath, fileName, documentId) {
   try {
-    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 3600, { download: fileName || true });
+    const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(filePath, 60, { download: fileName || true });
     if (error) throw error;
     const a = document.createElement('a');
     a.href = data.signedUrl;
@@ -9001,9 +9030,11 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
 
     toast('Preparing download…');
     const zip = new JSZip();
+    const includedDocs = [];
     for (const d of docs) {
       const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(d.file_url);
       if (dlErr) { console.warn('Skipped', d.file_url, dlErr); continue; }
+      includedDocs.push(d);
       const ext = (d.file_name || '').split('.').pop() || 'bin';
       const typeName = (d.document_types?.name || 'document').replace(/[\/\\:*?"<>|]/g, '_');
       zip.file(`${typeName}_${d.id.slice(0,8)}.${ext}`, blobData);
@@ -9015,6 +9046,7 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
     a.download = `${staffName.replace(/[^a-z0-9]/gi,'_')}_Documents.zip`;
     a.click();
     URL.revokeObjectURL(url);
+    await logBulkDocumentAccess(includedDocs, staffName);
     toast('✓ Download ready');
   } catch(e) {
     toast('Download failed: ' + friendlyError(e), true);
@@ -9108,6 +9140,7 @@ async function runBulkDownload(mode) {
 
   const zip = new JSZip();
   let done = 0, failed = 0;
+  const includedDocs = [];
 
   for (const doc of data) {
     try {
@@ -9130,6 +9163,7 @@ async function runBulkDownload(mode) {
         zip.folder(staffFolder).file(safeName2, blobData2);
       }
       done++;
+      includedDocs.push(doc);
     } catch(e) {
       console.warn('Failed to download', doc.file_url, e);
       failed++;
@@ -9147,6 +9181,7 @@ async function runBulkDownload(mode) {
   a.download = `${currentCompany.name.replace(/[^a-z0-9]/gi,'_')}_Documents_${new Date().toISOString().slice(0,10)}.zip`;
   a.click();
   URL.revokeObjectURL(url);
+  await logBulkDocumentAccess(includedDocs);
 
   document.getElementById('bulkDownloadModal')?.remove();
   toast(failed > 0 ? `Downloaded ${done} file(s), ${failed} failed` : `✓ ${done} file(s) downloaded`);
@@ -28196,6 +28231,7 @@ async function exportCompanyDocumentsAsZip(companyId, companyName) {
     toast('Preparing export — this can take a while for a company with a lot of documents…');
     const zip = new JSZip();
     let fileCount = 0;
+    const loggedDocs = [];
 
     const { data: staff } = await sb.from('credtrack_staff').select('id, full_name').eq('company_id', companyId);
     for (const s of staff || []) {
@@ -28211,6 +28247,7 @@ async function exportCompanyDocumentsAsZip(companyId, companyName) {
         const typeName = (d.document_types?.name || d.label || 'document').replace(/[\/\\:*?"<>|]/g, '_');
         folder.file(`${typeName}_${d.id.slice(0,8)}.${ext}`, blobData);
         fileCount++;
+        loggedDocs.push({ ...d, staff_id: d.staff_id || s.id, credtrack_staff: { full_name: s.full_name } });
       }
     }
 
@@ -28238,6 +28275,7 @@ async function exportCompanyDocumentsAsZip(companyId, companyName) {
     a.download = `${companyName.replace(/[^a-z0-9]/gi,'_')}_Documents_${new Date().toISOString().slice(0,10)}.zip`;
     a.click();
     URL.revokeObjectURL(url);
+    await logBulkDocumentAccess(loggedDocs);
     toast(`✓ Export ready — ${fileCount} file${fileCount!==1?'s':''}`);
   } catch (e) {
     toast('Export failed: ' + friendlyError(e), true);
