@@ -24906,10 +24906,10 @@ async function saveBranding() {
       // FIXED — logos now go to a real public bucket instead of the
       // private compliance-documents one; see the comment on
       // PUBLIC_ASSETS_BUCKET above.
-      const { error: stErr } = await sb.storage.from(PUBLIC_ASSETS_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
+      const { error: stErr } = await sb.storage.from(PUBLIC_ASSETS_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true, cacheControl: '60' });
       if (stErr) throw stErr;
       const { data: { publicUrl } } = sb.storage.from(PUBLIC_ASSETS_BUCKET).getPublicUrl(path);
-      logo_url = publicUrl;
+      logo_url = publicUrl + '?v=' + Date.now();   // same file name every time, so a version stamp makes browsers and the CDN fetch the new image
     } catch(e) {
       statusEl.textContent = 'Logo upload failed: ' + e.message;
       statusEl.className = 'up-status up-err';
@@ -27945,10 +27945,10 @@ async function saveCompanyConfig(id) {
       const ext  = logoFile.name.split('.').pop();
       const path = `${CRED_LOGO_PREFIX}/${id}/logo.${ext}`;
       // FIXED — same bucket fix as the company's own Branding panel.
-      const { error: stErr } = await sb.storage.from(PUBLIC_ASSETS_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true });
+      const { error: stErr } = await sb.storage.from(PUBLIC_ASSETS_BUCKET).upload(path, logoFile, { contentType: logoFile.type, upsert: true, cacheControl: '60' });
       if (stErr) throw stErr;
       const { data: { publicUrl } } = sb.storage.from(PUBLIC_ASSETS_BUCKET).getPublicUrl(path);
-      logo_url = publicUrl;
+      logo_url = publicUrl + '?v=' + Date.now();   // same file name every time, so a version stamp makes browsers and the CDN fetch the new image
     } catch(e) {
       statusEl.textContent = 'Logo upload failed: ' + e.message;
       statusEl.className = 'up-status up-err';
