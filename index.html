@@ -11,7 +11,7 @@
 <link rel="manifest" href="/manifest.json" />
 <meta name="theme-color" content="#0d9488" />
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.49.0/dist/tabler-icons.min.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.3/dist/umd/supabase.min.js"></script>
 <script>
 // Shared SSO storage adapter — used identically in both Selko Cred and
@@ -84,8 +84,8 @@ window.selkoSharedAuthStorage = {
 };
 
 </script>
-<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/papaparse@5/papaparse.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.7.0/papaparse.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
@@ -5451,6 +5451,30 @@ async function loadMfaSettings() {
     </div>
     ${on && factors.length < 2 ? '<div style="font-size:13px;color:#fbbf24;margin-top:8px;">Add a second device so losing one phone does not lock you out.</div>' : ''}
     ${mustKeep && on ? '<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:8px;">Your role requires two-step sign-in, so it cannot be turned off.</div>' : ''}`;
+}
+// Admin helper: someone lost their phone. Removes their authenticator devices (the server checks who may do this, and
+// writes it to the reset log). They then sign in with their password and set two-step sign-in up again.
+async function resetUserMfa(profileId, name) {
+  if (!profileId) return;
+  if (!confirm(`Reset two-step sign-in for ${name}?\n\nThis removes their authenticator device(s). They can then sign in with just their password and set it up again.\n\nOnly do this once you are sure it is really them asking. The reset is recorded in a permanent log.`)) return;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/reset-user-mfa', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ user_id: profileId }),
+    });
+    let result = null;
+    try { result = await res.json(); } catch (_e) { /* not JSON */ }
+    if (!result) throw new Error('The reset did not get an answer. Please try again.');
+    if (result.error) throw new Error(result.error);
+    toast(result.removed
+      ? `Two-step sign-in reset for ${name}. They can sign in with their password and set it up again.`
+      : `${name} did not have two-step sign-in set up, so nothing needed resetting.`);
+  } catch (e) {
+    // Guidance (not allowed, enter your code first, too many tries) is shown in red but not logged as an app error.
+    toast((e && e.message) || 'The reset did not work. Please try again.', true, true);
+  }
 }
 async function turnOffMfa() {
   if (!confirm('Turn off two-step sign-in? Your password will be the only protection on this account.')) return;
@@ -11969,6 +11993,9 @@ function showAccountActionsMenu(staffId) {
     // by email lookup, so they can never create a duplicate.
     rows.push(`<button class="btn btn-teal" onclick="closeStaffActionsMenu();showManageLoginModal('${s.id}',${esc(s.full_name)},'${s.profile_id}',${esc(s.email)})" style="width:100%;justify-content:flex-start;">Change login email</button>`);
     rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();reissueStaffPassword('${s.id}',${esc(s.full_name)},'${s.profile_id}',${esc(s.email)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reissue password</button>`);
+    if (currentProfile?.role === 'admin' || currentProfile?.is_super_admin) {
+      rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();resetUserMfa('${s.profile_id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">Reset two-step sign-in</button>`);
+    }
     if (currentCompany.has_credtrack) {
       rows.push(`<button class="btn btn-ghost" onclick="closeStaffActionsMenu();sendMissingDocsChecklist('${s.id}',${esc(s.full_name)})" style="width:100%;justify-content:flex-start;color:#fff;border-color:rgba(255,255,255,.2);">📋 Send checklist</button>`);
     }
@@ -17885,7 +17912,8 @@ async function loadPartnerUsersTable() {
     <td><div class="td-actions">
       <button class="btn btn-sm btn-ghost" onclick="showEditPartnerUserModal('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)},'${u.agency_id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
       <button class="btn btn-sm btn-teal" onclick="sendPartnerInvite('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)})">${u.profile_id ? 'Resend / Set up login' : 'Send invite'}</button>
-      ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)})" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>` : ''}
+      ${u.profile_id ? `<button class="btn btn-sm btn-ghost" onclick="resetPartnerPassword('${u.id}',${jsArg(u.full_name)},${jsArg(u.email)})" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset password</button>
+      <button class="btn btn-sm btn-ghost" onclick="resetUserMfa('${u.profile_id}',${jsArg(u.full_name)})" style="color:#fff;border-color:rgba(255,255,255,.2);">Reset two-step</button>` : ''}
       ${u.profile_id ? `<button class="btn btn-sm btn-gold" onclick="togglePartnerUserActive('${u.id}',${u.active})">${u.active ? 'Deactivate' : 'Reactivate'}</button>` : ''}
       <button class="btn btn-sm btn-danger" onclick="deletePartnerUser('${u.id}',${jsArg(u.full_name)})">Delete</button>
     </div></td>
