@@ -2552,6 +2552,12 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
             <input type="file" id="setBrandLogoFile" accept=".jpg,.jpeg,.png,.svg,.webp" style="display:none;" onchange="onBrandLogoSelected(this)" />
             <input type="hidden" id="setBrandLogo" />
           </div>
+          <div style="margin-bottom:16px;">
+            <label class="inline-label">Header size</label>
+            <p style="font-size:13px;color:rgba(255,255,255,.55);margin:2px 0 8px;">Makes the bar at the top taller so your logo and name are easier to see. Phones always use the compact header. The header changes as you pick; it is saved when you press Save branding.</p>
+            <div id="brandHeaderSizePicker" role="radiogroup" aria-label="Header size" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
+            <input type="hidden" id="setBrandHeaderSize" />
+          </div>
           <button class="btn btn-sm btn-teal" onclick="saveBranding()">Save branding</button>
         </div>
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
@@ -5819,9 +5825,17 @@ function resetBranding() {
   const r = document.documentElement.style;
   ['--teal', '--teal-l', '--gold'].forEach(p => r.removeProperty(p));
   const mark = document.querySelector('.logo-mark');
-  if (mark) mark.textContent = 'SC';
+  if (mark) { mark.textContent = 'SC'; mark.classList.remove('has-logo'); }
   const n = document.querySelector('.logo-name');
   if (n) n.textContent = 'Selko Cred';
+  setHeaderSize(null);
+}
+
+// Header size: 'large' | 'xlarge' | anything else = standard.
+function setHeaderSize(size) {
+  const el = document.documentElement;
+  if (size === 'large' || size === 'xlarge') el.setAttribute('data-header-size', size);
+  else el.removeAttribute('data-header-size');
 }
 
 async function logout() {
@@ -16399,6 +16413,9 @@ async function loadSettings() {
     document.getElementById('setBrandPrimary').value = b.primary || BRAND_SWATCHES[0].hex;
     document.getElementById('setBrandName').value    = b.company_name || '';
     renderBrandSwatchPicker();
+    document.getElementById('setBrandHeaderSize').value = (b.header_size === 'large' || b.header_size === 'xlarge') ? b.header_size : '';
+    renderHeaderSizePicker();
+    setHeaderSize(b.header_size);   // drop any unsaved preview
     document.getElementById('setBrandLogo').value    = c.logo_url || '';
     const logoPreview = document.getElementById('setBrandLogoPreview');
     const logoName    = document.getElementById('setBrandLogoName');
@@ -24879,6 +24896,27 @@ function renderBrandSwatchPicker() {
   `).join('');
 }
 
+const HEADER_SIZES = [
+  { v: '',       label: 'Standard' },
+  { v: 'large',  label: 'Large' },
+  { v: 'xlarge', label: 'Extra large' },
+];
+function renderHeaderSizePicker() {
+  const box = document.getElementById('brandHeaderSizePicker');
+  if (!box) return;
+  const cur = document.getElementById('setBrandHeaderSize').value;
+  box.innerHTML = HEADER_SIZES.map(o => `
+    <button type="button" role="radio" aria-checked="${o.v === cur}" onclick="selectHeaderSize('${o.v}')"
+      style="padding:7px 16px;border-radius:6px;cursor:pointer;font-size:15px;font-weight:600;color:#fff;
+             background:${o.v === cur ? 'var(--teal)' : 'transparent'};
+             border:1px solid ${o.v === cur ? 'var(--teal)' : 'rgba(255,255,255,.25)'};">${o.label}</button>`).join('');
+}
+function selectHeaderSize(v) {
+  document.getElementById('setBrandHeaderSize').value = v;
+  renderHeaderSizePicker();
+  setHeaderSize(v);   // live preview in the real header
+}
+
 function selectBrandSwatch(hex) {
   document.getElementById('setBrandPrimary').value = hex;
   renderBrandSwatchPicker();
@@ -24888,6 +24926,7 @@ async function saveBranding() {
   const branding = {
     primary:      document.getElementById('setBrandPrimary').value.trim(),
     company_name: document.getElementById('setBrandName').value.trim(),
+    header_size:  document.getElementById('setBrandHeaderSize').value || null,
   };
   const statusEl = document.getElementById('setBrandStatus');
   let logo_url = document.getElementById('setBrandLogo').value.trim();
@@ -25545,8 +25584,9 @@ function applyBranding(branding, logoUrl) {
   // their platform defaults regardless of what's stored in branding.
   if (logoUrl) {
     const mark = document.querySelector('.logo-mark');
-    if (mark) mark.innerHTML = `<img src="${logoUrl}" style="width:100%;height:100%;object-fit:contain;border-radius:6px;" />`;
+    if (mark) { mark.innerHTML = `<img class="hdr-logo-img" src="${logoUrl}" alt="" />`; mark.classList.add('has-logo'); }
   }
+  setHeaderSize(branding.header_size);
   if (branding.company_name) {
     const n = document.querySelector('.logo-name');
     if (n) n.textContent = branding.company_name;
@@ -27902,6 +27942,7 @@ async function editCompany(id) {
           <div>
             <label class="inline-label">Display name</label>
             <input class="inline-input" type="text" id="cfg_brand_name" value="${c.branding?.company_name||''}" />
+            <input type="hidden" id="cfg_header_size" value="${c.branding?.header_size||''}" />
           </div>
           <div>
             <label class="inline-label">Logo</label>
@@ -27968,6 +28009,7 @@ async function saveCompanyConfig(id) {
       primary:      document.getElementById('cfg_primary').value.trim(),
       navy:         document.getElementById('cfg_navy').value.trim(),
       company_name: document.getElementById('cfg_brand_name').value.trim(),
+      header_size:  document.getElementById('cfg_header_size').value || null,
     },
     custom_vars: {
       trial_status:  document.getElementById('cfg_trial_status').value,
