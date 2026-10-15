@@ -95,6 +95,11 @@
   #hdrLogout { background: transparent; border: 1px solid rgba(255,255,255,.2); color: rgba(255,255,255,.7); padding: 4px 12px; border-radius: var(--radius-sm); font-size: 14px; cursor: pointer; display: none; transition: all .15s; }
   #hdrLogout:hover { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.35); }
 
+  /* Floating menu button: only ever shown on phones, and only while the header has scrolled out of sight. */
+  #mobileMenuFab { display: none; position: fixed; top: 10px; left: 10px; z-index: 95; width: 42px; height: 42px; border-radius: 50%;
+    align-items: center; justify-content: center; font-size: 20px; color: #fff; cursor: pointer;
+    background: var(--navy); border: 1px solid rgba(255,255,255,.25); box-shadow: 0 4px 14px rgba(0,0,0,.4); }
+  @media (max-width: 900px) { #mobileMenuFab.show { display: flex; } }
   .screen { display: none; }
   .screen.active { display: block; }
 
@@ -352,10 +357,24 @@
     :root[data-header-size] .logo-mark.has-logo { width: 32px; max-width: none; background: var(--teal); }
     :root[data-header-size] .logo-mark.has-logo img.hdr-logo-img { width: 100%; max-width: none; }
     header {
+      position: static;
       height: auto; min-height: 56px; flex-wrap: wrap;
       padding: 10px 14px; gap: 8px 12px; row-gap: 8px;
     }
-    #hdrRight { flex-wrap: wrap; row-gap: 6px; }
+    /* Phone header, three slim rows instead of one tall stack:
+         row 1  menu button + logo and company name   (this row stays on screen while you scroll)
+         row 2  search, full width
+         row 3  name, role and the buttons, in one line you can swipe sideways
+       The left-hand wrapper is dissolved (display: contents) so its menu button and search box can be placed on their own. */
+    header > div:first-child { display: contents !important; }
+    header .admin-sidebar-toggle { order: 1; }
+    header .logo { order: 2; flex: 1 1 0; min-width: 0; }
+    header #hdrSearchWrap { order: 3; flex: 1 1 100%; width: 100% !important; max-width: none !important; }
+    header > div:last-child { order: 4; flex: 1 1 100% !important; justify-content: flex-start !important; overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    header > div:last-child::-webkit-scrollbar { display: none; }
+    #hdrRight { flex-wrap: nowrap; white-space: nowrap; gap: 6px; }
+    #hdrRight button { font-size: 13px !important; padding: 4px 10px !important; flex-shrink: 0; }
+    #hdrUser { font-size: 14px; }
   }
 
   /* DARK PANEL */
