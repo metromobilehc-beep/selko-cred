@@ -111,7 +111,7 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
 <body>
 
 <button id="mobileMenuFab" type="button" aria-label="Menu" onclick="toggleAdminSidebar()"><i class="ti ti-menu-2"></i></button>
-<div id="appVersionTag" style="position:fixed;right:8px;bottom:4px;font-size:11px;color:#8a94a6;opacity:.7;pointer-events:none;z-index:5;font-family:monospace;">Selko Cred v2026-10-13-i</div>
+<div id="appVersionTag" style="position:fixed;right:8px;bottom:4px;font-size:11px;color:#8a94a6;opacity:.7;pointer-events:none;z-index:5;font-family:monospace;">Selko Cred v2026-10-14-a</div>
 
 <header>
   <!-- TRIAL: logo moved to center, search moved to the far left. The two
@@ -769,6 +769,12 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           <option value="active">Active documents</option>
           <option value="archived">Archived (expired 3+ months)</option>
           <option value="all">All (active + archived)</option>
+        </select>
+        <select class="filter-sel" id="fUploaded" onchange="loadAdminDocs()" title="Only documents uploaded within this window. The Needs verification and Verified, no file views always show everything.">
+          <option value="30" selected>Uploaded: last 30 days</option>
+          <option value="90">Uploaded: last 90 days</option>
+          <option value="365">Uploaded: last year</option>
+          <option value="">Uploaded: all time</option>
         </select>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Upload document</button>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Add document type</button>
@@ -5154,7 +5160,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-13-i';
+const APP_VERSION = '2026-10-14-b';
 window.SELKO_VERSION = APP_VERSION;
 
 async function logError(errorType, message, context) {
@@ -5395,12 +5401,21 @@ function showMfaEnroll({ required = false, allowLater = false } = {}) {
       <div style="font-size:20px;font-weight:700;margin-bottom:6px;">${required ? 'Set up two-step sign-in' : 'Protect your account with a second step'}</div>
       <p style="font-size:14px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:12px;">${required ? 'Your role requires it. ' : ''}After your password, you will type a 6-digit code from an app on your phone. This keeps your staff's records safe even if your password is guessed.</p>
       <ol style="font-size:14px;color:rgba(255,255,255,.85);line-height:1.6;padding-left:20px;margin-bottom:12px;">
-        <li>Install an authenticator app (Google Authenticator, Microsoft Authenticator, Authy or 1Password).</li>
-        <li>Scan this picture with it, or type the key under it.</li>
-        <li>Type the 6-digit code it shows.</li>
+        <li>Install an authenticator app on your phone (Microsoft Authenticator, Google Authenticator, Authy or 1Password).</li>
+        <li>In <b>Microsoft Authenticator</b>: tap <b>+</b>, then choose <b>Other account (Google, Facebook, etc.)</b> &mdash; <u>not</u> "Work or school account". In Google Authenticator: tap <b>+</b> &rarr; <b>Scan a QR code</b>.</li>
+        <li>Scan the picture below, or choose "Enter code manually" and type the key under it.</li>
+        <li>Type the 6-digit code the app shows. It changes every 30 seconds.</li>
       </ol>
       <div style="background:#fff;border-radius:10px;padding:10px;width:176px;height:176px;margin:0 auto 10px;"><img class="keep-colors" id="mfaQr" alt="Scan with your authenticator app" style="width:156px;height:156px;display:block;" /></div>
-      <div style="font-size:12px;color:rgba(255,255,255,.6);text-align:center;margin-bottom:12px;">Can't scan? Type this key: <code id="mfaSecret" style="color:#fff;user-select:all;word-break:break-all;"></code></div>
+      <div style="font-size:12px;color:rgba(255,255,255,.6);text-align:center;margin-bottom:12px;">Can't scan? Type this key: <code id="mfaSecret" style="color:#fff;user-select:all;word-break:break-all;"></code> <button type="button" id="mfaCopyKey" class="btn btn-sm" style="margin-left:6px;">Copy key</button></div>
+      <details id="mfaHelp" style="font-size:13px;color:rgba(255,255,255,.8);margin-bottom:12px;"><summary style="cursor:pointer;">Having trouble?</summary>
+        <ul style="padding-left:18px;line-height:1.55;margin-top:6px;">
+          <li>On the same phone as this screen? You can't scan it. Tap <b>Copy key</b>, then in the app choose <b>+</b> &rarr; <b>Other account</b> &rarr; <b>Or enter code manually</b> and paste it.</li>
+          <li>Each time this screen opens it makes a <b>new</b> key. Delete any older Selko entries in your app and use the newest one.</li>
+          <li>Codes wrong? Set your phone's date and time to <b>automatic</b>, then type the current code.</li>
+          <li>Still stuck? Ask your administrator to reset your two-step sign-in.</li>
+        </ul>
+      </details>
       <input id="mfaEnrollCode" class="inline-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="width:100%;font-size:22px;letter-spacing:6px;text-align:center;box-sizing:border-box;" />
       <div id="mfaEnrollErr" style="color:#f87171;font-size:14px;margin-top:10px;display:none;line-height:1.4;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap;">
@@ -5410,6 +5425,7 @@ function showMfaEnroll({ required = false, allowLater = false } = {}) {
       <p style="font-size:12px;color:rgba(255,255,255,.5);margin-top:12px;line-height:1.5;">Tip: add a second device afterward (Settings > My account) so losing a phone does not lock you out.</p>`);
     m.querySelector('#mfaQr').src = enr.totp?.qr_code || '';
     m.querySelector('#mfaSecret').textContent = secret;
+    m.querySelector('#mfaCopyKey').onclick = async () => { try { await navigator.clipboard.writeText(secret); toast('Key copied'); } catch(e) { toast('Could not copy - select the key and copy it'); } };
     const input = m.querySelector('#mfaEnrollCode'), err = m.querySelector('#mfaEnrollErr'), btn = m.querySelector('#mfaEnrollBtn');
     const abandon = async () => { try { await sb.auth.mfa.unenroll({ factorId: enr.id }); } catch (e) {} };
     const go = async () => {
@@ -8691,6 +8707,13 @@ async function loadAdminDocs() {
   const type     = document.getElementById('fType')?.value     || '';
   const verified = document.getElementById('fVerified')?.value || '';
   const archived = document.getElementById('fArchived')?.value || 'active';
+  // Upload-date window (default 30 days). The to-do views ("Needs verification" and "Verified, no
+  // file") are work queues, so they ignore it and always show every item: an old unverified
+  // document must never be hidden by a date filter.
+  const uploadedSel  = document.getElementById('fUploaded');
+  const queueView    = _docViewMode === 'needs' || _docViewMode === 'noFile';
+  const windowDays   = (!queueView && uploadedSel && uploadedSel.value) ? parseInt(uploadedSel.value, 10) : 0;
+  if (uploadedSel) uploadedSel.disabled = queueView;
   updateDocViewCounts();
 
   let q = sb.from('credtrack_documents')
@@ -8706,6 +8729,10 @@ async function loadAdminDocs() {
   if (archived === 'active')   q = q.eq('archived', false);
   if (archived === 'archived') q = q.eq('archived', true);
   // 'all' applies no archive filter
+  if (windowDays > 0) {
+    const since = new Date(); since.setDate(since.getDate() - windowDays);
+    q = q.gte('created_at', since.toISOString());
+  }
 
   const { data, error } = await q;
   const tbody = document.getElementById('adminDocsTbody');
@@ -8719,7 +8746,9 @@ async function loadAdminDocs() {
   updateDocsLastUpdatedLabel();
 
   if (!data?.length) {
-    tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No documents found.</td></tr>';
+    tbody.innerHTML = windowDays > 0
+      ? `<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No documents uploaded in the last ${windowDays} days. <button class="btn btn-sm btn-ghost" onclick="document.getElementById('fUploaded').value='';loadAdminDocs();" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;">Show all time</button></td></tr>`
+      : '<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No documents found.</td></tr>';
     return;
   }
 
