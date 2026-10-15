@@ -973,11 +973,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
             <option value="">All disciplines</option>
             <option value="OTHER">No discipline assigned</option>
           </select>
-          <select class="filter-sel" id="fStaffVerified" onchange="loadStaffTable()">
-            <option value="">All verification statuses</option>
-            <option value="1">✓ Fully verified</option>
-            <option value="0">Still needs verification</option>
-          </select>
           <button class="btn btn-sm btn-teal" onclick="showAddStaff()">+ Add staff member</button>
           <div style="position:relative;display:inline-block;">
             <button class="btn btn-sm btn-ghost" id="staffMoreBtn" onclick="toggleStaffMoreMenu()" style="color:#fff;border-color:rgba(255,255,255,.2);">⬇ Import/Export</button>
@@ -5160,7 +5155,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-14-c';
+const APP_VERSION = '2026-10-15-b';
 window.SELKO_VERSION = APP_VERSION;
 
 async function logError(errorType, message, context) {
@@ -9571,14 +9566,6 @@ async function loadStaffTable() {
     return;
   }
 
-  // Find which staff have a "License Verification Record" on file, so we can
-  // show a combined "license number + verification proof" complete badge.
-  const { data: verifDocs } = await sb.from('credtrack_documents')
-    .select('staff_id, document_types!inner(name)')
-    .eq('company_id', currentCompany.id)
-    .eq('document_types.name', 'License Verification Record');
-  const verifiedStaffIds = new Set((verifDocs || []).map(d => d.staff_id));
-
   // One-time lookup: which staff are also linked to an HR employee
   // record — lets renderProviderTabBar show/hide the "HR" tab
   // synchronously on every click, rather than an async fetch per tab
@@ -9595,7 +9582,6 @@ async function loadStaffTable() {
 
   const personFilter = document.getElementById('fStaffPerson')?.value || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
-  const verifiedFilter = document.getElementById('fStaffVerified')?.value || '';
 
   let filteredStaff = staffList;
   if (personFilter) {
@@ -9605,12 +9591,6 @@ async function loadStaffTable() {
     filteredStaff = filteredStaff.filter(s =>
       licTypeFilter === 'OTHER' ? !s.discipline : s.discipline === licTypeFilter
     );
-  }
-  if (verifiedFilter) {
-    filteredStaff = filteredStaff.filter(s => {
-      const isVerified = !!(s.license_number && verifiedStaffIds.has(s.id));
-      return verifiedFilter === '1' ? isVerified : !isVerified;
-    });
   }
 
   const staffTypeOrder = { clinician: 0, office: 1, admin: 2 };
@@ -9642,7 +9622,7 @@ async function loadStaffTable() {
   // not on every call, since loadStaffTable() also re-renders after
   // routine edits (discipline change, etc.) where jumping back to page 1
   // and losing your place would be an annoying side effect.
-  const filterSignature = `${personFilter}|${licTypeFilter}|${verifiedFilter}|${_staffSortKey}|${_staffSortDir}`;
+  const filterSignature = `${personFilter}|${licTypeFilter}|${_staffSortKey}|${_staffSortDir}`;
   if (_lastStaffFilterSignature !== filterSignature) {
     _paginationState.staffTable = 1;
     _lastStaffFilterSignature = filterSignature;
@@ -9660,14 +9640,6 @@ async function loadStaffTable() {
       ? `<tr><td colspan="6" style="padding:10px 12px 6px;font-weight:700;font-size:13px;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;border-bottom:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.02);">${staffTypeGroupLabels[thisType] || thisType}</td></tr>`
       : '';
 
-    // Removed the name-level "✓ [Discipline] License Verified" badge —
-    // redundant with the per-document "✓ Verified" badge already shown
-    // in the profile's document list, and only ever applied to
-    // therapy disciplines (PT/PTA/OT/COTA/SLP) since license_type isn't
-    // populated the same way for DO and others — inconsistent enough
-    // across rows that it read as confusing rather than useful. The
-    // "Verified" filter dropdown above the table still uses
-    // verifiedStaffIds directly (untouched), just not this badge.
     const nameCell = s.full_name;
     const staffTypeCell = isOffice
       ? `<span class="badge ${s.staff_type === 'admin' ? 'badge-verified' : 'badge-none'}">${s.staff_type}</span>`
@@ -10092,15 +10064,6 @@ async function renderProviderReadinessTracker(staffId) {
     sb.from('leie_exclusion_checks').select('matches').eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(1).maybeSingle(),
   ]);
 
-  // Same definition of "verified" already used by the Staff table's
-  // filter dropdown — a license number on file plus a verified
-  // "License Verification Record" document, not just a raw upload.
-  const { data: verifDoc } = await sb.from('credtrack_documents')
-    .select('id, document_types!inner(name)')
-    .eq('staff_id', staffId).eq('verified', true).eq('document_types.name', 'License Verification Record')
-    .maybeSingle();
-  const licenseVerified = !!(s.license_number && verifDoc);
-
   const oigChecked = !!oigRes.data;
   await loadLeieClearances();   // a flagged name an admin has already cleared by hand counts as clear
   const oigClear = oigChecked && !(oigRes.data.matches || []).some(m => m.staff_id === staffId && !leieClearanceFor(m));
@@ -10118,10 +10081,6 @@ async function renderProviderReadinessTracker(staffId) {
       label: 'OIG Screened',
       done: oigClear,
       pending: !oigChecked, // distinct from "failed" — just never run yet
-    },
-    {
-      label: 'License Verified',
-      done: licenseVerified,
     },
     {
       label: 'CAQH Ready',
