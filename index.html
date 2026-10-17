@@ -5155,7 +5155,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-15-b';
+const APP_VERSION = '2026-10-16-a';
 window.SELKO_VERSION = APP_VERSION;
 
 async function logError(errorType, message, context) {
@@ -10541,6 +10541,7 @@ function showFullProfileSheet(staffId) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  noAutofill(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   populateExemptChecksList(s);
   renderProviderReadinessTracker(staffId);
@@ -11683,6 +11684,7 @@ function showEnterSsnForm(staffId) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  noAutofill(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
@@ -11840,6 +11842,23 @@ async function submitRevealSsn(staffId) {
   }
 }
 
+// Stops the browser (or a password manager) from filling the signed-in user's OWN saved login, name, phone or address into a form that is
+// about SOMEONE ELSE. Without this, an admin's saved details can land in another person's profile or CAQH login.
+function noAutofill(root) {
+  root.querySelectorAll('input, textarea, select').forEach(el => {
+    if (el.type === 'hidden' || el.type === 'checkbox' || el.type === 'radio' || el.type === 'file' || el.type === 'button') return;
+    el.setAttribute('autocomplete', (el.type === 'password' || /pass/i.test(el.id)) ? 'new-password' : 'off');
+    el.setAttribute('data-lpignore', 'true');   // LastPass
+    el.setAttribute('data-1p-ignore', 'true');  // 1Password
+    el.setAttribute('data-bwignore', 'true');   // Bitwarden
+    if (el.type === 'text' && /user|login/i.test(el.id) && !el.readOnly) {   // Chrome ignores autocomplete=off on username boxes: read-only until clicked
+      el.readOnly = true;
+      const un = () => { el.readOnly = false; el.removeEventListener('focus', un); };
+      el.addEventListener('focus', un);
+    }
+  });
+}
+
 // ══ CAQH credentials — same encrypted, break-glass pattern as SSN, but a
 // separate dedicated key (CAQH_ENCRYPTION_KEY) so a compromise of one
 // never exposes the other. The whole set (username, password, three
@@ -11871,6 +11890,7 @@ function showEnterCaqhCredForm(staffId) {
       </div>
     </div>`;
   document.body.appendChild(modal);
+  noAutofill(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
@@ -27881,7 +27901,7 @@ async function editCompany(id) {
             <label class="inline-label">Plan</label>
             <select class="inline-select" id="cfg_plan">
               <option value="standard" ${c.plan==='standard'?'selected':''}>Standard — $49/mo</option>
-              <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro — $119/mo</option>
+              <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro — $99/mo</option>
               <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise — custom quote</option>
             </select>
           </div>
@@ -28147,7 +28167,7 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}',${jsArg(companyName)}, this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
         <option value="docs" ${!c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
         ${!moduleOptionHidden ? `
-        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (+$59/mo for Credentialing)</option>` : ''}
+        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (+$49/mo for Credentialing)</option>` : ''}
       </select>
       ${moduleOptionHidden ? `<p style="font-size:13px;color:rgba(255,255,255,.58);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
@@ -28159,7 +28179,7 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <label class="inline-label">Plan</label>
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}',${jsArg(companyName)}, this.value)">
         <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard — $49/mo</option>
-        <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro — $119/mo</option>
+        <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro — $99/mo</option>
         <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise — custom quote</option>
       </select>
 
