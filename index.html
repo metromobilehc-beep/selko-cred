@@ -1495,8 +1495,16 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
               <label style="font-size:13px;color:rgba(255,255,255,.62);">Expires</label>
               <input class="inline-input" type="date" id="accExpiry" style="width:150px;" />
             </div>
+            <div style="display:flex;flex-direction:column;gap:4px;">
+              <label style="font-size:13px;color:rgba(255,255,255,.62);">Applies to</label>
+              <select class="inline-select" id="accLocScope" onchange="onAccLocScopeChanged()" style="width:200px;">
+                <option value="all">All locations</option>
+                <option value="some">Specific locations…</option>
+              </select>
+            </div>
             <button class="btn btn-sm btn-teal" onclick="addCompanyAccreditation()">+ Add</button>
           </div>
+          <div id="accLocPicker" style="display:none;margin-top:10px;"></div>
         </div>
 
                 <!-- Guides & Resources — process reference material, not staff/
@@ -5545,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-k';
+const APP_VERSION = '2026-10-18-l';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10626,6 +10634,109 @@ function fpSelectTab(name) {
   });
 }
 
+// ── Supervision tab: supervising physicians for NPs and medical students ─────
+function needsSupervision(d) {
+  const raw = String(d || '').trim();
+  if (!raw) return false;
+  if (isNursePractitioner(raw)) return true;
+  return /\b(student|ms\s?-?[1-4]|resident|intern)\b/i.test(raw) && /\b(md|do|medical|med|physician)\b/i.test(raw)
+    || /^(student|medical student|md student|do student)$/i.test(raw);
+}
+let _supResults = [];
+
+async function loadSupervisionList(staffId) {
+  const box = document.getElementById('supList');
+  if (!box) return;
+  const { data, error } = await sb.from('staff_supervisors').select('*').eq('staff_id', staffId).order('created_at', { ascending: false });
+  if (error) { box.innerHTML = `<span style="color:#f87171;font-size:14px;">${hrOnbEsc(friendlyError(error))}</span>`; return; }
+  const canWrite = currentProfile?.role === 'admin' || currentProfile?.is_super_admin;
+  if (!data?.length) { box.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.58);">No supervising physician on file yet.</div>'; return; }
+  const today = todayLocalIso();
+  box.innerHTML = data.map(r => {
+    const ended = r.end_date && r.end_date <= today;
+    return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(255,255,255,.08);flex-wrap:wrap;">
+      <div style="flex:1;min-width:200px;">
+        <div style="color:#fff;font-size:15px;font-weight:600;">${hrOnbEsc(r.supervisor_name)}${r.credential ? ', ' + hrOnbEsc(r.credential) : ''}${ended ? ' <span style="font-size:12px;color:#f87171;">Ended</span>' : ''}</div>
+        <div style="font-size:13px;color:rgba(255,255,255,.62);">NPI ${hrOnbEsc(r.supervisor_npi)} · ${hrOnbEsc(r.specialty || 'No specialty listed')}${r.city || r.state ? ' · ' + hrOnbEsc([r.city, r.state].filter(Boolean).join(', ')) : ''}</div>
+        <div style="font-size:12px;color:rgba(255,255,255,.5);">${r.relationship === 'collaborating' ? 'Collaborating' : 'Supervising'}${r.start_date ? ' · from ' + fmtDate(r.start_date) : ''}${r.end_date ? ' · until ' + fmtDate(r.end_date) : ''}</div>
+      </div>
+      ${canWrite ? `${r.end_date ? '' : `<button type="button" class="btn btn-sm btn-ghost" onclick="supEnd('${r.id}','${staffId}')" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">End today</button>`}
+      <button type="button" class="btn btn-sm btn-danger" onclick="supRemove('${r.id}','${staffId}',${jsArg(r.supervisor_name)})" style="font-size:13px;">Remove</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+async function supSearch(staffId) {
+  const first = document.getElementById('supFirst').value.trim();
+  const last = document.getElementById('supLast').value.trim();
+  const state = document.getElementById('supState').value;
+  const out = document.getElementById('supResults');
+  if (!last) { toast('Enter at least the last name to search.', true); return; }
+  out.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.62);">Searching the public NPI registry…</div>';
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/lookup-npi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify({ firstName: first, lastName: last, state: state || undefined }),
+    });
+    const result = await res.json();
+    if (result.error) { out.innerHTML = `<div style="color:#f87171;font-size:14px;">NPI lookup failed: ${hrOnbEsc(result.error)}</div>`; return; }
+    _supResults = result.results || [];
+    if (!_supResults.length) { out.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.62);">No matches in the NPI registry. Check the spelling or try a different state.</div>'; return; }
+    out.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:8px;">Click the right physician to add them. Check name, specialty and location first.</div>' +
+      _supResults.map((r, i) => `
+      <div onclick="supAdd('${staffId}',${i})" style="cursor:pointer;padding:10px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:6px;">
+        <div style="color:#fff;font-weight:600;font-size:15px;">${hrOnbEsc(r.firstName)} ${hrOnbEsc(r.lastName)}${r.credential ? ', ' + hrOnbEsc(r.credential) : ''}</div>
+        <div style="color:rgba(255,255,255,.62);font-size:13px;">NPI ${hrOnbEsc(r.npi)} · ${hrOnbEsc(r.taxonomy || 'No specialty listed')}</div>
+        <div style="color:rgba(255,255,255,.58);font-size:13px;">${hrOnbEsc([r.city, r.state].filter(Boolean).join(', '))}</div>
+      </div>`).join('');
+  } catch (e) {
+    out.innerHTML = `<div style="color:#f87171;font-size:14px;">NPI lookup failed: ${hrOnbEsc(friendlyError(e))}</div>`;
+  }
+}
+
+async function supAdd(staffId, idx) {
+  const r = _supResults[idx];
+  if (!r) return;
+  const s = staffList.find(x => x.id === staffId);
+  if (s && s.npi_number && String(s.npi_number) === String(r.npi)) { toast('A person cannot supervise themselves.', true); return; }
+  const { error } = await sb.from('staff_supervisors').insert({
+    company_id: currentCompany.id,
+    staff_id: staffId,
+    supervisor_npi: String(r.npi),
+    supervisor_name: `${r.firstName} ${r.lastName}`.trim(),
+    credential: r.credential || null,
+    specialty: r.taxonomy || null,
+    city: r.city || null,
+    state: r.state || null,
+    relationship: document.getElementById('supRel').value,
+    start_date: document.getElementById('supStart').value || null,
+  });
+  if (error) {
+    toast(/duplicate|unique/i.test(error.message || '') ? 'That physician is already listed as current for this person.' : friendlyError(error), true);
+    return;
+  }
+  document.getElementById('supResults').innerHTML = '';
+  document.getElementById('supStart').value = '';
+  toast(`✓ ${r.firstName} ${r.lastName} added`);
+  loadSupervisionList(staffId);
+}
+
+async function supEnd(id, staffId) {
+  const { data, error } = await sb.from('staff_supervisors').update({ end_date: todayLocalIso() }).eq('id', id).select('id');
+  if (error) { toast(friendlyError(error), true); return; }
+  if (!data || !data.length) { toast('Nothing was saved — you may not have permission.', true); return; }
+  loadSupervisionList(staffId);
+}
+
+async function supRemove(id, staffId, name) {
+  if (!confirm(`Remove ${name} from this person's supervising physicians?`)) return;
+  const { error } = await sb.from('staff_supervisors').delete().eq('id', id);
+  if (error) { toast(friendlyError(error), true); return; }
+  loadSupervisionList(staffId);
+}
+
 function showFullProfileSheet(staffId) {
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
@@ -10677,6 +10788,7 @@ function showFullProfileSheet(staffId) {
         <button type="button" class="fp-subtab on" role="tab" data-fp-tab="details" onclick="fpSelectTab('details')">Details</button>
         <button type="button" class="fp-subtab" role="tab" data-fp-tab="credentials" onclick="fpSelectTab('credentials')">Credentials</button>
         ${deaModuleActive ? `<button type="button" class="fp-subtab" role="tab" data-fp-tab="prescribing" onclick="fpSelectTab('prescribing')">Prescribing</button>` : ''}
+        <button type="button" class="fp-subtab" role="tab" data-fp-tab="supervision" id="fpSupTabBtn" onclick="fpSelectTab('supervision')" style="${needsSupervision(s.discipline) ? '' : 'display:none;'}">Supervision</button>
         <button type="button" class="fp-subtab" role="tab" data-fp-tab="identity" onclick="fpSelectTab('identity')">Identity &amp; screening</button>
       </div>
 
@@ -11037,6 +11149,25 @@ function showFullProfileSheet(staffId) {
 
       </div>
 
+      <div class="fp-pane" data-fp-pane="supervision">
+        <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:16px;">Supervising physicians</div>
+        <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 12px;">For nurse practitioners and medical students. Search the public CMS NPI Registry and add each supervising physician — these save right away and are separate from "Save all changes".</p>
+        <div id="supList" style="margin-bottom:16px;">Loading…</div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div><label class="inline-label">First name</label><input class="inline-input" type="text" id="supFirst" style="width:140px;" autocomplete="off" /></div>
+            <div><label class="inline-label">Last name</label><input class="inline-input" type="text" id="supLast" style="width:160px;" autocomplete="off" /></div>
+            <div><label class="inline-label">State</label><select class="inline-select" id="supState" style="width:170px;">${stateOptionsHtml(s.license_state || '', 'Any state')}</select></div>
+            <button type="button" class="btn btn-sm btn-teal" onclick="supSearch('${staffId}')">🔎 Search NPI</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;">
+            <div><label class="inline-label">Relationship</label><select class="inline-select" id="supRel" style="width:170px;"><option value="supervising">Supervising</option><option value="collaborating">Collaborating</option></select></div>
+            <div><label class="inline-label">Starts</label><input class="inline-input" type="date" id="supStart" style="width:150px;" /></div>
+          </div>
+          <div id="supResults" style="margin-top:12px;"></div>
+        </div>
+      </div>
+
       <div id="fullProfileErr" style="color:#f87171;font-size:14px;margin:14px 0 6px;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;position:sticky;bottom:-28px;background:var(--navy2);padding:12px 0 28px;box-shadow:0 -10px 12px -8px rgba(0,0,0,.45);z-index:2;">
         <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
@@ -11055,10 +11186,17 @@ function showFullProfileSheet(staffId) {
   populateExemptChecksList(s);
   renderProviderReadinessTracker(staffId);
   applyPrescriberLabels(s.discipline);
+  loadSupervisionList(staffId);
 
   // Re-check the DEA/physician sections' visibility live if discipline
   // changes while the sheet is open, rather than requiring a full reopen.
   document.getElementById('fpDiscipline').addEventListener('change', function() {
+    const supBtn = document.getElementById('fpSupTabBtn');
+    if (supBtn) {
+      const show = needsSupervision(this.value);
+      supBtn.style.display = show ? '' : 'none';
+      if (!show && supBtn.classList.contains('on')) fpSelectTab('details');
+    }
     const nowPrescribes = currentCompany.has_credentialing_addon
       && !(_hiddenPanelsCache && (_hiddenPanelsCache.has('dea') || _hiddenPanelsCache.has('board_cert')))
       && isPrescribingDiscipline(this.value);
@@ -16458,10 +16596,36 @@ async function getOrderedCompanyLocations(companyId) {
   return data || [];
 }
 
+let _accLocations = [];
+function accLocLabel(l) { return l.location_name || [l.address, l.city].filter(Boolean).join(', ') || 'Location'; }
+function accLocScopeText(a) {
+  if (a.all_locations !== false) return 'All locations';
+  const ids = Array.isArray(a.location_ids) ? a.location_ids : [];
+  const names = ids.map(id => _accLocations.find(l => l.id === id)).filter(Boolean).map(accLocLabel);
+  return names.length ? names.join(', ') : 'No locations selected';
+}
+function accLocChecksHtml(selected, prefix) {
+  if (!_accLocations.length) return '<div style="font-size:13px;color:rgba(255,255,255,.58);">No locations yet — add them under Settings → Locations.</div>';
+  return _accLocations.map(l => `
+    <label style="display:flex;align-items:center;gap:8px;font-size:14px;color:#fff;padding:3px 0;cursor:pointer;">
+      <input type="checkbox" class="${prefix}" value="${hrOnbEsc(l.id)}" ${selected.includes(l.id) ? 'checked' : ''} />
+      <span>${hrOnbEsc(accLocLabel(l))}${l.city || l.state ? `<span style="color:rgba(255,255,255,.5);"> — ${hrOnbEsc([l.city, l.state].filter(Boolean).join(', '))}</span>` : ''}</span>
+    </label>`).join('');
+}
+function onAccLocScopeChanged() {
+  const some = document.getElementById('accLocScope').value === 'some';
+  const box = document.getElementById('accLocPicker');
+  box.style.display = some ? '' : 'none';
+  if (some) box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.62);margin-bottom:4px;">Which locations does it cover?</div>' + accLocChecksHtml([], 'accLocChk');
+}
+
 async function loadAccreditationsPanel() {
   const container = document.getElementById('accreditationsListCred');
-  const { data } = await sb.from('company_accreditations')
-    .select('*').eq('company_id', currentCompany.id).order('expiration_date', { ascending: true, nullsFirst: false });
+  const [{ data }, locs] = await Promise.all([
+    sb.from('company_accreditations').select('*').eq('company_id', currentCompany.id).order('expiration_date', { ascending: true, nullsFirst: false }),
+    getOrderedCompanyLocations(currentCompany.id),
+  ]);
+  _accLocations = locs || [];
 
   if (!data?.length) {
     container.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.58);">No accreditations on file yet.</div>';
@@ -16472,11 +16636,51 @@ async function loadAccreditationsPanel() {
     const expired = a.expiration_date && new Date(a.expiration_date) < new Date();
     return `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);">
-      <span style="flex:1;color:#fff;font-size:15px;">${hrOnbEsc(a.body_name)}${a.accreditation_number ? ' — ' + hrOnbEsc(a.accreditation_number) : ''}${a.effective_date ? `<div style="font-size:12px;color:rgba(255,255,255,.55);">Effective ${fmtDate(a.effective_date)}</div>` : ''}</span>
+      <span style="flex:1;color:#fff;font-size:15px;">${hrOnbEsc(a.body_name)}${a.accreditation_number ? ' — ' + hrOnbEsc(a.accreditation_number) : ''}${a.effective_date ? `<div style="font-size:12px;color:rgba(255,255,255,.5);">Effective ${fmtDate(a.effective_date)}</div>` : ''}<div style="font-size:12px;color:rgba(255,255,255,.58);">📍 ${hrOnbEsc(accLocScopeText(a))}</div></span>
       <span style="font-size:14px;color:${expired ? '#f87171' : 'rgba(255,255,255,.4)'};">${a.expiration_date ? (expired ? 'Expired ' : 'Expires ') + fmtDate(a.expiration_date) : 'No expiration on file'}</span>
+      <button class="btn btn-sm btn-ghost" onclick="editAccreditationLocations('${a.id}')" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">Locations</button>
       <button class="btn btn-sm btn-danger" onclick="removeCompanyAccreditation('${a.id}',${jsArg(a.body_name)})" style="font-size:13px;">Remove</button>
     </div>`;
   }).join('');
+  window._accRows = data;
+}
+
+function editAccreditationLocations(id) {
+  const a = (window._accRows || []).find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('accLocModal')?.remove();
+  const sel = Array.isArray(a.location_ids) ? a.location_ids : [];
+  const m = document.createElement('div');
+  m.id = 'accLocModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:26px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);max-height:85vh;overflow-y:auto;">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:12px;">Locations — ${hrOnbEsc(a.body_name)}</div>
+      <select class="inline-select" id="accLocEditScope" onchange="document.getElementById('accLocEditList').style.display=this.value==='some'?'':'none'" style="margin-bottom:10px;">
+        <option value="all" ${a.all_locations !== false ? 'selected' : ''}>All locations</option>
+        <option value="some" ${a.all_locations === false ? 'selected' : ''}>Specific locations…</option>
+      </select>
+      <div id="accLocEditList" style="${a.all_locations === false ? '' : 'display:none;'}margin-bottom:14px;">${accLocChecksHtml(sel, 'accLocEditChk')}</div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-teal" onclick="saveAccreditationLocations('${a.id}')" style="flex:1;justify-content:center;">Save</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('accLocModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>
+    </div>`;
+  document.body.appendChild(m);
+  m.addEventListener('click', e => { if (e.target === m) m.remove(); });
+}
+
+async function saveAccreditationLocations(id) {
+  const some = document.getElementById('accLocEditScope').value === 'some';
+  const ids = some ? [...document.querySelectorAll('.accLocEditChk:checked')].map(c => c.value) : [];
+  if (some && !ids.length) { toast('Pick at least one location, or choose All locations.', true); return; }
+  const { data, error } = await sb.from('company_accreditations')
+    .update({ all_locations: !some, location_ids: ids }).eq('id', id).select('id');
+  if (error) { toast(friendlyError(error), true); return; }
+  if (!data || !data.length) { toast('Nothing was saved — you may not have permission to change this.', true); return; }
+  document.getElementById('accLocModal')?.remove();
+  loadAccreditationsPanel();
+  toast('✓ Locations updated');
 }
 
 async function addCompanyAccreditation() {
@@ -16489,8 +16693,13 @@ async function addCompanyAccreditation() {
   const expiry = document.getElementById('accExpiry').value || null;
 
   if (!bodyName) { toast('Enter the accrediting body name', true); return; }
+  const some = document.getElementById('accLocScope').value === 'some';
+  const locIds = some ? [...document.querySelectorAll('.accLocChk:checked')].map(c => c.value) : [];
+  if (some && !locIds.length) { toast('Pick at least one location, or choose All locations.', true); return; }
 
   const { error } = await sb.from('company_accreditations').insert({
+    all_locations: !some,
+    location_ids: locIds,
     company_id: currentCompany.id,
     body_name: bodyName,
     accreditation_number: number,
@@ -16503,6 +16712,8 @@ async function addCompanyAccreditation() {
   document.getElementById('accNumber').value = '';
   document.getElementById('accEffective').value = '';
   document.getElementById('accExpiry').value = '';
+  document.getElementById('accLocScope').value = 'all';
+  onAccLocScopeChanged();
   loadAccreditationsPanel();
   toast(`✓ Added ${bodyName}`);
 }
