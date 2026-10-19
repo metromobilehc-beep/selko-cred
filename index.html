@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-r';
+const APP_VERSION = '2026-10-18-s';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -14305,6 +14305,76 @@ function applyAiScanType() {
   document.getElementById('aiScanTypeConfirmModal')?.remove();
 }
 
+// Date as printed on a card ("03/31/2027", "March 31, 2027", "03/2027") -> YYYY-MM-DD for a date box, or ''.
+function normalizeScanDate(raw, monthOnly = 'end') {
+  const t = String(raw == null ? '' : raw).trim().replace(/(\d)(st|nd|rd|th)\b/gi, '$1').replace(/\s+/g, ' ');
+  if (!t || /^(null|none|n\/?a|unknown)$/i.test(t)) return '';
+  const MON = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12 };
+  const ok = (y, m, d) => { if (y < 1950 || y > 2100 || m < 1 || m > 12 || d < 1 || d > 31) return ''; const dt = new Date(Date.UTC(y, m - 1, d)); return (dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d) ? `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}` : ''; };
+  const last = (y, m) => new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const fy = (y) => y < 100 ? (y >= 70 ? 1900 + y : 2000 + y) : y;
+  let m;
+  if ((m = t.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})(?:[T ].*)?$/))) return ok(+m[1], +m[2], +m[3]);
+  if ((m = t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})$/))) return ok(fy(+m[3]), +m[1], +m[2]) || ok(fy(+m[3]), +m[2], +m[1]);
+  if ((m = t.match(/^(\d{1,2})[-\/.](\d{4})$/))) return ok(+m[2], +m[1], monthOnly === 'end' ? last(+m[2], +m[1]) : 1);
+  if ((m = t.match(/^([A-Za-z]{3,9})\.? (\d{1,2}),? (\d{4})$/)) && MON[m[1].slice(0, 3).toLowerCase()]) return ok(+m[3], MON[m[1].slice(0, 3).toLowerCase()], +m[2]);
+  if ((m = t.match(/^(\d{1,2}) ([A-Za-z]{3,9})\.?,? (\d{4})$/)) && MON[m[2].slice(0, 3).toLowerCase()]) return ok(+m[3], MON[m[2].slice(0, 3).toLowerCase()], +m[1]);
+  if ((m = t.match(/^([A-Za-z]{3,9})\.?,? (\d{4})$/)) && MON[m[1].slice(0, 3).toLowerCase()]) { const mo = MON[m[1].slice(0, 3).toLowerCase()]; return ok(+m[2], mo, monthOnly === 'end' ? last(+m[2], mo) : 1); }
+  return '';
+}
+
+// What the AI scan read, shown for confirmation. Nothing reaches the upload form until "Add to form".
+// Returns true when at least one date was read.
+function showAiScanConfirmModal(e) {
+  document.getElementById('aiScanConfirmModal')?.remove();
+  document.getElementById('aiScanTypeConfirmModal')?.remove();
+  const issued = normalizeScanDate(e.issued_date, 'start');
+  const expiry = normalizeScanDate(e.expiry_date, 'end');
+  const guessed = e.document_type ? guessDocTypeFromDetectedLabel(e.document_type, docTypes) : null;
+  const typeOptions = docTypes.map(t => `<option value="${t.id}" ${guessed && String(t.id) === String(guessed.id) ? 'selected' : ''}>${hrOnbEsc(t.name)}</option>`).join('');
+  const row = (label, inner) => `<div style="margin-bottom:12px;"><label class="inline-label">${label}</label>${inner}</div>`;
+  const modal = document.createElement('div');
+  modal.id = 'aiScanConfirmModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `
+    <div style="background:var(--navy2);border-radius:14px;padding:26px;width:100%;max-width:460px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Confirm what the scan found</div>
+      <div style="color:rgba(255,255,255,.62);font-size:14px;margin-bottom:14px;line-height:1.5;">Check these against the document. You can change anything here. Nothing is added to the form until you press <strong style="color:#fff;">Add to form</strong>.</div>
+      ${e.name ? `<div style="font-size:14px;color:rgba(255,255,255,.7);margin-bottom:12px;">Name on the document: <strong style="color:#fff;">${hrOnbEsc(e.name)}</strong></div>` : ''}
+      ${e.document_type ? `<div style="font-size:14px;color:rgba(255,255,255,.7);margin-bottom:8px;">Read as: <strong style="color:#fff;">"${hrOnbEsc(e.document_type)}"</strong></div>` : ''}
+      ${row('File this under', `<select class="inline-select" id="aiConfType" style="width:100%;box-sizing:border-box;"><option value="">— Don't change the type —</option>${typeOptions}</select>`)}
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+        ${row('Issued date', `<input class="inline-input" type="date" id="aiConfIssued" value="${issued}" style="width:100%;box-sizing:border-box;" />`)}
+        ${row('Expiration date', `<input class="inline-input" type="date" id="aiConfExpiry" value="${expiry}" style="width:100%;box-sizing:border-box;" />`)}
+      </div>
+      ${(e.issued_date && !issued) || (e.expiry_date && !expiry) ? `<div style="font-size:13px;color:#fbbf24;margin:-4px 0 10px;">A date was read as "${hrOnbEsc(!issued && e.issued_date ? e.issued_date : e.expiry_date)}" but could not be understood. Enter it by hand.</div>` : ''}
+      ${!issued && !expiry ? `<div style="font-size:13px;color:#fbbf24;margin:-4px 0 10px;">No dates could be read from this document. Enter them by hand.</div>` : ''}
+      ${row('License / certificate #', `<input class="inline-input" type="text" id="aiConfLicense" value="${hrOnbEsc(e.license_number || '')}" style="width:100%;box-sizing:border-box;" />`)}
+      ${row('Notes', `<input class="inline-input" type="text" id="aiConfNotes" value="${hrOnbEsc(e.notes || '')}" style="width:100%;box-sizing:border-box;" />`)}
+      <div style="display:flex;gap:8px;margin-top:6px;">
+        <button class="btn btn-teal" id="aiConfApply" onclick="applyAiScanConfirm()" style="flex:1;justify-content:center;">Add to form</button>
+        <button class="btn btn-ghost" onclick="document.getElementById('aiScanConfirmModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Discard</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+  return !!(issued || expiry);
+}
+
+function applyAiScanConfirm() {
+  const v = (id) => (document.getElementById(id) || {}).value || '';
+  const typeId = v('aiConfType');
+  if (typeId) { document.getElementById('auType').value = typeId; onAuTypeChanged('au'); }
+  if (v('aiConfIssued')) document.getElementById('auIssued').value = v('aiConfIssued');
+  if (v('aiConfExpiry')) document.getElementById('auExpiry').value = v('aiConfExpiry');
+  if (v('aiConfLicense').trim()) document.getElementById('auLicense').value = v('aiConfLicense').trim();
+  if (v('aiConfNotes').trim()) document.getElementById('auNotes').value = v('aiConfNotes').trim();
+  document.getElementById('aiScanConfirmModal')?.remove();
+  const n = [v('aiConfIssued'), v('aiConfExpiry')].filter(Boolean).length;
+  showAuStatus(`✓ Added to the form — ${n} date${n !== 1 ? 's' : ''}. Review and save.`, 'ok');
+  toast('Details added to the form');
+}
+
 async function scanCredential() {
   const file = document.getElementById('auFile').files[0];
   if (!file) { toast('Please select a file first'); return; }
@@ -14349,26 +14419,13 @@ async function scanCredential() {
     if (!result) throw new Error('The scan service did not answer properly. Please try again, or enter the details by hand.');
     if (result.error) throw new Error(result.error);
 
-    const e = result.extracted;
+    const e = result.extracted || {};
 
-    // Pre-fill form fields
-    if (e.issued_date) document.getElementById('auIssued').value = e.issued_date;
-    if (e.expiry_date) document.getElementById('auExpiry').value = e.expiry_date;
-    if (e.notes) document.getElementById('auNotes').value = e.notes;
-    if (e.license_number) document.getElementById('auLicense').value = e.license_number;
-
-    // Surfacing the detected type is always a genuine confirmation step
-    // now, not a silent pre-fill — see showAiScanTypeConfirmModal above.
-    // A wrong or state-prefixed label ("Texas CPR") getting matched to
-    // the wrong general type, or matched to nothing at all with the raw
-    // detection just discarded, was exactly the gap here before.
-    if (e.document_type) {
-      const guessedType = guessDocTypeFromDetectedLabel(e.document_type, docTypes);
-      showAiScanTypeConfirmModal(e.document_type, guessedType);
-    }
-
-    const filled = [e.issued_date, e.expiry_date].filter(Boolean).length;
-    showAuStatus(`✓ Scan complete — ${filled} date${filled !== 1 ? 's' : ''} extracted. Review and save.`, 'ok');
+    // Nothing is written to the form until the person confirms what the scan read.
+    const found = showAiScanConfirmModal(e);
+    showAuStatus(found
+      ? '✓ Scan complete — check what it read and confirm to add it to the form.'
+      : 'The scan finished but could not read any dates. Check the document, or enter the details by hand.', found ? 'ok' : 'err');
     toast('Document scanned successfully');
 
   } catch(e) {
