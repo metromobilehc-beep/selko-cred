@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-t';
+const APP_VERSION = '2026-10-18-u';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10313,7 +10313,7 @@ function renderStateBoardSuggestions(results, query) {
     <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="font-size:15px;color:#fff;">${r.state_name} <span style="color:rgba(255,255,255,.58);font-size:13px;">— ${r.discipline_group}</span></div>
       ${r.verification_url
-        ? `<a href="${r.verification_url}" target="_blank" rel="noopener" style="font-size:13px;color:var(--teal-l);">Verify ↗</a>`
+        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" style="font-size:14px;font-weight:600;color:var(--teal-l);">Verify ↗</a>`
         : `<span style="font-size:13px;color:rgba(255,255,255,.55);">No link on file</span>`}
       ${r.notes ? ` <span style="font-size:13px;color:rgba(255,255,255,.58);">· ${r.notes}</span>` : ''}
     </div>`).join('');
@@ -10977,8 +10977,8 @@ function showFullProfileSheet(staffId) {
 
       <label class="inline-label" style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};">State licensing board lookup</label>
       <div style="display:${!(_hiddenPanelsCache && _hiddenPanelsCache.has('licensing_board_lookup')) ? 'block' : 'none'};position:relative;margin-bottom:16px;">
-        <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 200)" />
-        <div id="fpStateBoardSuggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
+        <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 250)" />
+        <div id="fpStateBoardSuggestions" onmousedown="event.preventDefault()" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
       </div>
 
       <!-- Per-provider check exemptions -- a company-wide "PTA is exempt
