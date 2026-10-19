@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-n';
+const APP_VERSION = '2026-10-18-p';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10639,6 +10639,8 @@ function needsSupervision(d) {
   const raw = String(d || '').trim();
   if (!raw) return false;
   if (isNursePractitioner(raw)) return true;
+  if (/\b(np|fnp|aprn|arnp|cnp|crnp|pmhnp|agnp|agacnp|agpcnp|acnp|whnp|pnp|nnp|dnp|apn)\b|nurse\s+pract|practitioner|physician\s+assist|physician\s+associate|\bpa-?c?\b/i.test(raw)) return true;
+  if (/^(PA|PA-C|PAC|PHYSICIAN ASSISTANT|PHYSICIAN ASSOCIATE)$/.test(normalizeDisciplineKey(raw))) return true;
   return /\b(student|ms\s?-?[1-4]|resident|intern)\b/i.test(raw) && /\b(md|do|medical|med|physician)\b/i.test(raw)
     || /^(student|medical student|md student|do student)$/i.test(raw);
 }
@@ -11197,7 +11199,7 @@ function showFullProfileSheet(staffId) {
 
       <div class="fp-pane" data-fp-pane="supervision">
         <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:16px;">Supervising physicians</div>
-        <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 12px;">For nurse practitioners and medical students. Search the public CMS NPI Registry and add each supervising physician — these save right away and are separate from "Save all changes".</p>
+        <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 12px;">For nurse practitioners, physician assistants and medical students. Search the public CMS NPI Registry and add each supervising physician — these save right away and are separate from "Save all changes".</p>
         <div id="supList" style="margin-bottom:16px;">Loading…</div>
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:12px;">
           <div style="font-size:13px;font-weight:700;color:var(--teal-l);margin-bottom:6px;">Physicians on your staff</div>
