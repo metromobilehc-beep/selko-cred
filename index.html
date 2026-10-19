@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-l';
+const APP_VERSION = '2026-10-18-n';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10666,6 +10666,17 @@ async function loadSupervisionList(staffId) {
   }).join('');
 }
 
+function supQuickSearch(staffId) {
+  let t = document.getElementById('supQuick').value.replace(/\b(dr|md|do|dpm|np)\b\.?/gi, ' ').replace(/\s+/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '').replace(/\s*,\s*$/, '').trim();
+  if (!t) { toast('Type a name to search.', true); return; }
+  let first = '', last = '';
+  if (t.includes(',')) { const [l, f] = t.split(','); last = l.trim(); first = (f || '').trim().split(' ')[0] || ''; }
+  else { const w = t.split(' '); if (w.length === 1) { last = w[0]; } else { first = w[0]; last = w.slice(1).join(' '); } }
+  document.getElementById('supFirst').value = first;
+  document.getElementById('supLast').value = last;
+  supSearch(staffId);
+}
+
 async function supSearch(staffId) {
   const first = document.getElementById('supFirst').value.trim();
   const last = document.getElementById('supLast').value.trim();
@@ -10694,6 +10705,41 @@ async function supSearch(staffId) {
   } catch (e) {
     out.innerHTML = `<div style="color:#f87171;font-size:14px;">NPI lookup failed: ${hrOnbEsc(friendlyError(e))}</div>`;
   }
+}
+
+function supIsPhysician(d) { return ['MD','DO'].includes(normalizeDisciplineKey(d)) || /physician/i.test(String(d||'')); }
+function supStaffOptionsHtml(staffId) {
+  const list = (staffList || []).filter(x => x.id !== staffId && supIsPhysician(x.discipline) && x.is_active !== false);
+  if (!list.length) return '<option value="">No physicians on staff</option>';
+  return '<option value="">— Choose a physician —</option>' + list.map(x => {
+    const ok = /^\d{10}$/.test(String(x.npi_number || '').trim());
+    return `<option value="${hrOnbEsc(x.id)}" ${ok ? '' : 'disabled'}>${hrOnbEsc(x.full_name)}${ok ? '' : ' (no NPI on file)'}</option>`;
+  }).join('');
+}
+async function supAddStaff(staffId) {
+  const id = document.getElementById('supStaffPick').value;
+  const p = (staffList || []).find(x => x.id === id);
+  if (!p) { toast('Choose a physician first.', true); return; }
+  const { error } = await sb.from('staff_supervisors').insert({
+    company_id: currentCompany.id,
+    staff_id: staffId,
+    supervisor_npi: String(p.npi_number).trim(),
+    supervisor_name: p.full_name,
+    credential: p.discipline || null,
+    specialty: p.primary_specialty || null,
+    city: p.city || null,
+    state: p.state || null,
+    relationship: document.getElementById('supRel').value,
+    start_date: document.getElementById('supStart').value || null,
+  });
+  if (error) {
+    toast(/duplicate|unique/i.test(error.message || '') ? 'That physician is already listed as current for this person.' : friendlyError(error), true);
+    return;
+  }
+  document.getElementById('supStaffPick').value = '';
+  document.getElementById('supStart').value = '';
+  toast(`✓ ${p.full_name} added`);
+  loadSupervisionList(staffId);
 }
 
 async function supAdd(staffId, idx) {
@@ -11153,10 +11199,23 @@ function showFullProfileSheet(staffId) {
         <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:16px;">Supervising physicians</div>
         <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 12px;">For nurse practitioners and medical students. Search the public CMS NPI Registry and add each supervising physician — these save right away and are separate from "Save all changes".</p>
         <div id="supList" style="margin-bottom:16px;">Loading…</div>
-        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;">
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:700;color:var(--teal-l);margin-bottom:6px;">Physicians on your staff</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
-            <div><label class="inline-label">First name</label><input class="inline-input" type="text" id="supFirst" style="width:140px;" autocomplete="off" /></div>
-            <div><label class="inline-label">Last name</label><input class="inline-input" type="text" id="supLast" style="width:160px;" autocomplete="off" /></div>
+            <select class="inline-select" id="supStaffPick" style="width:260px;">${supStaffOptionsHtml(staffId)}</select>
+            <button type="button" class="btn btn-sm btn-teal" onclick="supAddStaff('${staffId}')">+ Add</button>
+          </div>
+          <div style="font-size:12px;color:rgba(255,255,255,.5);margin-top:6px;">Uses the Relationship and Starts fields below. A physician needs a 10-digit NPI on their profile.</div>
+        </div>
+        <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;">
+          <div style="font-size:13px;font-weight:700;color:var(--teal-l);margin-bottom:6px;">Or search the NPI Registry</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px;">
+            <input class="inline-input" type="text" id="supQuick" placeholder="Quick find: type a name, e.g. Sam Smith or Smith, Sam — press Enter" style="flex:1;min-width:260px;" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();supQuickSearch('${staffId}');}" />
+            <button type="button" class="btn btn-sm btn-teal" onclick="supQuickSearch('${staffId}')">Find</button>
+          </div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+            <div><label class="inline-label">First name</label><input class="inline-input" type="text" id="supFirst" style="width:140px;" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();supSearch('${staffId}');}" /></div>
+            <div><label class="inline-label">Last name</label><input class="inline-input" type="text" id="supLast" style="width:160px;" autocomplete="off" onkeydown="if(event.key==='Enter'){event.preventDefault();supSearch('${staffId}');}" /></div>
             <div><label class="inline-label">State</label><select class="inline-select" id="supState" style="width:170px;">${stateOptionsHtml(s.license_state || '', 'Any state')}</select></div>
             <button type="button" class="btn btn-sm btn-teal" onclick="supSearch('${staffId}')">🔎 Search NPI</button>
           </div>
