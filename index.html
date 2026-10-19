@@ -111,7 +111,7 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
 <body>
 
 <button id="mobileMenuFab" type="button" aria-label="Menu" onclick="toggleAdminSidebar()"><i class="ti ti-menu-2"></i></button>
-<div id="appVersionTag" style="position:fixed;right:8px;bottom:4px;font-size:11px;color:#8a94a6;opacity:.7;pointer-events:none;z-index:5;font-family:monospace;">Selko Cred v2026-10-14-a</div>
+<div id="appVersionTag" style="position:fixed;right:8px;bottom:4px;font-size:11px;color:#8a94a6;opacity:.7;pointer-events:none;z-index:5;font-family:monospace;">Selko Cred</div>
 
 <header>
   <!-- TRIAL: logo moved to center, search moved to the far left. The two
@@ -5371,8 +5371,9 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-b';
+const APP_VERSION = '2026-10-18-e';
 window.SELKO_VERSION = APP_VERSION;
+{ const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
 async function logError(errorType, message, context) {
   try {
@@ -5557,7 +5558,8 @@ function promptMfaCode() {
       <div style="display:flex;gap:8px;margin-top:16px;">
         <button class="btn btn-teal" id="mfaCodeBtn" style="flex:1;justify-content:center;">Verify</button>
         <button class="btn btn-ghost" id="mfaCodeOut" style="color:#fff;border-color:rgba(255,255,255,.25);">Sign out</button>
-      </div>`);
+      </div>
+      <div style="margin-top:14px;text-align:center;"><button type="button" id="mfaLostBtn" style="background:none;border:none;color:var(--teal-l);font-size:14px;text-decoration:underline;cursor:pointer;">Lost your phone? Use a recovery code</button></div>`);
     const input = m.querySelector('#mfaCodeInput'), err = m.querySelector('#mfaCodeErr'), btn = m.querySelector('#mfaCodeBtn');
     input.focus();
     const go = async () => {
@@ -5578,6 +5580,7 @@ function promptMfaCode() {
     input.addEventListener('input', () => { if (input.value.replace(/\D/g, '').length === 6) go(); });
     input.addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
     m.querySelector('#mfaCodeOut').onclick = mfaSignOutAndReload;
+    m.querySelector('#mfaLostBtn').onclick = async () => { if (await promptRecoveryCode(m)) resolve(); };
   });
 }
 // Called first in initSession: if this person has two-step sign-in and this session has not passed it yet, ask for the code.
@@ -5590,6 +5593,102 @@ async function mfaVerifiedFactors() {
   const { data, error } = await sb.auth.mfa.listFactors();
   if (error) throw error;
   return data?.totp || [];
+}
+// Recovery codes (edge function mfa-recovery-codes): ten one-time codes so a lost phone does not lock anyone out.
+async function callMfaRecovery(payload) {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) throw new Error('Please sign in again.');
+  const res = await fetch(SUPABASE_URL + '/functions/v1/mfa-recovery-codes', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify(payload),
+  });
+  let out = null;
+  try { out = await res.json(); } catch (_e) { /* not JSON */ }
+  if (!out) throw new Error('No answer from the server. Please try again.');
+  if (out.error) { const e = new Error(out.error); e.status = res.status; throw e; }
+  return out;
+}
+// Shows a fresh set once and does not let go until the person says they saved it.
+function showRecoveryCodes(codes) {
+  return new Promise((resolve) => {
+    const m = mfaModal('mfaRecoveryCodesModal', `
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Save your recovery codes</div>
+      <p style="font-size:14px;color:rgba(255,255,255,.75);line-height:1.5;margin-bottom:12px;">If you lose your phone, one of these signs you in without it. Each code works <b>once</b>. They are shown <b>only now</b>, so save them somewhere safe: a password manager, or print this page.</p>
+      <div id="mfaRcGrid" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 14px;background:rgba(255,255,255,.07);border-radius:10px;padding:14px;font-family:ui-monospace,Consolas,monospace;font-size:15px;letter-spacing:1px;text-align:center;">${codes.map((c) => `<div>${hrOnbEsc(c)}</div>`).join('')}</div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+        <button class="btn btn-sm btn-ghost" id="mfaRcCopy" style="color:#fff;border-color:rgba(255,255,255,.25);">Copy</button>
+        <button class="btn btn-sm btn-ghost" id="mfaRcDownload" style="color:#fff;border-color:rgba(255,255,255,.25);">Download</button>
+        <button class="btn btn-sm btn-ghost" id="mfaRcPrint" style="color:#fff;border-color:rgba(255,255,255,.25);">Print</button>
+      </div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:16px;font-size:14px;line-height:1.4;cursor:pointer;"><input type="checkbox" id="mfaRcSaved" style="margin-top:3px;"> I have saved these codes somewhere safe.</label>
+      <div style="margin-top:14px;"><button class="btn btn-teal" id="mfaRcDone" style="width:100%;justify-content:center;" disabled>Done</button></div>`);
+    const text = () => `Selko Cred recovery codes${currentProfile?.email ? ' for ' + currentProfile.email : ''}\nMade ${new Date().toLocaleDateString()}. Each code works once. Keep this somewhere safe.\n\n${codes.join('\n')}\n`;
+    m.querySelector('#mfaRcCopy').onclick = async () => { try { await navigator.clipboard.writeText(codes.join('\n')); toast('Codes copied'); } catch (e) { toast('Could not copy - select the codes and copy them'); } };
+    m.querySelector('#mfaRcDownload').onclick = () => {
+      try {
+        const url = URL.createObjectURL(new Blob([text()], { type: 'text/plain' }));
+        const a = document.createElement('a'); a.href = url; a.download = 'selko-recovery-codes.txt'; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+      } catch (e) { toast('Could not download - use Copy instead'); }
+    };
+    m.querySelector('#mfaRcPrint').onclick = () => {
+      const w = window.open('', '_blank');
+      if (!w) { toast('Allow pop-ups to print, or use Copy'); return; }
+      w.document.write('<pre style="font:16px/1.6 monospace">' + hrOnbEsc(text()) + '</pre>'); w.document.close(); w.print();
+    };
+    const saved = m.querySelector('#mfaRcSaved'), done = m.querySelector('#mfaRcDone');
+    saved.onchange = () => { done.disabled = !saved.checked; };
+    done.onclick = () => { m.remove(); resolve(); };
+  });
+}
+// Makes (or remakes) the set and shows it. Resolves true if shown.
+async function makeRecoveryCodes() {
+  const out = await callMfaRecovery({ action: 'generate' });
+  await showRecoveryCodes(out.codes || []);
+  return true;
+}
+// After sign-in or setup: if this person has two-step sign-in but has never had codes, make a set now. Quiet if it cannot.
+async function ensureRecoveryCodes() {
+  try {
+    const st = await callMfaRecovery({ action: 'status' });
+    if (st.has_two_step && st.total === 0) await makeRecoveryCodes();
+  } catch (e) { /* not deployed yet, or no network: never block sign-in */ }
+}
+// The "I lost my phone" path, reached from the code prompt. Resolves true when two-step was removed (signed in with the password alone).
+function promptRecoveryCode(previous) {
+  return new Promise((resolve) => {
+    const prevDisplay = previous.style.display; previous.style.display = 'none';
+    const m = mfaModal('mfaRecoveryModal', `
+      <div style="font-size:20px;font-weight:700;margin-bottom:6px;">Use a recovery code</div>
+      <p style="font-size:15px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:14px;">Type one of the recovery codes you saved when you set up two-step sign-in. It works once. Using it turns off two-step sign-in on this account so you can set it up again on your new phone.</p>
+      <input id="mfaRecoveryInput" class="inline-input" type="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="20" placeholder="ABCD-EFGH-JKMN" style="width:100%;font-size:20px;letter-spacing:2px;text-align:center;box-sizing:border-box;text-transform:uppercase;" />
+      <div id="mfaRecoveryErr" style="color:#f87171;font-size:14px;margin-top:10px;display:none;line-height:1.4;"></div>
+      <p style="font-size:12px;color:rgba(255,255,255,.5);margin-top:12px;line-height:1.5;">No codes? Ask an admin at your company to reset your two-step sign-in. They are recorded in a permanent log.</p>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn btn-teal" id="mfaRecoveryBtn" style="flex:1;justify-content:center;">Use code</button>
+        <button class="btn btn-ghost" id="mfaRecoveryBack" style="color:#fff;border-color:rgba(255,255,255,.25);">Back</button>
+      </div>`);
+    const input = m.querySelector('#mfaRecoveryInput'), err = m.querySelector('#mfaRecoveryErr'), btn = m.querySelector('#mfaRecoveryBtn');
+    input.focus();
+    const go = async () => {
+      err.style.display = 'none';
+      if (input.value.replace(/[^A-Za-z0-9]/g, '').length !== 12) { err.textContent = 'A recovery code is 12 letters and numbers, like ABCD-EFGH-JKMN.'; err.style.display = 'block'; return; }
+      btn.disabled = true;
+      try {
+        await callMfaRecovery({ action: 'redeem', code: input.value });
+        try { await sb.auth.refreshSession(); } catch (e) { /* the server already removed the device */ }
+        m.remove(); previous.remove();
+        toast('Two-step sign-in was turned off. Set it up again on your new phone.');
+        resolve(true);
+      } catch (e) {
+        btn.disabled = false; err.textContent = (e && e.message) || 'That did not work. Please try again.'; err.style.display = 'block'; input.select();
+      }
+    };
+    btn.onclick = go;
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
+    m.querySelector('#mfaRecoveryBack').onclick = () => { m.remove(); previous.style.display = prevDisplay; resolve(false); };
+  });
 }
 // Set up (or add another device). Resolves when finished or, if allowed, skipped.
 function showMfaEnroll({ required = false, allowLater = false } = {}) {
@@ -5648,8 +5747,10 @@ function showMfaEnroll({ required = false, allowLater = false } = {}) {
         const { error } = await sb.auth.mfa.challengeAndVerify({ factorId: enr.id, code });
         if (error) throw error;
         toast('✓ Two-step sign-in is on');
-        close();
+        document.getElementById('mfaEnrollModal')?.remove();
         loadMfaSettings();
+        await ensureRecoveryCodes();
+        resolve();
       } catch (e) {
         btn.disabled = false; err.textContent = mfaFriendlyError(e); err.style.display = 'block'; input.select();
       }
@@ -5669,7 +5770,7 @@ async function mfaEnrollmentGate(profile) {
   if (!profile) return;
   let factors;
   try { factors = await mfaVerifiedFactors(); } catch (e) { return; }      // not available: carry on
-  if (factors.length) return;
+  if (factors.length) { await ensureRecoveryCodes(); return; }
   const must = !!profile.is_super_admin || (MFA_ENFORCE_ADMINS && profile.role === 'admin');
   if (must) await showMfaEnroll({ required: true });
   else if (profile.role === 'admin' && !mfaNudgeSnoozed()) await showMfaEnroll({ required: false, allowLater: true });
@@ -5690,7 +5791,25 @@ async function loadMfaSettings() {
       ${on && !mustKeep ? '<button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.25);" onclick="turnOffMfa()">Turn off</button>' : ''}
     </div>
     ${on && factors.length < 2 ? '<div style="font-size:13px;color:#fbbf24;margin-top:8px;">Add a second device so losing one phone does not lock you out.</div>' : ''}
-    ${mustKeep && on ? '<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:8px;">Your role requires two-step sign-in, so it cannot be turned off.</div>' : ''}`;
+    ${mustKeep && on ? '<div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:8px;">Your role requires two-step sign-in, so it cannot be turned off.</div>' : ''}
+    <div id="mfaRecoveryStatus" style="margin-top:12px;"></div>`;
+  if (on) loadRecoveryStatus();
+}
+async function loadRecoveryStatus() {
+  const box = document.getElementById('mfaRecoveryStatus'); if (!box) return;
+  try {
+    const st = await callMfaRecovery({ action: 'status' });
+    const low = st.remaining <= 2;
+    box.innerHTML = `<div style="font-size:14px;color:${st.total === 0 || low ? '#fbbf24' : 'rgba(255,255,255,.75)'};margin-bottom:6px;">${
+      st.total === 0 ? 'You have no recovery codes. If you lose your phone you would be locked out until an admin resets you.'
+      : `Recovery codes: ${st.remaining} of ${st.total} left${low ? '. Make a new set soon.' : '.'}`}</div>
+      <button class="btn btn-sm btn-ghost" id="mfaRcMake" style="color:#fff;border-color:rgba(255,255,255,.25);">${st.total === 0 ? 'Make recovery codes' : 'Make new codes'}</button>`;
+    box.querySelector('#mfaRcMake').onclick = async () => {
+      if (st.total > 0 && !confirm('Make a new set of recovery codes?\n\nYour old codes stop working as soon as the new ones are made.')) return;
+      try { await makeRecoveryCodes(); } catch (e) { toast((e && e.message) || 'Could not make codes.', true, true); }
+      loadRecoveryStatus();
+    };
+  } catch (e) { box.innerHTML = ''; }
 }
 // Admin helper: someone lost their phone. Removes their authenticator devices (the server checks who may do this, and
 // writes it to the reset log). They then sign in with their password and set two-step sign-in up again.
@@ -18867,7 +18986,7 @@ const CREDENTIALING_HELP = [
   {
     title: 'Payer enrollment steps',
     subtitle: '4 steps, each with its own date',
-    html: `<p>Each provider–payer pair has its own 4-step enrollment tracker: <strong>1 Initial Inquiry Submitted</strong>, <strong>2 Application Completed</strong>, <strong>3 Credentialing in Progress</strong> and <strong>4 Enrollment Complete</strong>. Click <strong>Steps</strong> on any row in the Health Care Network tab to update where a specific enrollment stands.</p>
+    html: `<p>Each provider–payer pair has its own 4-step enrollment tracker: <strong>1 Initial Inquiry Submitted</strong>, <strong>2 Application Completed</strong>, <strong>3 Credentialing in Progress</strong> and <strong>4 Enrollment Complete</strong>. Click <strong>Edit</strong> on any provider's row in the Health Care Network tab to update where a specific enrollment stands. The same window also holds the status, Confirmed and Expires dates, the IDs and the note. The Submitted and In-network dates come from steps 1 and 4.</p>
       <ul>
         <li>Each step has a status and a <strong>date</strong>. The date is set to today when you change the status. If you type a different date it stays as you typed it, and a step that is Not Started has no date.</li>
         <li>Hover a step's dot on the board to see its date.</li>
@@ -18982,7 +19101,7 @@ const INSURANCE_HELP = [
         <li>Pick the payer and the current status.</li>
         <li>Save — it appears immediately in the board below, filterable by staff or payer.</li>
       </ol>
-      <p>Need to track the step-by-step enrollment process for one provider–payer pair, not just the end status? Use <strong>Steps</strong> on that row — see the Credentialing tab's help for more on how that works.</p>`,
+      <p>Need to track the step-by-step enrollment process for one provider–payer pair, not just the end status? Use <strong>Edit</strong> on that row — see the Credentialing tab's help for more on how that works.</p>`,
   },
   {
     title: 'Notes and history (kept permanently)',
@@ -23684,12 +23803,38 @@ async function showEnrollmentStepsModal(rowId, source) {
   const steps = row.enrollment_steps || defaultEnrollmentSteps();
   const byN = new Map(steps.map(s => [s.step, s]));
 
+  // Everything the old Edit window held that a step does not already cover. "Submitted" and "In-network" follow steps 1 and 4
+  // (Initial Inquiry Completed, Enrollment Complete), so they only show here for records dated before the steps were used.
+  const stepUntouched = (n) => { const m = ENROLLMENT_STEPS.find(x => x.n === n); return normalizeStepStatus(m, byN.get(n)) === stepUntouchedValue(m); };
+  const dField = (label, id, val, hint) => `<div><label for="${id}" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${label}</label><input class="inline-input" type="date" id="${id}" value="${hrOnbEsc(val || '')}" style="width:100%;box-sizing:border-box;" />${hint ? `<div style="font-size:12px;color:rgba(255,255,255,.45);margin-top:2px;">${hint}</div>` : ''}</div>`;
+  const tField = (label, id, val) => `<div><label for="${id}" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${label}</label><input class="inline-input" type="text" id="${id}" value="${hrOnbEsc(val || '')}" maxlength="120" style="width:100%;box-sizing:border-box;" /></div>`;
+  const detailsHtml = `
+      <div style="margin:18px 0 8px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);color:#fff;font-size:15px;font-weight:700;">Status, dates and IDs</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;line-height:1.5;">Fix anything entered by mistake. Every change is kept in the record's history. The Submitted and In-network dates come from the steps above.</div>
+      <div style="margin-bottom:12px;">
+        <label for="esdStatus" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Status</label>
+        <select class="inline-select" id="esdStatus" style="width:100%;">
+          <option value="pending">Pending</option><option value="in_network">In-network</option><option value="out_of_network">Out of network</option><option value="expired">Expired</option>
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
+        ${stepUntouched(1) && row.date_submitted ? dField('Submitted', 'esdSubmitted', row.date_submitted, 'Dated before steps were used') : ''}
+        ${dField('Confirmed', 'esdConfirmed', row.date_confirmed)}
+        ${stepUntouched(8) && row.date_in_network ? dField('In-network', 'esdInNetwork', row.date_in_network, 'Dated before steps were used') : ''}
+        ${dField('Expires', 'esdExpiration', row.expiration_date)}
+        ${tField('Confirmation code', 'esdConfCode', row.confirmation_code)}
+        ${tField('Provider ID', 'esdProviderId', row.network_provider_id)}
+        ${tField('Group ID', 'esdGroupId', row.group_id)}
+      </div>
+      <label for="esdNotes" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Note on the board <span style="color:rgba(255,255,255,.45);">(the earlier wording stays in Notes &amp; history)</span></label>
+      <textarea class="inline-input" id="esdNotes" rows="2" maxlength="600" style="width:100%;box-sizing:border-box;">${hrOnbEsc(row.notes || '')}</textarea>`;
+
   const modal = document.createElement('div');
   modal.id = 'enrollmentStepsModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1150;display:flex;align-items:center;justify-content:center;padding:20px;';
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:88vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:2px;">Enrollment steps</div>
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:620px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:2px;">Edit enrollment</div>
       <div style="color:rgba(255,255,255,.58);font-size:14px;margin-bottom:16px;">${hrOnbEsc(row.credtrack_staff?.full_name || 'Provider')} · ${hrOnbEsc(row.payers?.name || 'Payer')}</div>
       ${ENROLLMENT_STEPS.map(meta => {
         const cur = byN.get(meta.n);
@@ -23716,7 +23861,8 @@ async function showEnrollmentStepsModal(rowId, source) {
           <div id="estepHint_${meta.n}" data-base="${hrOnbEsc(baseHint)}" style="font-size:12px;color:rgba(255,255,255,.45);margin-top:4px;min-height:14px;">${hrOnbEsc(baseHint)}</div>
         </div>`;
       }).join('')}
-      <div id="enrollmentStepsErr" style="color:#f87171;font-size:14px;margin:6px 0 10px;display:none;"></div>
+      ${detailsHtml}
+      <div id="enrollmentStepsErr" style="color:#f87171;font-size:14px;margin:10px 0 10px;display:none;"></div>
       <div style="display:flex;gap:8px;">
         <button class="btn btn-teal" id="enrollmentStepsSaveBtn" onclick="saveEnrollmentSteps('${rowId}','${source}')" style="flex:1;justify-content:center;">Save</button>
         <button class="btn btn-ghost" onclick="document.getElementById('enrollmentStepsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
@@ -23728,6 +23874,8 @@ async function showEnrollmentStepsModal(rowId, source) {
   // a second fetch of the same row it just loaded
   window._enrollmentStepsPrev = steps;
   window._enrollmentStepsRowStatus = row.status;
+  window._enrollmentRow = row;
+  document.getElementById('esdStatus').value = row.status || 'pending';
   ENROLLMENT_STEPS.forEach(m => paintEnrollStepSelect(m.n));
 }
 
@@ -23841,16 +23989,75 @@ async function saveEnrollmentSteps(rowId, source) {
   prevSteps.filter(s => !ENROLLMENT_STEPS.some(m => m.n === s.step)).forEach(s => newSteps.push(s));
   newSteps.sort((a, b) => a.step - b.step);
 
+  // Who gets the "step completed" email is decided from what the person changed in the steps themselves, before the status
+  // below is allowed to adjust step 4. Fixing the status never sends a completion email.
   const justCompleted = detectNewlyCompletedSteps(prevSteps, newSteps);
 
-  const updates = { enrollment_steps: newSteps };
-  const step8IsYes = newSteps.find(s => s.step === 8)?.status === 'Yes';
-  if (step8IsYes) updates.status = 'in_network'; // see the comment above ENROLLMENT_STEPS
-  // Undoing a mistaken "Enrollment Complete": step 8 back to No also takes the record out of In-network
-  // (otherwise the steps say "not enrolled" while the board and the in-network summary still say enrolled).
-  const approvalRemoved = !step8IsYes && window._enrollmentStepsRowStatus === 'in_network'
-    && (prevSteps.find(s => s.step === 8) || {}).status === 'Yes';
-  if (approvalRemoved) { updates.status = 'pending'; updates.verified_at = null; }
+  const row = window._enrollmentRow || {};
+  const fail = (m) => { errEl.textContent = m; errEl.style.display = 'block'; };
+  const has = (id) => !!document.getElementById(id);
+  const dv = (id) => ((document.getElementById(id) || {}).value || '').trim();
+  const today = todayLocalIso();
+  const metaOf = (n) => ENROLLMENT_STEPS.find(m => m.n === n);
+  const priorOf = (n) => prevSteps.find(s => s.step === n);
+  const newOf = (n) => newSteps.find(s => s.step === n) || {};
+  const stepChanged = (n) => normalizeStepStatus(metaOf(n), priorOf(n)) !== newOf(n).status || ((priorOf(n) && priorOf(n).date) || null) !== (newOf(n).date || null);
+  const origStatus = row.status || window._enrollmentStepsRowStatus || 'pending';
+  const sel = dv('esdStatus') || origStatus;
+  const step8Yes = newOf(8).status === 'Yes';
+  const step8Was = normalizeStepStatus(metaOf(8), priorOf(8)) === 'Yes';
+  const statusLabel = { pending: 'Pending', in_network: 'In-network', out_of_network: 'Out of network', expired: 'Expired' };
+
+  // Dates: Submitted and In-network follow steps 1 and 4 unless this record still carries its own older value.
+  let submitted = has('esdSubmitted') ? (dv('esdSubmitted') || null) : (row.date_submitted || null);
+  let inNet = has('esdInNetwork') ? (dv('esdInNetwork') || null) : (row.date_in_network || null);
+  const s1 = newOf(1), s8 = newOf(8);
+  if (s1.status === 'Completed' && s1.date && (stepChanged(1) || !submitted)) submitted = s1.date;
+  if (s8.status === 'Yes' && s8.date && (stepChanged(8) || !inNet)) inNet = s8.date;
+  const confirmed = dv('esdConfirmed') || null, expires = dv('esdExpiration') || null;
+
+  // Status and step 4 (Enrollment Complete) are one fact: keep them telling the same story.
+  let finalStatus = origStatus, touchVerified = false, approvalRemoved = false;
+  if (sel !== origStatus) {
+    if (step8Yes !== step8Was && (sel === 'in_network') !== step8Yes) {
+      fail(`Enrollment Complete is set to ${step8Yes ? 'Yes' : 'No'} but Status is ${statusLabel[sel] || sel}. Make them agree, then save.`); return;
+    }
+    finalStatus = sel; touchVerified = true;
+    const s8o = newSteps.find(s => s.step === 8);
+    if (s8o) {
+      if (sel === 'in_network' && s8o.status !== 'Yes') { s8o.status = 'Yes'; s8o.date = inNet || today; s8o.updated_at = nowIso; }
+      else if (sel !== 'in_network' && s8o.status === 'Yes') { s8o.status = 'No'; s8o.date = null; s8o.updated_at = nowIso; }
+    }
+  } else {
+    if (step8Yes) { finalStatus = 'in_network'; touchVerified = origStatus !== 'in_network'; }
+    // Undoing a mistaken "Enrollment Complete": step 4 back to No also takes the record out of In-network
+    // (otherwise the steps say "not enrolled" while the board and the in-network summary still say enrolled).
+    approvalRemoved = !step8Yes && window._enrollmentStepsRowStatus === 'in_network' && step8Was;
+    if (approvalRemoved) { finalStatus = 'pending'; touchVerified = true; }
+  }
+  if (finalStatus === 'in_network' && !inNet) inNet = today;
+
+  // Only dates changed in THIS save are checked, so an older mistake already on the record never blocks marking a step done.
+  const origDates = { submitted: row.date_submitted || null, confirmed: row.date_confirmed || null, inNet: row.date_in_network || null, expires: row.expiration_date || null };
+  for (const [label, d, o] of [['Submitted', submitted, origDates.submitted], ['Confirmed', confirmed, origDates.confirmed], ['In-network', inNet, origDates.inNet]]) {
+    if (d && d > today && d !== o) { fail(`The ${label} date (${fmtNetDate(d)}) is in the future. Something that already happened can't be dated after today. Fix the date, or clear it.`); return; }
+  }
+  const datesChanged = submitted !== origDates.submitted || confirmed !== origDates.confirmed || inNet !== origDates.inNet || expires !== origDates.expires;
+  const order = [];
+  if (datesChanged) {
+    if (submitted && confirmed && confirmed < submitted) order.push('Confirmed is before Submitted');
+    if (confirmed && inNet && inNet < confirmed) order.push('In-network is before Confirmed');
+    if (expires && inNet && expires < inNet) order.push('Expires is before In-network');
+  }
+  if (order.length && !(await showCustomConfirm('These dates look out of order: ' + order.join('; ') + '.\n\nSave anyway?', { okLabel: 'Save anyway' }))) return;
+
+  const updates = {
+    enrollment_steps: newSteps, status: finalStatus,
+    date_submitted: submitted, date_confirmed: confirmed, date_in_network: inNet, expiration_date: expires,
+    confirmation_code: dv('esdConfCode') || null, network_provider_id: dv('esdProviderId') || null, group_id: dv('esdGroupId') || null,
+    notes: dv('esdNotes') || null,
+  };
+  if (touchVerified) updates.verified_at = finalStatus === 'in_network' ? (row.verified_at || nowIso) : null;
 
   if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
   const { data: changed, error } = await sb.from('staff_payer_networks').update(updates).eq('id', rowId).select('id');
@@ -23900,9 +24107,9 @@ async function saveEnrollmentSteps(rowId, source) {
   else if (source.startsWith('profile:')) await loadStaffPayerNetwork(source.slice('profile:'.length));
 
   document.getElementById('enrollmentStepsModal')?.remove();
-  window._enrollmentStepsPrev = null;
-  toast(approvalRemoved ? '✓ Steps saved. Approval removed: this record is back to Pending.'
-    : stepsToNotify.length ? '✓ Steps saved — admin notified of progress' : '✓ Steps saved');
+  window._enrollmentStepsPrev = null; window._enrollmentRow = null;
+  toast(approvalRemoved ? '✓ Saved. Approval removed: this record is back to Pending.'
+    : stepsToNotify.length ? '✓ Saved — admin notified of progress' : '✓ Saved');
 }
 
 // The compact multi-step indicator shown wherever an enrollment appears —
@@ -24212,7 +24419,9 @@ function renderPayerBoard() {
     <td><div class="td-actions" style="flex-wrap:nowrap;">
       ${isOffice
         ? '<span style="font-size:14px;color:rgba(255,255,255,.55);">View only</span>'
-        : `<button class="btn btn-sm btn-teal" onclick="showPayerNetworkEditModal('${r.id}')" title="Fix dates, status, codes or the note">Edit</button>${r.credtrack_staff ? `<button class="btn btn-sm btn-ghost" style="color:#fff;border-color:rgba(255,255,255,.25);" onclick="showEnrollmentStepsModal('${r.id}','board')" title="Mark enrollment steps done and add notes">Steps</button>` : ''}<button class="btn btn-sm btn-ghost" style="color:#f87171;border-color:transparent;" onclick="deletePayerNetwork('${r.id}')" title="Delete this record (its history is kept)">Delete</button>`}
+        : `${r.credtrack_staff
+            ? `<button class="btn btn-sm btn-teal" onclick="showEnrollmentStepsModal('${r.id}','board')" title="Mark steps done, fix dates, status, codes or the note">Edit</button>`
+            : `<button class="btn btn-sm btn-teal" onclick="showPayerNetworkEditModal('${r.id}')" title="Fix dates, status, codes or the note">Edit</button>`}<button class="btn btn-sm btn-ghost" style="color:#f87171;border-color:transparent;" onclick="deletePayerNetwork('${r.id}')" title="Delete this record (its history is kept)">Delete</button>`}
     </div></td>
   </tr>`;
 
