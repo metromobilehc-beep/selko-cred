@@ -4198,6 +4198,9 @@ async function loadPricingPanel() {
   try {
     const out = await callPricing({ action: 'list' });
     _priceUi.plans = out.plans || []; _priceUi.mode = out.mode; _priceUi.loaded = true;
+    _priceUi.codes = []; _priceUi.codesError = '';
+    try { _priceUi.codes = (await callPricing({ action: 'coupon_list' })).codes || []; }
+    catch (e) { _priceUi.codesError = (e && e.message) || 'Could not load promo codes.'; }
     renderPricingPanel();
   } catch (e) {
     body.textContent = (e && e.message) || 'Could not load prices.';
@@ -4227,7 +4230,8 @@ function renderPricingPanel() {
       <div class="price-msg" style="margin-top:6px;font-size:13px;"></div>
     </div>`;
   }).join('');
-  body.innerHTML = `<div style="margin-bottom:8px;">Connected to Stripe: ${badge}</div>${rows}`;
+  body.innerHTML = `<div style="margin-bottom:8px;">Connected to Stripe: ${badge}</div>${rows}${promoSectionHtml()}`;
+  wirePromoSection(body);
   body.querySelectorAll('.price-row').forEach((row) => {
     const key = row.dataset.key;
     const b1 = row.querySelector('.price-set-btn'), b2 = row.querySelector('.price-move-btn');
@@ -4287,6 +4291,82 @@ async function movePricingFlow(key, row) {
   _priceUi.busy = false;
   await loadPricingPanel();
 }
+function promoDescribe(c) {
+  const what = c.percent_off != null
+    ? `${c.percent_off}% off for ${c.duration_in_months || 1} month${(c.duration_in_months || 1) === 1 ? '' : 's'}`
+    : (c.amount_off != null ? `${priceMoney(c.amount_off)} off (older flat-amount code)` : 'discount');
+  const used = `${c.times_redeemed} ${c.max_redemptions ? 'of ' + c.max_redemptions + ' ' : ''}used`;
+  const ends = c.expires_at ? 'ends ' + new Date(c.expires_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : 'no end date';
+  return `${what} · ${used} · ${ends}`;
+}
+function promoDefaultEnd() {
+  const d = new Date(Date.now() + 60 * 86400000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function promoSectionHtml() {
+  const list = _priceUi.codesError
+    ? `<div style="color:#ff9a9a;">${hrOnbEsc(_priceUi.codesError)}</div>`
+    : ((_priceUi.codes || []).length
+      ? (_priceUi.codes || []).map((c) => `<div class="promo-row" data-promo="${hrOnbEsc(c.promo_id)}" data-code="${hrOnbEsc(c.code)}" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid rgba(255,255,255,.06);">
+          <div><b style="color:#fff;">${hrOnbEsc(c.code)}</b> <span style="font-size:13px;">${hrOnbEsc(promoDescribe(c))}</span></div>
+          <button type="button" class="btn-sm promo-off-btn">Turn off</button></div>`).join('')
+      : '<div>No active promo codes.</div>');
+  return `<div id="promoSection" style="margin-top:20px;padding-top:12px;border-top:1px solid rgba(255,255,255,.18);">
+    <div style="font-weight:700;color:#fff;margin-bottom:4px;">Promo codes</div>
+    <p style="font-size:13px;margin:0 0 8px;">Customers type the code in the Billing box when they subscribe. It takes a percentage off for a set number of months, then they pay full price automatically. It works for first-time customers only, and stops at the use limit or end date.</p>
+    <div id="promoList">${list}</div>
+    <div style="margin-top:12px;font-weight:700;color:#fff;">Create a code</div>
+    <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-top:6px;">
+      <label style="font-size:13px;">Code<br><input type="text" id="promoNewCode" autocomplete="off" maxlength="30" placeholder="BETA50" style="width:130px;text-transform:uppercase;"></label>
+      <label style="font-size:13px;">% off<br><input type="text" inputmode="numeric" id="promoNewPct" autocomplete="off" placeholder="50" style="width:60px;"></label>
+      <label style="font-size:13px;">For<br><select id="promoNewMonths"><option value="1">1 month</option><option value="3">3 months</option><option value="6" selected>6 months</option><option value="12">12 months</option><option value="24">24 months</option></select></label>
+      <label style="font-size:13px;">Max uses<br><input type="text" inputmode="numeric" id="promoNewMax" autocomplete="off" placeholder="20" style="width:70px;"></label>
+      <label style="font-size:13px;">Last day to use<br><input type="date" id="promoNewEnds" value="${promoDefaultEnd()}"></label>
+      <button type="button" class="btn-sm" id="promoCreateBtn">Create code…</button>
+    </div>
+    <div id="promoMsg" style="margin-top:6px;font-size:13px;"></div>
+  </div>`;
+}
+function wirePromoSection(body) {
+  const btn = body.querySelector('#promoCreateBtn'); if (btn) btn.addEventListener('click', createPromoFlow);
+  body.querySelectorAll('.promo-row').forEach((row) => {
+    const b = row.querySelector('.promo-off-btn'); if (b) b.addEventListener('click', () => deactivatePromoFlow(row.dataset.promo, row.dataset.code));
+  });
+}
+function promoMsg(text, bad) { const m = document.getElementById('promoMsg'); if (m) { m.textContent = text; m.style.color = bad ? '#ff9a9a' : '#8fe3b0'; } }
+async function createPromoFlow() {
+  if (_priceUi.busy) return;
+  const val = (id) => (document.getElementById(id) || {}).value || '';
+  const code = val('promoNewCode').trim().toUpperCase();
+  const pctRaw = val('promoNewPct').trim(), maxRaw = val('promoNewMax').trim();
+  const months = parseInt(val('promoNewMonths'), 10), ends = val('promoNewEnds');
+  if (!/^[A-Z0-9_-]{3,30}$/.test(code)) { promoMsg('The code must be 3 to 30 letters, numbers, dashes or underscores.', true); return; }
+  if (!/^\d{1,2}$/.test(pctRaw) || +pctRaw < 1 || +pctRaw > 90) { promoMsg('Percent off must be a whole number from 1 to 90.', true); return; }
+  if (!/^\d{1,4}$/.test(maxRaw) || +maxRaw < 1 || +maxRaw > 1000) { promoMsg('Max uses must be a whole number from 1 to 1000.', true); return; }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ends)) { promoMsg('Choose the last day the code can be used.', true); return; }
+  const pct = +pctRaw, uses = +maxRaw;
+  const typed = prompt(`${_priceUi.mode === 'live' ? 'LIVE' : 'TEST'} Stripe: create promo code ${code}\n\n${pct}% off for ${months} month${months === 1 ? '' : 's'}, then full price.\nFirst-time customers only. Up to ${uses} use${uses === 1 ? '' : 's'}, until ${ends}.\n\nType CREATE to confirm.`);
+  if (typed !== 'CREATE') { promoMsg('Cancelled. Nothing was created.', true); return; }
+  _priceUi.busy = true; promoMsg('Creating the code in Stripe…', false);
+  try {
+    const out = await callPricing({ action: 'coupon_create', code, percent_off: pct, duration_months: months, max_redemptions: uses, expires_on: ends });
+    toast(`Promo code ${out.promo.code} created` + (out.audit === 'failed' ? ' (it was created but could not be logged — note it down)' : ''), out.audit === 'failed');
+  } catch (e) {
+    promoMsg((e && e.message) || 'The code could not be created.', true);
+    _priceUi.busy = false; return;
+  }
+  _priceUi.busy = false;
+  await loadPricingPanel();
+}
+async function deactivatePromoFlow(promoId, code) {
+  if (_priceUi.busy) return;
+  if (!confirm(`Turn off promo code ${code}?\n\nNobody can use it after this. People who already used it keep their discount. You can turn it back on in the Stripe dashboard.`)) return;
+  _priceUi.busy = true; promoMsg('Turning the code off…', false);
+  try { await callPricing({ action: 'coupon_deactivate', promo_id: promoId }); toast(`Promo code ${code} is off.`); }
+  catch (e) { promoMsg((e && e.message) || 'Could not turn the code off.', true); _priceUi.busy = false; return; }
+  _priceUi.busy = false;
+  await loadPricingPanel();
+}
 async function loadPricingLog() {
   const el = document.getElementById('superPricingLog'); if (!el) return;
   const { data, error } = await sb.from('stripe_price_changes').select('created_at, actor_email, action, lookup_key, stripe_mode, old_amount, new_amount, details').order('created_at', { ascending: false }).limit(10);
@@ -4294,8 +4374,11 @@ async function loadPricingLog() {
   if (!data || !data.length) { el.textContent = 'No price changes made from here yet.'; return; }
   el.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">Recent changes</div>' + data.map((r) => {
     const d = new Date(r.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-    const what = r.action === 'migrate' ? `moved ${(r.details && r.details.moved) ?? '?'} subscriber(s) to ${priceMoney(r.new_amount)}` : `${priceMoney(r.old_amount)} → ${priceMoney(r.new_amount)}`;
-    return `<div>${hrOnbEsc(d)} · ${hrOnbEsc(r.actor_email || 'unknown')} · ${hrOnbEsc(PRICE_NAMES[r.lookup_key] || r.lookup_key)} · ${hrOnbEsc(what)} · ${hrOnbEsc(r.stripe_mode || '')}</div>`;
+    const dd = r.details || {};
+    const what = r.action === 'coupon_create' ? `created ${dd.percent_off}% off for ${dd.duration_in_months} mo, ${dd.max_redemptions} uses`
+      : r.action === 'coupon_deactivate' ? 'turned off'
+      : r.action === 'migrate' ? `moved ${dd.moved ?? '?'} subscriber(s) to ${priceMoney(r.new_amount)}` : `${priceMoney(r.old_amount)} → ${priceMoney(r.new_amount)}`;
+    return `<div>${hrOnbEsc(d)} · ${hrOnbEsc(r.actor_email || 'unknown')} · ${hrOnbEsc(PRICE_NAMES[r.lookup_key] || (String(r.lookup_key).startsWith('promo:') ? 'Promo code ' + String(r.lookup_key).slice(6) : r.lookup_key))} · ${hrOnbEsc(what)} · ${hrOnbEsc(r.stripe_mode || '')}</div>`;
   }).join('');
 }
 let _secretRows = [], _secretUi = null;
@@ -5288,7 +5371,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-a';
+const APP_VERSION = '2026-10-18-b';
 window.SELKO_VERSION = APP_VERSION;
 
 async function logError(errorType, message, context) {
