@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/sam-refresh.js": {
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "api/leie-refresh.js": {
       "maxDuration": 60
