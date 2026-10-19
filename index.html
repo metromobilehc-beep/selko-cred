@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-p';
+const APP_VERSION = '2026-10-18-r';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10646,6 +10646,24 @@ function needsSupervision(d) {
 }
 let _supResults = [];
 
+// Keeps the older single "supervising physician" columns (used by document
+// templates, exports and change tracking) pointing at the current supervisor.
+async function syncLegacySupervisor(staffId) {
+  try {
+    const { data } = await sb.from('staff_supervisors').select('supervisor_name, supervisor_npi, end_date, created_at').eq('staff_id', staffId).order('created_at', { ascending: false });
+    const today = todayLocalIso();
+    const cur = (data || []).find(r => !r.end_date || r.end_date > today);
+    await sb.from('credtrack_staff').update({
+      supervising_physician_name: cur ? cur.supervisor_name : null,
+      supervising_physician_npi: cur ? cur.supervisor_npi : null,
+    }).eq('id', staffId);
+    const st = (staffList || []).find(x => x.id === staffId);
+    if (st) { st.supervising_physician_name = cur ? cur.supervisor_name : null; st.supervising_physician_npi = cur ? cur.supervisor_npi : null; }
+    const sum = document.getElementById('fpSupervisingSummary');
+    if (sum) sum.textContent = cur ? cur.supervisor_name + (cur.supervisor_npi ? ' (NPI ' + cur.supervisor_npi + ')' : '') : 'none on file';
+  } catch (e) { /* the list itself is already saved; the legacy copy is best effort */ }
+}
+
 async function loadSupervisionList(staffId) {
   const box = document.getElementById('supList');
   if (!box) return;
@@ -10709,7 +10727,7 @@ async function supSearch(staffId) {
   }
 }
 
-function supIsPhysician(d) { return ['MD','DO'].includes(normalizeDisciplineKey(d)) || /physician/i.test(String(d||'')); }
+function supIsPhysician(d) { return ['MD','DO'].includes(normalizeDisciplineKey(d)); }
 function supStaffOptionsHtml(staffId) {
   const list = (staffList || []).filter(x => x.id !== staffId && supIsPhysician(x.discipline) && x.is_active !== false);
   if (!list.length) return '<option value="">No physicians on staff</option>';
@@ -10741,6 +10759,7 @@ async function supAddStaff(staffId) {
   document.getElementById('supStaffPick').value = '';
   document.getElementById('supStart').value = '';
   toast(`✓ ${p.full_name} added`);
+  await syncLegacySupervisor(staffId);
   loadSupervisionList(staffId);
 }
 
@@ -10768,6 +10787,7 @@ async function supAdd(staffId, idx) {
   document.getElementById('supResults').innerHTML = '';
   document.getElementById('supStart').value = '';
   toast(`✓ ${r.firstName} ${r.lastName} added`);
+  await syncLegacySupervisor(staffId);
   loadSupervisionList(staffId);
 }
 
@@ -10775,6 +10795,7 @@ async function supEnd(id, staffId) {
   const { data, error } = await sb.from('staff_supervisors').update({ end_date: todayLocalIso() }).eq('id', id).select('id');
   if (error) { toast(friendlyError(error), true); return; }
   if (!data || !data.length) { toast('Nothing was saved — you may not have permission.', true); return; }
+  await syncLegacySupervisor(staffId);
   loadSupervisionList(staffId);
 }
 
@@ -10782,6 +10803,7 @@ async function supRemove(id, staffId, name) {
   if (!confirm(`Remove ${name} from this person's supervising physicians?`)) return;
   const { error } = await sb.from('staff_supervisors').delete().eq('id', id);
   if (error) { toast(friendlyError(error), true); return; }
+  await syncLegacySupervisor(staffId);
   loadSupervisionList(staffId);
 }
 
@@ -10836,7 +10858,7 @@ function showFullProfileSheet(staffId) {
         <button type="button" class="fp-subtab on" role="tab" data-fp-tab="details" onclick="fpSelectTab('details')">Details</button>
         <button type="button" class="fp-subtab" role="tab" data-fp-tab="credentials" onclick="fpSelectTab('credentials')">Credentials</button>
         ${deaModuleActive ? `<button type="button" class="fp-subtab" role="tab" data-fp-tab="prescribing" onclick="fpSelectTab('prescribing')">Prescribing</button>` : ''}
-        <button type="button" class="fp-subtab" role="tab" data-fp-tab="supervision" id="fpSupTabBtn" onclick="fpSelectTab('supervision')" style="${needsSupervision(s.discipline) ? '' : 'display:none;'}">Supervision</button>
+        <button type="button" class="fp-subtab" role="tab" data-fp-tab="supervision" id="fpSupTabBtn" onclick="fpSelectTab('supervision')" style="${(needsSupervision(s.discipline) || s.supervising_physician_name) ? '' : 'display:none;'}">Supervision</button>
         <button type="button" class="fp-subtab" role="tab" data-fp-tab="identity" onclick="fpSelectTab('identity')">Identity &amp; screening</button>
       </div>
 
@@ -11120,15 +11142,10 @@ function showFullProfileSheet(staffId) {
             </select>
           </div>
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px;">
-          <div>
-            <label class="inline-label" id="fpSupervisingNameLabel"></label>
-            <input class="inline-input" type="text" id="fpSupervisingName" value="${s.supervising_physician_name || ''}" placeholder="If applicable (e.g. NP/PA)" />
-          </div>
-          <div>
-            <label class="inline-label" id="fpSupervisingNpiLabel"></label>
-            <input class="inline-input" type="text" id="fpSupervisingNpi" value="${s.supervising_physician_npi || ''}" />
-          </div>
+        <div style="margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.7);">
+          <span id="fpSupervisingNameLabel" style="font-weight:700;color:var(--teal-l);"></span>:
+          <span id="fpSupervisingSummary">${s.supervising_physician_name ? hrOnbEsc(s.supervising_physician_name) + (s.supervising_physician_npi ? ' (NPI ' + hrOnbEsc(s.supervising_physician_npi) + ')' : '') : 'none on file'}</span>
+          — <a href="#" onclick="fpSelectTab('supervision');return false;" style="color:var(--teal-l);">manage on the Supervision tab</a>
         </div>
         <label class="inline-label">Hospital affiliations</label>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;">
@@ -12295,8 +12312,6 @@ async function saveFullProfileSheet(staffId) {
     citizenship_status: document.getElementById('fpCitizenshipStatus').value,
     visa_number_status: document.getElementById('fpVisaStatus').value.trim() || null,
     military_duty_status: document.getElementById('fpMilitaryDuty').value === 'true',
-    supervising_physician_name: document.getElementById('fpSupervisingName').value.trim() || null,
-    supervising_physician_npi: document.getElementById('fpSupervisingNpi').value.trim() || null,
     hospital_affiliation_1: document.getElementById('fpHospitalAffiliation1').value.trim() || null,
     hospital_affiliation_2: document.getElementById('fpHospitalAffiliation2').value.trim() || null,
     hospital_affiliation_3: document.getElementById('fpHospitalAffiliation3').value.trim() || null,
@@ -23683,9 +23698,17 @@ const PRESCRIBING_DISCIPLINES = new Set(['MD', 'DO', 'NP', 'PA', 'DPM', 'DDS']);
 // the DEA and physician-level sections for anyone entered any other way.
 // Everything that asks "does this discipline prescribe?" goes through
 // isPrescribingDiscipline() so the answer is the same everywhere.
+// Free-text spellings of the same physician credential, so "Medical Doctor"
+// behaves exactly like "MD" (prescribing/DEA section, board wording, supervisor list).
+const PHYSICIAN_MD_ALIASES = new Set(['MEDICAL DOCTOR', 'DOCTOR OF MEDICINE', 'PHYSICIAN', 'DOCTOR', 'DR', 'MD PHYSICIAN', 'MEDICAL DOCTOR MD', 'DOCTOR OF MEDICINE MD', 'PHYSICIAN MD', 'MD DOCTOR', 'MEDICAL PHYSICIAN', 'ALLOPATHIC PHYSICIAN', 'MD PHD', 'MDPHD', 'MD MPH', 'MD MBA']);
+const PHYSICIAN_DO_ALIASES = new Set(['DOCTOR OF OSTEOPATHY', 'DOCTOR OF OSTEOPATHIC MEDICINE', 'OSTEOPATHIC PHYSICIAN', 'OSTEOPATHIC DOCTOR', 'OSTEOPATH', 'DO PHYSICIAN', 'PHYSICIAN DO', 'DO DOCTOR', 'OSTEOPATHIC MEDICINE']);
 function normalizeDisciplineKey(d) {
-  return String(d || '').toUpperCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim()
+  const k = String(d || '').toUpperCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim()
     .replace(/-(C|BC|CNP)$/, '');   // credentialing-body suffixes: FNP-C, NP-BC, APRN-CNP
+  const bare = k.replace(/[()\/]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (PHYSICIAN_MD_ALIASES.has(k) || PHYSICIAN_MD_ALIASES.has(bare)) return 'MD';
+  if (PHYSICIAN_DO_ALIASES.has(k) || PHYSICIAN_DO_ALIASES.has(bare)) return 'DO';
+  return k;
 }
 const NP_DISCIPLINE_KEYS = new Set(['NP', 'APRN', 'ARNP', 'CNP', 'ANP', 'FNP', 'AGNP', 'AGACNP', 'AGPCNP', 'ACNP', 'PMHNP', 'PNP', 'WHNP', 'NNP', 'CRNP', 'APN', 'DNP', 'NURSE PRACTITIONER']);
 function isNursePractitioner(d) { return NP_DISCIPLINE_KEYS.has(normalizeDisciplineKey(d)); }
@@ -23706,8 +23729,7 @@ function applyPrescriberLabels(discipline) {
   set('fpBoardCertDateLabel', np ? 'Certification date' : 'Board certification date');
   set('fpBoardCertExpLabel',  np ? 'Certification expiration' : 'Board certification expiration');
   const sup = (np || pa) ? 'Supervising / collaborating physician' : 'Supervising physician';
-  set('fpSupervisingNameLabel', sup + ' — name');
-  set('fpSupervisingNpiLabel',  sup + ' — NPI');
+  set('fpSupervisingNameLabel', sup);
   const nameInput = document.getElementById('fpBoardName');
   if (nameInput) nameInput.placeholder = np ? 'e.g. AANP, ANCC, PMHNP-BC' : 'e.g. American Board of Family Medicine';
   const specInput = document.getElementById('fpPrimarySpecialty');
