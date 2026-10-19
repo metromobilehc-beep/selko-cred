@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-w';
+const APP_VERSION = '2026-10-18-x';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10313,7 +10313,7 @@ function renderStateBoardSuggestions(results, query) {
     <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="font-size:15px;color:#fff;">${r.state_name} <span style="color:rgba(255,255,255,.58);font-size:13px;">— ${r.discipline_group}</span></div>
       ${r.verification_url
-        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" style="font-size:14px;font-weight:600;color:var(--teal-l);">👉 Click here to verify ${hrOnbEsc(r.discipline_group)} license ↗</a>
+        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" onclick="showVerifyProofBanner()" style="font-size:14px;font-weight:600;color:var(--teal-l);">👉 Click here to verify ${hrOnbEsc(r.discipline_group)} license ↗</a>
         <button type="button" class="btn btn-sm btn-ghost" onclick="copyBoardLink(${jsArg(r.verification_url)})" style="font-size:12px;padding:2px 8px;margin-left:6px;color:#fff;border-color:rgba(255,255,255,.25);" title="Copy the link, then paste it into your browser">Copy link</button>`
         : `<span style="font-size:13px;color:rgba(255,255,255,.55);">No link on file</span>`}
       ${r.notes ? ` <span style="font-size:13px;color:rgba(255,255,255,.58);">· ${r.notes}</span>` : ''}
@@ -10332,6 +10332,47 @@ async function copyBoardLink(url) {
   } catch (_e) { /* fall through */ }
   window.prompt('Copy this link:', url);
 }
+
+// Shown right after someone opens a board's lookup: the natural next step is to keep a screenshot of the result as proof.
+function showVerifyProofBanner() {
+  const box = document.getElementById('fpVerifyProofBanner');
+  const staffId = window._fpStaffId;
+  if (!box || !staffId || !currentCompany.has_credtrack) return;
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div style="background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.45);border-radius:8px;padding:12px 14px;">
+      <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">📸 Checked the license? Keep a screenshot as proof.</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:10px;">On the board's page, take a screenshot of the result showing the name, license number and status
+        (Windows: <strong style="color:#fff;">Win + Shift + S</strong> · Mac: <strong style="color:#fff;">Shift + Cmd + 4</strong>). Then come back and press the button below. You can paste it straight in with <strong style="color:#fff;">Ctrl + V</strong>.</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-sm btn-teal" onclick="attachVerificationProof('${staffId}')">📸 Add screenshot as proof</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('fpVerifyProofBanner').style.display='none'" style="color:#fff;border-color:rgba(255,255,255,.25);">Not now</button>
+      </div>
+    </div>`;
+}
+
+// Paste a screenshot (Ctrl+V) straight into the Documents upload form instead of saving it as a file first.
+document.addEventListener('paste', (ev) => {
+  try {
+    const form = document.getElementById('adminUploadForm');
+    if (!form || form.style.display !== 'block') return;
+    const t = ev.target;
+    if (t && /^(input|textarea|select)$/i.test(t.tagName) && t.type !== 'file') return;   // typing into a field: let it paste text
+    const items = (ev.clipboardData && ev.clipboardData.items) || [];
+    for (const it of items) {
+      if (it.kind === 'file' && /^image\//.test(it.type)) {
+        const blob = it.getAsFile(); if (!blob) continue;
+        const ext = (it.type.split('/')[1] || 'png').replace('jpeg', 'jpg');
+        const file = new File([blob], `screenshot-${todayLocalIso()}.${ext}`, { type: it.type });
+        setHiddenFile('auFile', file);
+        onAuFileSelected(document.getElementById('auFile'));
+        toast('Screenshot pasted — check the details, then Save');
+        ev.preventDefault();
+        return;
+      }
+    }
+  } catch (_e) { /* pasting is a convenience only */ }
+});
 
 function hideStateBoardSuggestions() {
   const box = document.getElementById('fpStateBoardSuggestions');
@@ -10821,6 +10862,7 @@ async function supRemove(id, staffId, name) {
 }
 
 function showFullProfileSheet(staffId) {
+  window._fpStaffId = staffId;
   const existing = document.getElementById(PROVIDER_TAB_MODAL_ID);
   if (existing) existing.remove();
 
@@ -10994,6 +11036,8 @@ function showFullProfileSheet(staffId) {
         <input class="inline-input" type="text" id="fpStateBoardSearch" placeholder="Search by state (e.g. Oklahoma or OK)..." autocomplete="off" oninput="handleStateBoardSearch(this)" onblur="setTimeout(hideStateBoardSuggestions, 250)" />
         <div id="fpStateBoardSuggestions" onmousedown="event.preventDefault()" style="display:none;position:absolute;top:100%;left:0;right:0;background:var(--navy2);border:1px solid rgba(255,255,255,.15);border-radius:8px;margin-top:4px;max-height:240px;overflow-y:auto;z-index:50;"></div>
       </div>
+
+      <div id="fpVerifyProofBanner" style="display:none;margin:-8px 0 16px;"></div>
 
       <!-- Per-provider check exemptions -- a company-wide "PTA is exempt
            from CAQH" setting (elsewhere in Settings) still applies to
