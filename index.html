@@ -1905,6 +1905,14 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         <div id="superSecretsBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
       </div>
 
+      <!-- Pricing: changes the price in Stripe. Owner only. Every change is logged. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="superPricingPanel" data-default-open="false">
+        <h2>Pricing</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Change what Stripe charges for each plan. A new price applies to new sign-ups right away. People already subscribed stay on their old price until you move them below. Nothing is prorated.</p>
+        <div id="superPricingBody" style="font-size:14px;color:rgba(255,255,255,.6);">Open this panel to load prices from Stripe.</div>
+        <div id="superPricingLog" style="margin-top:14px;font-size:13px;color:rgba(255,255,255,.5);"></div>
+      </div>
+
       <div class="dark-panel" style="margin-bottom:16px;" id="superCompaniesPanel">
         <h2>⚡ Selko Admin — Companies</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Every company on the platform — add new ones, and manage each one's plan and settings.</p>
@@ -4165,6 +4173,131 @@ const CRON_SECRET_BADGE = {
   ok: ['#4ade80', 'On schedule'], soon: ['#fbbf24', 'Due soon'], overdue: ['#f87171', 'Overdue'], never: ['#fbbf24', 'No rotation recorded'],
   pending: ['#fbbf24', 'Pending: set it on the function'], pendingStale: ['#f87171', 'Not confirmed on the function'],
 };
+// ── Pricing (Selko Admin): calls manage-stripe-pricing, which talks to Stripe. ──
+let _priceUi = { plans: [], mode: null, busy: false, loaded: false };
+const PRICE_NAMES = { doc_standard_2026: 'Documents — Standard', doc_pro_2026: 'Documents — Pro', cred_addon_2026: 'Credentialing add-on', hr_addon_2026: 'HR add-on' };
+function priceMoney(cents) { return cents == null ? '—' : '$' + (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+async function callPricing(payload) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(SUPABASE_URL + '/functions/v1/manage-stripe-pricing', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+    body: JSON.stringify(payload),
+  });
+  let out = null;
+  try { out = await res.json(); } catch (_e) { /* not JSON */ }
+  if (!out) throw new Error('Stripe did not answer. Please try again.');
+  if (out.error) { const e = new Error(out.error); e.status = res.status; throw e; }
+  return out;
+}
+async function loadPricingPanel() {
+  const body = document.getElementById('superPricingBody');
+  if (!body) return;
+  if (!currentProfile?.is_super_admin) { body.textContent = 'Platform owner only.'; return; }
+  body.textContent = 'Loading prices from Stripe…';
+  try {
+    const out = await callPricing({ action: 'list' });
+    _priceUi.plans = out.plans || []; _priceUi.mode = out.mode; _priceUi.loaded = true;
+    renderPricingPanel();
+  } catch (e) {
+    body.textContent = (e && e.message) || 'Could not load prices.';
+  }
+  loadPricingLog();
+}
+function renderPricingPanel() {
+  const body = document.getElementById('superPricingBody');
+  if (!body) return;
+  const live = _priceUi.mode === 'live';
+  const badge = `<span style="display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;background:${live ? 'rgba(220,60,60,.22)' : 'rgba(80,160,255,.22)'};color:${live ? '#ff9a9a' : '#9ccaff'};">${live ? 'LIVE — real money' : 'TEST mode'}</span>`;
+  const rows = _priceUi.plans.map((p) => {
+    const k = hrOnbEsc(p.lookup_key), name = hrOnbEsc(PRICE_NAMES[p.lookup_key] || p.lookup_key);
+    if (!p.found) return `<div class="price-row" data-key="${k}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);"><b>${name}</b> <span style="color:#ffb86b;">No active Stripe price has this lookup key (${k}).</span></div>`;
+    const older = p.subscribers_on_older_price || 0;
+    return `<div class="price-row" data-key="${k}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;">
+        <div><b>${name}</b><div style="font-size:12px;color:rgba(255,255,255,.45);">${k}</div></div>
+        <div style="text-align:right;"><span class="price-now" style="font-size:18px;font-weight:700;color:#fff;">${priceMoney(p.amount)}</span> <span style="font-size:12px;">/ ${hrOnbEsc(p.interval || 'one-time')}</span>
+          <div style="font-size:12px;">${p.subscribers_on_current_price} on this price · ${older} on an older price</div></div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;align-items:center;">
+        <label style="font-size:13px;">New price $ <input type="text" inputmode="decimal" class="price-input" autocomplete="off" style="width:90px;" placeholder="${(p.amount / 100).toFixed(2)}"></label>
+        <button type="button" class="btn-sm price-set-btn">Change price…</button>
+        ${older ? `<button type="button" class="btn-sm price-move-btn">Move ${older} subscriber${older === 1 ? '' : 's'} to this price…</button>` : ''}
+      </div>
+      <div class="price-msg" style="margin-top:6px;font-size:13px;"></div>
+    </div>`;
+  }).join('');
+  body.innerHTML = `<div style="margin-bottom:8px;">Connected to Stripe: ${badge}</div>${rows}`;
+  body.querySelectorAll('.price-row').forEach((row) => {
+    const key = row.dataset.key;
+    const b1 = row.querySelector('.price-set-btn'), b2 = row.querySelector('.price-move-btn');
+    if (b1) b1.addEventListener('click', () => changePriceFlow(key, row));
+    if (b2) b2.addEventListener('click', () => movePricingFlow(key, row));
+  });
+}
+function priceMsg(row, text, bad) {
+  const m = row.querySelector('.price-msg'); if (!m) return;
+  m.textContent = text; m.style.color = bad ? '#ff9a9a' : '#8fe3b0';
+}
+async function changePriceFlow(key, row) {
+  if (_priceUi.busy) return;
+  const plan = _priceUi.plans.find((p) => p.lookup_key === key); if (!plan) return;
+  const raw = row.querySelector('.price-input').value.trim().replace(/^\$/, '');
+  if (!/^\d{1,5}(\.\d{1,2})?$/.test(raw)) { priceMsg(row, 'Enter a dollar amount like 49 or 49.00.', true); return; }
+  const cents = Math.round(parseFloat(raw) * 100);
+  if (cents === plan.amount) { priceMsg(row, 'That is already the current price.', true); return; }
+  const name = PRICE_NAMES[key] || key;
+  const modeWord = _priceUi.mode === 'live' ? 'LIVE' : 'TEST';
+  const typed = prompt(`${modeWord} Stripe: change ${name}\n\n${priceMoney(plan.amount)} → ${priceMoney(cents)} per ${plan.interval}\n\nNew sign-ups pay the new price right away. ${plan.subscribers_on_current_price + (plan.subscribers_on_older_price || 0)} current subscriber(s) are not changed.\n\nType CHANGE to confirm.`);
+  if (typed !== 'CHANGE') { priceMsg(row, 'Cancelled. Nothing was changed.', true); return; }
+  _priceUi.busy = true; priceMsg(row, 'Changing price in Stripe…', false);
+  try {
+    const out = await callPricing({ action: 'set_price', lookup_key: key, amount_cents: cents, expected_price_id: plan.price_id });
+    toast(`${name} is now ${priceMoney(out.new_amount)}` + (out.audit === 'failed' ? ' (the change was made but could not be logged — note it down)' : ''), out.audit === 'failed');
+  } catch (e) {
+    priceMsg(row, (e && e.message) || 'The change did not work.', true);
+    _priceUi.busy = false;
+    if (e && e.status === 409) loadPricingPanel();
+    return;
+  }
+  _priceUi.busy = false;
+  await loadPricingPanel();
+}
+async function movePricingFlow(key, row) {
+  if (_priceUi.busy) return;
+  const name = PRICE_NAMES[key] || key;
+  _priceUi.busy = true; priceMsg(row, 'Checking who would move…', false);
+  let dry;
+  try { dry = await callPricing({ action: 'migrate', lookup_key: key, dry_run: true }); }
+  catch (e) { priceMsg(row, (e && e.message) || 'Could not check.', true); _priceUi.busy = false; return; }
+  _priceUi.busy = false;
+  if (!dry.would_move) { priceMsg(row, 'Nobody is on an older price.', false); return; }
+  if (dry.too_many) { priceMsg(row, `${dry.would_move} subscriptions would move, more than one run allows. Move them in Stripe instead.`, true); return; }
+  const amt = dry.new_price ? priceMoney(dry.new_price.amount) : '';
+  const typed = prompt(`${_priceUi.mode === 'live' ? 'LIVE' : 'TEST'} Stripe: move ${dry.would_move} subscription(s) to the ${name} price of ${amt}.\n\nTheir next invoice will use the new price. No prorated charge or credit.\nCustomers are not emailed by this tool.\n\nType ${dry.would_move} to confirm.`);
+  if (typed == null || typed.trim() !== String(dry.would_move)) { priceMsg(row, 'Cancelled. Nobody was moved.', true); return; }
+  _priceUi.busy = true; priceMsg(row, 'Moving subscriptions…', false);
+  try {
+    const out = await callPricing({ action: 'migrate', lookup_key: key, dry_run: false, confirm_count: dry.would_move });
+    toast(`Moved ${out.moved} subscription(s).` + (out.audit === 'failed' ? ' (could not be logged)' : ''), out.audit === 'failed');
+  } catch (e) {
+    priceMsg(row, (e && e.message) || 'The move did not work.', true);
+    _priceUi.busy = false; return;
+  }
+  _priceUi.busy = false;
+  await loadPricingPanel();
+}
+async function loadPricingLog() {
+  const el = document.getElementById('superPricingLog'); if (!el) return;
+  const { data, error } = await sb.from('stripe_price_changes').select('created_at, actor_email, action, lookup_key, stripe_mode, old_amount, new_amount, details').order('created_at', { ascending: false }).limit(10);
+  if (error) { el.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? setupMissingMessage('stripe-price-changes.sql') : 'Could not load the change log.'; return; }
+  if (!data || !data.length) { el.textContent = 'No price changes made from here yet.'; return; }
+  el.innerHTML = '<div style="font-weight:700;margin-bottom:4px;">Recent changes</div>' + data.map((r) => {
+    const d = new Date(r.created_at).toLocaleString(undefined, { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+    const what = r.action === 'migrate' ? `moved ${(r.details && r.details.moved) ?? '?'} subscriber(s) to ${priceMoney(r.new_amount)}` : `${priceMoney(r.old_amount)} → ${priceMoney(r.new_amount)}`;
+    return `<div>${hrOnbEsc(d)} · ${hrOnbEsc(r.actor_email || 'unknown')} · ${hrOnbEsc(PRICE_NAMES[r.lookup_key] || r.lookup_key)} · ${hrOnbEsc(what)} · ${hrOnbEsc(r.stripe_mode || '')}</div>`;
+  }).join('');
+}
 let _secretRows = [], _secretUi = null;
 function secretDate(ms) { return new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }); }
 async function loadSecretsPanel() {
@@ -5155,7 +5288,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-16-a';
+const APP_VERSION = '2026-10-18-a';
 window.SELKO_VERSION = APP_VERSION;
 
 async function logError(errorType, message, context) {
@@ -27211,9 +27344,19 @@ async function toggleJuanAgencyAccess(companyId, granted) {
   toast(granted ? '✓ Juan granted access to this agency' : '✓ Juan\'s access to this agency removed');
 }
 
+function wirePricingLazyLoad() {
+  // Stripe is only contacted when the owner opens the Pricing panel, not every time Selko Admin loads.
+  const panel = document.getElementById('superPricingPanel'); if (!panel) return;
+  const h2 = panel.querySelector('h2');
+  const isOpen = () => !!h2 && h2.getAttribute('aria-expanded') === 'true';
+  const maybeLoad = () => { if (!_priceUi.loaded && isOpen()) loadPricingPanel(); };
+  if (!panel._priceWired) { panel._priceWired = true; if (h2) h2.addEventListener('click', () => setTimeout(maybeLoad, 0)); }
+  maybeLoad();
+}
 async function loadSuperAdmin() {
   loadSuperAttention();
   loadSecretsPanel();
+  _priceUi.loaded = false; wirePricingLazyLoad();
   loadSuperMail(1);
   loadSuperSamStatus();
   loadSamKeyStatus();
