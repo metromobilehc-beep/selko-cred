@@ -5514,7 +5514,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-f';
+const APP_VERSION = '2026-10-18-g';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -24591,6 +24591,27 @@ function renderPayerBoard() {
     : `<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">${(entityFilter || entityPayerFilter) ? 'No matching network records.' : 'No company/agency network records yet.'}</td></tr>`;
 }
 
+// Steps from what the Add form already knows, so nobody has to re-enter the same dates in the steps window.
+// A Submitted date means step 1 (Initial Inquiry) is Completed on that date; Status In-network means step 4 (Enrollment Complete)
+// is Yes on the In-network date. Steps already worked on in an existing record are kept as they are, and a step the form cannot
+// know about (Application, Credentialing) is left Not Started. Pure: returns the new list of steps.
+function buildEnrollmentStepsFromForm(prevSteps, submitted, inNetworkDate, status, todayIso, nowIso) {
+  const prev = Array.isArray(prevSteps) ? prevSteps : [];
+  const out = ENROLLMENT_STEPS.map(meta => {
+    const prior = prev.find(x => x.step === meta.n);
+    const priorStatus = normalizeStepStatus(meta, prior);
+    const started = priorStatus !== stepUntouchedValue(meta);
+    if (meta.n === 1 && submitted && !started) return { step: 1, status: 'Completed', date: submitted, updated_at: nowIso };
+    if (meta.n === 8) {
+      if (status === 'in_network' && priorStatus !== 'Yes') return { step: 8, status: 'Yes', date: inNetworkDate || todayIso, updated_at: nowIso };
+      if (status !== 'in_network' && priorStatus === 'Yes') return { step: 8, status: 'No', date: null, updated_at: nowIso };
+    }
+    return prior ? prior : { step: meta.n, status: stepUntouchedValue(meta), date: null, updated_at: null };
+  });
+  prev.filter(x => !ENROLLMENT_STEPS.some(m => m.n === x.step)).forEach(x => out.push(x));
+  return out.sort((x, y) => x.step - y.step);
+}
+
 async function savePayerNetwork() {
   const staffId       = _pnMode === 'company' ? null : document.getElementById('pnStaff').value;
   const entitySelectVal = document.getElementById('pnEntitySelect').value;
@@ -24673,7 +24694,7 @@ async function savePayerNetwork() {
   // rather than either silently duplicating it (the old entity bug) or
   // silently overwriting it with no warning at all (which the original
   // upsert also did for staff, just without ever telling anyone).
-  let existingQuery = sb.from('staff_payer_networks').select('id, status').eq('payer_id', payerId).eq('company_id', currentCompany.id);
+  let existingQuery = sb.from('staff_payer_networks').select('id, status, enrollment_steps').eq('payer_id', payerId).eq('company_id', currentCompany.id);
   existingQuery = staffId ? existingQuery.eq('staff_id', staffId) : existingQuery.is('staff_id', null).eq('entity_name', entityName);
   const { data: existing } = await existingQuery.maybeSingle();
 
@@ -24700,6 +24721,8 @@ async function savePayerNetwork() {
     group_id: groupId,
     notes,
     verified_at: status === 'in_network' ? new Date().toISOString() : null,
+    // A staff member's steps follow the dates typed above, so the steps window starts filled in. Company-wide rows have no steps.
+    ...(staffId ? { enrollment_steps: buildEnrollmentStepsFromForm(existing ? existing.enrollment_steps : null, submitted, inNetworkDate, status, todayLocalIso(), new Date().toISOString()) } : {}),
   };
 
   // Update the SPECIFIC existing row by its own id when one was found
