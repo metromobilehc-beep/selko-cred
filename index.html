@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-x';
+const APP_VERSION = '2026-10-18-y';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10313,7 +10313,7 @@ function renderStateBoardSuggestions(results, query) {
     <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="font-size:15px;color:#fff;">${r.state_name} <span style="color:rgba(255,255,255,.58);font-size:13px;">— ${r.discipline_group}</span></div>
       ${r.verification_url
-        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" onclick="showVerifyProofBanner()" style="font-size:14px;font-weight:600;color:var(--teal-l);">👉 Click here to verify ${hrOnbEsc(r.discipline_group)} license ↗</a>
+        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" onclick="return openBoardLookupWindow(this.href)" style="font-size:14px;font-weight:600;color:var(--teal-l);">👉 Click here to verify ${hrOnbEsc(r.discipline_group)} license ↗</a>
         <button type="button" class="btn btn-sm btn-ghost" onclick="copyBoardLink(${jsArg(r.verification_url)})" style="font-size:12px;padding:2px 8px;margin-left:6px;color:#fff;border-color:rgba(255,255,255,.25);" title="Copy the link, then paste it into your browser">Copy link</button>`
         : `<span style="font-size:13px;color:rgba(255,255,255,.55);">No link on file</span>`}
       ${r.notes ? ` <span style="font-size:13px;color:rgba(255,255,255,.58);">· ${r.notes}</span>` : ''}
@@ -10333,6 +10333,50 @@ async function copyBoardLink(url) {
   window.prompt('Copy this link:', url);
 }
 
+// Opens the board's lookup in its own window beside Selko, so the result can be captured. If the browser blocks the pop-out,
+// fall back to a normal new tab (returning true lets the link do its usual thing).
+let _boardLookupWin = null;
+function openBoardLookupWindow(url) {
+  showVerifyProofBanner();
+  try {
+    const w = Math.min(1100, Math.max(700, Math.round(screen.availWidth * 0.6)));
+    const h = Math.min(900, Math.max(600, Math.round(screen.availHeight * 0.85)));
+    const win = window.open(url, 'selkoBoardLookup', `popup=yes,width=${w},height=${h},left=${Math.max(0, screen.availWidth - w - 20)},top=40`);
+    if (win) { _boardLookupWin = win; try { win.focus(); } catch (_e) {} return false; }
+  } catch (_e) { /* blocked: use the normal link */ }
+  return true;
+}
+
+// One click: the browser asks which window to share, one frame is taken, and it goes straight into the proof upload.
+async function captureLookupScreenshot(staffId) {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+    toast("This browser can't capture a window. Take a screenshot yourself (Win + Shift + S) and paste it with Ctrl + V.", true);
+    attachVerificationProof(staffId);
+    return;
+  }
+  let stream = null;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false, selfBrowserSurface: 'exclude', preferCurrentTab: false });
+    const video = document.createElement('video');
+    video.muted = true; video.playsInline = true; video.srcObject = stream;
+    await video.play();
+    await new Promise(r => setTimeout(r, 400));   // let the shared window paint its first full frame
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth || 1280; canvas.height = video.videoHeight || 720;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+    if (!blob) throw new Error('empty capture');
+    const file = new File([blob], `license-verification-${todayLocalIso()}.png`, { type: 'image/png' });
+    try { _boardLookupWin && !_boardLookupWin.closed && _boardLookupWin.close(); } catch (_e) {}
+    attachVerificationProof(staffId, file);
+  } catch (e) {
+    if (e && (e.name === 'NotAllowedError' || e.name === 'AbortError')) toast('Capture cancelled — nothing was saved.');
+    else toast("Couldn't capture the window. Take a screenshot (Win + Shift + S) and paste it with Ctrl + V.", true);
+  } finally {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+  }
+}
+
 // Shown right after someone opens a board's lookup: the natural next step is to keep a screenshot of the result as proof.
 function showVerifyProofBanner() {
   const box = document.getElementById('fpVerifyProofBanner');
@@ -10342,10 +10386,10 @@ function showVerifyProofBanner() {
   box.innerHTML = `
     <div style="background:rgba(20,184,166,.12);border:1px solid rgba(20,184,166,.45);border-radius:8px;padding:12px 14px;">
       <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:4px;">📸 Checked the license? Keep a screenshot as proof.</div>
-      <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:10px;">On the board's page, take a screenshot of the result showing the name, license number and status
-        (Windows: <strong style="color:#fff;">Win + Shift + S</strong> · Mac: <strong style="color:#fff;">Shift + Cmd + 4</strong>). Then come back and press the button below. You can paste it straight in with <strong style="color:#fff;">Ctrl + V</strong>.</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.7);line-height:1.5;margin-bottom:10px;">The board's lookup opened in its own window. Search the person there and leave the result showing (name, license number and status). Then press <strong style="color:#fff;">Capture the lookup window</strong>, choose that window in the box your browser shows, and the picture goes straight into the proof upload. Windows: <strong style="color:#fff;">Win + Shift + S</strong> or Mac: <strong style="color:#fff;">Shift + Cmd + 4</strong> also work, then <strong style="color:#fff;">Ctrl + V</strong> to paste.</div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <button type="button" class="btn btn-sm btn-teal" onclick="attachVerificationProof('${staffId}')">📸 Add screenshot as proof</button>
+        <button type="button" class="btn btn-sm btn-teal" id="fpCaptureBtn" onclick="captureLookupScreenshot('${staffId}')">📸 Capture the lookup window</button>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="attachVerificationProof('${staffId}')" style="color:#fff;border-color:rgba(255,255,255,.25);">Add a screenshot I already have</button>
         <button type="button" class="btn btn-sm btn-ghost" onclick="document.getElementById('fpVerifyProofBanner').style.display='none'" style="color:#fff;border-color:rgba(255,255,255,.25);">Not now</button>
       </div>
     </div>`;
@@ -12890,7 +12934,7 @@ function verifyLicense(staffId) {
   if (stateGuess) handleStateBoardSearch(searchInput);
 }
 
-function attachVerificationProof(staffId) {
+function attachVerificationProof(staffId, capturedFile) {
   const s = staffList.find(x => x.id === staffId);
   if (!s) return;
 
@@ -12939,6 +12983,13 @@ function attachVerificationProof(staffId) {
     document.getElementById('auNotes').value =
       `License verified on ${boardText}, ${today}, by ${currentProfile.full_name}`;
 
+    if (capturedFile) {
+      setHiddenFile('auFile', capturedFile);
+      onAuFileSelected(document.getElementById('auFile'));
+      document.getElementById('auFile').scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast(`Screenshot attached for ${s.full_name} — check the note, then Save`);
+      return;
+    }
     document.getElementById('auFile').scrollIntoView({ behavior: 'smooth', block: 'center' });
     toast(`Ready — attach the screenshot/PDF for ${s.full_name}`);
   }, 50);
