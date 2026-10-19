@@ -1134,26 +1134,6 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           </div>
         </div>
 
-        <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;margin-top:16px;border-top:1px solid rgba(255,255,255,.1);padding-top:16px;">📅 Timeline</div>
-        <div style="display:grid;grid-template-columns:repeat(4, 1fr);gap:14px 16px;margin-bottom:16px;">
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:13px;color:rgba(255,255,255,.62);">Submitted</label>
-            <input class="inline-input" type="date" id="pnSubmitted" />
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:13px;color:rgba(255,255,255,.62);">Confirmed</label>
-            <input class="inline-input" type="date" id="pnConfirmed" />
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:13px;color:rgba(255,255,255,.62);">In-network</label>
-            <input class="inline-input" type="date" id="pnInNetwork" />
-          </div>
-          <div style="display:flex;flex-direction:column;gap:4px;">
-            <label style="font-size:13px;color:rgba(255,255,255,.62);">Expires</label>
-            <input class="inline-input" type="date" id="pnExpiration" />
-          </div>
-        </div>
-
         <div style="border-top:1px solid rgba(255,255,255,.1);padding-top:16px;margin-bottom:14px;">
           <label style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:4px;">Notes <span style="color:rgba(255,255,255,.45);">(saving replaces the note shown on the board; the earlier wording is kept in Notes &amp; history)</span></label>
           <textarea id="pnNotes" placeholder="Notes" style="width:100%;min-height:38px;background:transparent;border:1px solid rgba(255,255,255,.15);border-radius:6px;color:#fff;padding:8px;font-size:15px;box-sizing:border-box;"></textarea>
@@ -5565,7 +5545,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-j';
+const APP_VERSION = '2026-10-18-k';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -24159,11 +24139,7 @@ async function saveEnrollmentSteps(rowId, source) {
   const newSteps = !stepsShown ? (() => {
     // No step controls on this window: the steps follow Status and the Submitted / In-network dates, as on the Add form.
     const val = (id) => ((document.getElementById(id) || {}).value || '').trim() || null;
-    const subm = val('esdSubmitted'), innw = val('esdInNetwork'), st = val('esdStatus') || (window._enrollmentStepsRowStatus || 'pending');
-    const out = buildEnrollmentStepsFromForm(prevSteps, subm, innw, st, todayLocalIso(), nowIso).map(x => ({ ...x }));
-    const s1 = out.find(x => x.step === 1), s8 = out.find(x => x.step === 8);
-    if (s1 && s1.status === 'Completed' && subm && s1.date !== subm) { s1.date = subm; s1.updated_at = nowIso; }
-    if (s8 && s8.status === 'Yes' && innw && s8.date !== innw) { s8.date = innw; s8.updated_at = nowIso; }
+    const out = buildEnrollmentStepsFromForm(prevSteps, { submitted: val('esdSubmitted'), confirmed: val('esdConfirmed'), inNetwork: val('esdInNetwork'), status: val('esdStatus') || (window._enrollmentStepsRowStatus || 'pending') }, todayLocalIso(), nowIso);
     return out;
   })() : ENROLLMENT_STEPS.map(meta => {
     let value = document.getElementById(`estepStatus_${meta.n}`).value;
@@ -24653,23 +24629,40 @@ function renderPayerBoard() {
     : `<tr><td colspan="10" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">${(entityFilter || entityPayerFilter) ? 'No matching network records.' : 'No company/agency network records yet.'}</td></tr>`;
 }
 
-// Steps from what the Add form already knows, so nobody has to re-enter the same dates in the steps window.
-// A Submitted date means step 1 (Initial Inquiry) is Completed on that date; Status In-network means step 4 (Enrollment Complete)
-// is Yes on the In-network date. Steps already worked on in an existing record are kept as they are, and a step the form cannot
-// know about (Application, Credentialing) is left Not Started. Pure: returns the new list of steps.
-function buildEnrollmentStepsFromForm(prevSteps, submitted, inNetworkDate, status, todayIso, nowIso) {
+// Progress for a record, worked out from its Status and dates so nobody has to click through the steps:
+//   Submitted date            -> step 1 Initial Inquiry Completed
+//   Confirmed date            -> step 2 Application Completed
+//   Status In-network         -> every step Completed and Enrollment Complete = Yes (so an approved record always reads 4 of 4)
+// While it is still waiting, the next step after the last finished one reads Pending, so the bar shows where it is.
+// A step already marked Completed is never taken back, except Enrollment Complete when Status leaves In-network. Notes on steps are kept.
+// f = { submitted, confirmed, inNetwork, status } (dates as yyyy-mm-dd or empty). Pure: returns the new list of steps.
+function buildEnrollmentStepsFromForm(prevSteps, f, todayIso, nowIso) {
   const prev = Array.isArray(prevSteps) ? prevSteps : [];
-  const out = ENROLLMENT_STEPS.map(meta => {
-    const prior = prev.find(x => x.step === meta.n);
-    const priorStatus = normalizeStepStatus(meta, prior);
-    const started = priorStatus !== stepUntouchedValue(meta);
-    if (meta.n === 1 && submitted && !started) return { step: 1, status: 'Completed', date: submitted, updated_at: nowIso };
-    if (meta.n === 8) {
-      if (status === 'in_network' && priorStatus !== 'Yes') return { step: 8, status: 'Yes', date: inNetworkDate || todayIso, updated_at: nowIso };
-      if (status !== 'in_network' && priorStatus === 'Yes') return { step: 8, status: 'No', date: null, updated_at: nowIso };
-    }
-    return prior ? prior : { step: meta.n, status: stepUntouchedValue(meta), date: null, updated_at: null };
-  });
+  const approved = f.status === 'in_network';
+  const metaOf = (n) => ENROLLMENT_STEPS.find(m => m.n === n);
+  const cur = new Map(prev.map(x => [x.step, { ...x }]));
+  const isDone = (n) => { const c = cur.get(n); return normalizeStepStatus(metaOf(n), c) === metaOf(n).complete; };
+  const complete = (n, date) => { const c = cur.get(n) || { step: n }; cur.set(n, { ...c, step: n, status: metaOf(n).complete, date: date || c.date || null, updated_at: nowIso }); };
+  const redate = (n, date) => { const c = cur.get(n); if (c && date && c.date !== date) cur.set(n, { ...c, date, updated_at: nowIso }); };
+  const plan = [
+    [1, !!f.submitted || approved, f.submitted || f.confirmed || f.inNetwork || todayIso],
+    [3, !!f.confirmed || approved, f.confirmed || f.inNetwork || todayIso],
+    [4, approved, f.inNetwork || todayIso],
+    [8, approved, f.inNetwork || todayIso],
+  ];
+  for (const [n, want, date] of plan) {
+    if (want && !isDone(n)) complete(n, date);
+    else if (want && isDone(n)) { if (n === 1) redate(1, f.submitted); if (n === 8) redate(8, f.inNetwork); }
+  }
+  if (!approved && isDone(8)) { const c = cur.get(8); cur.set(8, { ...c, status: 'No', date: null, updated_at: nowIso }); }
+  // where it is now: the first unfinished step, once something before it is finished
+  const order = [1, 3, 4];
+  const firstOpen = order.find(n => !isDone(n));
+  if (firstOpen && order.some(n => n < firstOpen && isDone(n))) {
+    const c = cur.get(firstOpen);
+    if (normalizeStepStatus(metaOf(firstOpen), c) === stepUntouchedValue(metaOf(firstOpen))) cur.set(firstOpen, { ...(c || {}), step: firstOpen, status: 'Pending', date: null, updated_at: nowIso });
+  }
+  const out = ENROLLMENT_STEPS.map(m => cur.get(m.n) || { step: m.n, status: stepUntouchedValue(m), date: null, updated_at: null });
   prev.filter(x => !ENROLLMENT_STEPS.some(m => m.n === x.step)).forEach(x => out.push(x));
   return out.sort((x, y) => x.step - y.step);
 }
@@ -24686,10 +24679,6 @@ async function savePayerNetwork() {
   const isNewPayer    = payerId === '__new_payer__';
   const newPayerName  = document.getElementById('pnNewPayerName').value.trim();
   const status        = document.getElementById('pnStatus').value;
-  const submitted     = document.getElementById('pnSubmitted').value  || null;
-  const confirmed     = document.getElementById('pnConfirmed').value  || null;
-  const inNetworkDate = document.getElementById('pnInNetwork').value  || null;
-  const expiration    = document.getElementById('pnExpiration').value || null;
   const confCode      = document.getElementById('pnConfCode').value.trim() || null;
   const networkProviderId = document.getElementById('pnNetworkProviderId').value.trim() || null;
   const groupId       = document.getElementById('pnGroupId').value.trim() || null;
@@ -24756,7 +24745,7 @@ async function savePayerNetwork() {
   // rather than either silently duplicating it (the old entity bug) or
   // silently overwriting it with no warning at all (which the original
   // upsert also did for staff, just without ever telling anyone).
-  let existingQuery = sb.from('staff_payer_networks').select('id, status, enrollment_steps').eq('payer_id', payerId).eq('company_id', currentCompany.id);
+  let existingQuery = sb.from('staff_payer_networks').select('id, status, enrollment_steps, date_submitted, date_confirmed, date_in_network').eq('payer_id', payerId).eq('company_id', currentCompany.id);
   existingQuery = staffId ? existingQuery.eq('staff_id', staffId) : existingQuery.is('staff_id', null).eq('entity_name', entityName);
   const { data: existing } = await existingQuery.maybeSingle();
 
@@ -24774,17 +24763,15 @@ async function savePayerNetwork() {
     entity_name: entityName,
     payer_id: payerId,
     status,
-    date_submitted: submitted,
-    date_confirmed: confirmed,
-    date_in_network: inNetworkDate,
-    expiration_date: expiration,
+    // Dates are not on this form: they are set in Edit on the board (an existing record keeps the dates it has).
+    ...(!existing && status === 'in_network' ? { date_in_network: todayLocalIso() } : {}),
     confirmation_code: confCode,
     network_provider_id: networkProviderId,
     group_id: groupId,
     notes,
     verified_at: status === 'in_network' ? new Date().toISOString() : null,
-    // A staff member's steps follow the dates typed above, so the steps window starts filled in. Company-wide rows have no steps.
-    ...(staffId ? { enrollment_steps: buildEnrollmentStepsFromForm(existing ? existing.enrollment_steps : null, submitted, inNetworkDate, status, todayLocalIso(), new Date().toISOString()) } : {}),
+    // A staff member's steps follow Status and the dates already on the record. Company-wide rows have no steps.
+    ...(staffId ? { enrollment_steps: buildEnrollmentStepsFromForm(existing ? existing.enrollment_steps : null, { submitted: existing && existing.date_submitted, confirmed: existing && existing.date_confirmed, inNetwork: (existing && existing.date_in_network) || (status === 'in_network' ? todayLocalIso() : null), status }, todayLocalIso(), new Date().toISOString()) } : {}),
   };
 
   // Update the SPECIFIC existing row by its own id when one was found
@@ -24797,10 +24784,6 @@ async function savePayerNetwork() {
 
   if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
   toast(existing ? 'Existing network record updated' : 'Network status saved');
-  document.getElementById('pnSubmitted').value  = '';
-  document.getElementById('pnConfirmed').value  = '';
-  document.getElementById('pnInNetwork').value  = '';
-  document.getElementById('pnExpiration').value = '';
   document.getElementById('pnConfCode').value   = '';
   document.getElementById('pnNetworkProviderId').value = '';
   document.getElementById('pnGroupId').value    = '';
