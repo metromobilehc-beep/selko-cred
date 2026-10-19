@@ -5565,7 +5565,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-i';
+const APP_VERSION = '2026-10-18-j';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -24004,9 +24004,11 @@ async function showEnrollmentStepsModal(rowId, source) {
   const stepUntouched = (n) => { const m = ENROLLMENT_STEPS.find(x => x.n === n); return normalizeStepStatus(m, byN.get(n)) === stepUntouchedValue(m); };
   const dField = (label, id, val, hint) => `<div><label for="${id}" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${label}</label><input class="inline-input" type="date" id="${id}" value="${hrOnbEsc(val || '')}" style="width:100%;box-sizing:border-box;" />${hint ? `<div style="font-size:12px;color:rgba(255,255,255,.45);margin-top:2px;">${hint}</div>` : ''}</div>`;
   const tField = (label, id, val) => `<div><label for="${id}" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">${label}</label><input class="inline-input" type="text" id="${id}" value="${hrOnbEsc(val || '')}" maxlength="120" style="width:100%;box-sizing:border-box;" /></div>`;
+  // From the board this window is just Status, dates and IDs (the steps follow them). The 4 steps are only shown from the profile tab.
+  const showSteps = String(source || '').startsWith('profile');
   const detailsHtml = `
-      <div style="margin:18px 0 8px;padding-top:14px;border-top:1px solid rgba(255,255,255,.1);color:#fff;font-size:15px;font-weight:700;">Status, dates and IDs</div>
-      <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;line-height:1.5;">Fix anything entered by mistake. Every change is kept in the record's history. The Submitted and In-network dates come from the steps above.</div>
+      <div style="margin:${showSteps ? '18px' : '0'} 0 8px;${showSteps ? 'padding-top:14px;border-top:1px solid rgba(255,255,255,.1);' : ''}color:#fff;font-size:15px;font-weight:700;">Status, dates and IDs</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;line-height:1.5;">Fix anything entered by mistake. Every change is kept in the record's history.${showSteps ? ' The Submitted and In-network dates come from the steps above.' : ' The progress dots follow Status and the Submitted and In-network dates.'}</div>
       <div style="margin-bottom:12px;">
         <label for="esdStatus" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Status</label>
         <select class="inline-select" id="esdStatus" style="width:100%;">
@@ -24014,15 +24016,15 @@ async function showEnrollmentStepsModal(rowId, source) {
         </select>
       </div>
       <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-bottom:12px;">
-        ${stepUntouched(1) && row.date_submitted ? dField('Submitted', 'esdSubmitted', row.date_submitted, 'Dated before steps were used') : ''}
+        ${!showSteps || (stepUntouched(1) && row.date_submitted) ? dField('Submitted', 'esdSubmitted', row.date_submitted, 'Dated before steps were used') : ''}
         ${dField('Confirmed', 'esdConfirmed', row.date_confirmed)}
-        ${stepUntouched(8) && row.date_in_network ? dField('In-network', 'esdInNetwork', row.date_in_network, 'Dated before steps were used') : ''}
+        ${!showSteps || (stepUntouched(8) && row.date_in_network) ? dField('In-network', 'esdInNetwork', row.date_in_network, 'Dated before steps were used') : ''}
         ${dField('Expires', 'esdExpiration', row.expiration_date)}
         ${tField('Confirmation code', 'esdConfCode', row.confirmation_code)}
         ${tField('Provider ID', 'esdProviderId', row.network_provider_id)}
         ${tField('Group ID', 'esdGroupId', row.group_id)}
       </div>
-      <div style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.5;">Notes are added in <strong>Notes &amp; history</strong> (and on each step above).</div>`;
+      <div style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.5;">Notes are added in <strong>Notes &amp; history</strong>${showSteps ? ' (and on each step above)' : ''}.</div>`;
 
   const modal = document.createElement('div');
   modal.id = 'enrollmentStepsModal';
@@ -24031,7 +24033,7 @@ async function showEnrollmentStepsModal(rowId, source) {
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:620px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:17px;font-weight:700;margin-bottom:2px;">Edit enrollment</div>
       <div style="color:rgba(255,255,255,.58);font-size:14px;margin-bottom:16px;">${hrOnbEsc(row.credtrack_staff?.full_name || 'Provider')} · ${hrOnbEsc(row.payers?.name || 'Payer')}</div>
-      ${ENROLLMENT_STEPS.map(meta => {
+      ${(showSteps ? ENROLLMENT_STEPS : []).map(meta => {
         const cur = byN.get(meta.n);
         const val = normalizeStepStatus(meta, cur);
         const untouched = val === stepUntouchedValue(meta);
@@ -24153,7 +24155,17 @@ async function saveEnrollmentSteps(rowId, source) {
 
   const prevSteps = window._enrollmentStepsPrev || [];
   const nowIso = new Date().toISOString();
-  const newSteps = ENROLLMENT_STEPS.map(meta => {
+  const stepsShown = !!document.getElementById('estepStatus_1');
+  const newSteps = !stepsShown ? (() => {
+    // No step controls on this window: the steps follow Status and the Submitted / In-network dates, as on the Add form.
+    const val = (id) => ((document.getElementById(id) || {}).value || '').trim() || null;
+    const subm = val('esdSubmitted'), innw = val('esdInNetwork'), st = val('esdStatus') || (window._enrollmentStepsRowStatus || 'pending');
+    const out = buildEnrollmentStepsFromForm(prevSteps, subm, innw, st, todayLocalIso(), nowIso).map(x => ({ ...x }));
+    const s1 = out.find(x => x.step === 1), s8 = out.find(x => x.step === 8);
+    if (s1 && s1.status === 'Completed' && subm && s1.date !== subm) { s1.date = subm; s1.updated_at = nowIso; }
+    if (s8 && s8.status === 'Yes' && innw && s8.date !== innw) { s8.date = innw; s8.updated_at = nowIso; }
+    return out;
+  })() : ENROLLMENT_STEPS.map(meta => {
     let value = document.getElementById(`estepStatus_${meta.n}`).value;
     const noteText = (document.getElementById(`estepNote_${meta.n}`).value || '').trim();
     const prior = prevSteps.find(s => s.step === meta.n);
@@ -24186,7 +24198,7 @@ async function saveEnrollmentSteps(rowId, source) {
 
   // Who gets the "step completed" email is decided from what the person changed in the steps themselves, before the status
   // below is allowed to adjust step 4. Fixing the status never sends a completion email.
-  const justCompleted = detectNewlyCompletedSteps(prevSteps, newSteps);
+  const justCompleted = stepsShown ? detectNewlyCompletedSteps(prevSteps, newSteps) : [];   // dates and status changed here send no completion email
 
   const row = window._enrollmentRow || {};
   const fail = (m) => { errEl.textContent = m; errEl.style.display = 'block'; };
@@ -24207,8 +24219,8 @@ async function saveEnrollmentSteps(rowId, source) {
   let submitted = has('esdSubmitted') ? (dv('esdSubmitted') || null) : (row.date_submitted || null);
   let inNet = has('esdInNetwork') ? (dv('esdInNetwork') || null) : (row.date_in_network || null);
   const s1 = newOf(1), s8 = newOf(8);
-  if (s1.status === 'Completed' && s1.date && (stepChanged(1) || !submitted)) submitted = s1.date;
-  if (s8.status === 'Yes' && s8.date && (stepChanged(8) || !inNet)) inNet = s8.date;
+  if (stepsShown && s1.status === 'Completed' && s1.date && (stepChanged(1) || !submitted)) submitted = s1.date;
+  if (stepsShown && s8.status === 'Yes' && s8.date && (stepChanged(8) || !inNet)) inNet = s8.date;
   const confirmed = dv('esdConfirmed') || null, expires = dv('esdExpiration') || null;
 
   // Status and step 4 (Enrollment Complete) are one fact: keep them telling the same story.
