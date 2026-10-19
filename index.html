@@ -1696,9 +1696,10 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
              check is matched against it here, so a run takes a moment and never calls SAM.gov. -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true" id="samPanel">
           <h2>🏛 SAM.gov Exclusion Check</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Checks your active staff against SAM.gov's list of people excluded from federal programs (debarred or suspended). The list is refreshed from sam.gov every day. A match with an NPI is strong. Otherwise it is by name, and many people share a name, so <strong>a match is a lead to look at, never a finding</strong>.</p>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Checks <strong>all</strong> your active staff, not only those with an NPI, against SAM.gov's list of people excluded from federal programs (debarred or suspended). Selko refreshes the list from sam.gov every day. A matching NPI is strong. Otherwise it is matched by name, and also by a staff member's former names and aliases, and SAM.gov gives <em>no date of birth</em>, so a name match alone cannot be ruled in or out by Selko. The state and middle initial help. <strong>A match is a lead to look at, never a finding.</strong> Search the person on sam.gov (Exclusions), and if they are not the one on the list, press <em>Clear this name</em> to keep a record of what you checked.</p>
           <div id="samListFresh" style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:10px;"></div>
           <button class="btn btn-sm btn-teal" id="mySamRunCheckBtn" onclick="runMyCompanySamCheck()">Run check now</button>
+          <button class="btn btn-sm btn-ghost" onclick="showSamClearedNames()" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;">Cleared names</button>
           <div id="mySamCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
           <div id="mySamMatchesList"></div>
           <p style="font-size:13px;color:rgba(255,255,255,.5);margin:6px 0 10px;">Also runs by itself once a month, on the day you chose for the OIG check, and emails your admins the result.</p>
@@ -3032,12 +3033,146 @@ async function loadSamListFreshness() {
   }
 }
 
+// ── Clearing a flagged name (SAM.gov) ─────────────────────────────────────────────────────────────
+// Same idea as the OIG check: a flag is a lead. When an admin has searched SAM.gov's own site and confirmed the person is not the
+// excluded one, they record it here: who, when, how they checked and why. The record is kept (undo only marks it undone), and it
+// covers only the exact match reviewed; a DIFFERENT match for the same person shows as a new flag.
+let _samClearances = new Map();      // `${staff_id}|${match_key}` -> active clearance row
+let _samMatchRegistry = [];          // matches currently drawn on screen, so a button can refer to one by number
+let _lastSamRunMatches = null;
+const SAM_VERIFY_LABELS = { sam_online_npi: "SAM.gov's search, using the NPI", sam_online_name: "SAM.gov's search, using the name and state", other: 'Another way (explained in the note)' };
+function samMatchKey(m) { return `${m.basis || ''}|${String(m.detail || '').trim().toLowerCase().replace(/\s+/g, ' ')}`; }
+async function loadSamClearances() {
+  _samClearances = new Map();
+  if (!currentCompany?.id) return;
+  const { data, error } = await sb.from('sam_match_clearances').select('*').eq('company_id', currentCompany.id).is('revoked_at', null);
+  if (error || !data) return;     // table not installed yet: nothing is cleared, every flag still shows
+  data.forEach(r => _samClearances.set(`${r.staff_id}|${r.match_key}`, r));
+}
+function samClearanceFor(m) { return _samClearances.get(`${m.staff_id}|${samMatchKey(m)}`) || null; }
+function samClearNote(c) {
+  return `✓ Cleared by ${hrOnbEsc(c.cleared_by_name || 'an admin')} on ${new Date(c.cleared_at).toLocaleDateString()}. Checked with ${hrOnbEsc(SAM_VERIFY_LABELS[c.verified_method] || c.verified_method)} on ${hrOnbEsc(c.verified_on)}. "${hrOnbEsc(c.reason)}"`;
+}
+function samClearControlHtml(m) {
+  const c = samClearanceFor(m);
+  const canWrite = currentProfile?.role === 'admin' || currentProfile?.is_super_admin;
+  const idx = _samMatchRegistry.push(m) - 1;
+  if (c) return `<div style="font-size:13px;color:#4ade80;margin-top:6px;line-height:1.45;">${samClearNote(c)}${canWrite ? ` <button class="btn btn-sm btn-ghost" onclick="undoSamClearance('${c.id}')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:1px 8px;font-size:12px;margin-left:6px;">Undo</button>` : ''}</div>`;
+  if (!canWrite || !m.staff_id) return '';
+  return `<div style="margin-top:8px;"><button class="btn btn-sm btn-teal" onclick="showClearSamMatchModal(${idx})" style="padding:3px 12px;font-size:14px;">Clear this name…</button></div>`;
+}
 function samMatchesHtml(matches) {
-  return (matches || []).map(m => `
-    <div style="background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.3);border-radius:8px;padding:10px 12px;margin-top:8px;">
-      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-size:13px;">${hrOnbEsc(samLabel(m))}</span>
+  _samMatchRegistry = [];
+  return (matches || []).map(m => {
+    const c = samClearanceFor(m);
+    return `
+    <div style="background:${c ? 'rgba(74,222,128,.07)' : 'rgba(239,68,68,.1)'};border:1px solid ${c ? 'rgba(74,222,128,.3)' : 'rgba(239,68,68,.3)'};border-radius:8px;padding:10px 12px;margin-top:8px;">
+      <strong style="color:#fff;">${hrOnbEsc(m.full_name)}</strong> <span style="color:${c ? '#4ade80' : (SAM_CONF_COLOR[m.confidence] || '#f87171')};font-size:13px;">${c ? 'Cleared' : hrOnbEsc(samLabel(m))}</span>
       <div style="font-size:14px;color:rgba(255,255,255,.66);">${hrOnbEsc(m.detail || '')}</div>
-    </div>`).join('');
+      ${samClearControlHtml(m)}
+    </div>`;
+  }).join('');
+}
+function showClearSamMatchModal(idx) {
+  const m = _samMatchRegistry[idx];
+  if (!m) { toast('Could not find that match. Close this and open it again.', true); return; }
+  document.getElementById('samClearModal')?.remove();
+  const today = new Date().toISOString().slice(0, 10);
+  const modal = document.createElement('div');
+  modal.id = 'samClearModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1700;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;padding:26px;width:100%;max-width:520px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+    <div style="color:#fff;font-size:19px;font-weight:700;margin-bottom:4px;">Clear ${hrOnbEsc(m.full_name)}</div>
+    <div style="font-size:14px;color:rgba(255,255,255,.62);margin-bottom:14px;">${hrOnbEsc(samLabel(m))}<br>${hrOnbEsc(m.detail || '')}</div>
+    <p style="font-size:13px;color:rgba(255,255,255,.58);margin-bottom:14px;line-height:1.5;">Only clear this name after you searched SAM.gov's own exclusions at <a href="https://sam.gov/search/?index=ex" target="_blank" rel="noopener noreferrer" style="color:var(--teal-l);">sam.gov</a> (Exclusions) and confirmed this staff member is not the person on the list. SAM.gov gives no date of birth, so compare the state, the NPI if there is one, and anything else the record shows. Your name, today's date and what you write are saved as the record.</p>
+    <label class="inline-label">How did you check?</label>
+    <select class="inline-select" id="samClearMethod" style="width:100%;margin-bottom:12px;">
+      <option value="sam_online_npi">${hrOnbEsc(SAM_VERIFY_LABELS.sam_online_npi)} (best)</option>
+      <option value="sam_online_name">${hrOnbEsc(SAM_VERIFY_LABELS.sam_online_name)}</option>
+      <option value="other">${hrOnbEsc(SAM_VERIFY_LABELS.other)}</option>
+    </select>
+    <label class="inline-label">Date you checked</label>
+    <input type="date" class="inline-input" id="samClearDate" value="${today}" max="${today}" style="width:100%;margin-bottom:12px;box-sizing:border-box;" />
+    <label class="inline-label">What did you find? (required)</label>
+    <textarea class="inline-input" id="samClearReason" rows="3" placeholder="Example: The excluded person with this name is in another state and has a different NPI. Our staff member is licensed here and has no record on sam.gov." style="width:100%;box-sizing:border-box;margin-bottom:12px;"></textarea>
+    <label style="display:flex;gap:8px;align-items:flex-start;font-size:14px;color:rgba(255,255,255,.8);margin-bottom:12px;cursor:pointer;"><input type="checkbox" id="samClearConfirm" style="margin-top:3px;" /> I searched SAM.gov myself and this staff member is not the person on the exclusion list.</label>
+    <div id="samClearErr" style="color:#f87171;font-size:13px;margin-bottom:10px;display:none;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-teal" id="samClearSaveBtn" onclick="saveSamClearance(${idx})" style="flex:1;justify-content:center;">Clear this name</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('samClearModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    </div></div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+async function saveSamClearance(idx) {
+  const m = _samMatchRegistry[idx];
+  const errEl = document.getElementById('samClearErr');
+  const fail = t => { errEl.textContent = t; errEl.style.display = 'block'; };
+  errEl.style.display = 'none';
+  if (!m) return fail('Could not find that match. Close this and open it again.');
+  const reason = document.getElementById('samClearReason').value.trim();
+  const verifiedOn = document.getElementById('samClearDate').value;
+  if (reason.length < 10) return fail('Please write what you found (at least a sentence), so the record means something later.');
+  if (!verifiedOn) return fail('Please enter the date you checked.');
+  if (!document.getElementById('samClearConfirm').checked) return fail('Tick the box to confirm you searched SAM.gov yourself.');
+  if (!m.staff_id) return fail('This match has no staff member attached, so it cannot be cleared.');
+  const btn = document.getElementById('samClearSaveBtn'); btn.disabled = true;
+  const { data: saved, error } = await sb.from('sam_match_clearances').insert({
+    company_id: currentCompany.id, staff_id: m.staff_id, staff_name: m.full_name || '',
+    match_key: samMatchKey(m), match_snapshot: m,
+    verified_method: document.getElementById('samClearMethod').value, verified_on: verifiedOn, reason,
+    cleared_by: currentProfile.id, cleared_by_name: currentProfile.full_name || currentProfile.email || null,
+  }).select('id');
+  btn.disabled = false;
+  if (error) {
+    const missing = /does not exist|schema cache/i.test(error.message || '');
+    return fail(missing ? 'Clearing is not set up yet. Run sam-match-clearances-migration.sql in Supabase first.' : /duplicate|unique/i.test(error.message || '') ? 'This match was already cleared. Close this and refresh.' : 'Could not save: ' + extractErrorMessage(error));
+  }
+  if (!saved || !saved.length) return fail('Nothing was saved. You may not have permission to clear names.');
+  await refreshSamClearedViews();
+  document.getElementById('samClearModal')?.remove();
+  toast(`✓ ${m.full_name} cleared`);
+}
+async function undoSamClearance(id) {
+  const note = prompt('Undo this clearance? The name will show as flagged again. Briefly say why (kept in the record):');
+  if (note === null) return;
+  const { data: changed, error } = await sb.from('sam_match_clearances').update({
+    revoked_at: new Date().toISOString(), revoked_by: currentProfile.id,
+    revoked_by_name: currentProfile.full_name || currentProfile.email || null, revoke_note: note.trim() || null,
+  }).eq('id', id).select('id');
+  if (error) { toast('Could not undo: ' + extractErrorMessage(error), true); return; }
+  if (!changed || !changed.length) { toast('Nothing was changed. You may not have permission.', true); return; }
+  await refreshSamClearedViews();
+  toast('Clearance undone. The name shows as flagged again.');
+}
+// Redraws whatever is on screen that shows clearance state, after a clear or an undo.
+async function refreshSamClearedViews() {
+  await loadSamClearances();
+  const listEl = document.getElementById('mySamMatchesList');
+  if (listEl && _lastSamRunMatches) listEl.innerHTML = samMatchesHtml(_lastSamRunMatches);
+  if (document.getElementById('samDetailsModal') && window._samDetailsCheckId) await showSamCheckDetails(window._samDetailsCheckId);
+  if (document.getElementById('samClearedModal')) await showSamClearedNames();
+}
+async function showSamClearedNames() {
+  document.getElementById('samClearedModal')?.remove();
+  const { data, error } = await sb.from('sam_match_clearances').select('*').eq('company_id', currentCompany.id).order('cleared_at', { ascending: false }).limit(200);
+  if (error) { toast(/does not exist|schema cache/i.test(error.message || '') ? 'Clearing is not set up yet. Run sam-match-clearances-migration.sql in Supabase.' : 'Could not load: ' + extractErrorMessage(error), true); return; }
+  const canWrite = currentProfile?.role === 'admin' || currentProfile?.is_super_admin;
+  const rows = (data || []).map(c => `<tr style="${c.revoked_at ? 'opacity:.55;' : ''}">
+    <td>${hrOnbEsc(c.staff_name)}</td>
+    <td style="font-size:13px;">${hrOnbEsc((c.match_snapshot && c.match_snapshot.detail) || '')}</td>
+    <td style="font-size:13px;">${samClearNote(c).replace(/^✓ /, '')}${c.revoked_at ? `<div style="color:#fbbf24;margin-top:4px;">Undone by ${hrOnbEsc(c.revoked_by_name || 'an admin')} on ${new Date(c.revoked_at).toLocaleDateString()}${c.revoke_note ? ': ' + hrOnbEsc(c.revoke_note) : ''}</div>` : ''}</td>
+    <td>${!c.revoked_at && canWrite ? `<button class="btn btn-sm btn-ghost" onclick="undoSamClearance('${c.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">Undo</button>` : ''}</td></tr>`).join('')
+    || '<tr><td colspan="4" style="color:rgba(255,255,255,.58);">No names have been cleared yet.</td></tr>';
+  const modal = document.createElement('div');
+  modal.id = 'samClearedModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:1650;display:flex;align-items:center;justify-content:center;padding:20px;';
+  modal.innerHTML = `<div style="background:var(--navy2);border-radius:14px;width:clamp(500px,80vw,960px);max-height:88vh;border:1px solid rgba(255,255,255,.1);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:20px 28px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div><div style="color:#fff;font-size:20px;font-weight:700;">Cleared names (SAM.gov)</div><div style="color:rgba(255,255,255,.58);font-size:14px;">Flagged matches an admin checked on SAM.gov and cleared. Undone ones stay listed, dimmed.</div></div>
+      <button class="btn btn-sm btn-ghost" onclick="document.getElementById('samClearedModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕ Close</button></div>
+    <div style="flex:1;overflow-y:auto;padding:20px 28px;"><div class="tbl-wrap"><table><thead><tr><th>Staff</th><th>Match that was flagged</th><th>Record</th><th></th></tr></thead><tbody>${rows}</tbody></table></div></div></div>`;
+  document.body.appendChild(modal);
 }
 
 // SAM.gov's allowance resets at midnight UTC, which is 7 PM in Tulsa in summer and 6 PM in winter. A time in UTC is easy to get
@@ -4784,8 +4919,12 @@ async function runMyCompanySamCheck() {
     if (error) throw new Error(await samInvokeError(error));
     const staleNote = data.list_stale ? ' ⚠ The SAM.gov list is more than 3 days old, so very recent exclusions may be missing.' : '';
     statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + staleNote;
+    _lastSamRunMatches = data.matches || [];
+    await loadSamClearances();
     listEl.innerHTML = samMatchesHtml(data.matches);
-    if (data.match_count) toast(`⚠ ${data.match_count} potential SAM.gov match(es) found. Review below.` + staleNote, true);
+    const openMatches = (data.matches || []).filter(m => !samClearanceFor(m)).length;
+    if (data.match_count && !openMatches) toast(`All ${data.match_count} flagged match(es) were already cleared earlier. Review below.` + staleNote, !!data.list_stale);
+    else if (data.match_count) toast(`⚠ ${openMatches} potential SAM.gov match(es) found. Review below.` + staleNote, true);
     else toast('SAM.gov check complete: no matches found.' + staleNote, !!data.list_stale);
     await loadMySamHistory();
     await loadSamListFreshness();
@@ -4829,14 +4968,18 @@ async function loadMySamHistory() {
 
 async function showSamCheckDetails(checkId) {
   document.getElementById('samDetailsModal')?.remove();
+  window._samDetailsCheckId = checkId;
+  await loadSamClearances();
+  _samMatchRegistry = [];
   const { data: row, error } = await sb.from('sam_exclusion_checks')
     .select('checked_at, staff_checked_count, match_count, matches, checked_staff, source, trigger_type').eq('id', checkId).single();
   if (error || !row) { toast('Could not load check details' + (error ? ': ' + error.message : ''), true); return; }
   const byId = new Map((row.matches || []).map(m => [m.staff_id, m]));
   const rows = (row.checked_staff || []).slice().sort((a, b) => (a.full_name || '').localeCompare(b.full_name || '')).map(s => {
     const m = byId.get(s.id);
+    const cl = m ? samClearanceFor(m) : null;
     return m
-      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:${SAM_CONF_COLOR[m.confidence] || '#f87171'};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${hrOnbEsc(samLabel(m) || 'Potential match')}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div></td></tr>`
+      ? `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:${cl ? '#4ade80' : (SAM_CONF_COLOR[m.confidence] || '#f87171')};font-weight:700;" title="${hrOnbEsc(m.detail || '')}">${cl ? 'Cleared' : hrOnbEsc(samLabel(m) || 'Potential match')}<div style="font-size:12px;font-weight:400;color:rgba(255,255,255,.62);">${hrOnbEsc(m.detail || '')}</div>${samClearControlHtml(m)}</td></tr>`
       : `<tr><td>${hrOnbEsc(s.full_name || '—')}</td><td style="color:#4ade80;">✓ Clear</td></tr>`;
   }).join('') || '<tr><td colspan="2" style="color:rgba(255,255,255,.58);">No per-staff detail was kept for this check.</td></tr>';
   const modal = document.createElement('div');
@@ -5371,7 +5514,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-e';
+const APP_VERSION = '2026-10-18-f';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -19040,7 +19183,8 @@ const COMPLIANCE_HELP = [
         <li><strong>Run check now</strong> checks everyone in a moment. Selko refreshes the SAM.gov list from sam.gov every day, and the panel shows when it was last refreshed. If it is more than 3 days old you are warned.</li>
         <li><strong>How strong a match is:</strong> <em>NPI-confirmed</em> is the strongest. <em>Name and state or middle initial agree</em> is likely but needs checking. <em>Name only</em> is only a possibility. <em>Review needed</em> means the last name and first initial match in the same state.</li>
         <li><strong>Other names are checked too.</strong> SAM.gov lists other names for 14% of the people on it. A staff member's <em>maiden / previously used name</em> and <em>other aliases</em> (Staff profile, Background Check Intake Info), either half of a double surname, and the first of several given names are all compared. SAM.gov gives no date of birth, so a match through a former name or alias is at most <em>medium</em> (when the state agrees) and otherwise <em>low</em>: always a lead to look at.</li>
-        <li><strong>A match is a lead, never a finding.</strong> Many people share a name. Open the person on sam.gov, compare the details, and only then act.</li>
+        <li><strong>A match is a lead, never a finding.</strong> Many people share a name, and SAM.gov gives no date of birth to tell them apart. Open the person on sam.gov (Exclusions), compare the name, state and any NPI, and only then act.</li>
+        <li><strong>Clearing a name.</strong> After a staff member is flagged, search SAM.gov's own site (sam.gov, Exclusions), ideally by NPI. If they are not the person on the list, press <em>Clear this name</em> on the match (in the result after a check, or in <em>View list</em>). You choose how you checked and the date, and write what you found; your name and the date are saved with it. A cleared match shows green and does not alarm again on later checks. It only covers that exact match: a different match for the same person shows as a new flag. <em>Cleared names</em> lists every clearance, and <em>Undo</em> puts a name back to flagged (the clearance stays in the record, marked undone). Admins can clear and undo; Office users can read. The Selko owner must have run <strong>sam-match-clearances-migration.sql</strong> once.</li>
         <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, saves the result as your record, and emails your admins. Every run stays in the history (View list, PDF audit log, Archive). A run with an audit log cannot be deleted.</li>
         <li>Admins run and manage checks. Office users can read the history.</li>
       </ul>`,
