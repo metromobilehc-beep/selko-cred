@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-u';
+const APP_VERSION = '2026-10-18-v';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10313,11 +10313,24 @@ function renderStateBoardSuggestions(results, query) {
     <div style="padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.06);">
       <div style="font-size:15px;color:#fff;">${r.state_name} <span style="color:rgba(255,255,255,.58);font-size:13px;">— ${r.discipline_group}</span></div>
       ${r.verification_url
-        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" style="font-size:14px;font-weight:600;color:var(--teal-l);">Verify ↗</a>`
+        ? `<a href="${hrOnbEsc(r.verification_url)}" target="_blank" rel="noopener noreferrer" style="font-size:14px;font-weight:600;color:var(--teal-l);">Verify ↗</a>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="copyBoardLink(${jsArg(r.verification_url)})" style="font-size:12px;padding:2px 8px;margin-left:6px;color:#fff;border-color:rgba(255,255,255,.25);" title="Copy the link, then paste it into your browser">Copy link</button>`
         : `<span style="font-size:13px;color:rgba(255,255,255,.55);">No link on file</span>`}
       ${r.notes ? ` <span style="font-size:13px;color:rgba(255,255,255,.58);">· ${r.notes}</span>` : ''}
     </div>`).join('');
   box.style.display = 'block';
+}
+
+// For desktop/installed versions of the app that do not open links in a new window:
+// copy the board's address so it can be pasted into any browser.
+async function copyBoardLink(url) {
+  try { await navigator.clipboard.writeText(url); toast('Link copied — paste it into your browser'); return; } catch (_e) { /* fall through */ }
+  try {
+    const t = document.createElement('textarea'); t.value = url; t.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(t); t.select(); const ok = document.execCommand('copy'); t.remove();
+    if (ok) { toast('Link copied — paste it into your browser'); return; }
+  } catch (_e) { /* fall through */ }
+  window.prompt('Copy this link:', url);
 }
 
 function hideStateBoardSuggestions() {
