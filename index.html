@@ -5553,7 +5553,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-s';
+const APP_VERSION = '2026-10-18-t';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10625,7 +10625,7 @@ async function renderProviderReadinessTracker(staffId) {
 
 
 // Sub-tabs inside a person's Info page. Every field stays in the page (hidden, not removed), so one
-// "Save all changes" still saves the whole profile.
+// "Save & close" and "Save & continue" both save the whole profile.
 function fpSelectTab(name) {
   document.querySelectorAll('.fp-pane').forEach((p) => p.classList.toggle('on', p.getAttribute('data-fp-pane') === name));
   document.querySelectorAll('.fp-subtab').forEach((b) => {
@@ -11216,7 +11216,7 @@ function showFullProfileSheet(staffId) {
 
       <div class="fp-pane" data-fp-pane="supervision">
         <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;margin-top:16px;">Supervising physicians</div>
-        <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 12px;">For nurse practitioners, physician assistants and medical students. Search the public CMS NPI Registry and add each supervising physician — these save right away and are separate from "Save all changes".</p>
+        <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 12px;">For nurse practitioners, physician assistants and medical students. Search the public CMS NPI Registry and add each supervising physician — these save right away and are separate from the profile Save buttons.</p>
         <div id="supList" style="margin-bottom:16px;">Loading…</div>
         <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:12px;">
           <div style="font-size:13px;font-weight:700;color:var(--teal-l);margin-bottom:6px;">Physicians on your staff</div>
@@ -11248,7 +11248,8 @@ function showFullProfileSheet(staffId) {
 
       <div id="fullProfileErr" style="color:#f87171;font-size:14px;margin:14px 0 6px;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;position:sticky;bottom:-28px;background:var(--navy2);padding:12px 0 28px;box-shadow:0 -10px 12px -8px rgba(0,0,0,.45);z-index:2;">
-        <button class="btn btn-teal" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save all changes</button>
+        <button class="btn btn-teal" id="fpSaveCloseBtn" onclick="saveFullProfileSheet('${staffId}')" style="flex:1;justify-content:center;">Save &amp; close</button>
+        <button class="btn btn-ghost" id="fpSaveContinueBtn" onclick="saveFullProfileSheet('${staffId}', true)" style="flex:1;justify-content:center;color:#fff;border-color:rgba(255,255,255,.3);">Save &amp; continue</button>
         <button class="btn btn-ghost" onclick="document.getElementById('${PROVIDER_TAB_MODAL_ID}').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
       </div>
       ${(currentProfile?.role === 'admin' || currentProfile?.is_super_admin) ? `
@@ -12264,9 +12265,10 @@ async function saveCvImportSelections(staffId) {
   }
 }
 
-async function saveFullProfileSheet(staffId) {
+async function saveFullProfileSheet(staffId, keepOpen = false) {
   const before = staffList.find(s => s.id === staffId) || {};
   const errEl = document.getElementById('fullProfileErr');
+  if (errEl) errEl.style.display = 'none';
 
   const newStaffType = document.getElementById('fpStaffType').value;
   const newFirstName = document.getElementById('fpFirstName').value.trim() || null;
@@ -12380,6 +12382,12 @@ async function saveFullProfileSheet(staffId) {
   // saved, so there's no gap left to reopen into.
   await loadStaffTable();
   await renderCredentialingStaffTable();
+  if (keepOpen) {
+    // "Save & continue": stay on the same tab with everything still on screen; just refresh the progress bar.
+    try { renderProviderReadinessTracker(staffId); } catch (_e) { /* cosmetic */ }
+    toast('✓ Saved — you can keep editing');
+    return;
+  }
   document.getElementById(PROVIDER_TAB_MODAL_ID)?.remove();
   toast('✓ Full profile updated');
 }
