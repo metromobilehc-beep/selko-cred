@@ -1671,7 +1671,7 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
              worth a human reviewing before treating it as confirmed. -->
         <div class="dark-panel" style="margin-bottom:16px;" data-default-open="true">
           <h2>🌐 OFAC Sanctions Check</h2>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff by name against the US Treasury's Specially Designated Nationals (SDN) list, downloaded live from treasury.gov. Unlike the OIG check, there's no ID number to corroborate against — every match here is name-only and needs a human look before acting on it.</p>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Checks your active staff by name against the US Treasury's Specially Designated Nationals (SDN) list, downloaded live from treasury.gov. Unlike the OIG check, there's no ID number to corroborate against — every match here is name-only and needs a human look before acting on it. Each check saves a PDF <em>Audit log</em> (see the history below): who ran it and when, every person checked, and the result. A check that has one can be archived but not deleted.</p>
           <button class="btn btn-sm btn-teal" id="myOfacRunCheckBtn" onclick="runMyCompanyOfacCheck()">Run check now</button>
           <div id="myOfacCheckStatus" style="font-size:15px;color:rgba(255,255,255,.66);margin:10px 0;"></div>
           <div id="myOfacMatchesList"></div>
@@ -4918,7 +4918,7 @@ async function runMyCompanySamCheck() {
     const { data, error } = await sb.functions.invoke('check-sam-exclusions', { body: { company_id: currentCompany.id } });
     if (error) throw new Error(await samInvokeError(error));
     const staleNote = data.list_stale ? ' ⚠ The SAM.gov list is more than 3 days old, so very recent exclusions may be missing.' : '';
-    statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + staleNote;
+    statusEl.textContent = `Checked ${data.checked} staff member(s): ${data.match_count} potential match(es) found.` + (data.emailed ? ' Your admins were emailed.' : '') + (data.audit_log === 'saved' ? ' A PDF audit log of this check was saved: use "Audit log" in the history below.' : data.audit_log === 'failed' ? ' ⚠ The PDF audit log could not be saved this time. Press "Audit log" on this check in the history below to make it.' : '') + staleNote;
     _lastSamRunMatches = data.matches || [];
     await loadSamClearances();
     listEl.innerHTML = samMatchesHtml(data.matches);
@@ -4936,6 +4936,42 @@ async function runMyCompanySamCheck() {
   }
 }
 
+// Opens (downloads) the PDF audit log of one SAM.gov or OFAC check. A check made before audit logs existed has none yet: the server makes one
+// from the saved record. cfg: { table, fn, label (file name start), reload }.
+async function openComplianceAuditLog(cfg, checkId, btn) {
+  const label = btn ? btn.textContent : '';
+  if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
+  try {
+    const { data: row, error: rowErr } = await sb.from(cfg.table).select('audit_log_path, checked_at').eq('id', checkId).single();
+    if (rowErr || !row) throw new Error(rowErr ? extractErrorMessage(rowErr) : 'That check could not be found.');
+    let path = row.audit_log_path;
+    if (!path) {
+      const { data, error } = await sb.functions.invoke(cfg.fn, { body: { action: 'audit_log', check_id: checkId } });
+      if (error) throw new Error(await samInvokeError(error));
+      if (data?.error) throw new Error(data.error);
+      path = data.path;
+    }
+    const day = new Date(row.checked_at).toISOString().slice(0, 10);
+    const fileName = `${cfg.label}-audit-log-${String(currentCompany?.name || 'company').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${day}.pdf`;
+    const { data: signed, error: urlErr } = await sb.storage.from('compliance-audit-logs').createSignedUrl(path, 120, { download: fileName });
+    if (urlErr || !signed?.signedUrl) throw new Error('The audit log file could not be opened' + (urlErr ? ' (' + extractErrorMessage(urlErr) + ')' : '') + '. Try again, and if it keeps happening contact Selko support.');
+    const a = document.createElement('a'); a.href = signed.signedUrl; a.download = fileName; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
+    if (!row.audit_log_path && cfg.reload) await cfg.reload();
+  } catch (e) {
+    toast(friendlyError(e, 'open the audit log'), true);
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = label; }
+  }
+}
+function openSamAuditLog(checkId, btn) { return openComplianceAuditLog({ table: 'sam_exclusion_checks', fn: 'check-sam-exclusions', label: 'SAM-gov', reload: loadMySamHistory }, checkId, btn); }
+function openOfacAuditLog(checkId, btn) { return openComplianceAuditLog({ table: 'ofac_sanctions_checks', fn: 'ofac-audit-log', label: 'OFAC', reload: loadMyOfacHistory }, checkId, btn); }
+// Reads a history list, asking for the audit-log column; if the audit-log SQL has not been run yet the column is missing, so it asks again without it.
+async function selectWithAuditLog(buildQuery, cols) {
+  let res = await buildQuery(cols + ', audit_log_path');
+  if (res.error && /audit_log_path/i.test(res.error.message || '')) res = await buildQuery(cols);
+  return res;
+}
+
 async function loadMySamHistory() {
   const tbody = document.getElementById('mySamHistoryTbody');
   if (!tbody) return;
@@ -4943,12 +4979,13 @@ async function loadMySamHistory() {
   const canWrite = currentProfile?.role === 'admin';
   const runBtn = document.getElementById('mySamRunCheckBtn'); if (runBtn) runBtn.style.display = canWrite ? '' : 'none';
   const archiveFilter = document.getElementById('mySamArchiveFilter')?.value || 'active';
-  let query = sb.from('sam_exclusion_checks')
-    .select('id, checked_at, staff_checked_count, match_count, archived, trigger_type, emailed_at')
-    .eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(25);
-  if (archiveFilter === 'active') query = query.eq('archived', false);
-  else if (archiveFilter === 'archived') query = query.eq('archived', true);
-  const { data, error } = await query;
+  const { data, error } = await selectWithAuditLog((cols) => {
+    let query = sb.from('sam_exclusion_checks').select(cols)
+      .eq('company_id', currentCompany.id).order('checked_at', { ascending: false }).limit(25);
+    if (archiveFilter === 'active') query = query.eq('archived', false);
+    else if (archiveFilter === 'archived') query = query.eq('archived', true);
+    return query;
+  }, 'id, checked_at, staff_checked_count, match_count, archived, trigger_type, emailed_at');
   if (error) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">${/does not exist|schema cache/i.test(error.message || '') ? 'The SAM.gov check is not set up yet.' : 'Could not load history: ' + hrOnbEsc(extractErrorMessage(error))}</td></tr>`; return; }
   if (!data || !data.length) { tbody.innerHTML = `<tr><td colspan="6" style="color:rgba(255,255,255,.58);">No checks ${archiveFilter === 'archived' ? 'archived' : 'run'} yet.</td></tr>`; return; }
   tbody.innerHTML = data.map(r => `
@@ -4960,8 +4997,9 @@ async function loadMySamHistory() {
       <td>${r.emailed_at ? new Date(r.emailed_at).toLocaleDateString() : '—'}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-ghost" onclick="showSamCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">View list</button>
+        <button class="btn btn-sm btn-teal" onclick="openSamAuditLog('${r.id}', this)" title="${r.audit_log_path ? 'The PDF record of how this check was done' : 'This older check has no PDF yet. Pressing this makes one from the saved record.'}" style="padding:3px 10px;font-size:14px;">📄 Audit log</button>
         ${canWrite ? `<button class="btn btn-sm btn-ghost" onclick="toggleSamCheckArchived('${r.id}', ${!r.archived})" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">${r.archived ? 'Restore' : 'Archive'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="deleteSamCheck('${r.id}')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>` : ''}
+        ${r.audit_log_path ? '' : `<button class="btn btn-sm btn-ghost" onclick="deleteSamCheck('${r.id}')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>`}` : ''}
       </td>
     </tr>`).join('');
 }
@@ -5040,7 +5078,7 @@ async function runMyCompanyOfacCheck() {
       throw new Error(extractErrorMessage(detail));
     }
 
-    const { error: insErr } = await sb.from('ofac_sanctions_checks').insert({
+    const { data: savedRun, error: insErr } = await sb.from('ofac_sanctions_checks').insert({
       company_id: companyId,
       checked_by: currentProfile ? currentProfile.id : null,
       staff_checked_count: data.checked,
@@ -5048,10 +5086,22 @@ async function runMyCompanyOfacCheck() {
       matches: data.matches,
       match_count: data.matches.length,
       sdn_source: data.sdn_source,
-    });
+    }).select('id').single();
     if (insErr) throw insErr;
 
-    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.`;
+    // The PDF audit log of this check. The check is already saved, so a failure here is reported but never undoes it.
+    let auditNote = '';
+    if (savedRun && savedRun.id) {
+      try {
+        const { data: logRes, error: logErr } = await sb.functions.invoke('ofac-audit-log', { body: { action: 'audit_log', check_id: savedRun.id } });
+        if (logErr || !logRes || logRes.error || !logRes.path) throw new Error('no log');
+        auditNote = ' A PDF audit log of this check was saved: use "Audit log" in the history below.';
+      } catch (logE) {
+        auditNote = ' ⚠ The PDF audit log could not be saved this time. Press "Audit log" on this check in the history below to make it.';
+      }
+    }
+
+    statusEl.textContent = `Checked ${data.checked} staff member(s) — ${data.matches.length} potential match(es) found.` + auditNote;
     if (data.matches.length) {
       toast(`⚠ ${data.matches.length} potential OFAC match(es) found — review below`, true);
       listEl.innerHTML = data.matches.map(m => `
@@ -5087,15 +5137,15 @@ async function loadMyOfacHistory() {
   if (!tbody) return;
   const archiveFilter = document.getElementById('myOfacArchiveFilter')?.value || 'active';
 
-  let query = sb.from('ofac_sanctions_checks')
-    .select('id, checked_at, staff_checked_count, match_count, archived')
-    .eq('company_id', currentCompany.id)
-    .order('checked_at', { ascending: false })
-    .limit(25);
-  if (archiveFilter === 'active') query = query.eq('archived', false);
-  else if (archiveFilter === 'archived') query = query.eq('archived', true);
-
-  const { data, error } = await query;
+  const { data, error } = await selectWithAuditLog((cols) => {
+    let query = sb.from('ofac_sanctions_checks').select(cols)
+      .eq('company_id', currentCompany.id)
+      .order('checked_at', { ascending: false })
+      .limit(25);
+    if (archiveFilter === 'active') query = query.eq('archived', false);
+    else if (archiveFilter === 'archived') query = query.eq('archived', true);
+    return query;
+  }, 'id, checked_at, staff_checked_count, match_count, archived');
 
   if (error) {
     tbody.innerHTML = `<tr><td colspan="4" style="color:#f87171;">Could not load history: ${extractErrorMessage(error)}</td></tr>`;
@@ -5112,8 +5162,9 @@ async function loadMyOfacHistory() {
       <td style="${r.match_count > 0 ? 'color:#f87171;font-weight:700;' : ''}">${r.match_count}</td>
       <td style="white-space:nowrap;">
         <button class="btn btn-sm btn-ghost" onclick="showOfacCheckDetails('${r.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">View list</button>
+        <button class="btn btn-sm btn-teal" onclick="openOfacAuditLog('${r.id}', this)" title="${r.audit_log_path ? 'The PDF record of how this check was done' : 'This older check has no PDF yet. Pressing this makes one from the saved record.'}" style="padding:3px 10px;font-size:14px;">📄 Audit log</button>
         <button class="btn btn-sm btn-ghost" onclick="toggleOfacCheckArchived('${r.id}', ${!r.archived}, 'self')" style="color:rgba(255,255,255,.7);border-color:rgba(255,255,255,.2);padding:3px 10px;font-size:14px;">${r.archived ? 'Unarchive' : 'Archive'}</button>
-        <button class="btn btn-sm btn-ghost" onclick="deleteOfacCheck('${r.id}', 'self')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>
+        ${r.audit_log_path ? '' : `<button class="btn btn-sm btn-ghost" onclick="deleteOfacCheck('${r.id}', 'self')" style="color:#f87171;border-color:rgba(248,113,113,.4);padding:3px 10px;font-size:14px;">Delete</button>`}
       </td>
     </tr>
   `).join('');
@@ -5514,7 +5565,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-g';
+const APP_VERSION = '2026-10-18-i';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -19185,6 +19236,7 @@ const COMPLIANCE_HELP = [
         <li><strong>Other names are checked too.</strong> SAM.gov lists other names for 14% of the people on it. A staff member's <em>maiden / previously used name</em> and <em>other aliases</em> (Staff profile, Background Check Intake Info), either half of a double surname, and the first of several given names are all compared. SAM.gov gives no date of birth, so a match through a former name or alias is at most <em>medium</em> (when the state agrees) and otherwise <em>low</em>: always a lead to look at.</li>
         <li><strong>A match is a lead, never a finding.</strong> Many people share a name, and SAM.gov gives no date of birth to tell them apart. Open the person on sam.gov (Exclusions), compare the name, state and any NPI, and only then act.</li>
         <li><strong>Clearing a name.</strong> After a staff member is flagged, search SAM.gov's own site (sam.gov, Exclusions), ideally by NPI. If they are not the person on the list, press <em>Clear this name</em> on the match (in the result after a check, or in <em>View list</em>). You choose how you checked and the date, and write what you found; your name and the date are saved with it. A cleared match shows green and does not alarm again on later checks. It only covers that exact match: a different match for the same person shows as a new flag. <em>Cleared names</em> lists every clearance, and <em>Undo</em> puts a name back to flagged (the clearance stays in the record, marked undone). Admins can clear and undo; Office users can read. The Selko owner must have run <strong>sam-match-clearances-migration.sql</strong> once.</li>
+        <li><strong>Audit log.</strong> Every check also saves a PDF record of how it was done: who ran it and when, which SAM.gov list was used and when it was loaded, how people are matched, every person checked with the result, and a fingerprint that shows the record was not altered. Open it with <em>Audit log</em> in the history. Checks made before this existed get one made from the saved record. A check that has an audit log can be archived but not deleted. Birth dates and SSNs are never printed.</li>
         <li><strong>The monthly check</strong> runs by itself on the day you chose for the OIG check, saves the result as your record, and emails your admins. Every run stays in the history (View list, PDF audit log, Archive). A run with an audit log cannot be deleted.</li>
         <li>Admins run and manage checks. Office users can read the history.</li>
       </ul>`,
@@ -23970,8 +24022,7 @@ async function showEnrollmentStepsModal(rowId, source) {
         ${tField('Provider ID', 'esdProviderId', row.network_provider_id)}
         ${tField('Group ID', 'esdGroupId', row.group_id)}
       </div>
-      <label for="esdNotes" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Note on the board <span style="color:rgba(255,255,255,.45);">(the earlier wording stays in Notes &amp; history)</span></label>
-      <textarea class="inline-input" id="esdNotes" rows="2" maxlength="600" style="width:100%;box-sizing:border-box;">${hrOnbEsc(row.notes || '')}</textarea>`;
+      <div style="font-size:13px;color:rgba(255,255,255,.5);line-height:1.5;">Notes are added in <strong>Notes &amp; history</strong> (and on each step above).</div>`;
 
   const modal = document.createElement('div');
   modal.id = 'enrollmentStepsModal';
@@ -24199,7 +24250,6 @@ async function saveEnrollmentSteps(rowId, source) {
     enrollment_steps: newSteps, status: finalStatus,
     date_submitted: submitted, date_confirmed: confirmed, date_in_network: inNet, expiration_date: expires,
     confirmation_code: dv('esdConfCode') || null, network_provider_id: dv('esdProviderId') || null, group_id: dv('esdGroupId') || null,
-    notes: dv('esdNotes') || null,
   };
   if (touchVerified) updates.verified_at = finalStatus === 'in_network' ? (row.verified_at || nowIso) : null;
 
