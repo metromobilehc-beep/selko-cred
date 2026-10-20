@@ -2482,6 +2482,10 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           </div>
           <div class="set-subhead">Reminder timing</div>
           <div>
+            <label class="set-check"><input type="checkbox" id="setStaffExpiryReminders" checked /> Send expiration reminders to staff</label>
+            <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:4px;">When this is off, staff do not get emails about their own expiring or expired documents, license or DEA dates. Administrators still get their warnings and summaries. Save below to apply it.</div>
+          </div>
+          <div>
             <label class="inline-label">Expiry warning — first reminder (days)</label>
             <input class="inline-input" type="number" id="setWarn1" value="30" min="1" max="365" />
           </div>
@@ -5553,7 +5557,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-18-y';
+const APP_VERSION = '2026-10-20-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -17377,6 +17381,8 @@ async function loadSettings() {
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
   const extraEl = document.getElementById('setAdminEmailsExtra');
   if (extraEl) extraEl.value = (c.admin_emails || []).slice(1).join(', ');
+  const staffRemEl = document.getElementById('setStaffExpiryReminders');
+  if (staffRemEl) staffRemEl.checked = c.custom_vars?.staffExpiryReminders !== false;
   document.getElementById('setWarn1').value     = c.custom_vars?.warn1 || 30;
   document.getElementById('setWarn2').value     = c.custom_vars?.warn2 || 7;
   document.getElementById('setTaskDigestInterval').value = c.custom_vars?.taskDigestIntervalDays || 7;
@@ -25878,6 +25884,7 @@ async function saveCompanySettings() {
   const adminEmailParsed = parseAdminEmailList(adminEmail, document.getElementById('setAdminEmailsExtra')?.value || '');
   const warn1      = parseInt(document.getElementById('setWarn1').value) || 30;
   const warn2      = parseInt(document.getElementById('setWarn2').value) || 7;
+  const staffExpiryReminders = document.getElementById('setStaffExpiryReminders') ? document.getElementById('setStaffExpiryReminders').checked : (currentCompany.custom_vars?.staffExpiryReminders !== false);
   const taskDigestIntervalDays = parseInt(document.getElementById('setTaskDigestInterval').value) || 7;
   const onboardingReminderIntervalDays = parseInt(document.getElementById('setOnboardingReminderInterval').value) || 3;
   // Two save buttons write here now (Settings tab, and the Credentialing
@@ -25897,7 +25904,7 @@ async function saveCompanySettings() {
   const updates = {
     // The main address first, then any extra addresses shown in the box under it (so nobody is on the list unseen).
     admin_emails: adminEmail ? adminEmailParsed.list : currentCompany.admin_emails,
-    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, taskDigestIntervalDays, onboardingReminderIntervalDays },
+    custom_vars:  { ...(currentCompany.custom_vars || {}), warn1, warn2, staffExpiryReminders, taskDigestIntervalDays, onboardingReminderIntervalDays },
     show_partner_recommendations: document.getElementById('setShowPartnerRecs').checked,
     tax_id:  document.getElementById('setTaxId').value.trim() || null,
     org_npi: document.getElementById('setOrgNpi').value.trim() || null,
