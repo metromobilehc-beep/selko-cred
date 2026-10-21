@@ -1894,16 +1894,13 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         <div id="superSecretsBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
       </div>
 
-      <!-- Plans: the packages a company can be put on. Owner only. -->
-      <div class="dark-panel" style="margin-bottom:16px;" id="superPlansPanel" data-default-open="false">
-        <h2>Plans</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Each package is a row: name, monthly price, how many staff it covers, and whether it includes the Pro features. Adding a package here can also create its Stripe price. Then choose it for a company under that company's subscription settings.</p>
-        <div id="superPlansBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
-      </div>
-
       <!-- Pricing: changes the price in Stripe. Owner only. Every change is logged. -->
       <div class="dark-panel" style="margin-bottom:16px;" id="superPricingPanel" data-default-open="false">
-        <h2>Pricing</h2>
+        <h2>Plans &amp; Pricing</h2>
+        <h3 style="font-size:15px;color:#fff;margin:6px 0 4px;">Packages</h3>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Each package is a row: name, monthly price, how many staff it covers, and whether it includes the Pro features. Adding a package can also create its Stripe price. Then choose it for a company under that company's subscription settings. To change the price of a package that is already in Stripe, use Stripe prices below.</p>
+        <div id="superPlansBody" style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:18px;">Loading…</div>
+        <h3 style="font-size:15px;color:#fff;margin:6px 0 4px;">Stripe prices, promo codes and change log</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Change what Stripe charges for each plan. A new price applies to new sign-ups right away. People already subscribed stay on their old price until you move them below. Nothing is prorated.</p>
         <div id="superPricingBody" style="font-size:14px;color:rgba(255,255,255,.6);">Open this panel to load prices from Stripe.</div>
         <div id="superPricingLog" style="margin-top:14px;font-size:13px;color:rgba(255,255,255,.5);"></div>
@@ -4351,6 +4348,7 @@ function companySeatLimit(c) {
 }
 // ── Pricing (Selko Admin): calls manage-stripe-pricing, which talks to Stripe. ──
 let _priceUi = { plans: [], mode: null, busy: false, loaded: false };
+function priceLabel(keyOrPlan) { const k = typeof keyOrPlan === 'string' ? keyOrPlan : keyOrPlan.lookup_key; return PRICE_NAMES[k] || (typeof keyOrPlan === 'object' && keyOrPlan.plan_name) || (_planDefs.find((d) => d.stripe_lookup_key === k) || {}).name || k; }
 const PRICE_NAMES = { doc_standard_2026: 'Documents — Standard', doc_pro_2026: 'Documents — Pro', cred_addon_2026: 'Credentialing add-on', hr_addon_2026: 'HR add-on' };
 function priceMoney(cents) { return cents == null ? '—' : '$' + (cents / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 async function callPricing(payload) {
@@ -4389,7 +4387,7 @@ function renderPricingPanel() {
   const live = _priceUi.mode === 'live';
   const badge = `<span style="display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:700;background:${live ? 'rgba(220,60,60,.22)' : 'rgba(80,160,255,.22)'};color:${live ? '#ff9a9a' : '#9ccaff'};">${live ? 'LIVE — real money' : 'TEST mode'}</span>`;
   const rows = _priceUi.plans.map((p) => {
-    const k = hrOnbEsc(p.lookup_key), name = hrOnbEsc(PRICE_NAMES[p.lookup_key] || p.lookup_key);
+    const k = hrOnbEsc(p.lookup_key), name = hrOnbEsc(priceLabel(p));
     if (!p.found) return `<div class="price-row" data-key="${k}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);"><b>${name}</b> <span style="color:#ffb86b;">No active Stripe price has this lookup key (${k}).</span></div>`;
     const older = p.subscribers_on_older_price || 0;
     return `<div class="price-row" data-key="${k}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);">
@@ -4426,7 +4424,7 @@ async function changePriceFlow(key, row) {
   if (!/^\d{1,5}(\.\d{1,2})?$/.test(raw)) { priceMsg(row, 'Enter a dollar amount like 49 or 49.00.', true); return; }
   const cents = Math.round(parseFloat(raw) * 100);
   if (cents === plan.amount) { priceMsg(row, 'That is already the current price.', true); return; }
-  const name = PRICE_NAMES[key] || key;
+  const name = priceLabel(plan);
   const modeWord = _priceUi.mode === 'live' ? 'LIVE' : 'TEST';
   const typed = prompt(`${modeWord} Stripe: change ${name}\n\n${priceMoney(plan.amount)} → ${priceMoney(cents)} per ${plan.interval}\n\nNew sign-ups pay the new price right away. ${plan.subscribers_on_current_price + (plan.subscribers_on_older_price || 0)} current subscriber(s) are not changed.\n\nType CHANGE to confirm.`);
   if (typed !== 'CHANGE') { priceMsg(row, 'Cancelled. Nothing was changed.', true); return; }
@@ -4445,7 +4443,7 @@ async function changePriceFlow(key, row) {
 }
 async function movePricingFlow(key, row) {
   if (_priceUi.busy) return;
-  const name = PRICE_NAMES[key] || key;
+  const name = priceLabel(key);
   _priceUi.busy = true; priceMsg(row, 'Checking who would move…', false);
   let dry;
   try { dry = await callPricing({ action: 'migrate', lookup_key: key, dry_run: true }); }
@@ -4574,7 +4572,7 @@ function renderPlanForm(slug) {
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;max-width:760px;">
       <div><label class="inline-label">Name</label><input class="inline-input" id="plName" value="${v(d && d.name)}" placeholder="Solo Practitioner" /></div>
       <div><label class="inline-label">Short code</label><input class="inline-input" id="plSlug" value="${v(d && d.slug)}" ${d ? 'disabled' : ''} placeholder="solo" /></div>
-      <div><label class="inline-label">Price per month ($)</label><input class="inline-input" id="plPrice" type="number" min="1" step="0.01" value="${d && d.price_cents != null ? (d.price_cents / 100).toFixed(2) : ''}" placeholder="20" ${d && d.stripe_lookup_key ? 'disabled title="Change the price of a package that is already in Stripe under Pricing below"' : ''} /></div>
+      <div><label class="inline-label">Price per month ($)</label><input class="inline-input" id="plPrice" type="number" min="1" step="0.01" value="${d && d.price_cents != null ? (d.price_cents / 100).toFixed(2) : ''}" placeholder="20" ${d && d.stripe_lookup_key ? 'disabled title="Change the price of a package that is already in Stripe under Stripe prices below"' : ''} /></div>
       <div><label class="inline-label">Staff covered (blank = unlimited)</label><input class="inline-input" id="plSeats" type="number" min="1" step="1" value="${v(d && d.seat_limit)}" placeholder="1" /></div>
     </div>
     <div style="margin:10px 0;"><label class="inline-label">Description</label><input class="inline-input" id="plDesc" value="${v(d && d.description)}" placeholder="Shown to Selko staff only" style="max-width:760px;" /></div>
@@ -4615,8 +4613,7 @@ async function savePlanForm(slug) {
       toast('✓ Package added' + (out.stripe_mode ? ' (Stripe ' + out.stripe_mode + ' mode)' : ''));
     }
     await loadPlansPanel();
-    loadPricingLog();
-    _priceUi.loaded = false;
+    loadPricingPanel();
   } catch (e) {
     planMsg((e && e.message) || 'Could not save the package.', true);
     if (btn) btn.disabled = false;
@@ -4642,7 +4639,7 @@ async function loadPricingLog() {
       : r.action === 'coupon_deactivate' ? 'turned off'
       : r.action === 'plan_create' ? `package created at ${priceMoney(r.new_amount)}`
       : r.action === 'migrate' ? `moved ${dd.moved ?? '?'} subscriber(s) to ${priceMoney(r.new_amount)}` : `${priceMoney(r.old_amount)} → ${priceMoney(r.new_amount)}`;
-    return `<div>${hrOnbEsc(d)} · ${hrOnbEsc(r.actor_email || 'unknown')} · ${hrOnbEsc(PRICE_NAMES[r.lookup_key] || (String(r.lookup_key).startsWith('promo:') ? 'Promo code ' + String(r.lookup_key).slice(6) : r.lookup_key))} · ${hrOnbEsc(what)} · ${hrOnbEsc(r.stripe_mode || '')}</div>`;
+    return `<div>${hrOnbEsc(d)} · ${hrOnbEsc(r.actor_email || 'unknown')} · ${hrOnbEsc(String(r.lookup_key).startsWith('promo:') ? 'Promo code ' + String(r.lookup_key).slice(6) : priceLabel(r.lookup_key))} · ${hrOnbEsc(what)} · ${hrOnbEsc(r.stripe_mode || '')}</div>`;
   }).join('');
 }
 let _secretRows = [], _secretUi = null;
@@ -5694,7 +5691,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-20-b';
+const APP_VERSION = '2026-10-20-c';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
