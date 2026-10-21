@@ -1894,6 +1894,13 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
         <div id="superSecretsBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
       </div>
 
+      <!-- Plans: the packages a company can be put on. Owner only. -->
+      <div class="dark-panel" style="margin-bottom:16px;" id="superPlansPanel" data-default-open="false">
+        <h2>Plans</h2>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Each package is a row: name, monthly price, how many staff it covers, and whether it includes the Pro features. Adding a package here can also create its Stripe price. Then choose it for a company under that company's subscription settings.</p>
+        <div id="superPlansBody" style="font-size:14px;color:rgba(255,255,255,.6);">Loading…</div>
+      </div>
+
       <!-- Pricing: changes the price in Stripe. Owner only. Every change is logged. -->
       <div class="dark-panel" style="margin-bottom:16px;" id="superPricingPanel" data-default-open="false">
         <h2>Pricing</h2>
@@ -4300,6 +4307,48 @@ const CRON_SECRET_BADGE = {
   ok: ['#4ade80', 'On schedule'], soon: ['#fbbf24', 'Due soon'], overdue: ['#f87171', 'Overdue'], never: ['#fbbf24', 'No rotation recorded'],
   pending: ['#fbbf24', 'Pending: set it on the function'], pendingStale: ['#f87171', 'Not confirmed on the function'],
 };
+// ── Plans (packages): rows in the plans table, managed from Selko Admin > Plans. Falls back to the old built-in three if the table is missing. ──
+const FALLBACK_PLANS = [
+  { slug: 'standard',   name: 'Standard',   price_cents: 4900, seat_limit: 25,   allow_extra_seats: true, pro_features: false, stripe_lookup_key: 'doc_standard_2026', active: true, sort_order: 10 },
+  { slug: 'pro',        name: 'Pro',        price_cents: 9900, seat_limit: 50,   allow_extra_seats: true, pro_features: true,  stripe_lookup_key: 'doc_pro_2026',      active: true, sort_order: 20 },
+  { slug: 'enterprise', name: 'Enterprise', price_cents: null, seat_limit: null, allow_extra_seats: true, pro_features: true,  stripe_lookup_key: null,                active: true, sort_order: 30 },
+];
+let _planDefs = FALLBACK_PLANS.slice();
+async function loadPlanDefs() {
+  try {
+    const { data, error } = await sb.from('plans').select('*').order('sort_order').order('name');
+    if (!error && Array.isArray(data) && data.length) _planDefs = data;
+    else _planDefs = FALLBACK_PLANS.slice();
+  } catch (_e) { _planDefs = FALLBACK_PLANS.slice(); }
+  return _planDefs;
+}
+function planDef(slug) { return _planDefs.find((p) => p.slug === slug) || FALLBACK_PLANS.find((p) => p.slug === slug) || null; }
+function isProPlan(slug) { const d = planDef(slug); return !!(d && d.pro_features); }
+function planName(slug) { const d = planDef(slug); return d ? d.name : (slug ? String(slug) : 'None'); }
+function planPriceText(d) { return d.price_cents == null ? 'custom quote' : '$' + (d.price_cents / 100).toFixed(d.price_cents % 100 ? 2 : 0) + '/mo'; }
+// Options for a plan <select>: every active package, plus the company's current one even if it has since been switched off.
+function planOptionsHtml(selected) {
+  const list = _planDefs.filter((d) => d.active !== false || d.slug === selected);
+  const known = list.some((d) => d.slug === selected);
+  const opts = list.map((d) => `<option value="${hrOnbEsc(d.slug)}" ${d.slug === selected || (!selected && d.slug === 'standard') ? 'selected' : ''}>${hrOnbEsc(d.name)} — ${hrOnbEsc(planPriceText(d))}${d.active === false ? ' (inactive)' : ''}</option>`);
+  if (selected && !known) opts.push(`<option value="${hrOnbEsc(selected)}" selected>${hrOnbEsc(selected)}</option>`);
+  return opts.join('');
+}
+// Packages beyond Standard and Pro that are sold online show up in the self-serve picker (the select already lists those two).
+function fillBillingDocTierOptions() {
+  const sel = document.getElementById('billingDocTier'); if (!sel) return;
+  const chosen = sel.value;
+  sel.querySelectorAll('option[data-plan-extra]').forEach((o) => o.remove());
+  _planDefs.filter((d) => d.active !== false && d.stripe_lookup_key && !['doc_standard_2026', 'doc_pro_2026'].includes(d.stripe_lookup_key) && !['standard', 'pro', 'enterprise'].includes(d.slug))
+    .forEach((d) => { const o = document.createElement('option'); o.value = d.stripe_lookup_key; o.textContent = d.name; o.setAttribute('data-plan-extra', '1'); sel.appendChild(o); });
+  sel.value = chosen;
+}
+// Seat limit for a company: the package's limit plus any purchased blocks. null means no cap.
+function companySeatLimit(c) {
+  const d = planDef(c && c.plan);
+  if (!d || d.seat_limit == null) return null;
+  return d.seat_limit + (d.allow_extra_seats ? ((c.extra_seat_blocks || 0) * 25) : 0);
+}
 // ── Pricing (Selko Admin): calls manage-stripe-pricing, which talks to Stripe. ──
 let _priceUi = { plans: [], mode: null, busy: false, loaded: false };
 const PRICE_NAMES = { doc_standard_2026: 'Documents — Standard', doc_pro_2026: 'Documents — Pro', cred_addon_2026: 'Credentialing add-on', hr_addon_2026: 'HR add-on' };
@@ -4494,6 +4543,93 @@ async function deactivatePromoFlow(promoId, code) {
   _priceUi.busy = false;
   await loadPricingPanel();
 }
+// ── Selko Admin > Plans ──
+async function loadPlansPanel() {
+  const body = document.getElementById('superPlansBody'); if (!body) return;
+  if (!currentProfile?.is_super_admin) { body.textContent = 'Platform owner only.'; return; }
+  const { data, error } = await sb.from('plans').select('*').order('sort_order').order('name');
+  if (error) { body.textContent = /does not exist|schema cache|could not find/i.test(error.message || '') ? setupMissingMessage('plans.sql') : 'Could not load plans.'; return; }
+  _planDefs = (data && data.length) ? data : FALLBACK_PLANS.slice();
+  const { data: cos } = await sb.from('companies').select('plan').is('deleted_at', null);
+  const used = {}; (cos || []).forEach((c) => { used[c.plan] = (used[c.plan] || 0) + 1; });
+  const rows = _planDefs.map((d) => `<div class="plan-row" data-slug="${hrOnbEsc(d.slug)}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+      <div style="min-width:170px;"><b>${hrOnbEsc(d.name)}</b>${d.active === false ? ' <span style="color:#fbbf24;font-size:12px;">inactive</span>' : ''}<div style="font-size:12px;color:rgba(255,255,255,.5);">${hrOnbEsc(d.slug)} · ${used[d.slug] || 0} compan${(used[d.slug] || 0) === 1 ? 'y' : 'ies'}</div></div>
+      <div style="min-width:100px;">${hrOnbEsc(planPriceText(d))}</div>
+      <div style="min-width:120px;">${d.seat_limit == null ? 'Unlimited staff' : d.seat_limit + ' staff'}${d.allow_extra_seats && d.seat_limit != null ? ' (+blocks)' : ''}</div>
+      <div style="min-width:90px;">${d.pro_features ? 'Pro features' : 'Standard features'}</div>
+      <div style="min-width:150px;font-size:12px;color:rgba(255,255,255,.5);">${d.stripe_lookup_key ? 'Stripe: ' + hrOnbEsc(d.stripe_lookup_key) : 'Not sold online'}</div>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button class="btn btn-sm btn-ghost" onclick="editPlanRow('${hrOnbEsc(d.slug)}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
+        <button class="btn btn-sm btn-ghost" onclick="togglePlanActive('${hrOnbEsc(d.slug)}')" style="color:#fff;border-color:rgba(255,255,255,.2);">${d.active === false ? 'Turn on' : 'Turn off'}</button>
+      </div></div>`).join('');
+  body.innerHTML = rows + `<div id="planFormBox" style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;margin-top:4px;"></div>
+    <div id="planMsg" style="margin-top:8px;font-size:13px;"></div>`;
+  renderPlanForm(null);
+}
+function renderPlanForm(slug) {
+  const box = document.getElementById('planFormBox'); if (!box) return;
+  const d = slug ? planDef(slug) : null;
+  const v = (x) => hrOnbEsc(x == null ? '' : String(x));
+  box.innerHTML = `<div style="font-weight:700;margin-bottom:8px;">${d ? 'Edit ' + hrOnbEsc(d.name) : 'Add a package'}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;max-width:760px;">
+      <div><label class="inline-label">Name</label><input class="inline-input" id="plName" value="${v(d && d.name)}" placeholder="Solo Practitioner" /></div>
+      <div><label class="inline-label">Short code</label><input class="inline-input" id="plSlug" value="${v(d && d.slug)}" ${d ? 'disabled' : ''} placeholder="solo" /></div>
+      <div><label class="inline-label">Price per month ($)</label><input class="inline-input" id="plPrice" type="number" min="1" step="0.01" value="${d && d.price_cents != null ? (d.price_cents / 100).toFixed(2) : ''}" placeholder="20" ${d && d.stripe_lookup_key ? 'disabled title="Change the price of a package that is already in Stripe under Pricing below"' : ''} /></div>
+      <div><label class="inline-label">Staff covered (blank = unlimited)</label><input class="inline-input" id="plSeats" type="number" min="1" step="1" value="${v(d && d.seat_limit)}" placeholder="1" /></div>
+    </div>
+    <div style="margin:10px 0;"><label class="inline-label">Description</label><input class="inline-input" id="plDesc" value="${v(d && d.description)}" placeholder="Shown to Selko staff only" style="max-width:760px;" /></div>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plPro" ${d && d.pro_features ? 'checked' : ''}/> Includes the Pro features</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plExtra" ${!d || d.allow_extra_seats ? 'checked' : ''}/> Extra seat blocks (+25 staff, $30/mo) can be added</label>
+    ${d ? '' : `<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plStripe" checked/> Also create the monthly price in Stripe so companies can subscribe on their own</label>`}
+    <div style="margin-top:10px;display:flex;gap:8px;">
+      <button class="btn btn-sm btn-teal" id="plSaveBtn" onclick="savePlanForm(${d ? "'" + hrOnbEsc(d.slug) + "'" : 'null'})">${d ? 'Save changes' : 'Add package'}</button>
+      ${d ? '<button class="btn btn-sm btn-ghost" onclick="renderPlanForm(null)" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>' : ''}
+    </div>`;
+}
+function editPlanRow(slug) { renderPlanForm(slug); const b = document.getElementById('planFormBox'); if (b && b.scrollIntoView) b.scrollIntoView({ block: 'nearest' }); }
+function planMsg(t, bad) { const m = document.getElementById('planMsg'); if (m) { m.textContent = t; m.style.color = bad ? '#ff9a9a' : '#6ee7b7'; } }
+async function savePlanForm(slug) {
+  const name = document.getElementById('plName').value.trim();
+  const code = (slug || document.getElementById('plSlug').value.trim().toLowerCase());
+  const priceTxt = document.getElementById('plPrice').value.trim();
+  const seatsTxt = document.getElementById('plSeats').value.trim();
+  const cents = priceTxt === '' ? null : Math.round(Number(priceTxt) * 100);
+  const seats = seatsTxt === '' ? null : parseInt(seatsTxt, 10);
+  if (name.length < 2) { planMsg('Give the package a name.', true); return; }
+  if (!/^[a-z0-9][a-z0-9_-]{1,39}$/.test(code)) { planMsg('The short code is 2 to 40 letters, numbers, dashes or underscores, for example solo.', true); return; }
+  if (cents != null && (!Number.isFinite(cents) || cents < 100 || cents > 1000000)) { planMsg('The price must be between $1 and $10,000.', true); return; }
+  if (seats != null && (!Number.isInteger(seats) || seats < 1)) { planMsg('Staff covered must be a whole number of 1 or more, or blank for unlimited.', true); return; }
+  const row = { name, description: document.getElementById('plDesc').value.trim() || null, seat_limit: seats, allow_extra_seats: document.getElementById('plExtra').checked, pro_features: document.getElementById('plPro').checked };
+  const btn = document.getElementById('plSaveBtn'); if (btn) btn.disabled = true;
+  try {
+    if (slug) {
+      const { error } = await sb.from('plans').update(Object.assign({}, row, document.getElementById('plPrice').disabled ? {} : { price_cents: cents })).eq('slug', slug);
+      if (error) throw new Error(friendlyError(error));
+      toast('✓ Package saved');
+    } else {
+      if (_planDefs.some((d) => d.slug === code)) throw new Error('A package with that short code already exists.');
+      const wantStripe = !!(document.getElementById('plStripe') && document.getElementById('plStripe').checked);
+      if (wantStripe && cents == null) throw new Error('Enter a price to create it in Stripe, or untick the Stripe box.');
+      planMsg(wantStripe ? 'Creating the package and its Stripe price…' : 'Creating the package…', false);
+      const out = await callPricing(Object.assign({ action: 'plan_create', slug: code, price_cents: cents, create_stripe_price: wantStripe }, row));
+      toast('✓ Package added' + (out.stripe_mode ? ' (Stripe ' + out.stripe_mode + ' mode)' : ''));
+    }
+    await loadPlansPanel();
+    loadPricingLog();
+    _priceUi.loaded = false;
+  } catch (e) {
+    planMsg((e && e.message) || 'Could not save the package.', true);
+    if (btn) btn.disabled = false;
+  }
+}
+async function togglePlanActive(slug) {
+  const d = planDef(slug); if (!d) return;
+  const turnOff = d.active !== false;
+  if (turnOff && !confirm(`Turn off ${d.name}?\n\nIt will no longer be offered for new companies. Companies already on it keep working.`)) return;
+  const { error } = await sb.from('plans').update({ active: !turnOff }).eq('slug', slug);
+  if (error) { toast(friendlyError(error), true); return; }
+  await loadPlansPanel();
+}
 async function loadPricingLog() {
   const el = document.getElementById('superPricingLog'); if (!el) return;
   const { data, error } = await sb.from('stripe_price_changes').select('created_at, actor_email, action, lookup_key, stripe_mode, old_amount, new_amount, details').order('created_at', { ascending: false }).limit(10);
@@ -4504,6 +4640,7 @@ async function loadPricingLog() {
     const dd = r.details || {};
     const what = r.action === 'coupon_create' ? `created ${dd.percent_off}% off for ${dd.duration_in_months} mo, ${dd.max_redemptions} uses`
       : r.action === 'coupon_deactivate' ? 'turned off'
+      : r.action === 'plan_create' ? `package created at ${priceMoney(r.new_amount)}`
       : r.action === 'migrate' ? `moved ${dd.moved ?? '?'} subscriber(s) to ${priceMoney(r.new_amount)}` : `${priceMoney(r.old_amount)} → ${priceMoney(r.new_amount)}`;
     return `<div>${hrOnbEsc(d)} · ${hrOnbEsc(r.actor_email || 'unknown')} · ${hrOnbEsc(PRICE_NAMES[r.lookup_key] || (String(r.lookup_key).startsWith('promo:') ? 'Promo code ' + String(r.lookup_key).slice(6) : r.lookup_key))} · ${hrOnbEsc(what)} · ${hrOnbEsc(r.stripe_mode || '')}</div>`;
   }).join('');
@@ -5557,7 +5694,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-20-a';
+const APP_VERSION = '2026-10-20-b';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -6077,7 +6214,8 @@ async function initSession(user) {
 
     currentProfile = profile;
     currentCompany = company;
-    window._isPro  = ['pro','enterprise'].includes(company.plan);
+    await loadPlanDefs();
+    window._isPro  = isProPlan(company.plan);
     window._hasCredAddon = !!company.has_credentialing_addon;
     window._hasHrAddon = !!company.has_hr_addon;
 
@@ -13206,16 +13344,9 @@ async function checkStaffLimitBlock(companyId, additionalCount = 1) {
   // Standard-tier customer subject to this cap.
   if (companyId === 'b00ca9bc-d669-492d-8ad5-2d2783321ade') return null;
 
-  const limits = { standard: 25, pro: 50 }; // enterprise and any other value: no cap
-  const baseLimit = limits[currentCompany.plan];
-  if (!baseLimit) return null;
-
-  // Each purchased block adds 25 seats on top of the tier's base limit —
-  // same $30/mo-per-block rule for both Standard and Pro. Set via the
-  // Subscription Settings modal in Selko Admin, same place every other
-  // subscription attribute (Module, Credentialing tier, Plan) already
-  // gets managed — not a separate self-service purchase flow.
-  const limit = baseLimit + ((currentCompany.extra_seat_blocks || 0) * 25);
+  const limit = companySeatLimit(currentCompany); // null: unlimited (Enterprise and any package with no seat limit) or no plan
+  if (!limit) return null;
+  const tierName = planName(currentCompany.plan);
 
   const { count } = await sb.from('credtrack_staff')
     .select('id', { count: 'exact', head: true })
@@ -13230,12 +13361,11 @@ async function checkStaffLimitBlock(companyId, additionalCount = 1) {
   // impression. They still get told what they'd need once the trial
   // converts, just as a heads-up rather than a wall.
   if (currentCompany.custom_vars?.trial_status === 'trial') {
-    toast(`Heads up: you're at ${count} active staff, above the ${limit}-seat ${currentCompany.plan === 'standard' ? 'Standard' : 'Pro'} plan limit you're currently trialing. This won't block you during your trial, but you'll need to upgrade once it converts.`, true);
+    toast(`Heads up: you're at ${count} active staff, above the ${limit}-seat ${tierName} plan limit you're currently trialing. This won't block you during your trial, but you'll need to upgrade once it converts.`, true);
     return null;
   }
 
-  const tierName = currentCompany.plan === 'standard' ? 'Standard' : 'Pro';
-  return `Your ${tierName} plan${currentCompany.extra_seat_blocks ? ` (with ${currentCompany.extra_seat_blocks} extra seat block${currentCompany.extra_seat_blocks !== 1 ? 's' : ''})` : ''} is limited to ${limit} active staff members (currently at ${count}). Add another block of 25 seats for $30/mo, or upgrade${currentCompany.plan === 'pro' ? ' to Enterprise for unlimited staff' : ''} — contact Selko to upgrade.`;
+  return `Your ${tierName} plan${currentCompany.extra_seat_blocks ? ` (with ${currentCompany.extra_seat_blocks} extra seat block${currentCompany.extra_seat_blocks !== 1 ? 's' : ''})` : ''} is limited to ${limit} active staff members (currently at ${count}). ${planDef(currentCompany.plan)?.allow_extra_seats === false ? '' : 'Add another block of 25 seats for $30/mo, or '}upgrade${currentCompany.plan === 'pro' ? ' to Enterprise for unlimited staff' : ''} — contact Selko to upgrade.`;
 }
 
 async function saveNewStaff() {
@@ -17161,7 +17291,8 @@ async function loadBillingStatus() {
 
   const { data: sub } = await sb.from('subscriptions').select('status, current_period_end').eq('company_id', currentCompany.id).maybeSingle();
 
-  const docLabel = currentCompany.plan === 'enterprise' ? 'Enterprise' : (currentCompany.plan === 'pro' ? 'Pro' : (currentCompany.plan === 'standard' ? 'Standard' : 'None'));
+  const docLabel = currentCompany.plan ? planName(currentCompany.plan) : 'None';
+  fillBillingDocTierOptions();
   // FIXED — was showing "Basic"/"Pro" based on credentialing_tier, which
   // no longer reflects reality: Credentialing collapsed to a single tier.
   // Any customer who signed up before that change still has 'basic'
@@ -26597,7 +26728,8 @@ async function viewAsAdmin(companyId, companyName) {
   }
 
   currentCompany = company;
-  window._isPro  = ['pro','enterprise'].includes(company.plan);
+  await loadPlanDefs();
+  window._isPro  = isProPlan(company.plan);
   window._hasCredAddon = !!company.has_credentialing_addon;
   window._hasHrAddon = !!company.has_hr_addon;
   updateModuleTabVisibility(company, currentProfile);
@@ -26634,7 +26766,7 @@ async function exitViewAsAdmin() {
   const accessInfoEl = document.getElementById('viewAsAccessInfo'); if (accessInfoEl) accessInfoEl.textContent = '';
   currentProfile = { ..._superProfile };
   currentCompany = { ..._superCompany };
-  window._isPro  = ['pro','enterprise'].includes(currentCompany.plan);
+  window._isPro  = isProPlan(currentCompany.plan);
   window._hasCredAddon = !!currentCompany.has_credentialing_addon;
   window._hasHrAddon = !!currentCompany.has_hr_addon;
   updateModuleTabVisibility(currentCompany, currentProfile);
@@ -28333,6 +28465,9 @@ function wirePricingLazyLoad() {
   maybeLoad();
 }
 async function loadSuperAdmin() {
+  await loadPlanDefs();
+  const coPlanSel = document.getElementById('coPlan'); if (coPlanSel) coPlanSel.innerHTML = planOptionsHtml('standard');
+  loadPlansPanel();
   loadSuperAttention();
   loadSecretsPanel();
   _priceUi.loaded = false; wirePricingLazyLoad();
@@ -28436,7 +28571,7 @@ async function loadSuperAdmin() {
   cards.innerHTML = companies.map(c => {
     const staff = staffCounts[c.id] || 0;
     const docs  = docCounts[c.id]   || 0;
-    const planColor = c.plan === 'enterprise' ? '#fbbf24' : c.plan === 'pro' ? '#34d399' : 'rgba(255,255,255,.5)';
+    const planColor = c.plan === 'enterprise' ? '#fbbf24' : isProPlan(c.plan) ? '#34d399' : 'rgba(255,255,255,.5)';
     const statusDot = c.deleted_at ? '#ef4444' : (c.active ? '#34d399' : '#71717a');
     const statusLabel = c.deleted_at
       ? `Deleted \u2014 purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d`
@@ -29022,9 +29157,7 @@ async function editCompany(id) {
           <div>
             <label class="inline-label">Plan</label>
             <select class="inline-select" id="cfg_plan">
-              <option value="standard" ${c.plan==='standard'?'selected':''}>Standard — $49/mo</option>
-              <option value="pro"      ${c.plan==='pro'?'selected':''}>Pro — $99/mo</option>
-              <option value="enterprise" ${c.plan==='enterprise'?'selected':''}>Enterprise — custom quote</option>
+              ${planOptionsHtml(c.plan)}
             </select>
           </div>
         </div>
@@ -29247,8 +29380,7 @@ async function setCompanyModules(id, mode) {
 async function setCompanyPlan(id, plan) {
   const { error } = await sb.from('companies').update({ plan }).eq('id', id);
   if (error) { toast(friendlyError(error), true); return; }
-  const labels = { standard: 'Standard', pro: 'Pro', enterprise: 'Enterprise' };
-  toast(`✓ Plan set to: ${labels[plan]}`);
+  toast(`✓ Plan set to: ${planName(plan)}`);
   await loadSuperAdmin();
 
   const sel = document.getElementById(`planSelect_${id}`);
@@ -29267,6 +29399,7 @@ async function setCompanyPlan(id, plan) {
 // underlying setCompanyModules/setCredentialingTier/setCompanyPlan
 // functions, just moved into one popup so the card itself stays short.
 async function showSubscriptionSettingsModal(companyId, companyName) {
+  await loadPlanDefs();
   const existing = document.getElementById('subscriptionSettingsModal');
   if (existing) existing.remove();
 
@@ -29300,17 +29433,15 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
 
       <label class="inline-label">Plan</label>
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}',${jsArg(companyName)}, this.value)">
-        <option value="standard" ${c.plan === 'standard' || !c.plan ? 'selected' : ''}>Standard — $49/mo</option>
-        <option value="pro" ${c.plan === 'pro' ? 'selected' : ''}>Pro — $99/mo</option>
-        <option value="enterprise" ${c.plan === 'enterprise' ? 'selected' : ''}>Enterprise — custom quote</option>
+        ${planOptionsHtml(c.plan)}
       </select>
 
-      ${(c.plan === 'pro' || c.plan === 'standard' || !c.plan) ? `
+      ${(planDef(c.plan)?.seat_limit != null && planDef(c.plan)?.allow_extra_seats !== false) || !c.plan ? `
       <label class="inline-label">Extra seat blocks ($30/mo each, +25 seats per block)</label>
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
         <input type="number" class="inline-select" id="modalSeatBlocksInput" min="0" step="1" value="${c.extra_seat_blocks || 0}" style="width:80px;box-sizing:border-box;" />
         <button class="btn btn-sm btn-teal" onclick="applyModalSeatBlocksChange('${companyId}',${jsArg(companyName)})">Save</button>
-        <span style="font-size:13px;color:rgba(255,255,255,.58);">= ${((c.plan === 'pro' ? 50 : 25) + (c.extra_seat_blocks || 0) * 25)} total seats</span>
+        <span style="font-size:13px;color:rgba(255,255,255,.58);">= ${companySeatLimit({ plan: c.plan || 'standard', extra_seat_blocks: c.extra_seat_blocks })} total seats</span>
       </div>` : ''}
 
       <label class="inline-label">Beta pricing — $29.99/mo flat, regardless of modules enabled</label>
