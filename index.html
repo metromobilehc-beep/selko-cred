@@ -5701,7 +5701,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-21-a';
+const APP_VERSION = '2026-10-26-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -9751,6 +9751,12 @@ async function downloadFile(filePath, fileName, documentId) {
   }
 }
 
+// A document is "current" when it is not archived and has no expiry date or one that has not passed. Used so a package that is going out
+// (a bulk download, a partner packet) does not carry expired or replaced files along with the good ones.
+function docIsCurrent(d, today) {
+  today = today || hrOnbToday();
+  return !d.archived && (!d.expiry_date || String(d.expiry_date).slice(0, 10) >= today);
+}
 async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
   try {
     const { data: docs, error } = await sb.from('credtrack_documents')
@@ -9761,12 +9767,15 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
       .eq('document_types.partner_visible', true)
       .not('file_url', 'is', null);
     if (error) throw error;
-    if (!docs?.length) { toast('No files to download', true); return; }
+    const today = hrOnbToday();
+    const currentDocs = (docs || []).filter((d) => docIsCurrent(d, today));
+    const leftOut = (docs || []).length - currentDocs.length;
+    if (!currentDocs.length) { toast(leftOut ? `All ${leftOut} file(s) on record are expired, so nothing was downloaded. Upload the renewed documents first.` : 'No files to download', true); return; }
 
     toast('Preparing download…');
     const zip = new JSZip();
     const includedDocs = [];
-    for (const d of docs) {
+    for (const d of currentDocs) {
       const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(d.file_url);
       if (dlErr) { console.warn('Skipped', d.file_url, dlErr); continue; }
       includedDocs.push(d);
@@ -9782,7 +9791,7 @@ async function downloadAllPartnerDocs(credtrackStaffId, staffName) {
     a.click();
     URL.revokeObjectURL(url);
     await logBulkDocumentAccess(includedDocs, staffName);
-    toast('✓ Download ready');
+    toast(leftOut ? `✓ Download ready. ${leftOut} expired file(s) were left out.` : '✓ Download ready');
   } catch(e) {
     toast('Download failed: ' + friendlyError(e), true);
   }
@@ -9831,6 +9840,10 @@ function showBulkDownloadPicker() {
         ${staffChecklist || '<span style="font-size:14px;color:rgba(255,255,255,.55);">No staff found.</span>'}
       </div>
 
+      <label style="display:flex;align-items:flex-start;gap:8px;font-size:14px;color:rgba(255,255,255,.8);cursor:pointer;margin-bottom:14px;">
+        <input type="checkbox" id="bulkDlIncludeOld" style="margin-top:3px;" />
+        <span>Also include expired and archived files <span style="display:block;font-size:12px;color:rgba(255,255,255,.5);">Unchecked, the ZIP has only current documents (not expired, not replaced), which is what you want when sending to an agency. Anything included is named EXPIRED_ or ARCHIVED_.</span></span>
+      </label>
       <div style="display:flex;flex-direction:column;gap:10px;">
         <button class="btn btn-teal" onclick="runBulkDownload('selected')" style="justify-content:center;">Download selected therapist(s)</button>
         <button class="btn btn-teal" onclick="runBulkDownload(true)" style="justify-content:center;">Download current filtered results</button>
@@ -9867,9 +9880,15 @@ async function runBulkDownload(mode) {
   }
   // mode === false: no filters, download everything
 
-  const { data, error } = await q;
+  const { data: allData, error } = await q;
   if (error) { showStatus('Error: ' + error.message); return; }
-  if (!data?.length) { showStatus('No files found matching that selection.'); return; }
+  if (!allData?.length) { showStatus('No files found matching that selection.'); return; }
+
+  const includeOld = !!document.getElementById('bulkDlIncludeOld')?.checked;
+  const todayStr = hrOnbToday();
+  const data = includeOld ? allData : allData.filter((d) => docIsCurrent(d, todayStr));
+  const leftOut = allData.length - data.length;
+  if (!data.length) { showStatus(`All ${allData.length} file(s) in that selection are expired or archived. Tick "Also include expired and archived files" if you still want them.`); return; }
 
   showStatus(`Downloading 0 of ${data.length}…`);
 
@@ -9880,7 +9899,8 @@ async function runBulkDownload(mode) {
   for (const doc of data) {
     try {
       const staffFolder = (doc.credtrack_staff?.full_name || 'Unassigned').replace(/[\/\\:*?"<>|]/g, '_');
-      const typeName     = docDisplayName(doc, 'Document').replace(/[\/\\:*?"<>|]/g, '_');
+      const oldTag       = docIsCurrent(doc, todayStr) ? '' : (doc.archived ? 'ARCHIVED_' : 'EXPIRED_');
+      const typeName     = oldTag + docDisplayName(doc, 'Document').replace(/[\/\\:*?"<>|]/g, '_');
 
       if (doc.file_url) {
         const { data: blobData, error: dlErr } = await sb.storage.from(STORAGE_BUCKET).download(doc.file_url);
@@ -9919,7 +9939,7 @@ async function runBulkDownload(mode) {
   await logBulkDocumentAccess(includedDocs);
 
   document.getElementById('bulkDownloadModal')?.remove();
-  toast(failed > 0 ? `Downloaded ${done} file(s), ${failed} failed` : `✓ ${done} file(s) downloaded`);
+  toast((failed > 0 ? `Downloaded ${done} file(s), ${failed} failed` : `✓ ${done} file(s) downloaded`) + (leftOut ? `. ${leftOut} expired or archived file(s) left out.` : ''));
 }
 
 let expViewMode = 'attention';
