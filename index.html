@@ -107,6 +107,17 @@ window.selkoSharedAuthStorage = {
 // Light/Dark choice is applied before first paint so the page never flashes the wrong theme.
 try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') document.documentElement.setAttribute('data-theme', 'light'); } catch (e) {}
 </script>
+<style id="uiPatchOct27">
+/* Profile window: same size on every tab (content scrolls inside), and the page behind it does not move. */
+#providerTabModal > div { width: min(clamp(625px, 62.5vw, 1125px), calc(100vw - 40px)) !important; height: min(85vh, 860px) !important; max-height: 88vh !important; }
+#providerTabModal { overscroll-behavior: contain; }
+#providerTabModal [style*="overflow-y:auto"] { overscroll-behavior: contain; }
+body:has(#providerTabModal) { overflow: hidden; }
+/* Drag and drop */
+[data-dropzone] { border-radius: 8px; transition: background .12s, outline-color .12s; }
+[data-dropzone].dz-over { outline: 2px dashed var(--teal, #0d9488); outline-offset: 4px; background: rgba(20,184,166,.10) !important; }
+.dz-hint { font-size: 13px; color: var(--gray-400, rgba(255,255,255,.5)); margin: 2px 0 6px; }
+</style>
 </head>
 <body>
 
@@ -512,8 +523,9 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
             <input type="date" id="upExp" />
           </div>
         </div>
-        <div class="form-group">
+        <div class="form-group" data-dropzone="#upFilesMulti">
           <label class="field-label">Attach document (front & back, if applicable)</label>
+          <div class="dz-hint">Or drag and drop the file(s) here (front and back together)</div>
           <div class="file-btns">
             <label for="upFilesMulti" class="file-label file-label-primary">📎 Choose file(s)</label>
             <label for="upCameraSingle" id="upCameraLabel" class="file-label file-label-secondary">📷 Take photo (front)</label>
@@ -826,8 +838,9 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
           <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:3px;">This type can be held more than once. A renewal with the same label replaces only that one.</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;gap:12px;align-items:end;">
-          <div>
+          <div data-dropzone="#auFile">
             <label class="inline-label">Attach file (optional)</label>
+            <div class="dz-hint">Or drop a file here</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <label for="auFile" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">📎 Choose file</label>
               <button class="btn btn-sm btn-gold" id="scanBtn" onclick="scanCredential()" style="display:none;">🔍 Scan document</button>
@@ -836,8 +849,9 @@ try { var __t = localStorage.getItem('cred_theme'); if (__t === 'light') documen
             </div>
             <input type="file" id="auFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="onAuFileSelected(this)" />
           </div>
-          <div>
+          <div data-dropzone="#auFile2">
             <label class="inline-label">Back of document (optional)</label>
+            <div class="dz-hint">Or drop a file here</div>
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
               <label for="auFile2" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--teal);color:#fff;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">📎 Choose file</label>
               <label for="auCamera2" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;background:var(--navy3);color:#fff;border-radius:6px;cursor:pointer;font-size:14px;font-weight:600;">📷 Take photo</label>
@@ -5701,7 +5715,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-26-a';
+const APP_VERSION = '2026-10-27-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -8044,6 +8058,65 @@ function refreshUpFileDisplay() {
     document.getElementById('photoPreview').style.display = 'none';
   }
 }
+
+// ── Drag and drop: drop files on any area marked data-dropzone="#inputId[,#secondInputId]" and they go into those file inputs
+//    exactly as if chosen with the button (the input's own onchange runs, so scanning, validation and previews all happen as usual).
+function dropFilesIntoInputs(spec, fileList) {
+  const ids = String(spec || '').split(',').map((x) => x.trim()).filter(Boolean);
+  const files = Array.from(fileList || []);
+  if (!ids.length || !files.length) return false;
+  const first = document.querySelector(ids[0]);
+  if (!first) return false;
+  const okType = (input, f) => {
+    const acc = (input.getAttribute('accept') || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+    if (!acc.length) return true;
+    const name = (f.name || '').toLowerCase(), type = (f.type || '').toLowerCase();
+    return acc.some((a) => a.startsWith('.') ? name.endsWith(a) : a.endsWith('/*') ? type.startsWith(a.slice(0, -1)) : type === a);
+  };
+  const good = files.filter((f) => okType(first, f));
+  if (!good.length) { toast('That file type is not accepted here. Use ' + ((first.getAttribute('accept') || 'a supported file').replace(/\./g, '').toUpperCase().replace(/,/g, ', ')) + '.', true); return false; }
+  if (good.length < files.length) toast(`${files.length - good.length} file(s) were skipped because of their type.`, true);
+  const give = (input, list) => {
+    const dt = new DataTransfer(); list.forEach((f) => dt.items.add(f)); input.files = dt.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  if (ids.length === 1) {
+    const multi = first.hasAttribute('multiple');
+    if (!multi && good.length > 1) toast('Only one file can go here. The first one was used.', true);
+    give(first, multi ? good : good.slice(0, 1));
+  } else {
+    ids.forEach((id, i) => { const el = document.querySelector(id); if (el && good[i]) give(el, [good[i]]); });
+    if (good.length > ids.length) toast(`Only ${ids.length} files can go here. The first ${ids.length} were used.`, true);
+  }
+  return true;
+}
+(function installDropZones() {
+  if (window._dropZonesInstalled) return; window._dropZonesInstalled = true;
+  const hasFiles = (e) => e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  const zoneOf = (e) => (e.target && e.target.closest ? e.target.closest('[data-dropzone]') : null);
+  let current = null;
+  const clear = () => { if (current) { current.classList.remove('dz-over'); current = null; } };
+  document.addEventListener('dragover', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();   // also stops the browser from opening a file dropped outside a drop area and leaving the app
+    const z = zoneOf(e);
+    if (z !== current) { clear(); if (z) { z.classList.add('dz-over'); current = z; } }
+    e.dataTransfer.dropEffect = z ? 'copy' : 'none';
+  });
+  document.addEventListener('dragleave', (e) => { if (!e.relatedTarget) clear(); });
+  document.addEventListener('drop', (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    const z = zoneOf(e); clear();
+    if (z) dropFilesIntoInputs(z.getAttribute('data-dropzone'), e.dataTransfer.files);
+  });
+  // Scrolling over the dark backdrop of an open window must not scroll the page behind it.
+  document.addEventListener('wheel', (e) => {
+    const t = e.target;
+    if (!t || !t.parentElement || t.parentElement !== document.body) return;
+    if (t.style && t.style.position === 'fixed' && t.scrollHeight <= t.clientHeight + 1) e.preventDefault();
+  }, { passive: false });
+})();
 
 function onUpFilesMultiSelected(input) {
   const files = input.files;
@@ -11113,7 +11186,7 @@ function showFullProfileSheet(staffId) {
       <div style="color:#fff;font-size:20px;font-weight:700;margin-bottom:2px;">${s.full_name}</div>
       <div style="color:rgba(255,255,255,.58);font-size:14px;margin-bottom:14px;">Full credentialing profile — everything about this person in one place.</div>
 
-      <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <div data-dropzone="#cvImportFile" style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:12px;margin-bottom:20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
         <span style="font-size:14px;color:rgba(255,255,255,.62);flex:1;min-width:200px;">Have their CV or resume? Import education, licenses, hospital privileges, and specialty info automatically — you'll review everything before it saves.</span>
         <input type="file" id="cvImportFile" accept=".pdf,.jpg,.jpeg,.png" style="display:none;" onchange="handleCvImportFile('${staffId}',${jsArg(s.full_name)})" />
         <label for="cvImportFile" class="btn btn-sm btn-teal" style="cursor:pointer;">📄 Import from document</label>
@@ -15322,7 +15395,7 @@ async function openProfileDocUpload(staffId, staffName) {
         <input class="inline-input" type="text" id="pauQual" maxlength="40" list="pauQualList" placeholder="e.g. TX, OK, Vehicle 2" autocomplete="off" style="width:100%;box-sizing:border-box;" />
         <datalist id="pauQualList"></datalist>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;" data-dropzone="#pauFile,#pauFile2">
         <div>
           <label class="inline-label">Attach file (optional)</label>
           <input type="file" class="inline-input" id="pauFile" accept=".pdf,.jpg,.jpeg,.png" onchange="document.getElementById('pauFileName').textContent = this.files[0]?.name || 'No file selected';" />
@@ -16845,7 +16918,7 @@ function showCredentialingFiles(staffId, staffName) {
       <div style="flex:1;display:flex;flex-direction:column;padding:24px;min-width:0;max-height:80vh;">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:2px;">${staffName}</div>
       <div style="color:rgba(255,255,255,.58);font-size:14px;margin-bottom:14px;">Credentialing files for this provider — license copies, board cert letters, anything needed for an application.</div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;" data-dropzone="#newProviderCredFile">
         <input type="file" id="newProviderCredFile" style="color:#fff;font-size:14px;flex:1;min-width:160px;" />
         <button class="btn btn-sm btn-teal" onclick="uploadCredentialingFile('${staffId}')">+ Upload</button>
       </div>
