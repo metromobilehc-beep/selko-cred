@@ -592,7 +592,7 @@ body:has(#providerTabModal) { overflow: hidden; }
     <div class="page-header">
       <div>
         <h1 id="partnerGreeting">Staff Credentials</h1>
-        <p>Verified documents for your linked staff.</p>
+        <p>Reviewed documents for your linked staff.</p>
         <p id="partnerStatSummary" style="color:var(--teal); font-weight:600; font-size:15px; margin-top:6px;"></p>
       </div>
     </div>
@@ -765,24 +765,24 @@ body:has(#providerTabModal) { overflow: hidden; }
       </div>
       <div style="display:flex;gap:8px;margin-bottom:14px;">
         <button class="tab active" id="docViewToggle-all" onclick="setDocViewMode('all')" style="background:var(--teal);border-color:var(--teal);color:#fff;font-weight:700;">All</button>
-        <button class="tab" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:transparent;border-color:var(--danger);color:var(--danger);">⚠ Needs verification <span id="needsVerifCount"></span></button>
-        <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')" style="background:transparent;border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7);">✓ Verified <span id="verifiedCount"></span></button>
-        <button class="tab" id="docViewToggle-noFile" onclick="setDocViewMode('noFile')" style="background:transparent;border-color:var(--gold);color:var(--gold);">⚠ Verified, no file <span id="noFileCount"></span></button>
+        <button class="tab" id="docViewToggle-needs" onclick="setDocViewMode('needs')" style="background:transparent;border-color:var(--danger);color:var(--danger);">⚠ Needs review <span id="needsVerifCount"></span></button>
+        <button class="tab" id="docViewToggle-verified" onclick="setDocViewMode('verified')" style="background:transparent;border-color:rgba(255,255,255,.2);color:rgba(255,255,255,.7);">✓ Reviewed <span id="verifiedCount"></span></button>
+        <button class="tab" id="docViewToggle-noFile" onclick="setDocViewMode('noFile')" style="background:transparent;border-color:var(--gold);color:var(--gold);">⚠ Reviewed, no file <span id="noFileCount"></span></button>
       </div>
       <div class="filter-bar">
         <select class="filter-sel" id="fEmp"      onchange="loadAdminDocs()"><option value="">All staff</option></select>
         <select class="filter-sel" id="fType"     onchange="loadAdminDocs()"><option value="">All types</option></select>
         <select class="filter-sel" id="fVerified" onchange="loadAdminDocs()" style="display:none;">
           <option value="">All statuses</option>
-          <option value="0">Unverified</option>
-          <option value="1">Verified</option>
+          <option value="0">Not reviewed</option>
+          <option value="1">Reviewed</option>
         </select>
         <select class="filter-sel" id="fArchived" onchange="loadAdminDocs()">
           <option value="active">Active documents</option>
           <option value="archived">Archived (expired 3+ months)</option>
           <option value="all">All (active + archived)</option>
         </select>
-        <select class="filter-sel" id="fUploaded" onchange="loadAdminDocs()" title="Only documents uploaded within this window. The Needs verification and Verified, no file views always show everything.">
+        <select class="filter-sel" id="fUploaded" onchange="loadAdminDocs()" title="Only documents uploaded within this window. The Needs review and Reviewed, no file views always show everything.">
           <option value="30" selected>Uploaded: last 30 days</option>
           <option value="90">Uploaded: last 90 days</option>
           <option value="365">Uploaded: last year</option>
@@ -901,7 +901,7 @@ body:has(#providerTabModal) { overflow: hidden; }
         <table>
           <thead><tr>
             <th>Staff member</th><th>Document</th><th>Issued</th><th>Expires</th>
-            <th>Status</th><th>Verified</th><th>Uploaded</th><th>Actions</th>
+            <th>Status</th><th title="Reviewed = an admin looked at the uploaded document and confirmed it is complete and legible. This is not primary-source verification with the issuer.">Reviewed</th><th>Uploaded</th><th>Actions</th>
           </tr></thead>
           <tbody id="adminDocsTbody"></tbody>
         </table>
@@ -2413,7 +2413,7 @@ body:has(#providerTabModal) { overflow: hidden; }
               <tr><td>Bulk download all staff files</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
               <tr><td>Export compliance report (Excel / PDF)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
               <tr><td>Custom branding (logo, colors)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Upload, verify, track staff documents</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
+              <tr><td>Upload, review, track staff documents</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
               <tr><td>Overview stats, Expiration Tracker</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
             </tbody>
           </table>
@@ -2765,7 +2765,7 @@ body:has(#providerTabModal) { overflow: hidden; }
 
       <div id="settingsPartnersHeader" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Partners</span>
-        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Give referral partners read-only access to their own staff's verified documents.</div>
+        <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">Give referral partners read-only access to their own staff's reviewed documents.</div>
       </div>
 
       <!-- Standard-tier teaser — shown instead of the real panel below when
@@ -2801,7 +2801,7 @@ body:has(#providerTabModal) { overflow: hidden; }
 
         <div style="margin-bottom:20px;">
           <div style="font-size:15px;font-weight:600;color:#fff;margin-bottom:8px;">Step 2 — Assign staff to agencies</div>
-          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Choose which agencies can see each staff member's verified documents — click an agency to manage its staff list.</p>
+          <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Choose which agencies can see each staff member's reviewed documents — click an agency to manage its staff list.</p>
           <div class="tbl-wrap">
             <table>
               <thead><tr><th>Agency</th><th>Staff assigned</th><th>Actions</th></tr></thead>
@@ -5715,7 +5715,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-27-a';
+const APP_VERSION = '2026-10-29-b';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -7813,13 +7813,13 @@ async function initPartnerView(partnerRecord) {
         </div>
         <span class="panel-chevron">▸</span>
       </div>
-      <div class="panel-body" style="display:none;">${docRows || '<div class="empty-state" style="padding:16px;">No verified documents are visible yet.</div>'}</div>
+      <div class="panel-body" style="display:none;">${docRows || '<div class="empty-state" style="padding:16px;">No reviewed documents are visible yet.</div>'}</div>
     </div>` };
   }));
 
   const totalDocs = panels.reduce((sum, p) => sum + p.docCount, 0);
   document.getElementById('partnerStatSummary').textContent =
-    `${assignedStaff.length} staff member${assignedStaff.length!==1?'s':''} · ${totalDocs} verified document${totalDocs!==1?'s':''} shared`;
+    `${assignedStaff.length} staff member${assignedStaff.length!==1?'s':''} · ${totalDocs} reviewed document${totalDocs!==1?'s':''} shared`;
 
   container.innerHTML = panels.map(p => p.html).join('');
   filterPartnerStaffList();
@@ -7909,7 +7909,7 @@ async function loadMyDocs(staffId) {
     const typeName = doc.document_types?.name || doc.label;
     const icon = icons[typeName] || '📄';
     const badge = doc.verified
-      ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Verified</span>'
+      ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Reviewed</span>'
       : '<span class="badge badge-pending"  style="margin-left:6px;">Pending review</span>';
     return `<div class="doc-item">
       <div class="doc-icon">${icon}</div>
@@ -8933,7 +8933,7 @@ async function exportProReportExcel() {
     col += 2;
   });
 
-  const headers = ['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Verified','File'];
+  const headers = ['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Reviewed','File'];
   const headerRowNum = 7;
   const headerRow = ws.getRow(headerRowNum);
   headers.forEach((h, i) => {
@@ -9028,7 +9028,7 @@ async function exportProReportPDF() {
 
   doc.autoTable({
     startY: 108,
-    head: [['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Verified','File']],
+    head: [['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Reviewed','File']],
     body,
     styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
     headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
@@ -9071,7 +9071,7 @@ function showAuditPacketPicker() {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:400px;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Audit-ready compliance packet</div>
-      <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:18px;">Builds one PDF for a single staff member: a summary page of every document on file, followed by the actual uploaded file for each verified document — ready to hand to a surveyor or auditor as-is.</div>
+      <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:18px;">Builds one PDF for a single staff member: a summary page of every document on file, followed by the actual uploaded file for each reviewed document — ready to hand to a surveyor or auditor as-is.</div>
       <div style="margin-bottom:18px;">
         <label class="inline-label">Staff member</label>
         <select class="inline-select" id="auditPacketStaff" style="width:100%;">
@@ -9143,7 +9143,7 @@ async function generateAuditPacket() {
 
     const verifiedFiles = []; // { doc, staff } — only these get their actual file embedded below
     const body = (docs || []).map(d => {
-      const status = d.verified ? 'Verified' : 'Pending';
+      const status = d.verified ? 'Reviewed' : 'Pending';
       const expiryLabel = d.expiry_date
         ? (new Date(d.expiry_date) < new Date() ? 'EXPIRED' : fmtDate(d.expiry_date))
         : 'No expiration';
@@ -9162,7 +9162,7 @@ async function generateAuditPacket() {
           const status = data.row.raw[3];
           const expires = data.row.raw[2];
           if (expires === 'EXPIRED') { data.cell.styles.fillColor = [254,226,226]; }
-          else if (status === 'Verified') { data.cell.styles.fillColor = [209,250,229]; }
+          else if (status === 'Reviewed') { data.cell.styles.fillColor = [209,250,229]; }
           else { data.cell.styles.fillColor = [254,243,199]; }
         }
       },
@@ -9170,7 +9170,7 @@ async function generateAuditPacket() {
 
     cover.setFontSize(8);
     cover.setTextColor(120, 120, 120);
-    cover.text(`${verifiedFiles.length} verified document file${verifiedFiles.length !== 1 ? 's' : ''} follow this summary.`, 24, cover.internal.pageSize.getHeight() - 20);
+    cover.text(`${verifiedFiles.length} reviewed document file${verifiedFiles.length !== 1 ? 's' : ''} follow this summary.`, 24, cover.internal.pageSize.getHeight() - 20);
 
     // ── 2. Load the jsPDF cover into pdf-lib, then append the real files ──
     const { PDFDocument } = PDFLib;
@@ -9200,7 +9200,7 @@ async function generateAuditPacket() {
           // clearly even once it's printed or forwarded outside the app.
           const labelPage = packet.addPage([612, 100]); // Letter width, short strip
           labelPage.drawText(`${typeName} — ${f.name}`, { x: 24, y: 60, size: 12 });
-          labelPage.drawText(`Verified${d.expiry_date ? ' · Expires ' + fmtDate(d.expiry_date) : ''}`, { x: 24, y: 40, size: 9, color: PDFLib.rgb(0.4, 0.4, 0.4) });
+          labelPage.drawText(`Reviewed${d.expiry_date ? ' · Expires ' + fmtDate(d.expiry_date) : ''}`, { x: 24, y: 40, size: 9, color: PDFLib.rgb(0.4, 0.4, 0.4) });
 
           if (ext === 'pdf') {
             const srcDoc = await PDFDocument.load(bytes);
@@ -9492,8 +9492,8 @@ async function loadAdminDocs() {
     const name     = r.credtrack_staff?.full_name || '—';
     const typeName = r.document_types?.name || r.label;
     const verHtml  = r.verified
-      ? (isOffice ? '<span class="badge badge-verified">✓ Verified</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}',${jsArg((r.credtrack_staff?.full_name || ''))},${jsArg(docDisplayName(r))})" title="Click to unverify — for correcting a mistake, not routine use">✓ Verified</span>`)
-      : (isOffice ? '<span class="badge badge-none">Pending</span>' : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')">Verify</button>`);
+      ? (isOffice ? '<span class="badge badge-verified">✓ Reviewed</span>' : `<span class="badge badge-verified" style="cursor:pointer;" onclick="unverifyDoc('${r.id}',${jsArg((r.credtrack_staff?.full_name || ''))},${jsArg(docDisplayName(r))})" title="Click to undo the review — for correcting a mistake, not routine use">✓ Reviewed</span>`)
+      : (isOffice ? '<span class="badge badge-none">Pending</span>' : `<button class="btn btn-sm btn-teal" onclick="verifyDoc('${r.id}')" title="Marks the uploaded document as reviewed. This is not primary-source verification.">Mark reviewed</button>`);
     const fileHtml = [
       r.file_url   ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(r.file_url)},'${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">${r.file_url_2 ? 'View front' : 'View file'}</button>` : '',
       r.file_url_2 ? `<button class="btn btn-sm btn-ghost" onclick="viewFile(${jsArg(r.file_url_2)},'${r.id}')" style="color:var(--teal-l);border-color:var(--teal-l);font-size:14px;">View back</button>` : '',
@@ -9704,7 +9704,7 @@ async function verifyDoc(id) {
   }).eq('id', id).select('id');
   if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
-  toast('Document verified');
+  toast('Document marked reviewed');
   await loadAdminDocs();
 }
 
@@ -9713,13 +9713,13 @@ async function verifyDoc(id) {
 // verified_by/verified_at along with the flag itself, since neither is
 // meaningful once a document is no longer considered verified.
 async function unverifyDoc(id, staffName, typeName) {
-  if (!confirm(`Unverify "${typeName}" for ${staffName}?\n\nThis is for correcting a mistake — e.g. marked verified without an actual file on file. The document will show as unverified/pending again.`)) return;
+  if (!confirm(`Undo the review of "${typeName}" for ${staffName}?\n\nThis is for correcting a mistake — e.g. marked reviewed without an actual file on file. The document will show as pending again.`)) return;
   const { data: changed, error } = await sb.from('credtrack_documents').update({
     verified: false, verified_by: null, verified_at: null
   }).eq('id', id).select('id');
   if (error) { toast(friendlyError(error), true); return; }
   if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this document.", true); return; }
-  toast('Document unverified');
+  toast('Review undone — document is pending again');
   await loadAdminDocs();
 }
 
@@ -13832,7 +13832,7 @@ async function loadFpDocsSummary(staffId) {
   container.innerHTML = data.map(doc => {
     const typeName = doc.document_types?.name || doc.label;
     const badge = doc.verified
-      ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Verified</span>'
+      ? '<span class="badge badge-verified" style="margin-left:6px;">✓ Reviewed</span>'
       : '<span class="badge badge-pending" style="margin-left:6px;">Pending review</span>';
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,.06);">
       <span style="color:#fff;">${hrOnbEsc(docDisplayName(doc))}${badge}</span>
@@ -13950,123 +13950,191 @@ async function toggleExcludeFromCompliance(staffId, currentlyExcluded) {
   await loadStaffTable();
 }
 
-// NPI registry search, in two steps so the state is never applied silently:
-// first a small chooser (the license state from the profile is pre-selected,
-// or "any state" when there isn't one), then the search itself. A wrong or
-// missing state is the most common reason a real provider "isn't found".
+// NPI registry search and auto-fill. One window: name / NPI number / state
+// (pre-filled from the open profile), a results list, then a review step
+// that shows each registry value next to what the profile has now, with a
+// checkbox per field. Applying saves the checked fields to the person's
+// record, fills the open profile's boxes, and logs each change.
+let _npiCtx = null;
+
+function npiProfileValue(id, fallback) {
+  const el = document.getElementById(id);
+  return el ? String(el.value || '').trim() : String(fallback || '').trim();
+}
+
 function lookupNpi(staffId, fullName, licenseState) {
-  document.getElementById('npiSearchOptionsModal')?.remove();
+  const s = staffList.find(x => x.id === staffId) || {};
+  const namePart = String(fullName || '').split(',')[0].trim();
+  const words = namePart.split(' ').filter(Boolean);
+  _npiCtx = { staffId, fullName: String(fullName || ''), results: [], fallback: false };
+  document.getElementById('npiSearchModal')?.remove();
   const modal = document.createElement('div');
-  modal.id = 'npiSearchOptionsModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  const have = String(licenseState || '').trim();
-  const note = have
-    ? `This profile lists a license in <strong>${hrOnbEsc(stateName(have))}</strong>, so the search is limited to that state. If they registered or practice somewhere else, change it below or choose "Any state".`
-    : `This profile has no license state, so by default the search covers <strong>all states</strong>. Choose a state to narrow the results, which helps with common names.`;
+  modal.id = 'npiSearchModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
+  const first = npiProfileValue('fpFirstName', s.first_name || words[0] || '');
+  const last = npiProfileValue('fpLastName', s.last_name || words.slice(1).join(' ') || namePart);
+  const npi = npiProfileValue('fpNpi', s.npi_number || '');
+  const st = npiProfileValue('fpLicenseState', licenseState || s.license_state || '');
   modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:26px;width:100%;max-width:440px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:6px;">Look up NPI — ${hrOnbEsc(fullName)}</div>
-      <div style="color:rgba(255,255,255,.66);font-size:14px;line-height:1.5;margin-bottom:14px;">${note}</div>
-      <label class="inline-label" for="npiSearchState">Search in</label>
-      <select class="inline-select" id="npiSearchState" style="margin-bottom:16px;">${stateOptionsHtml(have, 'Any state (search nationwide)')}</select>
-      <div style="display:flex;gap:8px;">
-        <button class="btn btn-teal" onclick="runNpiSearchFromOptions('${staffId}',${jsArg(String(fullName))})" style="flex:1;justify-content:center;">Search</button>
-        <button class="btn btn-ghost" onclick="document.getElementById('npiSearchOptionsModal').remove()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+    <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:560px;max-height:90vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
+      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Look up NPI</div>
+      <div style="color:rgba(255,255,255,.66);font-size:14px;line-height:1.5;margin-bottom:14px;">Search the public CMS NPI Registry, pick the right person, and choose which details to copy into this profile.</div>
+      <div id="npiStepSearch">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+          <div><label class="inline-label" for="npiQFirst">First name</label><input class="inline-input" id="npiQFirst" value="${hrOnbEsc(first)}" /></div>
+          <div><label class="inline-label" for="npiQLast">Last name</label><input class="inline-input" id="npiQLast" value="${hrOnbEsc(last)}" /></div>
+          <div><label class="inline-label" for="npiQNumber">NPI number (optional)</label><input class="inline-input" id="npiQNumber" value="${hrOnbEsc(npi)}" placeholder="10 digits" inputmode="numeric" /></div>
+          <div><label class="inline-label" for="npiQState">State</label><select class="inline-select" id="npiQState">${stateOptionsHtml(st, 'Any state (search nationwide)')}</select></div>
+        </div>
+        <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:12px;">If an NPI number is entered, the search uses only that number. A wrong or missing state is the most common reason a real provider isn't found.</div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-teal" id="npiSearchBtn" onclick="runNpiSearch()" style="flex:1;justify-content:center;">Search</button>
+          <button class="btn btn-ghost" onclick="closeNpiModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+        </div>
+        <div id="npiResultsArea" style="margin-top:16px;"></div>
       </div>
+      <div id="npiStepReview" style="display:none;"></div>
     </div>`;
   document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  modal.addEventListener('click', e => { if (e.target === modal) closeNpiModal(); });
+  modal.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') runNpiSearch(); });
 }
 
-function runNpiSearchFromOptions(staffId, fullName) {
-  const state = document.getElementById('npiSearchState').value;
-  document.getElementById('npiSearchOptionsModal')?.remove();
-  runNpiSearch(staffId, fullName, state);
-}
+function closeNpiModal() { document.getElementById('npiSearchModal')?.remove(); }
 
-async function runNpiSearch(staffId, fullName, state) {
-  const namePart = fullName.split(',')[0].trim(); // drop the credential after the comma, e.g. "Kym Crane, SLP" -> "Kym Crane"
-  const nameWords = namePart.split(' ').filter(Boolean);
-  const firstName = nameWords[0] || '';
-  const lastName = nameWords.slice(1).join(' ') || namePart; // handles multi-word last names reasonably
-
-  toast(state ? `Searching the public NPI registry in ${stateName(state)}...` : 'Searching the public NPI registry (all states)...');
+async function runNpiSearch() {
+  const ctx = _npiCtx; if (!ctx) return;
+  const firstName = document.getElementById('npiQFirst').value.trim();
+  const lastName = document.getElementById('npiQLast').value.trim();
+  const npi = document.getElementById('npiQNumber').value.replace(/\D/g, '');
+  const state = document.getElementById('npiQState').value;
+  const area = document.getElementById('npiResultsArea');
+  const btn = document.getElementById('npiSearchBtn');
+  if (!npi && lastName.replace(/[^A-Za-z]/g, '').length < 2) { area.innerHTML = '<div style="color:var(--gold);font-size:14px;">Enter a last name (2+ letters) or a 10-digit NPI number.</div>'; return; }
+  if (npi && npi.length !== 10) { area.innerHTML = '<div style="color:var(--gold);font-size:14px;">An NPI number is 10 digits.</div>'; return; }
+  btn.disabled = true; area.innerHTML = '<div style="color:rgba(255,255,255,.62);font-size:14px;">Searching the public NPI registry…</div>';
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/lookup-npi', {
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/npi-search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ firstName, lastName, state: state || undefined }),
+      body: JSON.stringify(npi ? { npi } : { firstName, lastName, state: state || undefined }),
     });
-    const result = await res.json();
-    if (result.error) { toast('NPI lookup failed: ' + result.error, true); return; }
-    showNpiResultsModal(staffId, fullName, result.results || [], result.usedLastNameOnlyFallback, state || '');
+    const result = await res.json().catch(() => ({}));
+    if (!res.ok || result.error) { area.innerHTML = `<div style="color:#ff9b9b;font-size:14px;">${hrOnbEsc(res.status === 404 ? 'The NPI search service is not set up yet (the npi-search function needs to be deployed).' : (result.error || 'NPI lookup failed.'))}</div>`; return; }
+    ctx.results = result.results || []; ctx.fallback = !!result.usedLastNameOnlyFallback;
+    renderNpiResults(npi ? '' : state);
   } catch (e) {
-    toast('NPI lookup failed: ' + friendlyError(e), true);
+    area.innerHTML = `<div style="color:#ff9b9b;font-size:14px;">${hrOnbEsc('NPI lookup failed: ' + friendlyError(e))}</div>`;
+  } finally { btn.disabled = false; }
+}
+
+function renderNpiResults(state) {
+  const ctx = _npiCtx; const area = document.getElementById('npiResultsArea'); if (!ctx || !area) return;
+  if (!ctx.results.length) {
+    area.innerHTML = `<div style="color:rgba(255,255,255,.62);font-size:14px;">No matches in the public NPI registry. They may not be registered, or the name${state ? '/state' : ''} may not match exactly. ${state ? 'This search only looked in ' + hrOnbEsc(stateName(state)) + ' — try “Any state”. ' : ''}You can still type the NPI into the profile by hand.</div>`;
+    return;
   }
+  area.innerHTML = (ctx.fallback ? '<div style="color:var(--gold);font-size:14px;margin-bottom:10px;">No exact match on first name — showing everyone registered under that last name. Check first names carefully.</div>' : '') +
+    '<div style="color:rgba(255,255,255,.62);font-size:13px;margin-bottom:8px;">Click the right person to review what will be copied into the profile.</div>' +
+    '<div style="max-height:300px;overflow-y:auto;">' + ctx.results.map((r, i) => `
+      <div onclick="showNpiReview(${i})" style="cursor:pointer;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:8px;">
+        <div style="color:#fff;font-weight:600;font-size:16px;">${hrOnbEsc([r.firstName, r.middleName, r.lastName].filter(Boolean).join(' '))}${r.credential ? ', ' + hrOnbEsc(r.credential) : ''}${r.status && r.status !== 'Active' ? ` <span style="color:var(--gold);font-size:12px;">(${hrOnbEsc(r.status)})</span>` : ''}</div>
+        <div style="color:rgba(255,255,255,.62);font-size:14px;">NPI: ${hrOnbEsc(r.npi)} · ${hrOnbEsc(r.taxonomy || 'No specialty listed')}</div>
+        <div style="color:rgba(255,255,255,.58);font-size:14px;">${hrOnbEsc([r.city, r.state].filter(Boolean).join(', '))}</div>
+      </div>`).join('') + '</div>';
 }
 
-function showNpiResultsModal(staffId, fullName, results, usedLastNameOnlyFallback, searchedState = '') {
-  const existing = document.getElementById('npiResultsModal');
-  if (existing) existing.remove();
+// What each registry value would change. "mode" says whether the box starts
+// ticked: names and the NPI always replace; address, phone and license only
+// fill in when the profile is blank, so nothing the office typed is lost
+// unless they tick it themselves.
+function npiPlannedFields(r, cur) {
+  const p = r.practice || {};
+  const lic = (r.licenses || []).find(l => l.state && cur.license_state && l.state === cur.license_state) || (r.licenses || []).find(l => l.primary) || (r.licenses || [])[0] || null;
+  const rows = [
+    { key: 'first_name', input: 'fpFirstName', label: 'First name', val: r.firstName, always: true },
+    { key: 'middle_name', input: 'fpMiddleName', label: 'Middle name', val: r.middleName, always: true },
+    { key: 'last_name', input: 'fpLastName', label: 'Last name', val: r.lastName, always: true },
+    { key: 'npi_number', input: 'fpNpi', label: 'NPI number', val: r.npi, always: true },
+    { key: 'gender', input: 'fpGender', label: 'Gender', val: ['Male', 'Female'].includes(r.gender) ? r.gender : '', always: false },
+    { key: 'primary_specialty', input: 'fpPrimarySpecialty', label: 'Primary specialty', val: r.taxonomy, always: false },
+    { key: 'address', input: 'fpAddress', label: 'Practice address', val: [p.address1, p.address2].filter(Boolean).join(', '), always: false },
+    { key: 'city', input: 'fpCity', label: 'City', val: p.city, always: false },
+    { key: 'state', input: 'fpState', label: 'State', val: p.state, always: false },
+    { key: 'zip', input: 'fpZip', label: 'Zip', val: p.zip, always: false },
+    { key: 'phone', input: 'fpPhone', label: 'Phone', val: p.phone, always: false },
+  ];
+  if (lic) {
+    rows.push({ key: 'license_number', input: 'fpLicenseNumber', label: 'License number' + (lic.state ? ' (' + lic.state + ')' : ''), val: lic.number, always: false });
+    if (!cur.license_state && lic.state) rows.push({ key: 'license_state', input: 'fpLicenseState', label: 'License state', val: lic.state, always: false });
+  }
+  return rows.filter(f => f.val).map(f => {
+    const old = String(cur[f.key] ?? '').trim();
+    return { ...f, old, same: old.toLowerCase() === String(f.val).trim().toLowerCase(), checked: f.always ? true : !old };
+  });
+}
 
-  const modal = document.createElement('div');
-  modal.id = 'npiResultsModal';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+function npiCurrentValues(staffId) {
+  const s = staffList.find(x => x.id === staffId) || {};
+  const cur = { ...s };
+  const map = { first_name: 'fpFirstName', middle_name: 'fpMiddleName', last_name: 'fpLastName', npi_number: 'fpNpi', gender: 'fpGender', primary_specialty: 'fpPrimarySpecialty', address: 'fpAddress', city: 'fpCity', state: 'fpState', zip: 'fpZip', phone: 'fpPhone', license_number: 'fpLicenseNumber', license_state: 'fpLicenseState' };
+  for (const [k, id] of Object.entries(map)) { const el = document.getElementById(id); if (el) cur[k] = el.value; }
+  return cur;
+}
 
-  const body = !results.length
-    ? `<div style="color:rgba(255,255,255,.62);font-size:15px;padding:12px 0;">No matches found in the public NPI registry for "${hrOnbEsc(fullName)}". They may not have registered yet, or the name/state might not match exactly — you can still enter their NPI manually if you have it.${searchedState ? ` This search only looked in ${hrOnbEsc(stateName(searchedState))}.` : ''}</div>`
-    : `<div style="max-height:360px;overflow-y:auto;">
-        ${results.map(r => `
-          <div onclick="applyNpiResult('${staffId}',${jsArg(r.npi)})" style="cursor:pointer;padding:12px;border-radius:8px;border:1px solid rgba(255,255,255,.1);margin-bottom:8px;">
-            <div style="color:#fff;font-weight:600;font-size:16px;">${r.firstName} ${r.lastName}${r.credential ? ', ' + r.credential : ''}</div>
-            <div style="color:rgba(255,255,255,.62);font-size:14px;">NPI: ${r.npi} · ${r.taxonomy || 'No specialty listed'}</div>
-            <div style="color:rgba(255,255,255,.58);font-size:14px;">${r.city}${r.city && r.state ? ', ' : ''}${r.state}</div>
-          </div>`).join('')}
-      </div>`;
-
-  modal.innerHTML = `
-    <div style="background:var(--navy2);border-radius:14px;padding:28px;width:100%;max-width:480px;border:1px solid rgba(255,255,255,.1);">
-      <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">NPI matches for "${fullName}"</div>
-      <div style="color:rgba(255,255,255,.62);font-size:14px;margin-bottom:16px;">This is public information from the CMS NPI Registry. Click the correct match to use it — double-check name and location before selecting, since common names can return multiple results.</div>
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;background:rgba(255,255,255,.05);border-radius:8px;padding:8px 10px;margin-bottom:14px;font-size:14px;color:rgba(255,255,255,.8);">
-        <span>Searched: <strong style="color:#fff;">${searchedState ? hrOnbEsc(stateName(searchedState)) + ' only' : 'all states'}</strong></span>
-        <span style="display:flex;gap:6px;">
-          ${searchedState ? `<button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();runNpiSearch('${staffId}',${jsArg(String(fullName))},'')" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Search all states</button>` : ''}
-          <button class="btn btn-sm btn-ghost" onclick="document.getElementById('npiResultsModal').remove();lookupNpi('${staffId}',${jsArg(String(fullName))},${jsArg(searchedState)})" style="color:#fff;border-color:rgba(255,255,255,.2);font-size:13px;">Change state</button>
-        </span>
-      </div>
-      ${usedLastNameOnlyFallback ? `<div style="color:var(--gold);font-size:14px;margin-bottom:16px;">No exact match on first name — showing everyone registered under "${fullName.split(' ').slice(1).join(' ')}" instead. Check first names carefully below.</div>` : ''}
-      ${body}
-      <button class="btn btn-ghost" onclick="document.getElementById('npiResultsModal').remove()" style="width:100%;justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);margin-top:14px;">Cancel</button>
+function showNpiReview(idx) {
+  const ctx = _npiCtx; const r = ctx && ctx.results[idx]; if (!r) return;
+  ctx.pick = r; ctx.planned = npiPlannedFields(r, npiCurrentValues(ctx.staffId));
+  document.getElementById('npiStepSearch').style.display = 'none';
+  const el = document.getElementById('npiStepReview'); el.style.display = 'block';
+  const name = [r.firstName, r.middleName, r.lastName].filter(Boolean).join(' ') + (r.credential ? ', ' + r.credential : '');
+  el.innerHTML = `
+    <div style="color:#fff;font-weight:700;font-size:16px;">${hrOnbEsc(name)}</div>
+    <div style="color:rgba(255,255,255,.62);font-size:14px;margin-bottom:12px;">NPI ${hrOnbEsc(r.npi)} · ${hrOnbEsc(r.taxonomy || 'No specialty listed')}${r.status ? ' · ' + hrOnbEsc(r.status) : ''}</div>
+    <div style="color:rgba(255,255,255,.7);font-size:13px;margin-bottom:8px;">Tick what to copy into the profile. Names and the NPI are ticked for you; address, phone and license are only ticked where the profile is blank.</div>
+    <div style="border:1px solid rgba(255,255,255,.1);border-radius:8px;margin-bottom:14px;">
+      ${ctx.planned.map((f, i) => `
+        <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.06);cursor:pointer;">
+          <input type="checkbox" class="npiFieldChk" data-i="${i}" ${f.checked ? 'checked' : ''} style="margin-top:3px;" />
+          <span style="flex:1;font-size:14px;color:rgba(255,255,255,.85);"><strong style="color:#fff;">${hrOnbEsc(f.label)}</strong><br>
+            ${f.same ? `<span style="color:rgba(255,255,255,.55);">${hrOnbEsc(f.val)} (already the same)</span>` : `<span style="color:var(--teal-l);">${hrOnbEsc(f.val)}</span>${f.old ? ` <span style="color:rgba(255,255,255,.45);">replaces “${hrOnbEsc(f.old)}”</span>` : ' <span style="color:rgba(255,255,255,.45);">(currently blank)</span>'}`}</span>
+        </label>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn btn-teal" id="npiApplyBtn" onclick="applyNpiResult()" style="flex:1;justify-content:center;">Add to profile &amp; mark NPI verified</button>
+      <button class="btn btn-ghost" onclick="document.getElementById('npiStepReview').style.display='none';document.getElementById('npiStepSearch').style.display='block';" style="color:#fff;border-color:rgba(255,255,255,.2);">Back</button>
     </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
-async function applyNpiResult(staffId, npi) {
-  // Clicking a confirmed match from the official CMS registry is itself
-  // the verification act — recording who confirmed it and when, not
-  // just the number, completes what this lookup flow was already meant
-  // to do (npi_verified/_by/_at existed but were never actually set here).
-  const { data: changed, error } = await sb.from('credtrack_staff').update({
-    npi_number: npi,
-    npi_verified: true,
-    npi_verified_by: currentProfile?.id || null,
-    npi_verified_at: new Date().toISOString(),
-  }).eq('id', staffId).select('id');
-  document.getElementById('npiResultsModal')?.remove();
-  if (error) { toast('Error saving NPI: ' + friendlyError(error), true); return; }
-  if (!changed || !changed.length) { toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
-  // The lookup is opened from right next to this same input, inside the
-  // still-open profile form — without updating it directly here, the box
-  // would keep showing its old (often blank) value, and saving the rest
-  // of that same form afterward would silently overwrite the NPI just
-  // confirmed and saved above.
-  const fpNpiInput = document.getElementById('fpNpi');
-  if (fpNpiInput) fpNpiInput.value = npi;
-  toast(`✓ NPI ${npi} saved and marked verified`);
-  await loadStaffTable();
+async function applyNpiResult() {
+  const ctx = _npiCtx; if (!ctx || !ctx.pick) return;
+  const chosen = [...document.querySelectorAll('.npiFieldChk')].filter(c => c.checked).map(c => ctx.planned[+c.dataset.i]);
+  const staffId = ctx.staffId; const before = npiCurrentValues(staffId);
+  const btn = document.getElementById('npiApplyBtn'); if (btn) btn.disabled = true;
+  // Picking a match from the official registry is itself the verification, so
+  // the NPI is always recorded as verified (who + when) even if the number
+  // box is unticked because it was already right.
+  const updates = { npi_verified: true, npi_verified_by: currentProfile?.id || null, npi_verified_at: new Date().toISOString(), npi_number: ctx.pick.npi };
+  for (const f of chosen) updates[f.key] = f.val;
+  if (['first_name', 'last_name'].some(k => k in updates)) {
+    const fn = (updates.first_name ?? before.first_name ?? '').toString().trim();
+    const ln = (updates.last_name ?? before.last_name ?? '').toString().trim();
+    if (fn || ln) updates.full_name = [fn, ln].filter(Boolean).join(' ');
+  }
+  const { data: changed, error } = await sb.from('credtrack_staff').update(updates).eq('id', staffId).select('id');
+  if (error) { if (btn) btn.disabled = false; toast('Error saving: ' + friendlyError(error), true); return; }
+  if (!changed || !changed.length) { if (btn) btn.disabled = false; toast("Nothing was saved — you may not have permission to edit this person's record.", true); return; }
+  // Fill the still-open profile's boxes too; otherwise saving that form later
+  // would write the old values back over what was just applied.
+  const inputFor = { first_name: 'fpFirstName', middle_name: 'fpMiddleName', last_name: 'fpLastName', npi_number: 'fpNpi', gender: 'fpGender', primary_specialty: 'fpPrimarySpecialty', address: 'fpAddress', city: 'fpCity', state: 'fpState', zip: 'fpZip', phone: 'fpPhone', license_number: 'fpLicenseNumber', license_state: 'fpLicenseState' };
+  for (const [k, id] of Object.entries(inputFor)) { if (k in updates) { const el = document.getElementById(id); if (el) el.value = updates[k]; } }
+  const idx = staffList.findIndex(x => x.id === staffId); if (idx >= 0) staffList[idx] = { ...staffList[idx], ...updates };
+  await logStaffFieldChanges(staffId, Object.keys(updates).filter(k => k !== 'npi_verified_by' && k !== 'npi_verified_at').map(field => ({ field, old: before[field], new: updates[field] })));
+  closeNpiModal();
+  const n = chosen.length;
+  toast(`✓ NPI ${ctx.pick.npi} verified${n ? ` and ${n} detail${n === 1 ? '' : 's'} added to the profile` : ''}`);
+  try { await loadStaffTable(); } catch (e) { /* list refresh is cosmetic */ }
 }
 
 async function sendMissingDocsChecklist(staffId, fullName) {
@@ -15349,7 +15417,7 @@ async function openProfileDocUpload(staffId, staffName) {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:520px;max-height:92vh;overflow-y:auto;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">Attach a document — ${hrOnbEsc(staffName)}</div>
-      <p style="color:rgba(255,255,255,.62);font-size:14px;margin-bottom:16px;">Saved the same way as anything added from the Documents tab — shows up there immediately, with the same expiration tracking and verification.</p>
+      <p style="color:rgba(255,255,255,.62);font-size:14px;margin-bottom:16px;">Saved the same way as anything added from the Documents tab — shows up there immediately, with the same expiration tracking and review.</p>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
         <div>
           <label class="inline-label">Document type</label>
@@ -18541,11 +18609,13 @@ async function deleteDocType(id, name) {
   // Leftover settings rows for this type would block the delete; they mean nothing once the type is gone.
   await sb.from('company_document_type_overrides').delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
   await sb.from('company_hidden_document_types').delete().eq('document_type_id', id).eq('company_id', currentCompany.id);
-  const { error } = await sb.from('document_types').delete().eq('id', id);
+  const { data: gone, error } = await sb.from('document_types').delete().eq('id', id).select('id');
   if (error) {
     if (error.code === '23503' || /foreign key/i.test(error.message || '')) { await showCustomConfirm(docTypeInUseMessage(name, 0), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
     toast(friendlyError(error), true); return;
   }
+  // The database reports no error when its access rules refuse a delete; it just removes zero rows.
+  if (!gone || !gone.length) { toast(`"${name}" was NOT deleted — your account isn't allowed to delete this document type. Hide it instead, or ask a Selko admin.`, true); return; }
   toast(name + ' deleted');
   if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
   if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
@@ -18573,12 +18643,13 @@ async function deleteGlobalDocType(id, name) {
   // nothing orphaned lingers in that table once the type itself is gone.
   await sb.from('company_hidden_document_types').delete().eq('document_type_id', id);
 
-  const { error } = await sb.from('document_types').delete().eq('id', id);
+  const { data: gone, error } = await sb.from('document_types').delete().eq('id', id).select('id');
   if (error) {
     // The count above can miss companies the platform owner is not allowed to see into, so the database has the last word.
     if (error.code === '23503' || /foreign key/i.test(error.message || '')) { await showCustomConfirm(docTypeInUseMessage(name, 0), { okLabel: 'OK', cancelLabel: 'Close' }); return; }
     toast(friendlyError(error), true); return;
   }
+  if (!gone || !gone.length) { toast(`"${name}" was NOT deleted — the database refused it (this account isn't allowed to delete platform-wide types). Use Manage visibility to hide it instead.`, true); return; }
   toast(`✓ "${name}" deleted platform-wide`);
   await loadPlatformDocTypes();
   await loadDocTypes();
@@ -18981,7 +19052,7 @@ async function showAgencyAssignmentModal(agencyId, agencyName) {
   modal.innerHTML = `
     <div style="background:var(--navy2);border-radius:14px;padding:24px;width:100%;max-width:500px;max-height:85vh;display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.1);">
       <div style="color:#fff;font-size:18px;font-weight:700;margin-bottom:4px;">${agencyName}</div>
-      <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:14px;">Which staff can this agency see verified documents for?</div>
+      <div style="color:rgba(255,255,255,.62);font-size:15px;margin-bottom:14px;">Which staff can this agency see reviewed documents for?</div>
       <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
         <input type="text" id="agencyStaffSearch" placeholder="Search staff..." oninput="filterAgencyStaffChecklist()" class="inline-input" style="flex:1;min-width:140px;" />
         <select id="agencyStaffDisciplineFilter" onchange="filterAgencyStaffChecklist()" class="inline-select" style="max-width:150px;">
@@ -19686,13 +19757,13 @@ const DOCS_HELP = [
   },
   {
     title: 'The four status filters',
-    subtitle: 'All / Needs verification / Verified / Verified, no file',
+    subtitle: 'All / Needs review / Reviewed / Reviewed, no file',
     html: `<p>These buttons filter the table below by what state each document is actually in:</p>
       <ul>
         <li><strong>All</strong> — every active document, no filter.</li>
-        <li><strong>Needs verification</strong> — uploaded but not yet reviewed and confirmed by an admin.</li>
-        <li><strong>Verified</strong> — reviewed and confirmed.</li>
-        <li><strong>Verified, no file</strong> — the credential is recorded (dates, license number) and marked verified, but no actual file was attached. Common when an admin enters something directly rather than from an uploaded document.</li>
+        <li><strong>Needs review</strong> — uploaded but not yet reviewed by an admin.</li>
+        <li><strong>Reviewed</strong> — an admin looked at the uploaded document and confirmed it is complete and legible. This is not primary-source verification (checking with the issuer); that is recorded separately, for example with the license lookup and attached proof.</li>
+        <li><strong>Reviewed, no file</strong> — the credential is recorded (dates, license number) and marked reviewed, but no actual file was attached. Common when an admin enters something directly rather than from an uploaded document.</li>
       </ul>
       <p>The number next to each button is a live count, so you can see at a glance how many fall into each state before even clicking.</p>`,
   },
@@ -19712,9 +19783,9 @@ const DOCS_HELP = [
     html: `<ol>
         <li>Click <strong>+ Upload document</strong>.</li>
         <li>Pick the staff member and the document type.</li>
-        <li>Attach a file (optional — you can also just record that a credential exists, with dates, before you have the actual file, which is what produces a "Verified, no file" entry).</li>
+        <li>Attach a file (optional — you can also just record that a credential exists, with dates, before you have the actual file, which is what produces a "Reviewed, no file" entry).</li>
         <li>If it's a license or similarly-numbered credential, enter the license number — some types require this.</li>
-        <li>Save. It's marked verified immediately, since an admin entering it directly is treated as the verification itself.</li>
+        <li>Save. It's marked reviewed immediately, since an admin entering it directly is treated as the review itself.</li>
       </ol>
       <p>There's also a "Scan document" option that reads a license number and dates directly off an uploaded image — review what it finds before saving, it's a starting point, not a guarantee.</p>`,
   },
@@ -30389,7 +30460,7 @@ function showTempPasswordModal(fullName, email, tempPassword, emailSent, emailEr
 // ══ CSV EXPORT ══
 function exportCsv() {
   const rows = document.querySelectorAll('#adminDocsTbody tr');
-  let csv = 'Staff,Document,Issued,Expires,Status,Verified,Uploaded\n';
+  let csv = 'Staff,Document,Issued,Expires,Status,Reviewed,Uploaded\n';
   rows.forEach(tr => {
     const cells = [...tr.querySelectorAll('td')].slice(0,7).map(td => `"${td.textContent.trim()}"`);
     if (cells.length) csv += cells.join(',') + '\n';
