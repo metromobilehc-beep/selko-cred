@@ -3930,6 +3930,8 @@ async function openMailMessage(uid, folder) {
   modal.addEventListener('click', (ev) => { if (ev.target === modal) modal.remove(); });
   try {
     const data = await mailCall({ action: 'read', folder, uid });
+    // The reader may have been closed (or another message opened) while this one was loading.
+    if (!document.getElementById('mailReaderHead') || !document.getElementById('mailReaderBody')) return;
     window._mailOpen = data;
     const addrLine = (arr) => (arr || []).map((a) => (a.name ? `${a.name} <${a.address}>` : a.address)).join(', ');
     document.getElementById('mailReaderHead').innerHTML = `
@@ -3959,6 +3961,7 @@ async function openMailMessage(uid, folder) {
     loadMailFolders().catch(() => {});
     loadSuperAttention();
   } catch (e) {
+    if (!document.getElementById('mailReaderHead') || !document.getElementById('mailReaderBody')) return;
     document.getElementById('mailReaderHead').innerHTML = '<div style="font-size:18px;font-weight:700;">Could not open this message</div>';
     document.getElementById('mailReaderBody').innerHTML = `<div style="color:#f87171;">${hrOnbEsc((e && e.message) || String(e))}</div>`;
   }
@@ -5715,7 +5718,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-10-29-b';
+const APP_VERSION = '2026-11-03-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -24411,8 +24414,15 @@ async function renderCredentialingStaffTable() {
 
 async function emailInNetworkSummary() {
   const defaultTo = currentProfile?.email || '';
-  const to = (prompt('Send the current in-network summary to which email address?', defaultTo) || '').trim();
+  // One address only; check it here so a typo (or two addresses) is caught before anything is sent.
+  const emailOk = (v) => /^[^\s@,;]+@[^\s@,;]+\.[^\s@,;]{2,}$/.test(v);
+  let to = (prompt('Send the current in-network summary to which email address?', defaultTo) || '').trim();
   if (!to) return;
+  if (!emailOk(to)) {
+    to = (prompt('That is not a single valid email address (for example name@company.com). Enter just one address:', to.split(/[\s,;]+/)[0] || '') || '').trim();
+    if (!to) return;
+    if (!emailOk(to)) { toast('Not sent: please enter one valid email address, like name@company.com.', true); return; }
+  }
   // Built and sent by the server from this company's own records, so it goes out from the
   // normal Selko Cred sender with this company's name on it (not from anyone else's mailbox).
   try {
