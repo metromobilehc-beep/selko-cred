@@ -5027,6 +5027,23 @@ async function checkSamSetup() {
   }
 }
 
+// A small spinner plus a running clock while the refresh works, and a clear "finished" signal when it ends:
+// a green or red banner, a short chime, and the browser tab title (so it shows even when you are on another tab).
+function samEnsureSpinnerCss() {
+  if (document.getElementById('samSpinnerCss')) return;
+  const st = document.createElement('style'); st.id = 'samSpinnerCss';
+  st.textContent = '@keyframes samSpin{to{transform:rotate(360deg)}}.sam-spin{display:inline-block;width:16px;height:16px;border:3px solid rgba(255,255,255,.25);border-top-color:#2dd4bf;border-radius:50%;animation:samSpin .8s linear infinite;vertical-align:-3px;margin-right:8px}';
+  document.head.appendChild(st);
+}
+function samChime(ok) {
+  try {
+    const C = window.AudioContext || window.webkitAudioContext; if (!C) return;
+    const ctx = new C(); const notes = ok ? [660, 880] : [330, 247];
+    notes.forEach((f, i) => { const o = ctx.createOscillator(), g = ctx.createGain(); o.frequency.value = f; o.connect(g); g.connect(ctx.destination);
+      const t = ctx.currentTime + i * 0.18; g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.15, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.16); o.start(t); o.stop(t + 0.17); });
+    setTimeout(() => { try { ctx.close(); } catch (e) { /* ignore */ } }, 800);
+  } catch (e) { /* sound is optional */ }
+}
 async function refreshSamListNow() {
   const btn = document.getElementById('superSamRefreshBtn'); const msg = document.getElementById('superSamMsg');
   if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
@@ -5035,17 +5052,25 @@ async function refreshSamListNow() {
     const reset = samNextResetAfter(_samLastFailure.at).getTime();
     if (Date.now() < reset + SAM_RESET_MARGIN_MS && !confirm(`SAM.gov said its daily limit was reached at ${_samLastFailure.at.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}.\n\n${samResetNote(_samLastFailure.at)}\n\nTry anyway?`)) return;
   }
-  btn.disabled = true; msg.style.color = 'rgba(255,255,255,.66)'; msg.textContent = 'Downloading and loading the list. This can take up to a minute…';
+  samEnsureSpinnerCss();
+  const origTitle = document.title; const t0 = Date.now();
+  btn.disabled = true; msg.style.color = 'rgba(255,255,255,.8)';
+  const tick = () => { const sec = Math.round((Date.now() - t0) / 1000); msg.innerHTML = `<span class="sam-spin"></span>Downloading and loading the list… ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} (usually 1 to 3 minutes; you can switch tabs, the tab title will say when it is done)`; document.title = '⏳ SAM refresh… ' + origTitle; };
+  tick(); const clock = setInterval(tick, 1000);
+  let ok = false;
   try {
     const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'refresh' } });
     if (error) throw new Error(await samInvokeError(error));
-    msg.style.color = '#4ade80';
-    msg.textContent = `Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
+    ok = true; msg.style.color = '#4ade80';
+    msg.textContent = `✓ DONE at ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
   } catch (e) {
-    msg.style.color = '#f87171'; msg.textContent = (e && e.message) || String(e);
+    msg.style.color = '#f87171'; msg.textContent = '✗ FAILED. ' + ((e && e.message) || String(e));
     if (samIsLimitMessage(msg.textContent)) msg.textContent += ' ' + samResetNote(new Date(Date.now()));       // say when, in the owner's own clock
   } finally {
-    btn.disabled = false;
+    clearInterval(clock); btn.disabled = false;
+    document.title = (ok ? '✅ SAM refresh done · ' : '❌ SAM refresh failed · ') + origTitle;
+    setTimeout(() => { if (document.title.indexOf('SAM refresh') !== -1) document.title = origTitle; }, 60000);
+    samChime(ok); toast(ok ? 'SAM.gov list refresh finished.' : 'SAM.gov list refresh failed. See the message in the panel.', !ok);
     await loadSuperSamStatus();
   }
 }
@@ -5718,7 +5743,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-03-a';
+const APP_VERSION = '2026-11-08-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
