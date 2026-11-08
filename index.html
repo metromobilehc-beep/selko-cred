@@ -5055,14 +5055,29 @@ async function refreshSamListNow() {
   samEnsureSpinnerCss();
   const origTitle = document.title; const t0 = Date.now();
   btn.disabled = true; msg.style.color = 'rgba(255,255,255,.8)';
-  const tick = () => { const sec = Math.round((Date.now() - t0) / 1000); msg.innerHTML = `<span class="sam-spin"></span>Downloading and loading the list… ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} (usually 1 to 3 minutes; you can switch tabs, the tab title will say when it is done)`; document.title = '⏳ SAM refresh… ' + origTitle; };
+  const tick = () => { const sec = Math.round((Date.now() - t0) / 1000); msg.innerHTML = `<span class="sam-spin"></span>Downloading and loading the list… ${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')} (usually 1 to 3 minutes; you can switch tabs, the tab title says when it is done)`; document.title = '⏳ SAM refresh… ' + origTitle; };
   tick(); const clock = setInterval(tick, 1000);
   let ok = false;
   try {
-    const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'refresh' } });
+    const { data, error } = await sb.functions.invoke('sam-exclusions-refresh', { body: { action: 'refresh', background: true } });
     if (error) throw new Error(await samInvokeError(error));
+    let result = data;
+    if (data && data.started) {
+      // The refresh runs in the background now, so wait for its result row instead of holding one request open for minutes.
+      const since = new Date(new Date(data.started_at).getTime() - 3000).toISOString();   // a few seconds of clock difference
+      result = null; const giveUp = Date.now() + 8 * 60 * 1000;
+      while (Date.now() < giveUp && !result) {
+        await new Promise(r => setTimeout(r, 5000));
+        try {
+          const { data: rows } = await sb.from('sam_exclusions_meta').select('status, individuals, error, loaded_at').gte('loaded_at', since).order('loaded_at', { ascending: false }).limit(1);
+          if (rows && rows.length) result = rows[0];
+        } catch (e) { /* a missed poll is fine; try again */ }
+      }
+      if (!result) throw new Error('Still running after 8 minutes, or it could not report back. Reload this page in a few minutes: "Last good load" above shows whether it finished.');
+      if (result.status !== 'ok') throw new Error(result.error || 'The refresh failed.');
+    }
     ok = true; msg.style.color = '#4ade80';
-    msg.textContent = `✓ DONE at ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Loaded ${Number(data.individuals).toLocaleString()} excluded individuals.`;
+    msg.textContent = `✓ DONE at ${new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}. Loaded ${Number(result.individuals).toLocaleString()} excluded individuals.`;
   } catch (e) {
     msg.style.color = '#f87171'; msg.textContent = '✗ FAILED. ' + ((e && e.message) || String(e));
     if (samIsLimitMessage(msg.textContent)) msg.textContent += ' ' + samResetNote(new Date(Date.now()));       // say when, in the owner's own clock
