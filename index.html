@@ -3727,6 +3727,14 @@ const MAIL_SEEN_KEY = 'selkoAdminMailSeenAt';
 let MAIL_UNDO_MS = 8000;                       // how long a message waits, with an Undo button, before it is really sent
 
 function mailIsOwner() { return !!currentProfile?.is_super_admin && !Array.isArray(currentProfile?.restricted_agency_ids); }
+// A super admin limited to certain agencies sees the Mail panel only if the server (the MAIL_EXTRA_EMAILS list) lets them in.
+let _mailExtraOk = null;
+async function mailAllowed() {
+  if (mailIsOwner()) return true;
+  if (!currentProfile?.is_super_admin) return false;
+  if (_mailExtraOk === null) { try { await mailCall({ action: 'ping' }); _mailExtraOk = true; } catch (e) { _mailExtraOk = /not allowed|Only the platform owner|403/i.test((e && e.message) || '') ? false : null; } }
+  return _mailExtraOk === true;
+}
 function mailSender(a) { return (a && (a.name || a.address)) || 'Unknown sender'; }
 function mailToast(msg, isErr) { try { toast(msg, !!isErr); } catch (e) { /* toast not available */ } }
 
@@ -3789,7 +3797,7 @@ async function loadSuperMail(page) {
   const list = document.getElementById('superMailList');
   const panel = document.getElementById('superMailPanel');
   if (!list || !panel) return;
-  if (!mailIsOwner()) { panel.style.display = 'none'; return; }
+  if (!(await mailAllowed())) { panel.style.display = 'none'; return; }
   panel.style.display = '';
   page = Math.max(1, page || 1);
   list.textContent = 'Loading…';
