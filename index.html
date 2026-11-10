@@ -6332,6 +6332,7 @@ async function initSession(user) {
     if (profile.role === 'admin' || profile.role === 'office' || profile.is_super_admin) {
       showScreen('adminScreen');
       await initAdmin();
+      openDeepLinkIfAny();
       // Explicit both-ways set, not just a conditional show — this is what
       // actually closes the gap: a prior session's tab-super could stay
       // visible into this one otherwise, since nothing else in the login
@@ -30540,6 +30541,28 @@ function exportCsv() {
 //   3. PKCE:           ?code=...                              -> exchangeCodeForSession()
 const hashParams  = new URLSearchParams(location.hash.replace(/^#/, ''));
 const queryParams = new URLSearchParams(location.search);
+
+// A link in a Selko email can carry ?open=staff-<id> to land straight on that person's profile. It is remembered across the
+// sign-in screen (sessionStorage), the address bar is tidied (other parameters such as sign-in codes are kept), and
+// openDeepLinkIfAny() acts on it once the admin screen has loaded.
+(function captureOpenLink() {
+  try {
+    const o = queryParams.get('open');
+    if (!o) return;
+    if (/^staff-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(o)) sessionStorage.setItem('selko_open', o);
+    const rest = new URLSearchParams(location.search); rest.delete('open');
+    history.replaceState(null, '', location.pathname + (rest.toString() ? '?' + rest.toString() : '') + location.hash);
+  } catch (e) { /* a link that cannot be read just opens the app */ }
+})();
+function openDeepLinkIfAny() {
+  let o = null;
+  try { o = sessionStorage.getItem('selko_open'); sessionStorage.removeItem('selko_open'); } catch (e) { return; }
+  if (!o) return;
+  const id = o.slice(6);
+  const found = (typeof staffList !== 'undefined' && Array.isArray(staffList)) ? staffList.find(x => x.id === id) : null;
+  if (!found) { toast('The person this email was about was not found here. They may have been removed, or the link is for another company.', true); return; }
+  setTimeout(() => { try { showFullProfileSheet(id); } catch (e) { /* the app is still usable */ } }, 300);
+}
 
 const linkType      = hashParams.get('type') || queryParams.get('type'); // 'recovery' | 'invite' | null
 const hasAccessToken = hashParams.has('access_token');
