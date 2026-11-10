@@ -30194,16 +30194,12 @@ async function saveNewCompany() {
   if (email && !hasAdminName) { err.textContent = 'Enter an admin first and last name too, or leave all three blank to invite later.'; err.style.display = 'block'; return; }
   if (hasAdminName && !email) { err.textContent = 'Enter an admin email too, or leave both blank to invite later.'; err.style.display = 'block'; return; }
 
-  const { data: newCompany, error } = await sb.from('companies').insert({
-    name, slug, plan,
-    has_credtrack: true,
-    has_compliance: false,
-    has_hep: false,
-    branding_enabled: false,
-    active: true,
-    admin_emails: email ? [email] : [],
-  }).select().maybeSingle();
-  if (error) { err.textContent = error.message; err.style.display = 'block'; return; }
+  // Created through a database function, not a direct insert: a super admin limited to certain agencies could insert the row
+  // but not read it back (it is not on their list yet), which showed as a "row-level security" error. The function also adds the
+  // new company to the creator's own list when they are limited.
+  const { data: newId, error } = await sb.rpc('add_company', { p_name: name, p_slug: slug, p_plan: plan, p_admin_email: email || null });
+  if (error) { err.textContent = /function .*add_company|schema cache/i.test(error.message || '') ? 'The add-company function is not installed in the database yet. Run add-company.sql (checklist item 143).' : error.message; err.style.display = 'block'; return; }
+  const newCompany = newId ? { id: newId } : null;
 
   toast(name + ' added');
   document.getElementById('coName').value = '';
