@@ -5766,7 +5766,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-08-a';
+const APP_VERSION = '2026-11-12-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -17728,6 +17728,7 @@ async function loadSettings() {
   if (malpracticeLink) malpracticeLink.style.display = malpracticeHidden ? 'none' : '';
 
   // Company settings
+  window._settingsFormFor = c.id;   // which company this form's values belong to (checked before a save)
   document.getElementById('setCoName').value    = c.name || '';
   document.getElementById('setAdminEmail').value = (c.admin_emails || [])[0] || '';
   const extraEl = document.getElementById('setAdminEmailsExtra');
@@ -19588,6 +19589,7 @@ async function loadCredentialingTab() {
   document.getElementById('credTemplatesLock').style.display  = 'none';
 
   const c = currentCompany;
+  window._credFormFor = c.id;       // which company the organization-profile fields below belong to (checked before a save)
   document.getElementById('setTaxId').value  = c.tax_id || '';
   document.getElementById('setOrgNpi').value = c.org_npi || '';
   document.getElementById('setMedicaidId').value = c.medicaid_id || '';
@@ -26312,6 +26314,22 @@ async function saveCompanySettings() {
     updates.name = document.getElementById('setCoName').value.trim();
   }
 
+  // GUARD: the Settings fields and the organization-profile fields (tax id, NPI, addresses, malpractice, signatory...) are
+  // filled when their own tab is opened. After "View as Admin" moved to another company, one set could still hold the
+  // PREVIOUS company's values, and a Save wrote ALL of it into the company being viewed. Each group is now saved only if it
+  // was loaded for THIS company; anything else is left untouched.
+  const SETTINGS_KEYS = ['admin_emails', 'custom_vars', 'show_partner_recommendations', 'name'];
+  const settingsOk = window._settingsFormFor === currentCompany.id;
+  const credOk     = window._credFormFor === currentCompany.id;
+  for (const k of Object.keys(updates)) {
+    const isSettings = SETTINGS_KEYS.includes(k);
+    if ((isSettings && !settingsOk) || (!isSettings && !credOk)) delete updates[k];
+  }
+  if (!Object.keys(updates).length) {
+    if (statusEl) { statusEl.textContent = 'Nothing was saved: these fields were not loaded for this company (they may still show another company\'s details). Open the tab again and re-check them first.'; statusEl.className = 'up-status up-err'; statusEl.style.display = 'block'; }
+    return;
+  }
+
   // FIXED — this used to only check for a thrown error, the same class of
   // bug found and fixed elsewhere: an update the access rules refuse
   // reports NO error, only zero rows changed, so a blocked save here would
@@ -26958,6 +26976,7 @@ async function viewAsAdmin(companyId, companyName) {
   }
 
   currentCompany = company;
+  window._settingsFormFor = null; window._credFormFor = null;   // the forms still hold the company we just left
   await loadPlanDefs();
   window._isPro  = isProPlan(company.plan);
   window._hasCredAddon = !!company.has_credentialing_addon;
@@ -26996,6 +27015,7 @@ async function exitViewAsAdmin() {
   const accessInfoEl = document.getElementById('viewAsAccessInfo'); if (accessInfoEl) accessInfoEl.textContent = '';
   currentProfile = { ..._superProfile };
   currentCompany = { ..._superCompany };
+  window._settingsFormFor = null; window._credFormFor = null;   // the forms still hold the company we just left
   window._isPro  = isProPlan(currentCompany.plan);
   window._hasCredAddon = !!currentCompany.has_credentialing_addon;
   window._hasHrAddon = !!currentCompany.has_hr_addon;
