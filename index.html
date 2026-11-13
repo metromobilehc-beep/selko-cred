@@ -5766,7 +5766,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-12-a';
+const APP_VERSION = '2026-11-13-a';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -27187,9 +27187,13 @@ wireSidebarHoverClose();
 document.addEventListener('click', (e) => {
   const drawer = document.querySelector('.admin-sidebar-col');
   const toggleBtn = document.querySelector('.admin-sidebar-toggle');
+  // The floating phone menu button (shown once the header has scrolled away) is a menu button too.
+  // Without this exemption its own tap opened the drawer and then this listener closed it again,
+  // so the menu only opened when you were back at the top, using the header button.
+  const fabBtn = document.getElementById('mobileMenuFab');
   const backdrop = document.querySelector('.admin-sidebar-backdrop');
   if (!drawer || !drawer.classList.contains('mobile-open')) return;
-  if (drawer.contains(e.target) || (toggleBtn && toggleBtn.contains(e.target))) return;
+  if (drawer.contains(e.target) || (toggleBtn && toggleBtn.contains(e.target)) || (fabBtn && fabBtn.contains(e.target))) return;
   drawer.classList.remove('mobile-open');
   if (backdrop) backdrop.classList.remove('mobile-open');
   const label = document.getElementById('adminSidebarToggleLabel');
