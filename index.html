@@ -5957,19 +5957,28 @@ function promptMfaCode() {
       <div style="margin-top:14px;text-align:center;"><button type="button" id="mfaLostBtn" style="background:none;border:none;color:var(--teal-l);font-size:14px;text-decoration:underline;cursor:pointer;">Lost your phone? Use a recovery code</button></div>`);
     const input = m.querySelector('#mfaCodeInput'), err = m.querySelector('#mfaCodeErr'), btn = m.querySelector('#mfaCodeBtn');
     input.focus();
+    // Who is signing in: the profile is not loaded yet at this step, so read the email from the session (local, no network).
+    let who = '';
+    try { const { data: sess } = await sb.auth.getSession(); who = sess?.session?.user?.email || ''; } catch (e) {}
+    // One attempt at a time, and never the same wrong code twice in a row. The sixth digit submits by itself, and Enter or the
+    // phone's autofill could submit it a second time within a fraction of a second (seen Nov 8: two challenges 150 ms apart).
+    let busy = false, lastBad = null;
     const go = async () => {
       const code = input.value.replace(/\D/g, '');
+      if (busy) return;
       err.style.display = 'none';
       if (code.length !== 6) { err.textContent = 'Type the 6 digits from your app.'; err.style.display = 'block'; return; }
-      btn.disabled = true;
+      if (code === lastBad) return;
+      busy = true; btn.disabled = true;
       try {
         const { error } = await sb.auth.mfa.challengeAndVerify({ factorId, code });
         if (error) throw error;
         m.remove(); resolve();
       } catch (e) {
+        lastBad = code;
         btn.disabled = false; err.textContent = mfaFriendlyError(e); err.style.display = 'block'; input.select();
-        logError('mfa_code_failed', String((e && e.message) || e), 'sign_in');
-      }
+        logError('mfa_code_failed', String((e && e.message) || e) + (who ? ' (' + who + ')' : ''), 'sign_in');
+      } finally { busy = false; }
     };
     btn.onclick = go;
     input.addEventListener('input', () => { if (input.value.replace(/\D/g, '').length === 6) go(); });
