@@ -1056,6 +1056,18 @@ body:has(#providerTabModal) { overflow: hidden; }
             <tbody id="staffTbody"></tbody>
           </table>
         </div>
+
+        <!-- Inactive staff live here, off the active list. Folded until opened. -->
+        <details id="staffInactiveBox" style="margin-top:18px;display:none;">
+          <summary style="cursor:pointer;color:rgba(255,255,255,.7);font-size:14px;font-weight:600;padding:8px 0;">Inactive staff (<span id="staffInactiveCount">0</span>)</summary>
+          <p style="font-size:13px;color:rgba(255,255,255,.5);margin:2px 0 10px;">Kept for their records and history. Inactive staff are not counted toward your plan and get no document expiry reminders. Press Reactivate to bring someone back to the active list.</p>
+          <div class="tbl-wrap">
+            <table>
+              <thead><tr><th>Name</th><th>Email</th><th>Title</th><th>Type</th><th>Actions</th></tr></thead>
+              <tbody id="staffInactiveTbody"></tbody>
+            </table>
+          </div>
+        </details>
       </div>
 
       <div class="dark-panel">
@@ -5843,7 +5855,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-e';
+const APP_VERSION = '2026-11-13-f';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -10460,6 +10472,7 @@ async function loadStaffTable() {
   const tbody = document.getElementById('staffTbody');
   if (!staffList.length) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No staff added yet.</td></tr>';
+    renderInactiveStaffBox([]);
     return;
   }
 
@@ -10480,15 +10493,15 @@ async function loadStaffTable() {
   const personFilter = document.getElementById('fStaffPerson')?.value || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
 
-  let filteredStaff = staffList;
-  if (personFilter) {
-    filteredStaff = filteredStaff.filter(s => s.id === personFilter);
-  }
-  if (licTypeFilter) {
-    filteredStaff = filteredStaff.filter(s =>
-      licTypeFilter === 'OTHER' ? !s.discipline : s.discipline === licTypeFilter
-    );
-  }
+  const applyStaffFilters = (list) => {
+    let out = list;
+    if (personFilter) out = out.filter(s => s.id === personFilter);
+    if (licTypeFilter) out = out.filter(s => licTypeFilter === 'OTHER' ? !s.discipline : s.discipline === licTypeFilter);
+    return out;
+  };
+  // Active staff are the main list; inactive staff move to their own folded list below it.
+  let filteredStaff = applyStaffFilters(staffList.filter(s => s.active));
+  renderInactiveStaffBox(applyStaffFilters(staffList.filter(s => !s.active)));
 
   const staffTypeOrder = { clinician: 0, office: 1, admin: 2 };
   filteredStaff = [...filteredStaff].sort((a, b) => {
@@ -10511,7 +10524,7 @@ async function loadStaffTable() {
   updateSortIcons();
 
   if (!filteredStaff.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No staff match these filters.</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">${personFilter || licTypeFilter ? 'No active staff match these filters.' : 'No active staff. Inactive staff are in the list below.'}</td></tr>`;
     return;
   }
 
@@ -10559,6 +10572,28 @@ async function loadStaffTable() {
     </div></td>
   </tr>`;
   }).join('') + (totalPages > 1 ? `<tr><td colspan="6" style="padding:0;">${renderPaginationControls('staffTable', currentPage, totalPages, totalCount, 'loadStaffTable')}</td></tr>` : '');
+}
+
+// The folded list of inactive staff under the Staff table. Same person filters as the main list.
+function renderInactiveStaffBox(inactive) {
+  const box = document.getElementById('staffInactiveBox'), body = document.getElementById('staffInactiveTbody');
+  if (!box || !body) return;
+  box.style.display = inactive.length ? '' : 'none';
+  const cnt = document.getElementById('staffInactiveCount'); if (cnt) cnt.textContent = inactive.length;
+  if (!inactive.length) { body.innerHTML = ''; return; }
+  const sorted = [...inactive].sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')));
+  const { pageItems, currentPage, totalPages, totalCount } = paginateItems(sorted, 'staffInactiveTable', 25);
+  body.innerHTML = pageItems.map(s => `<tr style="opacity:.85;">
+    <td>${hrOnbEsc(s.full_name || '')}</td>
+    <td style="font-size:14px;color:rgba(255,255,255,.62);">${isSyntheticStaffEmail(s.email) ? '<em style="opacity:.5;">Placeholder</em>' : (hrOnbEsc(s.email || '') || '<em style="opacity:.4;">not set</em>')}</td>
+    <td style="font-size:14px;">${hrOnbEsc(s.job_title || '') || '—'}${s.discipline ? ` <span class="badge badge-none" style="font-size:12px;margin-left:6px;">${hrOnbEsc(s.discipline)}</span>` : ''}</td>
+    <td><span class="badge badge-none">${hrOnbEsc(s.staff_type || 'clinician')}</span></td>
+    <td><div class="td-actions">
+      <button class="btn btn-sm btn-teal" onclick="toggleActive('${s.id}',false)">Reactivate</button>
+      <button class="btn btn-sm btn-gold" onclick="showAccountActionsMenu('${s.id}')">⚙ Account</button>
+      <button class="btn btn-sm btn-ghost" onclick="showFullProfileSheet('${s.id}')" style="color:#fff;border-color:rgba(255,255,255,.2);">📄 Full Profile</button>
+    </div></td>
+  </tr>`).join('') + (totalPages > 1 ? `<tr><td colspan="5" style="padding:0;">${renderPaginationControls('staffInactiveTable', currentPage, totalPages, totalCount, 'loadStaffTable')}</td></tr>` : '');
 }
 
 function closeStaffActionsMenu() {
