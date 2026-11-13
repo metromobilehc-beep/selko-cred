@@ -2650,6 +2650,14 @@ body:has(#providerTabModal) { overflow: hidden; }
           <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add role</button>
         </div>
 
+        <div id="profileChecksSection" class="set-block" style="margin-top:14px;">
+          <div class="set-text">
+            <div class="set-title">Profile items to check</div>
+            <p class="set-help">Which items the Credentialing overview flags as missing for clinicians. Uncheck anything your company doesn't collect. Office and admin staff are never flagged.</p>
+          </div>
+          <div class="set-controls" id="profileChecksList"></div>
+        </div>
+
         <div id="caqhExemptSection" class="set-block" style="margin-top:14px;">
           <div class="set-text">
             <div class="set-title">CAQH re-attestation reminders</div>
@@ -5855,7 +5863,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-f';
+const APP_VERSION = '2026-11-13-g';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -15833,6 +15841,7 @@ function showPreviewAccessLogPDF() {
 function loadDisciplinesPanel() {
   const body = document.getElementById('rolesTableBody');
   if (!body) return;
+  renderProfileChecksPanel();
   const disciplines = getCompanyDisciplines();
   const addon = !!currentCompany.has_credentialing_addon;
   const showCaqh = addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'));
@@ -24434,6 +24443,39 @@ function usesCertificationWording(d) {
   return isPrescribingDiscipline(d) && !BOARD_WORDING_KEYS.has(normalizeDisciplineKey(d));
 }
 
+const PROFILE_CHECK_OPTIONS = [
+  { key: 'npi', label: 'NPI number' },
+  { key: 'address', label: 'Home address' },
+  { key: 'phone', label: 'Phone number' },
+  { key: 'employment_history', label: 'Employment history' },
+];
+function getProfileChecksOff() {
+  const v = currentCompany && currentCompany.custom_vars && currentCompany.custom_vars.profileChecksOff;
+  return Array.isArray(v) ? v : [];
+}
+function renderProfileChecksPanel() {
+  const box = document.getElementById('profileChecksList');
+  if (!box) return;
+  const off = getProfileChecksOff();
+  box.innerHTML = PROFILE_CHECK_OPTIONS.map(o =>
+    `<label class="set-check"><input type="checkbox" ${off.includes(o.key) ? '' : 'checked'} onchange="toggleProfileCheck('${o.key}', this.checked)" /> ${hrOnbEsc(o.label)}</label>`
+  ).join('');
+}
+async function toggleProfileCheck(key, checkIt) {
+  // Re-read first so this can't overwrite another setting saved moments ago.
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
+  if (readErr) { toast(friendlyError(readErr), true); renderProfileChecksPanel(); return; }
+  const cv = { ...((fresh && fresh.custom_vars) || {}) };
+  const cur = Array.isArray(cv.profileChecksOff) ? cv.profileChecksOff : [];
+  cv.profileChecksOff = checkIt ? cur.filter(k => k !== key) : [...new Set([...cur, key])];
+  const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
+  if (error) { toast(friendlyError(error), true); renderProfileChecksPanel(); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved. You may not have permission to edit this company's settings.", true); renderProfileChecksPanel(); return; }
+  currentCompany.custom_vars = cv;
+  renderProfileChecksPanel();
+  toast('Profile checks updated');
+}
+
 async function togglePrescriberDiscipline(discipline, turnOn) {
   // Re-read the company's current custom_vars first so this can't overwrite a
   // different setting saved moments ago (same approach as the enrollment
@@ -27813,7 +27855,10 @@ let _ovCredAttentionData = [];
 
 async function loadCredentialingOverviewStats() {
   await loadStaffList();
-  const activeProviders = staffList.filter(s => s.active);
+  // Only active clinicians are credentialed. Office and admin logins, and
+  // anyone marked excluded from compliance, never belong on this list.
+  const activeProviders = staffList.filter(s => s.active && (s.staff_type || 'clinician') === 'clinician' && !s.exclude_from_compliance);
+  const checksOff = getProfileChecksOff();
 
   document.getElementById('ovCredProviderCount').textContent = activeProviders.length;
 
@@ -27851,10 +27896,10 @@ async function loadCredentialingOverviewStats() {
     : { data: [] };
   const staffWithEmployment = new Set((empRows || []).map(r => r.staff_id));
 
-  const missingNpi = activeProviders.filter(s => !s.npi_number && !(s.exempt_from_checks || []).includes('npi'));
-  const missingAddress = activeProviders.filter(s => !s.address && !(s.exempt_from_checks || []).includes('address'));
-  const missingPhone = activeProviders.filter(s => !s.phone && !(s.exempt_from_checks || []).includes('phone'));
-  const missingEmployment = activeProviders.filter(s => !staffWithEmployment.has(s.id) && !(s.exempt_from_checks || []).includes('employment_history'));
+  const missingNpi = activeProviders.filter(s => !checksOff.includes('npi') && !s.npi_number && !(s.exempt_from_checks || []).includes('npi'));
+  const missingAddress = activeProviders.filter(s => !checksOff.includes('address') && !s.address && !(s.exempt_from_checks || []).includes('address'));
+  const missingPhone = activeProviders.filter(s => !checksOff.includes('phone') && !s.phone && !(s.exempt_from_checks || []).includes('phone'));
+  const missingEmployment = activeProviders.filter(s => !checksOff.includes('employment_history') && !staffWithEmployment.has(s.id) && !(s.exempt_from_checks || []).includes('employment_history'));
 
   // One consolidated stat — a provider missing any of these counts once,
   // not once per missing field, so this reads as "how many people need
@@ -27926,13 +27971,14 @@ function renderOvCredAttentionList() {
   // happened to come in — "Missing NPI" landed at a different x-position
   // per row depending on name length and which badges came before it,
   // so there was no way to scan a column and see who's missing what.
+  const _off = getProfileChecksOff();
   const STATIC_COLUMNS = [
     { key: 'Missing CAQH ID', short: 'CAQH ID' },
-    { key: 'Missing NPI', short: 'NPI' },
-    { key: 'Missing address', short: 'Address' },
-    { key: 'Missing phone', short: 'Phone' },
-    { key: 'No employment history on file', short: 'Employment Hx' },
-  ];
+    { key: 'Missing NPI', short: 'NPI', off: _off.includes('npi') },
+    { key: 'Missing address', short: 'Address', off: _off.includes('address') },
+    { key: 'Missing phone', short: 'Phone', off: _off.includes('phone') },
+    { key: 'No employment history on file', short: 'Employment Hx', off: _off.includes('employment_history') },
+  ].filter(c => !c.off);
   const gridCols = `160px repeat(${STATIC_COLUMNS.length}, 1fr)`;
 
   const headerHtml = `
@@ -29680,13 +29726,28 @@ async function saveCompanyConfig(id) {
     }
   }
 
+  // Read what is stored right now so this save only changes the fields on
+  // this form. Replacing custom_vars or admin_emails wholesale used to wipe
+  // other settings (profile checks, prescriber choices) and extra admin emails.
+  const { data: stored, error: storedErr } = await sb.from('companies').select('custom_vars, admin_emails').eq('id', id).maybeSingle();
+  if (storedErr) {
+    statusEl.textContent = 'Error: ' + storedErr.message;
+    statusEl.className = 'up-status up-err';
+    statusEl.style.display = 'block';
+    return;
+  }
+  const storedVars = (stored && stored.custom_vars) || {};
+  const storedEmails = Array.isArray(stored && stored.admin_emails) ? stored.admin_emails : [];
+  const primaryEmail = document.getElementById('cfg_email').value.trim();
+  const adminEmails = [primaryEmail, ...storedEmails.slice(1).filter(e => e && e !== primaryEmail)].filter(Boolean);
+
   const updates = {
     name:             document.getElementById('cfg_name').value.trim(),
     slug:             document.getElementById('cfg_slug').value.trim(),
     plan:             document.getElementById('cfg_plan').value,
     active:           document.getElementById('cfg_active').checked,
     branding_enabled: document.getElementById('cfg_branding').checked,
-    admin_emails:     [document.getElementById('cfg_email').value.trim()].filter(Boolean),
+    admin_emails:     adminEmails,
     branding: {
       primary:      document.getElementById('cfg_primary').value.trim(),
       navy:         document.getElementById('cfg_navy').value.trim(),
@@ -29694,6 +29755,7 @@ async function saveCompanyConfig(id) {
       header_size:  document.getElementById('cfg_header_size').value || null,
     },
     custom_vars: {
+      ...storedVars,
       trial_status:  document.getElementById('cfg_trial_status').value,
       trial_expiry:  document.getElementById('cfg_trial_expiry').value || null,
       warn1:         parseInt(document.getElementById('cfg_warn1').value) || 30,
