@@ -2178,10 +2178,10 @@ body:has(#providerTabModal) { overflow: hidden; }
       <!-- Platform document types (tier + global/custom management) -->
       <div class="dark-panel" style="margin-bottom:16px;">
         <h2>Platform document types</h2>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">The default document types every company starts from. Standard vs Pro tier is a Selko-wide pricing decision — manage it here rather than in individual company settings.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">The default document types every company starts from. Every company gets all of them. Use Manage visibility to switch one off for a specific company.</p>
         <div class="tbl-wrap">
           <table>
-            <thead><tr><th>Name</th><th>Category</th><th>Tier</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Category</th><th>Actions</th></tr></thead>
             <tbody id="platformDocTypesTbody"></tbody>
           </table>
         </div>
@@ -2413,32 +2413,7 @@ body:has(#providerTabModal) { overflow: hidden; }
         </div>
       </div>
 
-      <!-- Standard vs Pro comparison — same gating as Document types
-           below, since this is specifically about document-tracking
-           features. Shown regardless of current tier so a Standard
-           company can see what upgrading unlocks, and a Pro company can
-           confirm they already have everything. -->
-      <div class="set-sub" style="margin-bottom:16px;" id="proComparisonPanelSettings">
-        <h3 class="set-sub-title">Standard vs Pro — document features</h3>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">You're currently on <span id="proComparisonCurrentTier" style="font-weight:700;color:#fff;"></span>. Here's exactly what changes on Pro.</p>
-        <div class="tbl-wrap">
-          <table>
-            <thead><tr><th>Feature</th><th style="text-align:center;">Standard</th><th style="text-align:center;">Pro</th></tr></thead>
-            <tbody>
-              <tr><td>Create custom document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Duplicate a shared default type to customize it</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Access to Pro-only document types</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Detailed Missing Docs report (filterable, per-staff)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Bulk download all staff files</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Export compliance report (Excel / PDF)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Custom branding (logo, colors)</td><td style="text-align:center;">—</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Upload, review, track staff documents</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-              <tr><td>Overview stats, Expiration Tracker</td><td style="text-align:center;color:var(--teal-l);">✓</td><td style="text-align:center;color:var(--teal-l);">✓</td></tr>
-            </tbody>
-          </table>
-        </div>
-        <p id="proComparisonUpgradeNote" style="font-size:14px;color:rgba(255,255,255,.58);margin-top:12px;display:none;">Contact Selko to upgrade to Pro.</p>
-      </div>
+
 </div>
 
       <div id="settingsGrp_support" style="margin:24px 0 4px;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1);scroll-margin-top:70px;">
@@ -4372,7 +4347,9 @@ async function loadPlanDefs() {
   return _planDefs;
 }
 function planDef(slug) { return _planDefs.find((p) => p.slug === slug) || FALLBACK_PLANS.find((p) => p.slug === slug) || null; }
-function isProPlan(slug) { const d = planDef(slug); return !!(d && d.pro_features); }
+// There is one Selko Cred plan with everything included, so no company is ever held back.
+// Kept as a function because older code still asks the question.
+function isProPlan(slug) { return true; }
 function planName(slug) { const d = planDef(slug); return d ? d.name : (slug ? String(slug) : 'None'); }
 function planPriceText(d) {
   if (d.price_cents == null) return 'custom quote';
@@ -5863,7 +5840,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-g';
+const APP_VERSION = '2026-11-13-h';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -6728,8 +6705,7 @@ async function loadDocTypes() {
     .or(`company_id.is.null,company_id.eq.${currentCompany.id}`)
     .order('sort_order');
 
-  // Standard plan only sees standard tier types
-  if (!window._isPro) q = q.eq('tier', 'standard');
+  // Every company sees every document type (no Standard / Pro tiers).
 
   const { data, error } = await q;
   if (error) { console.error('doc types error:', error); return; }
@@ -9091,7 +9067,7 @@ async function exportProReportExcel() {
     col += 2;
   });
 
-  const headers = ['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Reviewed','File'];
+  const headers = ['Staff Member','Document Type','Issued','Expires','Days Remaining','Status','Reviewed','File'];
   const headerRowNum = 7;
   const headerRow = ws.getRow(headerRowNum);
   headers.forEach((h, i) => {
@@ -9108,7 +9084,7 @@ async function exportProReportExcel() {
     if (prevStaff && r.staff !== prevStaff) rowNum++;
     prevStaff = r.staff;
     const row = ws.getRow(rowNum);
-    const vals = [r.staff, r.type, r.tier, r.issued, r.expires, r.days, r.status, r.verified === 'Yes' ? '✓ Yes' : 'No', r.file];
+    const vals = [r.staff, r.type, r.issued, r.expires, r.days, r.status, r.verified === 'Yes' ? '✓ Yes' : 'No', r.file];
     vals.forEach((v, i) => {
       const cell = row.getCell(i + 1);
       cell.value = v;
@@ -9120,13 +9096,13 @@ async function exportProReportExcel() {
     else if (r.status === 'Current') { fill = GREEN_FILL; textColor = GREEN_TEXT; }
     else if (r.status === 'Expiring soon' || r.status === 'Due soon') { fill = AMBER_FILL; textColor = AMBER_TEXT; }
     if (fill) {
-      for (let i = 1; i <= 9; i++) row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
-      row.getCell(7).font = { name: 'Arial', size: 10, bold: true, color: { argb: textColor } };
+      for (let i = 1; i <= 8; i++) row.getCell(i).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } };
+      row.getCell(6).font = { name: 'Arial', size: 10, bold: true, color: { argb: textColor } };
     }
     rowNum++;
   });
 
-  ws.columns = [{width:22},{width:24},{width:10},{width:12},{width:12},{width:14},{width:12},{width:10},{width:16}];
+  ws.columns = [{width:22},{width:24},{width:12},{width:12},{width:14},{width:12},{width:10},{width:16}];
   ws.views = [{ state: 'frozen', ySplit: headerRowNum }];
 
   const buf = await wb.xlsx.writeBuffer();
@@ -9182,26 +9158,26 @@ async function exportProReportPDF() {
     x += 140;
   });
 
-  const body = rows.map(r => [r.staff, r.type, r.tier, r.issued, r.expires, r.days, r.status, r.verified, r.file]);
+  const body = rows.map(r => [r.staff, r.type, r.issued, r.expires, r.days, r.status, r.verified, r.file]);
 
   doc.autoTable({
     startY: 108,
-    head: [['Staff Member','Document Type','Tier','Issued','Expires','Days Remaining','Status','Reviewed','File']],
+    head: [['Staff Member','Document Type','Issued','Expires','Days Remaining','Status','Reviewed','File']],
     body,
     styles: { font: 'helvetica', fontSize: 9, cellPadding: 5 },
     headStyles: { fillColor: TEAL, textColor: 255, fontStyle: 'bold' },
     didParseCell: function(data) {
       if (data.section === 'body') {
-        const status = data.row.raw[6];
+        const status = data.row.raw[5];
         if (status === 'EXPIRED') {
           data.cell.styles.fillColor = [254,226,226];
-          if (data.column.index === 6) { data.cell.styles.textColor = RED; data.cell.styles.fontStyle = 'bold'; }
+          if (data.column.index === 5) { data.cell.styles.textColor = RED; data.cell.styles.fontStyle = 'bold'; }
         } else if (status === 'Current') {
           data.cell.styles.fillColor = [209,250,229];
-          if (data.column.index === 6) { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = 'bold'; }
+          if (data.column.index === 5) { data.cell.styles.textColor = GREEN; data.cell.styles.fontStyle = 'bold'; }
         } else if (status === 'Expiring soon' || status === 'Due soon') {
           data.cell.styles.fillColor = [254,243,199];
-          if (data.column.index === 6) { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = 'bold'; }
+          if (data.column.index === 5) { data.cell.styles.textColor = AMBER; data.cell.styles.fontStyle = 'bold'; }
         }
       }
     },
@@ -17813,18 +17789,7 @@ async function loadSettings() {
   const docTypesPanel = document.getElementById('docTypesPanelSettings');
   if (docTypesPanel) docTypesPanel.style.display = c.has_credtrack ? 'block' : 'none';
 
-  const proComparisonPanel = document.getElementById('proComparisonPanelSettings');
-  if (proComparisonPanel) {
-    // Only relevant as an upsell nudge for Standard — Pro and Enterprise
-    // already have everything this panel is comparing, so showing it to
-    // them would just be pointless noise, not useful confirmation.
-    const showComparison = c.has_credtrack && !window._isPro;
-    proComparisonPanel.style.display = showComparison ? 'block' : 'none';
-    if (showComparison) {
-      document.getElementById('proComparisonCurrentTier').textContent = 'Standard';
-      document.getElementById('proComparisonUpgradeNote').style.display = 'block';
-    }
-  }
+
 
   // Same reasoning as the Health Care Network tab itself — this manages
   // payer network data, a credentialing concept, so it's gated on
@@ -18768,15 +18733,6 @@ async function confirmDocTypeScope(id, isGlobal, scope) {
   await loadDocTypesTable();
   document.getElementById('scopeModalCred').remove();
   toast(checked.length ? `Now required only for: ${checked.join(', ')}` : 'Now required for everyone');
-}
-
-async function toggleDocTypeTier(id, currentTier) {
-  const newTier = currentTier === 'pro' ? 'standard' : 'pro';
-  const { error } = await sb.from('document_types').update({ tier: newTier }).eq('id', id);
-  if (error) { toast(friendlyError(error), true); return; }
-  toast('Tier updated to ' + newTier);
-  if (document.getElementById('docTypesTbody')) await loadDocTypesTable();
-  if (document.getElementById('platformDocTypesTbody')) await loadPlatformDocTypes();
 }
 
 // The database refuses to delete a type that documents still point to (a foreign key), which protects the data
@@ -28611,17 +28567,12 @@ async function loadPlatformDocTypes() {
 
   const tbody = document.getElementById('platformDocTypesTbody');
   if (!globals.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No platform document types found.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:rgba(255,255,255,.55);padding:20px;">No platform document types found.</td></tr>';
   } else {
     tbody.innerHTML = globals.map(t => `<tr>
     <td>${hrOnbEsc(t.name)}</td>
     <td style="font-size:13px;color:rgba(255,255,255,.62);">${hrOnbEsc(t.category || 'Other')}</td>
-    <td><span class="badge ${t.tier === 'pro' ? 'badge-verified' : 'badge-ok'}">${t.tier || 'standard'}</span></td>
     <td><div class="td-actions">
-      <button class="btn btn-sm" onclick="toggleDocTypeTier(${t.id},'${t.tier || 'standard'}')"
-        style="font-size:13px;background:transparent;border:1px solid rgba(255,255,255,.2);color:rgba(255,255,255,.66);">
-        ${t.tier === 'pro' ? '→ Standard' : '→ Pro'}
-      </button>
       <button class="btn btn-sm btn-ghost" onclick="showManageDocTypeVisibility(${t.id},${jsArg(t.name)})" style="font-size:13px;color:#fff;border-color:rgba(255,255,255,.2);">👁 Manage visibility</button>
       <button class="btn btn-sm btn-danger" onclick="deleteGlobalDocType(${t.id},${jsArg(t.name)})">Delete</button>
     </div></td>
@@ -28696,11 +28647,9 @@ async function showPromoteDocTypeModal(key) {
       </div>
       <label class="inline-label" for="pdtName">Name everyone will see</label>
       <input class="inline-input" type="text" id="pdtName" value="${hrOnbEsc(g.display)}" maxlength="120" style="width:100%;box-sizing:border-box;margin-bottom:10px;" />
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;">
         <div><label class="inline-label" for="pdtCategory">Category</label>
           <select class="inline-select" id="pdtCategory" style="width:100%;">${shared.map((c) => `<option value="${hrOnbEsc(c)}" ${c === startCat ? 'selected' : ''}>${hrOnbEsc(c)}</option>`).join('')}</select></div>
-        <div><label class="inline-label" for="pdtTier">Plan</label>
-          <select class="inline-select" id="pdtTier" style="width:100%;"><option value="standard">Standard</option><option value="pro">Pro</option></select></div>
         <div><label class="inline-label" for="pdtExpires">Expires?</label>
           <select class="inline-select" id="pdtExpires" style="width:100%;"><option value="true" ${g.expires !== false ? 'selected' : ''}>Yes</option><option value="false" ${g.expires === false ? 'selected' : ''}>No</option></select></div>
       </div>
@@ -28743,7 +28692,7 @@ async function promoteDocTypePlatformWide() {
   }
   const { data, error } = await sb.from('document_types').insert({
     name, expires: document.getElementById('pdtExpires').value === 'true', category: document.getElementById('pdtCategory').value,
-    tier: document.getElementById('pdtTier').value, company_id: null, is_required: false, required_for_disciplines: null,
+    tier: 'standard', company_id: null, is_required: false, required_for_disciplines: null,
     staff_can_upload: g.staff_can_upload !== false, sort_order: 999,
     description: 'Platform default, added ' + new Date().toISOString().slice(0, 10),   // deliberately names no company
   }).select('id');
