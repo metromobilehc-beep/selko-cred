@@ -5840,7 +5840,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-h';
+const APP_VERSION = '2026-11-13-i';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -18309,24 +18309,28 @@ async function updateDocTypeName(id, name) {
 // table instead of the shared row; for a company-owned row it updates the
 // row directly, same as before.
 async function toggleDocTypeRequired(id, currentlyRequired, isGlobal, isProOnly) {
-  if (isProOnly && !window._isPro && !currentProfile?.is_super_admin) {
-    toast('This document type is a Pro feature — contact Selko to upgrade.', true);
-    return;
-  }
   const newValue = !currentlyRequired;
-  if (isGlobal && !currentProfile?.is_super_admin) {
-    const { data: existing } = await sb.from('company_document_type_overrides')
+  if (isGlobal) {
+    // A built-in type is shared by every company, so "required" here is this company's own
+    // choice, saved as an override. (Super admins used to change the shared default instead,
+    // which did nothing visible when this company already had its own override, and would
+    // have changed it for every company.)
+    const { data: existing, error: readErr } = await sb.from('company_document_type_overrides')
       .select('id').eq('company_id', currentCompany.id).eq('document_type_id', id).maybeSingle();
-    const { error } = existing
-      ? await sb.from('company_document_type_overrides').update({ is_required: newValue }).eq('id', existing.id)
-      : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, is_required: newValue });
+    if (readErr) { toast(friendlyError(readErr), true); return; }
+    const { data: changed, error } = existing
+      ? await sb.from('company_document_type_overrides').update({ is_required: newValue }).eq('id', existing.id).select('id')
+      : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: id, is_required: newValue }).select('id');
     if (error) { toast(friendlyError(error), true); return; }
+    if (!changed || !changed.length) { toast("Nothing was saved. You may not have permission to change this.", true); await loadDocTypesTable(); return; }
   } else {
-    const { error } = await sb.from('document_types').update({ is_required: newValue }).eq('id', id);
+    const { data: changed, error } = await sb.from('document_types').update({ is_required: newValue }).eq('id', id).select('id');
     if (error) { toast(friendlyError(error), true); return; }
+    if (!changed || !changed.length) { toast("Nothing was saved. You may not have permission to change this.", true); await loadDocTypesTable(); return; }
   }
   toast(newValue ? 'Marked as required — click "Applies To" to scope it to specific disciplines, or leave as Everyone' : 'Marked as optional');
   await loadDocTypesTable();
+  await loadDocTypes();
 }
 
 function effectiveMultiple(t, overridesMap) {
