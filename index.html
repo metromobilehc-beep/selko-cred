@@ -1912,7 +1912,7 @@ body:has(#providerTabModal) { overflow: hidden; }
       <div class="dark-panel" style="margin-bottom:16px;" id="superPricingPanel" data-default-open="false">
         <h2>Plans &amp; Pricing</h2>
         <h3 style="font-size:15px;color:#fff;margin:6px 0 4px;">Packages</h3>
-        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Each package is a row: name, monthly price, how many staff it covers, and whether it includes the Pro features. Adding a package can also create its Stripe price. Then choose it for a company under that company's subscription settings. To change the price of a package that is already in Stripe, use Stripe prices below.</p>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;"><strong>Selko Cred</strong> is the one plan: a base price for the first clinician, a price for each extra clinician, a monthly maximum, and a clinician count above which a company needs an Enterprise quote. Press Edit on it to change those numbers. Office and admin staff are free. Retired packages stay on the companies that already have them but cannot be given to new ones. Choose a package for a company under that company's subscription settings. Prices already in Stripe are changed under Stripe prices below.</p>
         <div id="superPlansBody" style="font-size:14px;color:rgba(255,255,255,.6);margin-bottom:18px;">Loading…</div>
         <h3 style="font-size:15px;color:#fff;margin:6px 0 4px;">Stripe prices, promo codes and change log</h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:10px;">Change what Stripe charges for each plan. A new price applies to new sign-ups right away. People already subscribed stay on their old price until you move them below. Nothing is prorated.</p>
@@ -1976,6 +1976,13 @@ body:has(#providerTabModal) { overflow: hidden; }
 
         <!-- Company cards -->
         <div id="companyCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;"></div>
+
+        <!-- Inactive and deleted companies live here, off the active list. Same cards, folded away until opened. -->
+        <details id="companyArchiveBox" style="margin-top:18px;display:none;">
+          <summary style="cursor:pointer;color:rgba(255,255,255,.7);font-size:14px;font-weight:600;padding:8px 0;">Inactive and deleted companies (<span id="companyArchiveCount">0</span>)</summary>
+          <p style="font-size:13px;color:rgba(255,255,255,.5);margin:2px 0 10px;">Inactive: their staff cannot sign in; nothing is deleted. Deleted: waiting to be purged. Open Manage on a card to reactivate or restore it.</p>
+          <div id="companyArchiveCards" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;"></div>
+        </details>
       </div>
 
       <!-- Cross-company invite -->
@@ -4600,16 +4607,19 @@ async function loadPlansPanel() {
   _planDefs = (data && data.length) ? data : FALLBACK_PLANS.slice();
   const { data: cos } = await sb.from('companies').select('plan').is('deleted_at', null);
   const used = {}; (cos || []).forEach((c) => { used[c.plan] = (used[c.plan] || 0) + 1; });
-  const rows = _planDefs.map((d) => `<div class="plan-row" data-slug="${hrOnbEsc(d.slug)}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+  const planRow = (d) => `<div class="plan-row" data-slug="${hrOnbEsc(d.slug)}" style="padding:10px 0;border-top:1px solid rgba(255,255,255,.08);display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
       <div style="min-width:170px;"><b>${hrOnbEsc(d.name)}</b>${d.active === false ? ' <span style="color:#fbbf24;font-size:12px;">inactive</span>' : ''}<div style="font-size:12px;color:rgba(255,255,255,.5);">${hrOnbEsc(d.slug)} · ${used[d.slug] || 0} compan${(used[d.slug] || 0) === 1 ? 'y' : 'ies'}</div></div>
-      <div style="min-width:100px;">${hrOnbEsc(planPriceText(d))}</div>
-      <div style="min-width:120px;">${d.seat_limit == null ? 'Unlimited staff' : d.seat_limit + ' staff'}${d.allow_extra_seats && d.seat_limit != null ? ' (+blocks)' : ''}</div>
-      <div style="min-width:90px;">${d.pro_features ? 'Pro features' : 'Standard features'}</div>
+      <div style="min-width:100px;flex:1 1 260px;">${hrOnbEsc(planPriceText(d))}</div>
+      <div style="min-width:120px;">${d.metered ? 'No seat limit, billed per clinician' : (d.seat_limit == null ? 'Unlimited staff' : d.seat_limit + ' staff') + (d.allow_extra_seats && d.seat_limit != null ? ' (+blocks)' : '')}</div>
+      <div style="min-width:90px;">${d.metered ? 'Everything included' : (d.pro_features ? 'Pro features' : 'Standard features')}</div>
       <div style="min-width:150px;font-size:12px;color:rgba(255,255,255,.5);">${d.stripe_lookup_key ? 'Stripe: ' + hrOnbEsc(d.stripe_lookup_key) : 'Not sold online'}</div>
       <div style="margin-left:auto;display:flex;gap:6px;">
         <button class="btn btn-sm btn-ghost" onclick="editPlanRow('${hrOnbEsc(d.slug)}')" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit</button>
         <button class="btn btn-sm btn-ghost" onclick="togglePlanActive('${hrOnbEsc(d.slug)}')" style="color:#fff;border-color:rgba(255,255,255,.2);">${d.active === false ? 'Turn on' : 'Turn off'}</button>
-      </div></div>`).join('');
+      </div></div>`;
+  const activePlans = _planDefs.filter((d) => d.active !== false), retiredPlans = _planDefs.filter((d) => d.active === false);
+  const rows = activePlans.map(planRow).join('')
+    + (retiredPlans.length ? `<details style="margin-top:8px;"><summary style="cursor:pointer;color:rgba(255,255,255,.6);font-size:13px;padding:8px 0;">Retired packages (${retiredPlans.length}). Not offered to new companies; companies already on them keep working.</summary>${retiredPlans.map(planRow).join('')}</details>` : '');
   body.innerHTML = rows + `<div id="planFormBox" style="border-top:1px solid rgba(255,255,255,.08);padding-top:12px;margin-top:4px;"></div>
     <div id="planMsg" style="margin-top:8px;font-size:13px;"></div>`;
   renderPlanForm(null);
@@ -4618,7 +4628,27 @@ function renderPlanForm(slug) {
   const box = document.getElementById('planFormBox'); if (!box) return;
   const d = slug ? planDef(slug) : null;
   const v = (x) => hrOnbEsc(x == null ? '' : String(x));
-  box.innerHTML = `<div style="font-weight:700;margin-bottom:8px;">${d ? 'Edit ' + hrOnbEsc(d.name) : 'Add a package'}</div>
+  const dollars = (c) => (c == null ? '' : (c / 100).toFixed(c % 100 ? 2 : 0));
+  if (d && d.metered) {
+    box.innerHTML = `<div style="font-weight:700;margin-bottom:4px;">Edit ${hrOnbEsc(d.name)} (per-clinician plan)</div>
+      <p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 10px;max-width:760px;">Changes apply to what Subscription settings show and to the Enterprise flag straight away. They do not change Stripe: nothing is billed from this plan yet.</p>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;max-width:760px;">
+        <div><label class="inline-label">Name</label><input class="inline-input" id="plName" value="${v(d.name)}" /></div>
+        <div><label class="inline-label">Base price per month ($)</label><input class="inline-input" id="mpBase" type="number" min="1" step="0.01" value="${dollars(d.price_cents)}" /></div>
+        <div><label class="inline-label">Clinicians the base covers</label><input class="inline-input" id="mpIncl" type="number" min="1" step="1" value="${v(d.included_clinicians || 1)}" /></div>
+        <div><label class="inline-label">Each extra clinician ($)</label><input class="inline-input" id="mpPer" type="number" min="0" step="0.01" value="${dollars(d.per_clinician_cents)}" /></div>
+        <div><label class="inline-label">Monthly maximum ($, blank = none)</label><input class="inline-input" id="mpCap" type="number" min="1" step="0.01" value="${dollars(d.monthly_cap_cents)}" /></div>
+        <div><label class="inline-label">Enterprise quote above (clinicians)</label><input class="inline-input" id="mpEnt" type="number" min="1" step="1" value="${v(d.enterprise_over_clinicians)}" /></div>
+      </div>
+      <div style="margin:10px 0;"><label class="inline-label">Description</label><input class="inline-input" id="plDesc" value="${v(d.description)}" style="max-width:760px;" /></div>
+      <div style="margin-top:10px;display:flex;gap:8px;">
+        <button class="btn btn-sm btn-teal" id="plSaveBtn" onclick="savePerClinicianPlan('${hrOnbEsc(d.slug)}')">Save changes</button>
+        <button class="btn btn-sm btn-ghost" onclick="renderPlanForm(null)" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+      </div>`;
+    return;
+  }
+  box.innerHTML = `<div style="font-weight:700;margin-bottom:${d ? '8' : '2'}px;">${d ? 'Edit ' + hrOnbEsc(d.name) : 'Add a custom flat-price package'}</div>
+    ${d ? '' : '<p style="font-size:13px;color:rgba(255,255,255,.58);margin:0 0 8px;max-width:760px;">For a special deal only. The standard per-clinician plan is edited with the Edit button on its row.</p>'}
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;max-width:760px;">
       <div><label class="inline-label">Name</label><input class="inline-input" id="plName" value="${v(d && d.name)}" placeholder="e.g. Solo Practitioner" oninput="planSlugFromName()" /></div>
       <div><label class="inline-label">Short code</label><input class="inline-input" id="plSlug" value="${v(d && d.slug)}" ${d ? 'disabled' : ''} placeholder="e.g. solo" oninput="this.dataset.touched='1'" /></div>
@@ -4626,7 +4656,7 @@ function renderPlanForm(slug) {
       <div><label class="inline-label">Staff covered (blank = unlimited)</label><input class="inline-input" id="plSeats" type="number" min="1" step="1" value="${v(d && d.seat_limit)}" placeholder="e.g. 1" /></div>
     </div>
     <div style="margin:10px 0;"><label class="inline-label">Description</label><input class="inline-input" id="plDesc" value="${v(d && d.description)}" placeholder="Shown to Selko staff only" style="max-width:760px;" /></div>
-    <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plPro" ${d && d.pro_features ? 'checked' : ''}/> Includes the Pro features</label>
+    <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plPro" ${d && d.pro_features ? 'checked' : ''}/> Includes all features (what Pro had)</label>
     <label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plExtra" ${!d || d.allow_extra_seats ? 'checked' : ''}/> Extra seat blocks (+25 staff, $30/mo) can be added</label>
     ${d ? '' : `<label style="display:flex;gap:8px;align-items:center;margin-bottom:6px;font-size:14px;color:#fff;"><input type="checkbox" id="plStripe" checked/> Also create the monthly price in Stripe so companies can subscribe on their own</label>`}
     <div style="margin-top:10px;display:flex;gap:8px;">
@@ -4678,6 +4708,28 @@ async function savePlanForm(slug) {
     planMsg((e && e.message) || 'Could not save the package.', true);
     if (btn) btn.disabled = false;
   }
+}
+async function savePerClinicianPlan(slug) {
+  const num = (id) => { const t = document.getElementById(id).value.trim(); return t === '' ? null : Number(t); };
+  const cents = (x) => (x == null ? null : Math.round(x * 100));
+  const name = document.getElementById('plName').value.trim();
+  const base = cents(num('mpBase')), per = cents(num('mpPer')), cap = cents(num('mpCap'));
+  const incl = num('mpIncl'), ent = num('mpEnt');
+  ['plName', 'mpBase', 'mpIncl', 'mpPer', 'mpCap', 'mpEnt'].forEach((id) => { const el = document.getElementById(id); if (el) el.style.borderColor = ''; });
+  if (name.length < 2) { planFieldError('plName', 'Type a name for the package.'); return; }
+  if (base == null || base < 100 || base > 1000000) { planFieldError('mpBase', 'The base price must be between $1 and $10,000.'); return; }
+  if (incl == null || !Number.isInteger(incl) || incl < 1) { planFieldError('mpIncl', 'The base covers a whole number of clinicians, 1 or more.'); return; }
+  if (per == null || per < 0 || per > 100000) { planFieldError('mpPer', 'The price for each extra clinician must be between $0 and $1,000.'); return; }
+  if (cap != null && cap < base) { planFieldError('mpCap', 'The monthly maximum cannot be lower than the base price. Leave it blank for no maximum.'); return; }
+  if (ent != null && (!Number.isInteger(ent) || ent < 1)) { planFieldError('mpEnt', 'Type a whole number of clinicians, or leave it blank.'); return; }
+  const btn = document.getElementById('plSaveBtn'); if (btn) btn.disabled = true;
+  const { error } = await sb.from('plans').update({
+    name, description: document.getElementById('plDesc').value.trim() || null,
+    price_cents: base, included_clinicians: incl, per_clinician_cents: per, monthly_cap_cents: cap, enterprise_over_clinicians: ent,
+  }).eq('slug', slug);
+  if (error) { planMsg(friendlyError(error), true); if (btn) btn.disabled = false; return; }
+  toast('✓ Plan saved');
+  await loadPlansPanel();
 }
 async function togglePlanActive(slug) {
   const d = planDef(slug); if (!d) return;
@@ -5791,7 +5843,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-c';
+const APP_VERSION = '2026-11-13-e';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -28817,9 +28869,15 @@ async function loadSuperAdmin() {
   };
 
   // Platform stats
+  // A company is "archived" (moved off the active list) when it is switched off or deleted.
+  const isArchivedCompany = (c) => !!c.deleted_at || !c.active;
+  const liveCompanies = (companies || []).filter((c) => !isArchivedCompany(c));
+  const archivedCompanies = (companies || []).filter(isArchivedCompany)
+    .sort((a, b) => (!!a.deleted_at - !!b.deleted_at) || String(a.name).localeCompare(String(b.name)));
   document.getElementById('superStats').innerHTML = `
-    <div class="stat-card info"><div class="stat-num">${(companies||[]).length}</div><div class="stat-label">Companies</div></div>
-    <div class="stat-card ok"><div class="stat-num">${(companies||[]).filter(c=>c.has_credtrack).length}</div><div class="stat-label">CredTrack active</div></div>
+    <div class="stat-card info"><div class="stat-num">${liveCompanies.length}</div><div class="stat-label">Active companies</div></div>
+    <div class="stat-card ok"><div class="stat-num">${liveCompanies.filter(c=>c.has_credtrack).length}</div><div class="stat-label">CredTrack active</div></div>
+    <div class="stat-card info"><div class="stat-num">${archivedCompanies.length}</div><div class="stat-label">Inactive / deleted</div></div>
     <div class="stat-card info"><div class="stat-num">${Object.values(staffCounts).reduce((a,b)=>a+b,0)}</div><div class="stat-label">Total staff</div></div>
     <div class="stat-card info"><div class="stat-num">${Object.values(docCounts).reduce((a,b)=>a+b,0)}</div><div class="stat-label">Total documents</div></div>`;
 
@@ -28856,15 +28914,16 @@ async function loadSuperAdmin() {
     return;
   }
 
-  cards.innerHTML = companies.map(c => {
+  const companyCardHtml = (c) => {
     const staff = staffCounts[c.id] || 0;
     const docs  = docCounts[c.id]   || 0;
     const planColor = c.plan === 'enterprise' ? '#fbbf24' : isProPlan(c.plan) ? '#34d399' : 'rgba(255,255,255,.5)';
     const statusDot = c.deleted_at ? '#ef4444' : (c.active ? '#34d399' : '#71717a');
+    const dim = isArchivedCompany(c) ? 'opacity:.78;' : '';
     const statusLabel = c.deleted_at
       ? `Deleted \u2014 purges in ${Math.max(0, Math.ceil((new Date(c.purge_scheduled_at) - new Date()) / 86400000))}d`
       : (c.active ? 'Active' : 'Inactive');
-    return `<div class="company-card" data-company-name="${c.name.toLowerCase()}" data-company-slug="${(c.slug || '').toLowerCase()}" style="padding:12px 14px;">
+    return `<div class="company-card" data-company-name="${c.name.toLowerCase()}" data-company-slug="${(c.slug || '').toLowerCase()}" style="padding:12px 14px;${dim}">
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
         <div style="min-width:0;">
           <div class="company-card-name" style="font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
@@ -28892,18 +28951,31 @@ async function loadSuperAdmin() {
         <button class="btn btn-sm btn-ghost" style="${c.deleted_at ? 'width:100%;' : 'flex:1;'}justify-content:center;color:#fff;border-color:rgba(255,255,255,.2);" onclick="showCompanyManageModal('${c.id}')">\u2699 Manage</button>
       </div>
     </div>`;
-  }).join('');
+  };
+  cards.innerHTML = liveCompanies.length ? liveCompanies.map(companyCardHtml).join('') : '<div class="empty-state"><div class="empty-icon">\ud83c\udfe2</div>No active companies.</div>';
+  const archiveBox = document.getElementById('companyArchiveBox'), archiveCards = document.getElementById('companyArchiveCards');
+  if (archiveBox && archiveCards) {
+    archiveBox.style.display = archivedCompanies.length ? '' : 'none';
+    document.getElementById('companyArchiveCount').textContent = archivedCompanies.length;
+    archiveCards.innerHTML = archivedCompanies.map(companyCardHtml).join('');
+  }
 }
 
 // Filters the already-rendered company cards purely client-side, by
 // name or slug — no extra query, since everything's already loaded.
 function filterCompanyCards(query) {
   const q = query.trim().toLowerCase();
-  document.querySelectorAll('#companyCards .company-card').forEach(card => {
+  let archiveHit = false;
+  document.querySelectorAll('#companyCards .company-card, #companyArchiveCards .company-card').forEach(card => {
     const name = card.getAttribute('data-company-name') || '';
     const slug = card.getAttribute('data-company-slug') || '';
-    card.style.display = (!q || name.includes(q) || slug.includes(q)) ? '' : 'none';
+    const match = !q || name.includes(q) || slug.includes(q);
+    card.style.display = match ? '' : 'none';
+    if (q && match && card.closest('#companyArchiveCards')) archiveHit = true;
   });
+  // A search that only matches an inactive or deleted company opens that list so the result is not hidden.
+  const box = document.getElementById('companyArchiveBox');
+  if (box && archiveHit) box.open = true;
 }
 
 // The "pop-out" for a single company's full details and every action
@@ -28931,6 +29003,9 @@ function showCompanyManageModal(companyId) {
     <button class="btn btn-sm btn-ghost" onclick="showSubscriptionSettingsModal('${c.id}',${escName})" style="color:#fff;border-color:rgba(255,255,255,.2);">\u2699 Subscription Settings</button>
     ${c.slug === 'demo' ? `<button class="btn btn-sm btn-gold" id="resetDemoBtn_${c.id}" onclick="resetDemoCompanyData('${c.id}')">\u21bb Reset Demo Data</button>` : ''}
     ${c.slug === 'demo' ? `<button class="btn btn-sm btn-teal" onclick="showSetDemoPasswordModal('${c.id}',${jsArg((c.admin_emails||[])[0]||'')})">\ud83d\udd11 Set Demo Password</button>` : ''}
+    ${c.active
+      ? `<button class="btn btn-sm btn-ghost" onclick="setCompanyActive('${c.id}',${escName},false)" style="color:#fff;border-color:rgba(255,255,255,.2);" title="Moves it to the Inactive list. Its staff cannot sign in. Nothing is deleted.">Make inactive</button>`
+      : `<button class="btn btn-sm btn-teal" onclick="setCompanyActive('${c.id}',${escName},true)">Reactivate</button>`}
     <button class="btn btn-sm btn-danger" onclick="softDeleteCompany('${c.id}',${escName})">Delete</button>
   `;
 
@@ -29614,6 +29689,18 @@ async function saveCompanyConfig(id) {
   setTimeout(() => {
     document.getElementById('companyConfigModal')?.remove();
   }, 1200);
+}
+
+// Moves a company off the active list (inactive) or back on it. Nothing is deleted either way.
+// Inactive means the company's own staff cannot sign in (the sign-in check already enforced this); platform owners can still open it.
+async function setCompanyActive(id, name, makeActive) {
+  if (!currentProfile?.is_super_admin) { toast('Only the platform owner can do this.', true); return; }
+  if (!makeActive && !confirm(`Make ${name} inactive?\n\nIt moves to the Inactive list and its staff cannot sign in. Nothing is deleted, and you can reactivate it any time.`)) return;
+  const { error } = await sb.from('companies').update({ active: !!makeActive }).eq('id', id);
+  if (error) { toast(friendlyError(error), true); return; }
+  toast(makeActive ? `✓ ${name} is active again` : `✓ ${name} moved to the Inactive list`);
+  document.getElementById('companyManageModal')?.remove();
+  await loadSuperAdmin();
 }
 
 async function toggleCompanyFlag(id, flag, current) {
