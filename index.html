@@ -4347,7 +4347,32 @@ async function loadPlanDefs() {
 function planDef(slug) { return _planDefs.find((p) => p.slug === slug) || FALLBACK_PLANS.find((p) => p.slug === slug) || null; }
 function isProPlan(slug) { const d = planDef(slug); return !!(d && d.pro_features); }
 function planName(slug) { const d = planDef(slug); return d ? d.name : (slug ? String(slug) : 'None'); }
-function planPriceText(d) { return d.price_cents == null ? 'custom quote' : '$' + (d.price_cents / 100).toFixed(d.price_cents % 100 ? 2 : 0) + '/mo'; }
+function planPriceText(d) {
+  if (d.price_cents == null) return 'custom quote';
+  const money = (c) => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
+  // Per-clinician plan: a base price that covers the first clinician(s), a price for each one beyond that, and a monthly ceiling.
+  if (d.metered) return money(d.price_cents) + '/mo + ' + money(d.per_clinician_cents || 0) + ' per extra clinician' + (d.monthly_cap_cents ? ', max ' + money(d.monthly_cap_cents) + '/mo' : '') + (d.enterprise_over_clinicians ? ', custom quote above ' + d.enterprise_over_clinicians + ' clinicians' : '');
+  return money(d.price_cents) + '/mo';
+}
+// Monthly price in cents for a per-clinician plan. Same rule as plan_price_cents() in the database:
+// base covers the included clinicians (at least one), each extra one adds the per-clinician price, never above the cap.
+function planMonthlyCents(d, clinicians) {
+  if (!d || d.price_cents == null) return null;
+  if (!d.metered) return d.price_cents;
+  const included = Math.max(1, d.included_clinicians || 1);
+  const extra = Math.max(0, (clinicians || 0) - included);
+  const raw = d.price_cents + extra * (d.per_clinician_cents || 0);
+  return d.monthly_cap_cents ? Math.min(raw, d.monthly_cap_cents) : raw;
+}
+// Who counts as a clinician for billing: active staff of type clinician who are not excluded from compliance.
+// Office and admin staff are free and not counted.
+async function countBillableClinicians(companyId) {
+  const { count, error } = await sb.from('credtrack_staff')
+    .select('id', { count: 'exact', head: true })
+    .eq('company_id', companyId).eq('active', true).eq('staff_type', 'clinician')
+    .not('exclude_from_compliance', 'is', true);
+  return error ? null : (count || 0);
+}
 // Options for a plan <select>: every active package, plus the company's current one even if it has since been switched off.
 function planOptionsHtml(selected) {
   const list = _planDefs.filter((d) => d.active !== false || d.slug === selected);
@@ -5766,7 +5791,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-a';
+const APP_VERSION = '2026-11-13-c';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -29674,6 +29699,20 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
   const { data: hiddenRows } = await sb.from('company_hidden_panels').select('panel_key').eq('company_id', companyId);
   const moduleOptionHidden = (hiddenRows || []).some(r => r.panel_key === 'credentialing_module_option');
 
+  // Per-clinician plan: how many clinicians count today and what that comes to this month.
+  const _pd = planDef(c.plan);
+  let perClinicianInfo = '';
+  if (_pd && _pd.metered) {
+    const n = await countBillableClinicians(companyId);
+    const cents = n == null ? null : planMonthlyCents(_pd, n);
+    const money = (x) => '$' + (x / 100).toFixed(x % 100 ? 2 : 0);
+    perClinicianInfo = `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:10px 12px;margin:-6px 0 16px;font-size:14px;color:#fff;line-height:1.5;">
+        ${n == null ? 'Could not count clinicians right now.' : `<strong>${n}</strong> billable clinician${n === 1 ? '' : 's'} today &rarr; <strong>${money(cents)}/mo</strong>${_pd.monthly_cap_cents && cents >= _pd.monthly_cap_cents ? ' (at the monthly maximum)' : ''}`}
+        ${n != null && _pd.enterprise_over_clinicians && n > _pd.enterprise_over_clinicians ? `<div style="margin-top:6px;color:var(--gold);font-weight:600;">Over ${_pd.enterprise_over_clinicians} clinicians: needs an Enterprise quote. Contact them and agree a price.</div>` : ''}
+        <div style="font-size:12px;color:rgba(255,255,255,.58);margin-top:4px;">${hrOnbEsc(planPriceText(_pd))}. Counts active staff of type Clinician that are not excluded from compliance. Office and admin staff are free.</div>
+      </div>`;
+  }
+
   const modal = document.createElement('div');
   modal.id = 'subscriptionSettingsModal';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:1100;display:flex;align-items:center;justify-content:center;padding:20px;';
@@ -29698,6 +29737,7 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
       <select class="inline-select" id="modalPlanSelect" style="width:100%;box-sizing:border-box;margin-bottom:16px;" onchange="applyModalPlanChange('${companyId}',${jsArg(companyName)}, this.value)">
         ${planOptionsHtml(c.plan)}
       </select>
+      ${perClinicianInfo}
 
       ${(planDef(c.plan)?.seat_limit != null && planDef(c.plan)?.allow_extra_seats !== false) || !c.plan ? `
       <label class="inline-label">Extra seat blocks ($30/mo each, +25 seats per block)</label>
@@ -29727,6 +29767,16 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
 }
 
+// The per-clinician plan includes everything, so choosing it switches on Documents and Credentialing. (HR stays a separate
+// developer-only switch until it is released.) Other plans are left exactly as they were.
+async function switchOnEverythingIfPerClinicianPlan(companyId, planSlug) {
+  const d = planDef(planSlug);
+  if (!d || !d.metered) return;
+  const { error } = await sb.from('companies').update({ has_credtrack: true, has_credentialing_addon: true }).eq('id', companyId);
+  if (error) { toast(friendlyError(error), true); return; }
+  toast('✓ Documents and Credentialing switched on (included in this plan)');
+}
+
 // Wrappers so the modal correctly waits for each save to actually finish
 // (setCompanyModules/etc. are async — chaining a re-open right after them
 // in an inline onchange wouldn't wait, and would reopen with stale data).
@@ -29740,6 +29790,7 @@ async function applyModalHrToggle(companyId, companyName, checked) {
 }
 async function applyModalPlanChange(companyId, companyName, value) {
   await setCompanyPlan(companyId, value);
+  await switchOnEverythingIfPerClinicianPlan(companyId, value);
   await showSubscriptionSettingsModal(companyId, companyName);
 }
 async function applyModalSeatBlocksChange(companyId, companyName) {
@@ -30234,6 +30285,7 @@ async function saveNewCompany() {
   const { data: newId, error } = await sb.rpc('add_company', { p_name: name, p_slug: slug, p_plan: plan, p_admin_email: email || null });
   if (error) { err.textContent = /function .*add_company|schema cache/i.test(error.message || '') ? 'The add-company function is not installed in the database yet. Run add-company.sql (checklist item 143).' : error.message; err.style.display = 'block'; return; }
   const newCompany = newId ? { id: newId } : null;
+  if (newId) { await loadPlanDefs(); await switchOnEverythingIfPerClinicianPlan(newId, plan); }
 
   toast(name + ' added');
   document.getElementById('coName').value = '';
