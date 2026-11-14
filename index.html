@@ -2594,6 +2594,13 @@ body:has(#providerTabModal) { overflow: hidden; }
         <div style="font-size:14px;color:rgba(255,255,255,.58);margin-top:3px;">The roles (PT, RN, MD…) and document types your staff are tracked against. Start with Professional roles, then Document types.</div>
       </div>
 
+      <div class="dark-panel" id="sectionsPanel" style="margin-bottom:16px;">
+        <h2>Sections your team uses</h2>
+        <p class="set-help" style="max-width:none;">Choose which sections appear in the menu. Turning one off only hides it. Nothing is deleted, and turning it back on brings everything back. Overview, Staff and Settings are always on.</p>
+        <div id="sectionsList" class="set-controls" style="margin-top:8px;"></div>
+        <div id="sectionsMsg" class="set-msg"></div>
+      </div>
+
       <!-- Clinical disciplines — per-company, since a PT/OT staffing company
            and an urgent care clinic (MD/DO/PA/NP/RN) need completely
            different values here. Healthcare-only: Selko Cred no longer covers
@@ -4355,18 +4362,22 @@ function planPriceText(d) {
   if (d.price_cents == null) return 'custom quote';
   const money = (c) => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
   // Per-clinician plan: a base price that covers the first clinician(s), a price for each one beyond that, and a monthly ceiling.
-  if (d.metered) return money(d.price_cents) + '/mo + ' + money(d.per_clinician_cents || 0) + ' per extra clinician' + (d.monthly_cap_cents ? ', max ' + money(d.monthly_cap_cents) + '/mo' : '') + (d.enterprise_over_clinicians ? ', custom quote above ' + d.enterprise_over_clinicians + ' clinicians' : '');
+  if (d.metered) return money(d.price_cents) + '/mo + ' + money(d.per_clinician_cents || 0) + ' per extra clinician' + (d.monthly_cap_cents ? ', max ' + money(d.monthly_cap_cents) + '/mo' : '') + (d.enterprise_over_clinicians ? ', custom quote above ' + d.enterprise_over_clinicians + ' clinicians' : '') + '. Base includes Documents and Compliance; each extra section +' + money(planSectionCents(d)) + ' per clinician';
   return money(d.price_cents) + '/mo';
 }
 // Monthly price in cents for a per-clinician plan. Same rule as plan_price_cents() in the database:
 // base covers the included clinicians (at least one), each extra one adds the per-clinician price, never above the cap.
-function planMonthlyCents(d, clinicians) {
+// Extra sections (Credentialing with Health Care Network, HR Onboarding) are each priced per clinician on top of the base.
+// The monthly maximum applies to the base only, not to the sections.
+function planSectionCents(d) { return (d && d.section_per_clinician_cents != null) ? d.section_per_clinician_cents : 100; }
+function planMonthlyCents(d, clinicians, sections) {
   if (!d || d.price_cents == null) return null;
   if (!d.metered) return d.price_cents;
   const included = Math.max(1, d.included_clinicians || 1);
   const extra = Math.max(0, (clinicians || 0) - included);
   const raw = d.price_cents + extra * (d.per_clinician_cents || 0);
-  return d.monthly_cap_cents ? Math.min(raw, d.monthly_cap_cents) : raw;
+  const base = d.monthly_cap_cents ? Math.min(raw, d.monthly_cap_cents) : raw;
+  return base + Math.max(0, sections || 0) * Math.max(0, clinicians || 0) * planSectionCents(d);
 }
 // Who counts as a clinician for billing: active staff of type clinician who are not excluded from compliance.
 // Office and admin staff are free and not counted.
@@ -4636,6 +4647,7 @@ function renderPlanForm(slug) {
         <div><label class="inline-label">Each extra clinician ($)</label><input class="inline-input" id="mpPer" type="number" min="0" step="0.01" value="${dollars(d.per_clinician_cents)}" /></div>
         <div><label class="inline-label">Monthly maximum ($, blank = none)</label><input class="inline-input" id="mpCap" type="number" min="1" step="0.01" value="${dollars(d.monthly_cap_cents)}" /></div>
         <div><label class="inline-label">Enterprise quote above (clinicians)</label><input class="inline-input" id="mpEnt" type="number" min="1" step="1" value="${v(d.enterprise_over_clinicians)}" /></div>
+        <div><label class="inline-label">Each extra section, per clinician ($)</label><input class="inline-input" id="mpSec" type="number" min="0" step="0.01" value="${(planSectionCents(d) / 100).toFixed(2).replace(/\.00$/, '')}" /></div>
       </div>
       <div style="margin:10px 0;"><label class="inline-label">Description</label><input class="inline-input" id="plDesc" value="${v(d.description)}" style="max-width:760px;" /></div>
       <div style="margin-top:10px;display:flex;gap:8px;">
@@ -4707,23 +4719,28 @@ async function savePlanForm(slug) {
   }
 }
 async function savePerClinicianPlan(slug) {
-  const num = (id) => { const t = document.getElementById(id).value.trim(); return t === '' ? null : Number(t); };
+  const num = (id) => { const el = document.getElementById(id); const t = el ? String(el.value).trim() : ''; return t === '' ? null : Number(t); };
   const cents = (x) => (x == null ? null : Math.round(x * 100));
   const name = document.getElementById('plName').value.trim();
   const base = cents(num('mpBase')), per = cents(num('mpPer')), cap = cents(num('mpCap'));
-  const incl = num('mpIncl'), ent = num('mpEnt');
-  ['plName', 'mpBase', 'mpIncl', 'mpPer', 'mpCap', 'mpEnt'].forEach((id) => { const el = document.getElementById(id); if (el) el.style.borderColor = ''; });
+  const incl = num('mpIncl'), ent = num('mpEnt'), sec = cents(num('mpSec'));
+  ['plName', 'mpBase', 'mpIncl', 'mpPer', 'mpCap', 'mpEnt', 'mpSec'].forEach((id) => { const el = document.getElementById(id); if (el) el.style.borderColor = ''; });
   if (name.length < 2) { planFieldError('plName', 'Type a name for the package.'); return; }
   if (base == null || base < 100 || base > 1000000) { planFieldError('mpBase', 'The base price must be between $1 and $10,000.'); return; }
   if (incl == null || !Number.isInteger(incl) || incl < 1) { planFieldError('mpIncl', 'The base covers a whole number of clinicians, 1 or more.'); return; }
   if (per == null || per < 0 || per > 100000) { planFieldError('mpPer', 'The price for each extra clinician must be between $0 and $1,000.'); return; }
   if (cap != null && cap < base) { planFieldError('mpCap', 'The monthly maximum cannot be lower than the base price. Leave it blank for no maximum.'); return; }
   if (ent != null && (!Number.isInteger(ent) || ent < 1)) { planFieldError('mpEnt', 'Type a whole number of clinicians, or leave it blank.'); return; }
+  if (sec != null && (sec < 0 || sec > 100000)) { planFieldError('mpSec', 'The price for each extra section must be between $0 and $1,000 per clinician.'); return; }
   const btn = document.getElementById('plSaveBtn'); if (btn) btn.disabled = true;
-  const { error } = await sb.from('plans').update({
+  const upd = {
     name, description: document.getElementById('plDesc').value.trim() || null,
     price_cents: base, included_clinicians: incl, per_clinician_cents: per, monthly_cap_cents: cap, enterprise_over_clinicians: ent,
-  }).eq('slug', slug);
+  };
+  // Only sent when the database has the column (sql/section-pricing.sql), so saving still works before that is run.
+  const _cur = planDef(slug);
+  if (sec != null && _cur && Object.prototype.hasOwnProperty.call(_cur, 'section_per_clinician_cents')) upd.section_per_clinician_cents = sec;
+  const { error } = await sb.from('plans').update(upd).eq('slug', slug);
   if (error) { planMsg(friendlyError(error), true); if (btn) btn.disabled = false; return; }
   toast('✓ Plan saved');
   await loadPlansPanel();
@@ -5840,7 +5857,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-j';
+const APP_VERSION = '2026-11-13-l';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -8822,6 +8839,45 @@ document.addEventListener('click', e => {
 // View as Admin, exiting View as Admin), not just once, or a super admin
 // switching between companies of different module configurations would
 // keep seeing tabs that belong to whichever company they viewed earlier.
+const SECTION_OPTIONS = [
+  { key: 'docs', label: 'Documents', help: 'Upload, review and track staff documents', needs: 'has_credtrack' },
+  { key: 'exp', label: 'Expiration tracker', help: 'Everything expiring soon in one list', needs: 'has_credtrack' },
+  { key: 'credentialing', label: 'Credentialing', help: 'CAQH, NPI, DEA and credentialing records' },
+  { key: 'compliance', label: 'Compliance', help: 'Exclusion checks, audit log and compliance reports' },
+];
+function getSectionsOff(company) {
+  const v = (company || currentCompany) && (company || currentCompany).custom_vars && (company || currentCompany).custom_vars.tabsOff;
+  return Array.isArray(v) ? v : [];
+}
+function renderSectionsPanel() {
+  const box = document.getElementById('sectionsList');
+  const panel = document.getElementById('sectionsPanel');
+  if (!box || !currentCompany) return;
+  const canEdit = currentProfile?.role === 'admin' || !!currentProfile?.is_super_admin;
+  if (panel) panel.style.display = canEdit ? '' : 'none';
+  const off = getSectionsOff(currentCompany);
+  box.innerHTML = SECTION_OPTIONS.filter(o => !o.needs || currentCompany[o.needs]).map(o =>
+    `<label class="set-check"><input type="checkbox" ${off.includes(o.key) ? '' : 'checked'} onchange="toggleSection('${o.key}', this.checked)" /> <strong>${hrOnbEsc(o.label)}</strong> <span style="color:rgba(255,255,255,.58);">${hrOnbEsc(o.help)}</span></label>`
+  ).join('');
+}
+async function toggleSection(key, turnOn) {
+  if (currentProfile?.role !== 'admin' && !currentProfile?.is_super_admin) { toast('Only an admin can change this.', true); renderSectionsPanel(); return; }
+  // Re-read first so this can't overwrite another setting saved moments ago.
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
+  if (readErr) { toast(friendlyError(readErr), true); renderSectionsPanel(); return; }
+  const cv = { ...((fresh && fresh.custom_vars) || {}) };
+  const cur = Array.isArray(cv.tabsOff) ? cv.tabsOff : [];
+  cv.tabsOff = turnOn ? cur.filter(k => k !== key) : [...new Set([...cur, key])];
+  const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
+  if (error) { toast(friendlyError(error), true); renderSectionsPanel(); return; }
+  if (!changed || !changed.length) { toast("Nothing was saved. You may not have permission to change this company's settings.", true); renderSectionsPanel(); return; }
+  currentCompany.custom_vars = cv;
+  updateModuleTabVisibility(currentCompany, currentProfile);
+  renderSectionsPanel();
+  const label = (SECTION_OPTIONS.find(o => o.key === key) || {}).label || key;
+  toast(turnOn ? `${label} is back in the menu` : `${label} is hidden from the menu`);
+}
+
 function updateModuleTabVisibility(company, profile) {
   const showDocCompliance = !!company.has_credtrack;
   const showOverviewTab = showDocCompliance || !!company.has_credentialing_addon;
@@ -8854,6 +8910,12 @@ function updateModuleTabVisibility(company, profile) {
   if (complianceAddonSection) complianceAddonSection.style.display = company.has_credentialing_addon ? 'block' : 'none';
   const tabLabel = document.getElementById('tabCredentialingLabel');
   if (tabLabel) tabLabel.textContent = company.credentialing_teaser_label || 'Credentialing';
+
+  // The company's own choice of which sections to show. Only ever hides.
+  getSectionsOff(company).forEach(k => {
+    const b = document.getElementById('tab-' + k);
+    if (b) b.style.display = 'none';
+  });
 
   // HR is developer-only for now (see hrVisible). No upsell teaser.
   applyHrVisibility();
@@ -17781,6 +17843,7 @@ async function loadSettings() {
   document.querySelectorAll('[data-super-setting]').forEach(el => { el.style.display = isOwner ? '' : 'none'; });
   if (isOwner) { loadPartnerRecommendationsAdmin(); loadStorageUsage(); loadRecentUploads(); }
 
+  renderSectionsPanel();
   loadDisciplinesPanel();
   loadEntitiesPanel();
   loadSupportAccessPanel();
@@ -27329,6 +27392,7 @@ document.addEventListener('click', (e) => {
 
 function switchTab(tab) {
   if (tab === 'hr' && !hrVisible()) tab = 'overview';   // HR is developer-only: any route to it lands on Overview
+  if (currentCompany && getSectionsOff(currentCompany).includes(tab)) tab = 'overview';   // a section this company has turned off
   // Collapse the mobile menu back down once a screen is actually
   // picked — harmless no-op on desktop, where .admin-sidebar-col is
   // never in the open/closed state to begin with.
@@ -28844,7 +28908,7 @@ function wirePricingLazyLoad() {
 }
 async function loadSuperAdmin() {
   await loadPlanDefs();
-  const coPlanSel = document.getElementById('coPlan'); if (coPlanSel) coPlanSel.innerHTML = planOptionsHtml('standard');
+  const coPlanSel = document.getElementById('coPlan'); if (coPlanSel) coPlanSel.innerHTML = planOptionsHtml('selko');
   loadPlansPanel();
   loadSuperAttention();
   loadSecretsPanel();
@@ -29845,11 +29909,13 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
   let perClinicianInfo = '';
   if (_pd && _pd.metered) {
     const n = await countBillableClinicians(companyId);
-    const cents = n == null ? null : planMonthlyCents(_pd, n);
+    const _sections = (c.has_credentialing_addon ? 1 : 0) + (c.has_hr_addon ? 1 : 0);
+    const cents = n == null ? null : planMonthlyCents(_pd, n, _sections);
     const money = (x) => '$' + (x / 100).toFixed(x % 100 ? 2 : 0);
     perClinicianInfo = `<div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:10px 12px;margin:-6px 0 16px;font-size:14px;color:#fff;line-height:1.5;">
         ${n == null ? 'Could not count clinicians right now.' : `<strong>${n}</strong> billable clinician${n === 1 ? '' : 's'} today &rarr; <strong>${money(cents)}/mo</strong>${_pd.monthly_cap_cents && cents >= _pd.monthly_cap_cents ? ' (at the monthly maximum)' : ''}`}
         ${n != null && _pd.enterprise_over_clinicians && n > _pd.enterprise_over_clinicians ? `<div style="margin-top:6px;color:var(--gold);font-weight:600;">Over ${_pd.enterprise_over_clinicians} clinicians: needs an Enterprise quote. Contact them and agree a price.</div>` : ''}
+        ${n != null && _sections ? `<div style="font-size:13px;color:rgba(255,255,255,.7);margin-top:4px;">Includes ${_sections} extra section${_sections === 1 ? '' : 's'} at ${money(planSectionCents(_pd))} per clinician each = ${money(_sections * n * planSectionCents(_pd))}</div>` : ''}
         <div style="font-size:12px;color:rgba(255,255,255,.58);margin-top:4px;">${hrOnbEsc(planPriceText(_pd))}. Counts active staff of type Clinician that are not excluded from compliance. Office and admin staff are free.</div>
       </div>`;
   }
@@ -29863,15 +29929,15 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
 
       <label class="inline-label">Module</label>
       <select class="inline-select" id="modalModuleSelect" style="width:100%;box-sizing:border-box;margin-bottom:14px;" onchange="applyModalModuleChange('${companyId}',${jsArg(companyName)}, this.value)" ${moduleOptionHidden ? 'disabled' : ''}>
-        <option value="docs" ${!c.has_credentialing_addon ? 'selected' : ''}>Document tracking only</option>
+        <option value="docs" ${!c.has_credentialing_addon ? 'selected' : ''}>${_pd && _pd.metered ? 'Documents + Compliance (base)' : 'Document tracking only'}</option>
         ${!moduleOptionHidden ? `
-        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>Both (+$49/mo for Credentialing)</option>` : ''}
+        <option value="both" ${c.has_credentialing_addon ? 'selected' : ''}>${_pd && _pd.metered ? 'Base + Credentialing &amp; Health Care Network (+' + ('$' + (planSectionCents(_pd) / 100).toFixed(planSectionCents(_pd) % 100 ? 2 : 0)) + ' per clinician)' : 'Both (+$49/mo for Credentialing)'}</option>` : ''}
       </select>
       ${moduleOptionHidden ? `<p style="font-size:13px;color:rgba(255,255,255,.58);margin-top:-10px;margin-bottom:14px;">Locked to Document tracking only — Credentialing isn't offered for this company. Change this via "Manage panel visibility" if that's wrong.</p>` : ''}
 
       ${hrVisible() ? `<label style="display:flex;align-items:center;gap:8px;font-size:15px;color:#fff;margin-bottom:14px;cursor:pointer;">
         <input type="checkbox" ${c.has_hr_addon ? 'checked' : ''} onchange="applyModalHrToggle('${companyId}',${jsArg(companyName)}, this.checked)" />
-        HR Onboarding add-on — $49/mo <span style="font-size:12px;color:var(--gold);margin-left:2px;">ADD-ON</span>
+        HR Onboarding add-on — ${_pd && _pd.metered ? '+$' + (planSectionCents(_pd) / 100).toFixed(planSectionCents(_pd) % 100 ? 2 : 0) + ' per clinician' : '$49/mo'} <span style="font-size:12px;color:var(--gold);margin-left:2px;">ADD-ON</span>
       </label>` : ''}
 
       <label class="inline-label">Plan</label>
@@ -29913,9 +29979,11 @@ async function showSubscriptionSettingsModal(companyId, companyName) {
 async function switchOnEverythingIfPerClinicianPlan(companyId, planSlug) {
   const d = planDef(planSlug);
   if (!d || !d.metered) return;
-  const { error } = await sb.from('companies').update({ has_credtrack: true, has_credentialing_addon: true }).eq('id', companyId);
+  // The base includes Documents and Compliance. Credentialing (with Health Care Network) and HR are paid sections chosen
+  // separately for each company, so they are left exactly as they were.
+  const { error } = await sb.from('companies').update({ has_credtrack: true }).eq('id', companyId);
   if (error) { toast(friendlyError(error), true); return; }
-  toast('✓ Documents and Credentialing switched on (included in this plan)');
+  toast('✓ Documents and Compliance switched on (included in this plan). Credentialing and HR are chosen separately.');
 }
 
 // Wrappers so the modal correctly waits for each save to actually finish
