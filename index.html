@@ -5840,7 +5840,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-i';
+const APP_VERSION = '2026-11-13-j';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -15876,11 +15876,15 @@ async function toggleCaqhExempt(discipline, isExempt) {
     ? [...new Set([...current, discipline])]
     : current.filter(d => d !== discipline);
 
-  const { error } = await sb.from('companies').update({ caqh_exempt_disciplines: updated }).eq('id', currentCompany.id);
-  if (error) { toast(friendlyError(error), true); return; }
+  const { data: changed, error } = await sb.from('companies').update({ caqh_exempt_disciplines: updated }).eq('id', currentCompany.id).select('id');
+  if (error) { toast(friendlyError(error), true); loadDisciplinesPanel(); return; }
+  // An update that matches no row is not an error, so check it really saved.
+  if (!changed || !changed.length) { toast("Nothing was saved. You may not have permission to change this company's settings.", true); loadDisciplinesPanel(); return; }
 
   currentCompany.caqh_exempt_disciplines = updated;
   loadDisciplinesPanel();
+  // Refresh the Credentialing board and counts now, not on the next visit.
+  try { if (document.getElementById('ovCredAttentionList')) loadCredentialingOverviewStats(); } catch (e) {}
   toast(isExempt ? `${discipline} is now CAQH-exempt` : `${discipline} no longer CAQH-exempt`);
 }
 
