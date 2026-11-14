@@ -783,10 +783,10 @@ body:has(#providerTabModal) { overflow: hidden; }
           <option value="all">All (active + archived)</option>
         </select>
         <select class="filter-sel" id="fUploaded" onchange="loadAdminDocs()" title="Only documents uploaded within this window. The Needs review and Reviewed, no file views always show everything.">
-          <option value="30" selected>Uploaded: last 30 days</option>
+          <option value="30">Uploaded: last 30 days</option>
           <option value="90">Uploaded: last 90 days</option>
           <option value="365">Uploaded: last year</option>
-          <option value="">Uploaded: all time</option>
+          <option value="" selected>Uploaded: all time</option>
         </select>
         <button class="btn btn-sm btn-teal" onclick="toggleAdminUpload()">+ Upload document</button>
         <button class="btn btn-sm btn-gold" id="addDocTypeBtn" onclick="proGate(showAddDocType)" style="display:none;">+ Add document type</button>
@@ -9702,13 +9702,14 @@ async function loadAdminDocs() {
   const type     = document.getElementById('fType')?.value     || '';
   const verified = document.getElementById('fVerified')?.value || '';
   const archived = document.getElementById('fArchived')?.value || 'active';
-  // Upload-date window (default 30 days). The to-do views ("Needs verification" and "Verified, no
+  // Upload-date window (default: all time). Typing in the search box ignores it, so a search always finds the document wherever it is. The to-do views ("Needs verification" and "Verified, no
   // file") are work queues, so they ignore it and always show every item: an old unverified
   // document must never be hidden by a date filter.
   const uploadedSel  = document.getElementById('fUploaded');
   const queueView    = _docViewMode === 'needs' || _docViewMode === 'noFile';
-  const windowDays   = (!queueView && uploadedSel && uploadedSel.value) ? parseInt(uploadedSel.value, 10) : 0;
-  if (uploadedSel) uploadedSel.disabled = queueView;
+  const searching    = !!fpTerm('fDocSearch');
+  const windowDays   = (!queueView && !searching && uploadedSel && uploadedSel.value) ? parseInt(uploadedSel.value, 10) : 0;
+  if (uploadedSel) uploadedSel.disabled = queueView || searching;
   if (typeof fpRender === 'function') fpRender('docs');   // the Filters chips follow changes made by code
   updateDocViewCounts();
 
@@ -28670,7 +28671,7 @@ SG_SAVE.details = async function () {
 // lists the active ones as chips that can be removed. A filter that quietly limits the list even at its default (Documents: uploaded in
 // the last 30 days) is shown as a plain note so nothing is hidden. To use it on another list, add an entry to FILTER_PANELS.
 const FILTER_PANELS = [
-  { key: 'docs', search: { id: 'fDocSearch', placeholder: 'Search by staff name or document…', reload: 'loadAdminDocs' }, fields: [{ id: 'fEmp', label: 'Staff', def: '' }, { id: 'fType', label: 'Document type', def: '' }, { id: 'fArchived', label: 'Show', def: 'active' }, { id: 'fUploaded', label: 'Uploaded', def: '30', note: true }] },
+  { key: 'docs', search: { id: 'fDocSearch', placeholder: 'Search by staff name or document…', reload: 'loadAdminDocs' }, fields: [{ id: 'fEmp', label: 'Staff', def: '' }, { id: 'fType', label: 'Document type', def: '' }, { id: 'fArchived', label: 'Show', def: 'active' }, { id: 'fUploaded', label: 'Uploaded', def: '' }] },
   { key: 'exp', search: { id: 'fExpSearch', placeholder: 'Search by staff name or document…', reload: 'loadExpTracker' }, fields: [{ id: 'fExpEmp', label: 'Staff', def: '' }, { id: 'fExpDiscipline', label: 'Discipline', def: '' }] },
   { key: 'staff', search: { id: 'fStaffSearch', placeholder: 'Search staff by name…', reload: 'loadStaffTable' }, fields: [{ id: 'fStaffPerson', label: 'Staff', def: '' }, { id: 'fStaffLicType', label: 'Discipline', def: '' }] },
 ];
