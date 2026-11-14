@@ -2466,6 +2466,20 @@ body:has(#providerTabModal) { overflow: hidden; }
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsCardsCss">
+.fp-wrap { position:relative; display:inline-block; }
+.fp-btn.fp-on { background:rgba(20,184,166,.18) !important; border-color:var(--teal) !important; color:var(--teal-l) !important; font-weight:700; }
+.fp-pop { position:absolute; top:100%; left:0; margin-top:6px; z-index:60; width:min(360px,86vw); background:var(--navy2); border:1px solid rgba(255,255,255,.18); border-radius:12px; padding:14px 16px; box-shadow:0 18px 40px rgba(0,0,0,.5); text-align:left; }
+.fp-head { display:flex; align-items:baseline; justify-content:space-between; color:#fff; font-size:15px; margin-bottom:10px; }
+.fp-row { display:flex; flex-direction:column; gap:3px; margin-bottom:10px; font-size:12px; font-weight:600; color:var(--teal-l); }
+.fp-row .filter-sel { width:100%; font-size:14px; font-weight:400; }
+.fp-foot { display:flex; justify-content:flex-end; margin-top:4px; }
+.fp-chips { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin:-4px 0 12px; }
+.fp-chip { display:inline-flex; align-items:center; gap:6px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.22); border-radius:999px; padding:4px 6px 4px 12px; font-size:13px; color:#fff; }
+.fp-x { background:transparent; border:0; color:rgba(255,255,255,.75); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:999px; }
+.fp-x:hover, .fp-x:focus-visible { background:rgba(255,255,255,.15); color:#fff; outline:none; }
+.fp-note { background:transparent; border:0; color:rgba(255,255,255,.62); font:inherit; font-size:13px; cursor:pointer; text-decoration:underline dotted; padding:4px 2px; }
+.fp-clear { background:transparent; border:0; color:var(--teal-l); font:inherit; font-size:13px; font-weight:700; cursor:pointer; padding:2px 4px; }
+
 #tabSettings.cards-mode > *:not(.settings-keep):not(.cards-home):not(style), #tabSuper.cards-mode > *:not(.settings-keep):not(.cards-home):not(style) { display: none !important; }
 .cards-home .sc-guide { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:rgba(20,184,166,.12); border:1px solid rgba(20,184,166,.45); border-radius:12px; padding:16px 20px; margin:6px 0 18px; }
 .cards-home .sc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; }
@@ -5879,7 +5893,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-u';
+const APP_VERSION = '2026-11-13-v';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -9668,6 +9682,7 @@ async function loadAdminDocs() {
   const queueView    = _docViewMode === 'needs' || _docViewMode === 'noFile';
   const windowDays   = (!queueView && uploadedSel && uploadedSel.value) ? parseInt(uploadedSel.value, 10) : 0;
   if (uploadedSel) uploadedSel.disabled = queueView;
+  if (typeof fpRender === 'function') fpRender('docs');   // the Filters chips follow changes made by code
   updateDocViewCounts();
 
   let q = sb.from('credtrack_documents')
@@ -28520,6 +28535,81 @@ async function maybeAutoOpenSetupGuide() {
     await openSetupGuide(0);
   } catch (e) { console.warn('Setup guide did not open:', e); }
 }
+
+// ══ FILTER PANELS ══
+// Lists with several dropdowns (Documents, Expiration, Staff) show one "Filters" button instead. The button opens a small panel that
+// holds the very same dropdowns (moved, not copied, so every id and onchange keeps working), shows how many filters are on, and
+// lists the active ones as chips that can be removed. A filter that quietly limits the list even at its default (Documents: uploaded in
+// the last 30 days) is shown as a plain note so nothing is hidden. To use it on another list, add an entry to FILTER_PANELS.
+const FILTER_PANELS = [
+  { key: 'docs', fields: [{ id: 'fEmp', label: 'Staff', def: '' }, { id: 'fType', label: 'Document type', def: '' }, { id: 'fArchived', label: 'Show', def: 'active' }, { id: 'fUploaded', label: 'Uploaded', def: '30', note: true }] },
+  { key: 'exp', fields: [{ id: 'fExpEmp', label: 'Staff', def: '' }, { id: 'fExpDiscipline', label: 'Discipline', def: '' }] },
+  { key: 'staff', fields: [{ id: 'fStaffPerson', label: 'Staff', def: '' }, { id: 'fStaffLicType', label: 'Discipline', def: '' }] },
+];
+const _fpState = {};
+function fpActive(cfg) {
+  return cfg.fields.map(f => { const el = document.getElementById(f.id); if (!el) return null;
+    const opt = el.options && el.options[el.selectedIndex];
+    let text = opt ? opt.textContent.trim() : String(el.value || '');
+    if (text.toLowerCase().indexOf(f.label.toLowerCase()) !== 0) text = f.label + ': ' + text;
+    return { f: el.disabled ? { ...f, note: false } : f, el, on: !el.disabled && el.value !== f.def, text };
+  }).filter(Boolean);
+}
+function fpRender(key) {
+  const st = _fpState[key]; if (!st) return;
+  const rows = fpActive(st.cfg), on = rows.filter(r => r.on);
+  st.btn.textContent = on.length ? `Filters (${on.length}) ▾` : 'Filters ▾';
+  st.btn.classList.toggle('fp-on', on.length > 0);
+  st.btn.setAttribute('aria-label', on.length ? `Filters, ${on.length} on` : 'Filters');
+  const chips = on.map(r => `<span class="fp-chip">${hrOnbEsc(r.text)} <button type="button" class="fp-x" aria-label="Remove filter ${hrOnbEsc(r.f.label)}" onclick="fpClear('${key}','${r.f.id}')">✕</button></span>`)
+    .concat(rows.filter(r => !r.on && r.f.note).map(r => `<button type="button" class="fp-note" onclick="fpToggle('${key}')" title="Change in Filters">${hrOnbEsc(r.text)}</button>`));
+  if (on.length > 1) chips.push(`<button type="button" class="fp-clear" onclick="fpClearAll('${key}')">Clear all</button>`);
+  st.chips.innerHTML = chips.join('');
+  st.chips.style.display = chips.length ? 'flex' : 'none';
+}
+function fpFire(el) { el.dispatchEvent(new Event('change', { bubbles: true })); }
+function fpClear(key, id) { const el = document.getElementById(id), f = _fpState[key].cfg.fields.find(x => x.id === id); if (!el || !f) return; el.value = f.def; fpFire(el); fpRender(key); }
+function fpClearAll(key) { _fpState[key].cfg.fields.forEach(f => { const el = document.getElementById(f.id); if (el && el.value !== f.def) { el.value = f.def; fpFire(el); } }); fpRender(key); }
+function fpClose(key) { const st = _fpState[key]; if (!st) return; st.pop.style.display = 'none'; st.btn.setAttribute('aria-expanded', 'false'); }
+function fpToggle(key) {
+  const st = _fpState[key]; if (!st) return;
+  const open = st.pop.style.display !== 'block';
+  Object.keys(_fpState).forEach(fpClose);
+  if (open) { st.pop.style.display = 'block'; st.btn.setAttribute('aria-expanded', 'true'); const first = st.pop.querySelector('select'); if (first) first.focus(); }
+}
+function initFilterPanels() {
+  FILTER_PANELS.forEach(cfg => {
+    if (_fpState[cfg.key]) return;
+    const first = document.getElementById(cfg.fields[0].id); if (!first) return;
+    const bar = first.parentNode;
+    const wrap = document.createElement('div'); wrap.className = 'fp-wrap';
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'btn btn-sm btn-ghost fp-btn'; btn.setAttribute('aria-haspopup', 'true'); btn.setAttribute('aria-expanded', 'false');
+    btn.onclick = (e) => { e.stopPropagation(); fpToggle(cfg.key); };
+    const pop = document.createElement('div'); pop.className = 'fp-pop'; pop.setAttribute('role', 'group'); pop.setAttribute('aria-label', 'Filters'); pop.style.display = 'none';
+    pop.addEventListener('click', e => e.stopPropagation());
+    const head = document.createElement('div'); head.className = 'fp-head'; head.innerHTML = '<strong>Filters</strong>';
+    const clr = document.createElement('button'); clr.type = 'button'; clr.className = 'fp-clear'; clr.textContent = 'Clear all'; clr.onclick = () => fpClearAll(cfg.key); head.appendChild(clr);
+    pop.appendChild(head);
+    const state = { cfg, btn, pop, chips: document.createElement('div') };
+    state.chips.className = 'fp-chips'; state.chips.style.display = 'none';
+    bar.insertBefore(wrap, first); wrap.appendChild(btn); wrap.appendChild(pop);
+    cfg.fields.forEach(f => {
+      const el = document.getElementById(f.id); if (!el) return;
+      const row = document.createElement('label'); row.className = 'fp-row'; const lab = document.createElement('span'); lab.textContent = f.label; row.appendChild(lab);
+      el.style.display = ''; row.appendChild(el); pop.appendChild(row);
+      el.addEventListener('change', () => fpRender(cfg.key));
+      new MutationObserver(() => fpRender(cfg.key)).observe(el, { childList: true });
+    });
+    const done = document.createElement('button'); done.type = 'button'; done.className = 'btn btn-sm btn-teal'; done.textContent = 'Done'; done.onclick = () => fpClose(cfg.key);
+    const foot = document.createElement('div'); foot.className = 'fp-foot'; foot.appendChild(done); pop.appendChild(foot);
+    bar.parentNode.insertBefore(state.chips, bar.nextSibling);
+    _fpState[cfg.key] = state; fpRender(cfg.key);
+  });
+}
+document.addEventListener('click', () => Object.keys(_fpState).forEach(fpClose));
+document.addEventListener('keydown', e => { if (e.key === 'Escape') Object.keys(_fpState).forEach(fpClose); });
+initFilterPanels();
+// ══ END FILTER PANELS ══
 
 // ══ SETTINGS CARDS ══
 // Settings opens to a grid of cards. Each card shows its current state in one line and opens its panels in a pop-out window.
