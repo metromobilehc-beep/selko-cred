@@ -868,7 +868,7 @@ body:has(#providerTabModal) { overflow: hidden; }
             <label class="inline-label" id="auLicenseLabel">License #</label>
             <input class="inline-input" type="text" id="auLicense" placeholder="e.g. OK12345" />
           </div>
-          <div style="display:flex;gap:6px;align-items:flex-end;">
+          <div id="auBtnRow" style="display:flex;gap:6px;align-items:flex-end;">
             <button class="btn btn-sm btn-teal" onclick="adminUploadDoc()">Save</button>
             <button class="btn btn-sm btn-ghost" onclick="toggleAdminUpload()" style="color:#fff;border-color:rgba(255,255,255,.2);">✕</button>
           </div>
@@ -1998,7 +1998,7 @@ body:has(#providerTabModal) { overflow: hidden; }
       </div>
 
       <!-- Cross-company invite -->
-      <div class="dark-panel">
+      <div class="dark-panel" id="superInvitePanel">
         <h2>Invite staff to any company</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Send a login invitation to a staff member at any company on the platform, without needing to be logged into that company directly.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end;">
@@ -2027,7 +2027,7 @@ body:has(#providerTabModal) { overflow: hidden; }
            existed. Deliberately its own separate, explicit tool rather
            than automatic, since deleting the wrong login by a typo'd
            email would actually lock someone out. -->
-      <div class="dark-panel">
+      <div class="dark-panel" id="superStrayLoginPanel">
         <h2>Remove a stray login</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">For cleaning up an orphaned account left behind by an email change made before "Change login email" existed — a staff member's CURRENT, in-use login is never affected by this; it only removes whatever account sits under the email typed in below.</p>
         <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;">
@@ -2050,7 +2050,7 @@ body:has(#providerTabModal) { overflow: hidden; }
         <span style="font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--teal-l);">Platform-wide Configuration</span>
       </div>
 
-<div class="dark-panel" style="margin-bottom:16px;">
+<div class="dark-panel" id="superPurgePanel" style="margin-bottom:16px;">
         <h2>🗄 Records eligible for permanent deletion</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Documents archived for 6+ years, across every company. Nothing here is ever deleted automatically — review and confirm each one individually. Consider retention obligations (state law, insurance, HIPAA) before deleting.</p>
         <div class="tbl-wrap">
@@ -2064,7 +2064,7 @@ body:has(#providerTabModal) { overflow: hidden; }
       <!-- Document type categories — the shared grouping labels used in
            every company's Document Types table, since global and custom
            types sit together in one list, sorted by category. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" id="superDocCategoriesPanel" style="margin-bottom:16px;">
         <h2>Document type categories</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Shared across every company — the section headers in each company's Document Types table. Adding one here makes it available for anyone to file a type under, immediately.</p>
         <div id="categoriesListSuper" style="margin-bottom:14px;"></div>
@@ -2079,7 +2079,7 @@ body:has(#providerTabModal) { overflow: hidden; }
            (Optum, Texas, Oklahoma New-Hire, etc.) so Juan's growing pile
            of forms can be filtered/grouped by whichever bucket makes
            sense, rather than staying one flat searchable list forever. -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" id="superCredTemplateCatsPanel" style="margin-bottom:16px;">
         <h2>Credentialing template categories</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Shared across every company — lets a credentialing form template be tagged by payer, state, or any other grouping you want (e.g. "Optum", "Texas", "Oklahoma New-Hire"). Adding one here makes it available to file a template under, immediately.</p>
         <div id="credTemplateCategoriesListSuper" style="margin-bottom:14px;"></div>
@@ -2176,7 +2176,7 @@ body:has(#providerTabModal) { overflow: hidden; }
       </div>
 
       <!-- Platform document types (tier + global/custom management) -->
-      <div class="dark-panel" style="margin-bottom:16px;">
+      <div class="dark-panel" id="superPlatformDocTypesPanel" style="margin-bottom:16px;">
         <h2>Platform document types</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">The default document types every company starts from. Every company gets all of them. Use Manage visibility to switch one off for a specific company.</p>
         <div class="tbl-wrap">
@@ -2462,15 +2462,18 @@ body:has(#providerTabModal) { overflow: hidden; }
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsCardsCss">
-#tabSettings.cards-mode > *:not(.settings-keep):not(#settingsCardsHome):not(style) { display: none !important; }
-#settingsCardsHome .sc-guide { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:rgba(20,184,166,.12); border:1px solid rgba(20,184,166,.45); border-radius:12px; padding:16px 20px; margin:6px 0 18px; }
-#settingsCardsHome .sc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; }
-#settingsCardsHome .sc-card { text-align:left; display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:18px 20px; color:#fff; cursor:pointer; font:inherit; transition:background .15s,border-color .15s; }
-#settingsCardsHome .sc-card:hover, #settingsCardsHome .sc-card:focus-visible { background:rgba(20,184,166,.12); border-color:var(--teal); outline:none; }
-#settingsCardsHome .sc-tag { font-size:12px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--teal-l); }
-#settingsCardsHome .sc-title { font-size:17px; font-weight:700; }
-#settingsCardsHome .sc-sum { font-size:14px; color:rgba(255,255,255,.72); min-height:40px; line-height:1.4; }
-#settingsCardsHome .sc-open { font-size:14px; font-weight:700; color:var(--teal-l); margin-top:4px; }
+#tabSettings.cards-mode > *:not(.settings-keep):not(.cards-home):not(style), #tabSuper.cards-mode > *:not(.settings-keep):not(.cards-home):not(style) { display: none !important; }
+.cards-home .sc-guide { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:rgba(20,184,166,.12); border:1px solid rgba(20,184,166,.45); border-radius:12px; padding:16px 20px; margin:6px 0 18px; }
+.cards-home .sc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; }
+.cards-home .sc-card { text-align:left; display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:18px 20px; color:#fff; cursor:pointer; font:inherit; transition:background .15s,border-color .15s; }
+.cards-home .sc-card:hover, .cards-home .sc-card:focus-visible { background:rgba(20,184,166,.12); border-color:var(--teal); outline:none; }
+.cards-home .sc-tag { font-size:12px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--teal-l); }
+.cards-home .sc-title { font-size:17px; font-weight:700; }
+.cards-home .sc-sum { font-size:14px; color:rgba(255,255,255,.72); min-height:40px; line-height:1.4; }
+.cards-home .sc-open { font-size:14px; font-weight:700; color:var(--teal-l); margin-top:4px; }
+#adminUploadWindow .inline-form { border:0; background:transparent; padding:0; margin:0; }
+#adminUploadWindow .inline-form div[style*="grid-template-columns"] { grid-template-columns:1fr 1fr !important; }
+#adminUploadWindow #auBtnRow { display:none !important; }
 #settingsCardModal .dark-panel { margin:0 0 16px; padding:0; border:0; background:transparent; box-shadow:none; }
 #settingsCardModal .dark-panel > h2 { display:none; }
 #settingsCardModal .set-sub { margin-bottom:0 !important; }
@@ -4333,7 +4336,9 @@ function superAttentionGo(target, clearsSupport, clearsMail) {
   if (clearsSupport) { try { localStorage.setItem(SUPER_SEEN_KEY, new Date().toISOString()); } catch (e) { /* storage unavailable */ } }
   if (clearsMail) { try { localStorage.setItem(MAIL_SEEN_KEY, new Date().toISOString()); } catch (e) { /* storage unavailable */ } }
   const el = document.getElementById(target);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (openSettingsCardFor(target)) {   // the panel lives in a card now: open it
+    setTimeout(() => { const t = document.getElementById(target); if (t) { t.classList.add('flash-highlight'); setTimeout(() => t.classList.remove('flash-highlight'), 2000); } }, 150);
+  } else if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   if (clearsSupport || clearsMail) setTimeout(() => loadSuperAttention(), 600);
 }
 
@@ -15356,11 +15361,37 @@ async function runClearProviderProfile(staffId) {
   else toast(`Profile cleared (${cleared.join(', ')})`);
 }
 
+// "+ Upload document" opens the form in a pop-out window (same size as the setup guide) instead of an inline strip that pushes the table down.
+// The form itself is moved into the window and put back on close, so every field, the paste handler and the save path are unchanged.
+// Closing only hides it: anything typed stays until it is saved, and after a save the form is cleared so another can be added.
+let _auOrigin = null;
+function closeAdminUploadWindow() {
+  const w = document.getElementById('adminUploadWindow'); const form = document.getElementById('adminUploadForm');
+  if (form) { form.style.display = 'none'; if (_auOrigin && _auOrigin.parent) _auOrigin.parent.insertBefore(form, _auOrigin.next && _auOrigin.next.parentNode === _auOrigin.parent ? _auOrigin.next : null); }
+  if (w) w.remove();
+  document.removeEventListener('keydown', _auEsc);
+}
+function _auEsc(e) { if (e.key === 'Escape' && !document.getElementById('customConfirmModal')) closeAdminUploadWindow(); }
 function toggleAdminUpload() {
-  const form = document.getElementById('adminUploadForm');
-  const isHidden = form.style.display === 'none' || !form.style.display;
-  form.style.display = isHidden ? 'block' : 'none';
-  if (isHidden) populateAdminUploadSelects('au', false);
+  if (document.getElementById('adminUploadWindow')) { closeAdminUploadWindow(); return; }
+  const form = document.getElementById('adminUploadForm'); if (!form) return;
+  _auOrigin = { parent: form.parentNode, next: form.nextSibling };
+  const w = document.createElement('div'); w.id = 'adminUploadWindow';
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Upload a document" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(680px,100%);height:min(640px,92vh);display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div style="font-size:20px;font-weight:700;color:#fff;">Upload a document</div>
+      <button type="button" class="btn btn-sm btn-ghost" onclick="closeAdminUploadWindow()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
+    <div class="auw-content" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;padding:14px 24px;border-top:1px solid rgba(255,255,255,.1);">
+      <button type="button" class="btn btn-ghost" onclick="closeAdminUploadWindow()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close</button>
+      <button type="button" class="btn btn-teal" onclick="adminUploadDoc()">Save document</button></div></div>`;
+  w.addEventListener('mousedown', (e) => { if (e.target === w) closeAdminUploadWindow(); });
+  document.body.appendChild(w);
+  w.querySelector('.auw-content').appendChild(form);
+  form.style.display = 'block';
+  document.addEventListener('keydown', _auEsc);
+  populateAdminUploadSelects('au', false);
 }
 
 // Pre-selects the license state from whoever the document is for, but only
@@ -27530,7 +27561,7 @@ function switchTab(tab) {
   if (tab === 'compliance') loadCompliance();
   if (tab === 'hr')        { loadHrTab(); loadAllRemindersFor('hr_employee'); }
   if (tab === 'settings')  { loadSettings(); setTimeout(refreshSettingsJumpBar, 600); [500, 1500, 3500].forEach(ms => setTimeout(refreshSettingsCards, ms)); }
-  if (tab === 'super')     loadSuperAdmin();
+  if (tab === 'super')     { loadSuperAdmin(); [500, 1500, 3500].forEach(ms => setTimeout(refreshSettingsCards, ms)); }
 }
 
 // ── Getting-started checklist (Overview) ────────────────────────────────
@@ -28141,10 +28172,36 @@ const SETTINGS_CARDS = [
     summary: () => 'Partner offers and storage use' },
   { id: 'checklist', hidden: true, tag: '', title: 'Getting-started checklist', parts: [{ label: 'Checklist', ids: ['gettingStartedSettingsPanel'] }], summary: () => '' },
 ];
+
+const SUPER_CARDS = [
+  { tab: 'super', id: 'sa_companies', tag: 'Company management', title: 'Companies & logins', wide: true, parts: [
+      { label: 'Companies', ids: ['superCompaniesPanel'] }, { label: 'Invite staff', ids: ['superInvitePanel'] }, { label: 'Remove a stray login', ids: ['superStrayLoginPanel'] }],
+    summary: () => 'Every company: plans, trials, access and settings' },
+  { tab: 'super', id: 'sa_plans', tag: 'Company management', title: 'Plans & pricing', wide: true, parts: [{ label: 'Plans & pricing', ids: ['superPricingPanel'] }],
+    summary: () => 'The Selko Cred plan, section prices and plan definitions' },
+  { tab: 'super', id: 'sa_mail', tag: 'Inbox', title: 'Mail', wide: true, parts: [{ label: 'Mail', ids: ['superMailPanel'] }],
+    summary: () => "Selko's own mailbox, read live" },
+  { tab: 'super', id: 'sa_support', tag: 'Support', title: 'Support & bugs', wide: true, parts: [
+      { label: 'Support requests', ids: ['superSupportPanel'] }, { label: 'Bug log', ids: ['superBugPanel'] }],
+    summary: () => 'Support requests from companies and the error log' },
+  { tab: 'super', id: 'sa_secrets', tag: 'Platform', title: 'Secrets & rotation', parts: [{ label: 'Secrets', ids: ['superSecretsPanel'] }],
+    summary: () => 'When each cron secret was last rotated and is due' },
+  { tab: 'super', id: 'sa_exclusions', tag: 'Platform', title: 'Exclusion lists', wide: true, parts: [
+      { label: 'SAM.gov', ids: ['superSamPanel'] }, { label: 'OIG', ids: ['superLeiePanel'] }],
+    summary: () => 'SAM.gov and OIG lists: freshness, keys and matches' },
+  { tab: 'super', id: 'sa_doctypes', tag: 'Platform', title: 'Document types', wide: true, parts: [
+      { label: 'Platform document types', ids: ['superPlatformDocTypesPanel'] }, { label: 'Company custom types', ids: ['companyCustomTypesPanel'] }, { label: 'Categories', ids: ['superDocCategoriesPanel'] }],
+    summary: () => 'The shared list every company starts from, and what companies add' },
+  { tab: 'super', id: 'sa_templates', tag: 'Platform', title: 'Templates', wide: true, parts: [
+      { label: 'Credentialing categories', ids: ['superCredTemplateCatsPanel'] }, { label: 'HR form templates', ids: ['superHrTemplatesPanel'] }],
+    summary: () => 'Credentialing template categories and HR forms' },
+  { tab: 'super', id: 'sa_cleanup', tag: 'Platform', title: 'Data cleanup', parts: [{ label: 'Permanent deletion', ids: ['superPurgePanel'] }],
+    summary: () => 'Records eligible for permanent deletion' },
+];
+const ALL_CARDS = SETTINGS_CARDS.concat(SUPER_CARDS);
 // An element is on offer only if it and everything above it, up to the Settings tab, is not switched off by the page's own rules.
 function scVisible(el) {
-  const tab = document.getElementById('tabSettings');
-  for (let n = el; n && n !== tab; n = n.parentElement) { if (n.classList && n.classList.contains('panel-body')) continue; if (n.style && n.style.display === 'none') return false; }   // a collapsed panel body is only the old fold-away state, not a reason to hide
+  for (let n = el; n && n.id !== 'tabSettings' && n.id !== 'tabSuper'; n = n.parentElement) { if (n.classList && n.classList.contains('panel-body')) continue; if (n.style && n.style.display === 'none') return false; }   // a collapsed panel body is only the old fold-away state, not a reason to hide
   return true;
 }
 function scPartVisible(part) { return part.ids.some((id) => { const el = document.getElementById(id); return el && (el.dataset.scMoved ? true : scVisible(el)); }); }
@@ -28152,19 +28209,19 @@ function scCardVisible(card) { return card.parts.some(scPartVisible); }
 let _scMoved = [];   // [{ el, parent, next }] currently inside the pop-out window
 
 function renderSettingsCards() {
-  const home = document.getElementById('settingsCardsHome'); if (!home) return;
-  const admin = !!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin));
-  const cards = SETTINGS_CARDS.filter(c => !c.hidden && scCardVisible(c));
-  home.querySelector('.sc-grid').innerHTML = cards.map(c => `<button type="button" class="sc-card" onclick="openSettingsCard('${c.id}')">
+  document.querySelectorAll('.cards-home').forEach((home) => {
+    const tabKey = home.dataset.tab || 'settings';
+    const admin = !!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin));
+    const cards = ALL_CARDS.filter(c => !c.hidden && (c.tab || 'settings') === tabKey && scCardVisible(c));
+    const grid = home.querySelector('.sc-grid');
+    grid.innerHTML = cards.map(c => `<button type="button" class="sc-card" onclick="openSettingsCard('${c.id}')">
       <span class="sc-tag">${hrOnbEsc(c.tag)}</span><span class="sc-title">${hrOnbEsc(c.title)}</span>
       <span class="sc-sum" data-sc-sum="${c.id}">${hrOnbEsc(safeSummary(c))}</span><span class="sc-open">Open ›</span></button>`).join('');
-  const banner = home.querySelector('.sc-guide'); if (banner) banner.style.display = admin ? '' : 'none';
+    const banner = home.querySelector('.sc-guide'); if (banner) banner.style.display = admin ? '' : 'none';
+  });
 }
 function safeSummary(c) { try { return c.summary() || ''; } catch (e) { return ''; } }
-function refreshSettingsCards() {
-  const home = document.getElementById('settingsCardsHome'); if (!home) return;
-  renderSettingsCards();
-}
+function refreshSettingsCards() { renderSettingsCards(); }
 function scRestore() {
   _scMoved.reverse().forEach(({ el, parent, next }) => { delete el.dataset.scMoved; parent.insertBefore(el, next && next.parentNode === parent ? next : null); });
   _scMoved = [];
@@ -28183,7 +28240,7 @@ function scShowPart(card, idx) {
   box.scrollTop = 0;
 }
 function openSettingsCard(id, partIdx) {
-  const card = SETTINGS_CARDS.find(c => c.id === id); if (!card) return false;
+  const card = ALL_CARDS.find(c => c.id === id); if (!card) return false;
   closeSettingsCard();
   const parts = card.parts.map((p, i) => ({ p, i })).filter(x => scPartVisible(x.p));
   if (!parts.length) { toast("That section isn't available for your plan or role.", true); return false; }
@@ -28194,7 +28251,7 @@ function openSettingsCard(id, partIdx) {
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);">
       <div style="font-size:20px;font-weight:700;color:#fff;">${hrOnbEsc(card.title)}</div>
       <button type="button" class="btn btn-sm btn-ghost" onclick="closeSettingsCard()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
-    ${parts.length > 1 ? `<div class="scm-tabs">${parts.map((x, k) => `<button type="button" class="scm-tab" data-part="${x.i}" onclick="scShowPart(SETTINGS_CARDS.find(c=>c.id==='${id}'), ${x.i})">${hrOnbEsc(x.p.label)}</button>`).join('')}</div>` : ''}
+    ${parts.length > 1 ? `<div class="scm-tabs">${parts.map((x, k) => `<button type="button" class="scm-tab" data-part="${x.i}" onclick="scShowPart(ALL_CARDS.find(c=>c.id==='${id}'), ${x.i})">${hrOnbEsc(x.p.label)}</button>`).join('')}</div>` : ''}
     <div class="scm-content" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;"></div></div>`;
   m.addEventListener('mousedown', (e) => { if (e.target === m) closeSettingsCard(); });
   document.body.appendChild(m);
@@ -28211,7 +28268,7 @@ function closeSettingsCard() {
 // Opens the card holding a given panel or field (used by "Open settings" buttons elsewhere). Returns true if one was found.
 function openSettingsCardFor(targetId) {
   const el = document.getElementById(targetId); if (!el) return false;
-  for (const card of SETTINGS_CARDS) for (let i = 0; i < card.parts.length; i++) {
+  for (const card of ALL_CARDS) for (let i = 0; i < card.parts.length; i++) {
     if (card.parts[i].ids.some((id) => { const p = document.getElementById(id); return p && (p === el || p.contains(el)); })) {
       const cur = document.getElementById('settingsCardModal');
       if (!(cur && cur.dataset.card === card.id)) openSettingsCard(card.id, i);
@@ -28225,7 +28282,7 @@ function initSettingsCards() {
   const tab = document.getElementById('tabSettings'); if (!tab || document.getElementById('settingsCardsHome')) return;
   const kids = Array.from(tab.children);
   kids.slice(0, 2).forEach(k => k.classList.add('settings-keep'));   // the "Settings" title and its description
-  const home = document.createElement('div'); home.id = 'settingsCardsHome';
+  const home = document.createElement('div'); home.id = 'settingsCardsHome'; home.className = 'cards-home'; home.dataset.tab = 'settings';
   home.innerHTML = `<div class="sc-guide"><div style="flex:1;min-width:220px;"><div style="font-size:17px;font-weight:700;color:#fff;">Setup guide</div>
       <div style="font-size:14px;color:rgba(255,255,255,.7);margin-top:2px;">Walk through your company one choice at a time. Reopen it whenever you like.</div></div>
       <button type="button" class="btn btn-teal" onclick="openSetupGuide(0)">Open the guide ›</button>
@@ -28233,7 +28290,20 @@ function initSettingsCards() {
     <div class="sc-grid"></div>`;
   tab.insertBefore(home, kids[2] || null);
   tab.classList.add('cards-mode');
+  initSuperCards();
   renderSettingsCards();
+}
+// Selko Admin: the title, the "Needs attention" strip and the live stats stay on top; every panel below becomes a card.
+function initSuperCards() {
+  const tab = document.getElementById('tabSuper'); if (!tab || document.getElementById('superCardsHome')) return;
+  const kids = Array.from(tab.children);
+  kids.slice(0, 2).forEach(k => k.classList.add('settings-keep'));
+  ['superAttention', 'superStats'].forEach(id => { const e = document.getElementById(id); if (e) e.classList.add('settings-keep'); });
+  const home = document.createElement('div'); home.id = 'superCardsHome'; home.className = 'cards-home'; home.dataset.tab = 'super';
+  home.innerHTML = '<div class="sc-grid"></div>';
+  const stats = document.getElementById('superStats');
+  if (stats && stats.parentNode === tab) tab.insertBefore(home, stats.nextSibling); else tab.appendChild(home);
+  tab.classList.add('cards-mode');
 }
 setTimeout(initSettingsCards, 0);
 
