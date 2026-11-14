@@ -28281,6 +28281,7 @@ function sgSteps() {
   const credOn = !!currentCompany.has_credentialing_addon && !getSectionsOff(currentCompany).includes('credentialing');
   return [
     { id: 'company',  title: 'Who gets your emails?',          sub: 'Alerts, expiry warnings and compliance results go to these addresses.' },
+    ...(credOn ? [{ id: 'details', title: 'Your company details', sub: 'Upload what you have and we fill in your profile for you. Skip anything you do not have yet.' }] : []),
     { id: 'sections', title: 'Which sections will you use?',   sub: 'Turn off anything you will not use. It only hides the tab. You can turn it back on any time.' },
     { id: 'roles',    title: 'Which roles do you employ?',     sub: 'Pick the roles on your team. Staff are filed under these.' },
     ...(credOn ? [{ id: 'requirements', title: 'What does each role need?', sub: 'Tick what you want tracked for each role. For example, many agencies do not need an NPI for assistants.' }] : []),
@@ -28293,6 +28294,7 @@ function sgSteps() {
 
 const SG_TIPS = {
   company: ['These addresses receive expiry warnings, enrollment updates, exclusion check results (OIG and SAM) and sensitive data alerts.', 'Use an inbox someone actually watches, and add a second person so nothing is missed when one of you is out.'],
+  details: ['These details are what payers and credentialing forms ask for again and again: tax ID, NPI, addresses, licenses and malpractice insurance. A W-9 and your malpractice certificate fill the most.', 'The documents are read once to fill the form and are not stored here. You always see what was found before anything is saved.'],
   sections: ['Each section is a tab in the menu. Documents and the Expiration tracker hold staff documents and their expiry dates. Credentialing holds CAQH, NPI, DEA and enrollment records. Compliance holds exclusion checks and the audit log.', 'Turning one off only hides its tab. Nothing is deleted, and you can turn it back on in Settings.'],
   roles: ['A role (PT, PTA, OT and so on) decides how each person is filed, and which documents and checks apply to them.', 'A PT and a PTA usually need different licenses, which is why the next steps ask per role. A role with staff filed under it can\'t be removed here.'],
   requirements: ['A ticked item is flagged as missing on the Credentialing overview and board until it is filled in for that person. An unticked item is never flagged for that role.', 'NPI: a provider\'s national ID number. CAQH ID: the provider\'s credentialing profile ID that payers use. Both can still be filled in for anyone, ticked or not.'],
@@ -28578,6 +28580,82 @@ async function maybeAutoOpenSetupGuide() {
     await openSetupGuide(0);
   } catch (e) { console.warn('Setup guide did not open:', e); }
 }
+
+// ══ SETUP GUIDE: COMPANY DETAILS ══
+// A setup-guide step (credentialing companies only) with ONE big upload: drop in everything you have (W-9, malpractice certificate, state license,
+// CLIA/DEA, NPI or Medicare letter) and each file is read by scan-org-profile. Values are merged (the first file to give a value wins), anything
+// the company already has saved is left alone, and only what is ticked is saved. Each group shows which documents fill it, and gets a tick once it has data.
+const SGD_COLS = { setLegalName: 'legal_business_name', setDirectoryName: 'provider_directory_name', setDbaName: 'dba_name', setOrgType: 'org_type', setGroupSpecialty: 'group_specialty', setTaxonomyCode: 'taxonomy_code', setTaxId: 'tax_id', setOrgNpi: 'org_npi', setMedicaidId: 'medicaid_id', setMedicareNumber: 'medicare_number', setOrgFax: 'fax', setRemitAddress: 'payment_remittance_address', setBillingPhone: 'billing_phone', setNoticeAddress: 'notice_address', setNoticePhone: 'notice_address_phone', setCredContactName: 'credentialing_contact_name', setCredContactEmail: 'credentialing_contact_email', setCredContactPhone: 'credentialing_contact_phone', setSignatoryName: 'authorized_signatory_name', setSignatoryTitle: 'authorized_signatory_title', setSignatoryEmail: 'authorized_signatory_email', setOrgStateLicenseNumber: 'org_state_license_number', setOrgStateLicenseState: 'org_state_license_state', setOrgStateRegistrationNumber: 'org_state_registration_number', setOrgStateRegistrationState: 'org_state_registration_state', setOrgStateCertificationNumber: 'org_state_certification_number', setOrgStateCertificationState: 'org_state_certification_state', setOrgDeaNumber: 'org_dea_number', setOrgDeaState: 'org_dea_state', setOrgCliaNumber: 'org_clia_number', setOrgCliaState: 'org_clia_state', setMalpracticeCarrier: 'malpractice_carrier', setMalpracticePolicy: 'malpractice_policy_number', setMalpracticeLimits: 'malpractice_coverage_limits', setMalpracticeEffective: 'malpractice_effective_date', setMalpracticeExpiration: 'malpractice_expiration_date' };
+let _sgd = { files: [], found: {}, labels: {}, busy: false };
+function sgdHave(id) { const c = currentCompany && currentCompany[SGD_COLS[id]]; return c != null && String(c).trim() !== ''; }
+function sgdGroupsHtml() {
+  return ORG_PROFILE_GROUPS.map(g => {
+    const have = g.ids.filter(id => sgdHave(id) || (_sgd.found[id] && _sgd.found[id].use)).length;
+    const done = have > 0;
+    return `<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid rgba(255,255,255,.08);"><div style="width:22px;font-size:16px;color:${done ? '#4ade80' : 'rgba(255,255,255,.3)'};">${done ? '✓' : '○'}</div><div style="flex:1;"><div style="font-size:15px;font-weight:700;color:#fff;">${sgEsc(g.title)} <span style="font-weight:400;font-size:13px;color:rgba(255,255,255,.5);">${have} of ${g.ids.length}</span></div><div style="font-size:14px;color:rgba(255,255,255,.62);">Best document: ${sgEsc(ORGSCAN_HINT[g.key] || '')}</div></div></div>`;
+  }).join('');
+}
+SG_RENDER.details = async function () {
+  return `<label for="sgdInput" style="display:block;border:2px dashed rgba(20,184,166,.6);border-radius:12px;padding:22px 16px;text-align:center;cursor:pointer;background:rgba(20,184,166,.07);">
+      <div style="font-size:18px;font-weight:700;color:#fff;">📎 Upload everything you have at once</div>
+      <div style="font-size:14px;color:rgba(255,255,255,.7);margin-top:4px;">W-9, malpractice certificate, state license, CLIA or DEA certificate, NPI or Medicare letter. PDF or photo, as many as you like.</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.5);margin-top:6px;">Nothing is saved until you press Save and continue. Social Security numbers are never read in.</div>
+    </label>
+    <input type="file" id="sgdInput" multiple accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg" style="display:none;" onchange="sgdPick(this.files)">
+    <div id="sgdFiles" style="margin-top:12px;"></div><div id="sgdReview"></div>
+    <div style="margin-top:14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--teal-l);">What each part of the profile needs</div>
+    <div id="sgdGroups">${sgdGroupsHtml()}</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.5);margin:10px 0 4px;">No documents handy? Press Skip this step. You can come back from Settings, where every group has its own upload button.</div>`;
+};
+async function sgdPick(fileList) {
+  const files = [...(fileList || [])]; if (!files.length || _sgd.busy) return;
+  _sgd.busy = true; _sgd.files = files.map(f => ({ name: f.name, state: 'wait', msg: '' }));
+  sgdRenderFiles();
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i], row = _sgd.files[i];
+    const problem = typeof uploadFileProblem === 'function' ? uploadFileProblem(f) : ''; if (problem) { row.state = 'err'; row.msg = problem; sgdRenderFiles(); continue; }
+    row.state = 'busy'; sgdRenderFiles();
+    try {
+      const low = f.name.toLowerCase(); const mediaType = f.type || (/\.pdf$/.test(low) ? 'application/pdf' : /\.png$/.test(low) ? 'image/png' : 'image/jpeg');
+      const base64 = await oscToBase64(f); const { data: { session } } = await sb.auth.getSession();
+      const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), 120000);
+      let res; try { res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/scan-org-profile', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body: JSON.stringify({ fileBase64: base64, mediaType, focus: 'any' }), signal: ctl.signal }); } finally { clearTimeout(t); }
+      let out = null; try { out = await res.json(); } catch (_e) {}
+      if (!out) throw new Error('The reading service did not answer. Try again.');
+      if (out.error) throw new Error(out.error);
+      let added = 0;
+      (out.fields || []).forEach(x => { if (!SGD_COLS[x.id] || _sgd.found[x.id] || sgdHave(x.id)) return; _sgd.found[x.id] = { id: x.id, label: x.label, value: x.value, from: out.document_type || f.name, use: true }; added++; });
+      row.state = 'ok'; row.msg = (out.document_type ? out.document_type + ': ' : '') + (added ? added + ' new field' + (added === 1 ? '' : 's') : 'nothing new to add');
+    } catch (e) { row.state = 'err'; row.msg = (e && e.name === 'AbortError') ? 'Took too long. Try a smaller or clearer copy.' : ((e && e.message) || 'Could not read it.'); }
+    sgdRenderFiles();
+  }
+  _sgd.busy = false; sgdRenderFiles(); sgdRenderReview();
+  const inp = document.getElementById('sgdInput'); if (inp) inp.value = '';
+}
+function sgdRenderFiles() {
+  const el = document.getElementById('sgdFiles'); if (!el) return;
+  const ic = { wait: '…', busy: '⏳', ok: '✓', err: '⚠' }, col = { wait: 'rgba(255,255,255,.5)', busy: '#fbbf24', ok: '#4ade80', err: '#f87171' };
+  el.innerHTML = _sgd.files.map(r => `<div style="font-size:14px;color:${col[r.state]};padding:2px 0;">${ic[r.state]} <span style="color:#fff;">${sgEsc(r.name)}</span> ${r.state === 'busy' ? 'reading…' : sgEsc(r.msg)}</div>`).join('');
+}
+function sgdRenderReview() {
+  const el = document.getElementById('sgdReview'), g = document.getElementById('sgdGroups'); if (g) g.innerHTML = sgdGroupsHtml(); if (!el) return;
+  const list = Object.values(_sgd.found);
+  if (!list.length) { el.innerHTML = _sgd.files.length && !_sgd.busy ? '<div style="font-size:14px;color:rgba(255,255,255,.62);margin-top:10px;">Nothing new was found to fill in. Try a clearer copy, or another document.</div>' : ''; return; }
+  el.innerHTML = `<div style="margin-top:12px;font-size:14px;color:rgba(255,255,255,.72);">Found these. Untick anything that looks wrong; it saves when you press Save and continue.</div>
+    <div class="tbl-wrap" style="margin-top:6px;"><table><thead><tr><th></th><th>Field</th><th>Found</th><th>From</th></tr></thead><tbody>${list.map(f => `<tr><td style="width:36px;"><input type="checkbox" aria-label="Use ${sgEsc(f.label)}" ${f.use ? 'checked' : ''} onchange="_sgd.found['${f.id}'].use=this.checked;document.getElementById('sgdGroups').innerHTML=sgdGroupsHtml()"></td><td>${sgEsc(f.label)}</td><td style="font-weight:700;">${sgEsc(f.value)}</td><td style="color:rgba(255,255,255,.55);">${sgEsc(f.from)}</td></tr>`).join('')}</tbody></table></div>`;
+}
+SG_SAVE.details = async function () {
+  if (_sgd.busy) throw new Error('Wait for the documents to finish reading first.');
+  const use = Object.values(_sgd.found).filter(f => f.use); if (!use.length) return;
+  const upd = {}; use.forEach(f => { upd[SGD_COLS[f.id]] = f.value; });
+  const { data, error } = await sb.from('companies').update(upd).eq('id', currentCompany.id).select('id');
+  if (error) throw error;
+  if (!data || !data.length) throw new Error('Not saved. Your account may not be allowed to change these details.');
+  Object.assign(currentCompany, upd); window._credFormFor = null;   // so the Settings form reloads with the new values instead of overwriting them with old blanks
+  _sgd.found = {}; _sgd.files = [];
+  toast(use.length + ' detail' + (use.length === 1 ? '' : 's') + ' saved to your organization profile.');
+};
+// ══ END SETUP GUIDE: COMPANY DETAILS ══
 
 // ══ FILTER PANELS ══
 // Lists with several dropdowns (Documents, Expiration, Staff) show one "Filters" button instead. The button opens a small panel that
