@@ -2524,7 +2524,7 @@ body:has(#providerTabModal) { overflow: hidden; }
       </div>
 
       <!-- Branding (Pro only) -->
-      <div class="set-sub" style="margin-bottom:16px;">
+      <div class="set-sub" style="margin-bottom:16px;" id="brandingPanel">
         <h3 class="set-sub-title">Branding <span id="brandingProTag" style="font-size:12px;color:var(--gold);margin-left:6px;display:none;">PRO</span></h3>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Make the parts your staff and partners see — emails, the header, login screen — look like your own company's, not Selko's.</p>
         <div id="brandingLocked" style="display:none;">
@@ -2568,6 +2568,12 @@ body:has(#providerTabModal) { overflow: hidden; }
           <button class="btn btn-sm btn-teal" onclick="saveBranding()">Save branding</button>
         </div>
         <div id="setBrandStatus" class="up-status" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="set-sub" style="margin-bottom:16px;" id="setupGuidePanel">
+        <h3 class="set-sub-title">Setup guide</h3>
+        <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">A short walkthrough that sets up your company one choice at a time: emails, sections, roles, what each role needs, required documents, reminders and branding. Everything it sets can be changed later in Settings.</p>
+        <button class="btn btn-sm btn-teal" onclick="openSetupGuide(0)">Open the setup guide</button>
       </div>
 
       <div class="set-sub" style="margin-bottom:16px;" id="gettingStartedSettingsPanel">
@@ -5847,7 +5853,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-r';
+const APP_VERSION = '2026-11-13-t';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -8953,6 +8959,7 @@ async function initAdmin() {
   loadSidebarMemo(); // fire-and-forget — sidebar widget, not tied to any specific tab
   await getHiddenPanels(); // populates _hiddenPanelsCache before anything that gates on it renders
   await loadRequirements(true);
+  maybeAutoOpenSetupGuide();   // new companies only; fire-and-forget
   if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
 }
 
@@ -17687,6 +17694,9 @@ async function loadBillingStatus() {
     : `No plan yet${statusNote}`;
   const hrCol = document.getElementById('billingHrColumn');
   if (hrCol) hrCol.style.display = hrVisible() ? 'flex' : 'none';
+  // Start from what the company already has, so "Continue to checkout" never quietly drops a section it is using.
+  const _cc = document.getElementById('billingCredCheck'); if (_cc) _cc.checked = !!currentCompany.has_credentialing_addon;
+  const _hc = document.getElementById('billingHrCheck'); if (_hc) _hc.checked = !!(currentCompany.has_hr_addon && hrVisible());
   updateBillingEstimate();
 
   // Same "Credentialing module option" toggle as Selko Admin's
@@ -17894,6 +17904,7 @@ async function loadSettings() {
   document.getElementById('setOnboardingReminderInterval').value = c.custom_vars?.onboardingReminderIntervalDays || 3;
   applyHrVisibility();
   renderOnboardingDocTypeSummary(c);
+  setTimeout(refreshSettingsSummaries, 0);
   document.getElementById('setShowPartnerRecs').checked = c.show_partner_recommendations !== false;
 
   // Lock company name editing for non-super-admins
@@ -27741,6 +27752,378 @@ function toggleTheme() {
 applyTheme(document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark');
 const SETTINGS_GROUPED = true;
 document.documentElement.classList.toggle('settings-grouped', SETTINGS_GROUPED);
+
+// ══ SETUP GUIDE ══
+// A choice-by-choice walkthrough for a new company's first admin: one decision per screen, a sensible
+// default on every screen, every step skippable, and each step saved as soon as it is confirmed.
+// It only calls the same tables the Settings screens use, so anything chosen here can be changed there later.
+// State lives in companies.custom_vars.setupGuide = { done, skipped, step }.
+const SETUP_ROLE_PRESETS = ['PT', 'PTA', 'OT', 'COTA', 'SLP', 'RN', 'LPN', 'MD', 'DO', 'NP', 'PA', 'Other'];
+let _sg = { step: 0, steps: [], picks: {} };
+// Only the two items that commonly differ by role are asked here; address, phone and employment history stay in Settings.
+function SG_REQ_ITEMS() { return REQUIREMENT_ITEMS.filter(i => (i.key === 'npi' || i.key === 'caqh') && (!i.needs || !(_hiddenPanelsCache && _hiddenPanelsCache.has(i.needs)))); }
+
+async function sgMergeCustomVars(mutate) {
+  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
+  if (readErr) throw readErr;
+  const cv = mutate({ ...((fresh && fresh.custom_vars) || {}) }) || {};
+  const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
+  if (error) throw error;
+  if (!changed || !changed.length) throw new Error("Nothing was saved. You may not have permission to change this company's settings.");
+  currentCompany.custom_vars = cv;
+  return cv;
+}
+function sgState() { return (currentCompany && currentCompany.custom_vars && currentCompany.custom_vars.setupGuide) || {}; }
+async function sgSaveState(patch) {
+  try { await sgMergeCustomVars((cv) => { cv.setupGuide = { ...(cv.setupGuide || {}), ...patch, at: new Date().toISOString() }; return cv; }); return true; }
+  catch (e) { console.warn('Setup guide progress was not saved:', e); return false; }
+}
+function sgSteps() {
+  const credOn = !!currentCompany.has_credentialing_addon && !getSectionsOff(currentCompany).includes('credentialing');
+  return [
+    { id: 'company',  title: 'Who gets your emails?',          sub: 'Alerts, expiry warnings and compliance results go to these addresses.' },
+    { id: 'sections', title: 'Which sections will you use?',   sub: 'Turn off anything you will not use. It only hides the tab. You can turn it back on any time.' },
+    { id: 'roles',    title: 'Which roles do you employ?',     sub: 'Pick the roles on your team. Staff are filed under these.' },
+    ...(credOn ? [{ id: 'requirements', title: 'What does each role need?', sub: 'Tick what you want tracked for each role. For example, many agencies do not need an NPI for assistants.' }] : []),
+    { id: 'documents', title: 'Which documents are required?', sub: 'These are the standard documents. Untick anything you do not collect. You can scope each to specific roles later.' },
+    { id: 'notify',   title: 'How should we remind you?',      sub: 'Your own email preference, and when staff are warned about expiring documents.' },
+    ...(window._isPro !== false ? [{ id: 'branding', title: 'Make it look like yours', sub: 'Your name and color on the header, emails and login. You can add a logo later in Settings.' }] : []),
+    { id: 'team',     title: 'You are set up', sub: 'Everything you chose can be changed later in Settings. Add your first person to see it working.' },
+  ];
+}
+
+function sgEsc(s) { return hrOnbEsc(String(s == null ? '' : s)); }
+function sgRoleList() { return _sg.picks.roles || getCompanyDisciplines(); }
+
+async function sgRenderStep() {
+  const step = _sg.steps[_sg.step]; if (!step) return;
+  const total = _sg.steps.length;
+  const box = document.getElementById('sgBody');
+  document.getElementById('sgCount').textContent = `Step ${_sg.step + 1} of ${total}`;
+  document.getElementById('sgBar').style.width = Math.round(((_sg.step + 1) / total) * 100) + '%';
+  document.getElementById('sgTitle').textContent = step.title;
+  document.getElementById('sgSub').textContent = step.sub;
+  document.getElementById('sgErr').style.display = 'none';
+  const last = _sg.step === total - 1;
+  document.getElementById('sgBack').style.visibility = _sg.step === 0 ? 'hidden' : 'visible';
+  document.getElementById('sgSkip').style.display = last ? 'none' : '';
+  document.getElementById('sgNext').textContent = last ? 'Finish' : 'Save and continue';
+  box.innerHTML = '<div style="color:rgba(255,255,255,.55);">Loading…</div>';
+  box.innerHTML = await SG_RENDER[step.id]();
+}
+
+const SG_RENDER = {
+  async company() {
+    const list = (currentCompany.admin_emails || []).join(', ');
+    return `<label class="inline-label" for="sgEmails">Admin email addresses</label>
+      <input class="inline-input" id="sgEmails" type="text" value="${sgEsc(list)}" placeholder="you@company.com, second@company.com" autocomplete="off" />
+      <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:6px;">Separate several addresses with commas. Everyone listed gets the same admin emails.</div>`;
+  },
+  async sections() {
+    const off = getSectionsOff(currentCompany);
+    return SECTION_OPTIONS.filter(o => !o.needs || currentCompany[o.needs]).map(o =>
+      `<label class="set-check" style="display:flex;gap:8px;align-items:flex-start;padding:8px 0;"><input type="checkbox" data-sg-section="${o.key}" ${off.includes(o.key) ? '' : 'checked'} style="margin-top:4px;"/> <span><strong>${sgEsc(o.label)}</strong><span style="display:block;font-size:13px;color:rgba(255,255,255,.55);">${sgEsc(o.help)}</span></span></label>`).join('');
+  },
+  async roles() {
+    const cur = getCompanyDisciplines();
+    const inUse = new Set((typeof staffList !== 'undefined' ? staffList : []).map(s => s.discipline).filter(Boolean));
+    const all = [...new Set([...SETUP_ROLE_PRESETS, ...cur])];
+    _sg.picks.roleInUse = [...inUse];
+    return `<div id="sgRoleChips" style="display:flex;flex-wrap:wrap;gap:8px;">${all.map(r => `<label class="set-check" style="padding:6px 12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;display:inline-flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" data-sg-role="${sgEsc(r)}" ${cur.includes(r) ? 'checked' : ''} ${inUse.has(r) ? 'disabled title="Staff are filed under this role"' : ''}/> ${sgEsc(r)}</label>`).join('')}</div>
+      <div style="display:flex;gap:8px;margin-top:14px;align-items:center;flex-wrap:wrap;">
+        <input class="inline-input" id="sgRoleNew" placeholder="Another role (for example Audiologist)" style="max-width:300px;" />
+        <button type="button" class="btn btn-sm btn-ghost" onclick="sgAddRole()" style="color:#fff;border-color:rgba(255,255,255,.2);">Add</button>
+      </div>`;
+  },
+  async requirements() {
+    if (_reqRows === null) await loadRequirements(true);
+    if (_reqRows === null) return `<div style="color:rgba(255,255,255,.7);">The requirements table is not installed yet, so this step is skipped. You can set this later in Settings.</div>`;
+    const roles = sgRoleList();
+    return `<table class="roles-table" style="width:100%;"><thead><tr><th>Role</th>${SG_REQ_ITEMS().map(i => `<th style="text-align:center;">${sgEsc(i.label)}</th>`).join('')}</tr></thead><tbody>${roles.map(r => `<tr><td><strong>${sgEsc(r)}</strong></td>${SG_REQ_ITEMS().map(i => {
+      const dis = false;
+      return `<td style="text-align:center;"><input type="checkbox" data-sg-req="${i.key}" data-sg-role="${sgEsc(r)}" ${requirementValue(i.key, r).value ? 'checked' : ''} ${dis ? 'disabled' : ''}/></td>`; }).join('')}</tr>`).join('')}</tbody></table>
+      <div style="font-size:13px;color:rgba(255,255,255,.55);margin-top:8px;">Unticked means that role is never flagged as missing it. Address, phone and employment history can be set per role in Settings.</div>`;
+  },
+  async documents() {
+    await loadDocTypes();
+    const ov = await getDocTypeOverrides(currentCompany.id);
+    _sg.picks.docOverrides = ov;
+    const types = (docTypes || []).filter(t => t.name);
+    if (!types.length) return `<div style="color:rgba(255,255,255,.7);">No document types yet. You can add them in Settings.</div>`;
+    return `<div style="max-height:340px;overflow:auto;border:1px solid rgba(255,255,255,.1);border-radius:8px;padding:6px 12px;">${types.map(t => `<label class="set-check" style="display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06);"><input type="checkbox" data-sg-doc="${t.id}" data-sg-global="${t.company_id ? '0' : '1'}" ${effectiveRequired(t, ov) ? 'checked' : ''}/> <span>${sgEsc(t.name)}</span></label>`).join('')}</div>`;
+  },
+  async notify() {
+    const cv = currentCompany.custom_vars || {};
+    let mode = 'weekly', up = 'weekly';
+    try { const { data } = await sb.from('admin_notification_prefs').select('*').eq('company_id', currentCompany.id).eq('email', adminNotifyEmail()).maybeSingle();
+      if (data && ADMIN_NOTIFY_MODES[data.credential_mode]) mode = data.credential_mode; if (data && ADMIN_UPLOAD_MODES[data.upload_digest_mode]) up = data.upload_digest_mode; } catch (e) {}
+    const radios = (name, modes, cur) => Object.entries(modes).map(([k, [l, h]]) => `<label style="display:flex;gap:8px;align-items:flex-start;padding:4px 0;cursor:pointer;"><input type="radio" name="${name}" value="${k}" ${k === cur ? 'checked' : ''} style="margin-top:4px;"/><span style="color:#fff;">${sgEsc(l)}<span style="display:block;font-size:13px;color:rgba(255,255,255,.55);">${sgEsc(h)}</span></span></label>`).join('');
+    return `<div style="font-weight:600;color:#fff;margin-bottom:4px;">Credential expiry emails to ${sgEsc(adminNotifyEmail())}</div>${radios('sgMode', ADMIN_NOTIFY_MODES, mode)}
+      <div style="font-weight:600;color:#fff;margin:14px 0 4px;">Staff upload summary</div>${radios('sgUp', ADMIN_UPLOAD_MODES, up)}
+      <label class="set-check" style="display:flex;gap:8px;align-items:center;margin-top:16px;"><input type="checkbox" id="sgStaffRem" ${cv.staffExpiryReminders === false ? '' : 'checked'}/> Also remind staff about their own expiring documents</label>
+      <div style="display:flex;gap:12px;margin-top:10px;flex-wrap:wrap;">
+        <div><label class="inline-label">First warning (days before)</label><input class="inline-input" id="sgW1" type="number" min="1" max="365" value="${sgEsc(cv.warn1 || 30)}" style="max-width:120px;"/></div>
+        <div><label class="inline-label">Second warning (days before)</label><input class="inline-input" id="sgW2" type="number" min="1" max="90" value="${sgEsc(cv.warn2 || 7)}" style="max-width:120px;"/></div>
+      </div>`;
+  },
+  async branding() {
+    const b = currentCompany.branding || {};
+    const cur = b.primary || BRAND_SWATCHES[0].hex;
+    _sg.picks.brandColor = cur;
+    return `<label class="inline-label" for="sgBrandName">Name shown in the header and emails</label>
+      <input class="inline-input" id="sgBrandName" value="${sgEsc(b.company_name || currentCompany.name || '')}" style="max-width:340px;"/>
+      <label class="inline-label" style="margin-top:14px;">Accent color</label>
+      <div id="sgSwatches" style="display:flex;gap:10px;flex-wrap:wrap;">${BRAND_SWATCHES.map(s => `<button type="button" title="${sgEsc(s.label)}" data-sg-color="${s.hex}" onclick="sgPickColor('${s.hex}')" style="width:36px;height:36px;border-radius:50%;border:3px solid ${s.hex === cur ? '#fff' : 'transparent'};background:${s.hex};cursor:pointer;"></button>`).join('')}</div>`;
+  },
+  async team() {
+    const p = _sg.picks;
+    const lines = [
+      p.sections ? `Sections on: ${p.sections.join(', ') || 'none'}` : null,
+      p.roles ? `Roles: ${p.roles.join(', ')}` : null,
+      p.notifyLine || null,
+    ].filter(Boolean);
+    return `${lines.length ? `<div style="background:rgba(255,255,255,.05);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:14px;color:rgba(255,255,255,.8);line-height:1.7;">${lines.map(sgEsc).join('<br>')}</div>` : ''}
+      <div style="display:flex;gap:10px;flex-wrap:wrap;">
+        <button type="button" class="btn btn-teal" onclick="sgFinish('staff')">Add my first person</button>
+        <button type="button" class="btn btn-ghost" onclick="sgFinish('overview')" style="color:#fff;border-color:rgba(255,255,255,.2);">Go to my Overview</button>
+      </div>`;
+  },
+};
+
+function sgAddRole() {
+  const inp = document.getElementById('sgRoleNew'); const v = (inp.value || '').trim().slice(0, 40);
+  if (!v) return;
+  const exists = [...document.querySelectorAll('#sgRoleChips [data-sg-role]')].some(c => c.dataset.sgRole.toLowerCase() === v.toLowerCase());
+  if (!exists) document.getElementById('sgRoleChips').insertAdjacentHTML('beforeend', `<label class="set-check" style="padding:6px 12px;border:1px solid rgba(255,255,255,.18);border-radius:999px;display:inline-flex;gap:6px;align-items:center;cursor:pointer;"><input type="checkbox" data-sg-role="${sgEsc(v)}" checked/> ${sgEsc(v)}</label>`);
+  inp.value = '';
+}
+function sgPickColor(hex) {
+  _sg.picks.brandColor = hex;
+  document.querySelectorAll('#sgSwatches button').forEach(b => { b.style.borderColor = b.dataset.sgColor === hex ? '#fff' : 'transparent'; });
+}
+
+// Saves what is on screen for this step. Returns true if the guide may move on.
+const SG_SAVE = {
+  async company() {
+    const raw = document.getElementById('sgEmails').value;
+    const list = raw.split(/[,;\s]+/).map(s => s.trim().toLowerCase()).filter(Boolean);
+    if (!list.length) throw new Error('Enter at least one email address.');
+    const bad = list.find(e => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e));
+    if (bad) throw new Error(`"${bad}" does not look like an email address.`);
+    const { data, error } = await sb.from('companies').update({ admin_emails: [...new Set(list)] }).eq('id', currentCompany.id).select('id');
+    if (error) throw error;
+    if (!data || !data.length) throw new Error("Nothing was saved. You may not have permission to change this company's settings.");
+    currentCompany.admin_emails = [...new Set(list)];
+  },
+  async sections() {
+    const boxes = [...document.querySelectorAll('[data-sg-section]')];
+    const offNow = boxes.filter(b => !b.checked).map(b => b.dataset.sgSection);
+    const keys = boxes.map(b => b.dataset.sgSection);
+    await sgMergeCustomVars((cv) => { const keep = (Array.isArray(cv.tabsOff) ? cv.tabsOff : []).filter(k => !keys.includes(k)); cv.tabsOff = [...keep, ...offNow]; return cv; });
+    updateModuleTabVisibility(currentCompany, currentProfile);
+    _sg.picks.sections = boxes.filter(b => b.checked).map(b => (SECTION_OPTIONS.find(o => o.key === b.dataset.sgSection) || {}).label || b.dataset.sgSection);
+  },
+  async roles() {
+    const chosen = [...document.querySelectorAll('#sgRoleChips [data-sg-role]')].filter(c => c.checked || c.disabled).map(c => c.dataset.sgRole);
+    if (!chosen.length) throw new Error('Pick at least one role.');
+    const { data, error } = await sb.from('companies').update({ available_disciplines: chosen }).eq('id', currentCompany.id).select('id');
+    if (error) throw error;
+    if (!data || !data.length) throw new Error("Nothing was saved. You may not have permission to change this company's settings.");
+    currentCompany.available_disciplines = chosen; _sg.picks.roles = chosen;
+  },
+  async requirements() {
+    if (_reqRows === null) return;
+    for (const c of document.querySelectorAll('[data-sg-req]')) {
+      if (c.disabled) continue;
+      const item = c.dataset.sgReq, role = c.dataset.sgRole;
+      if (requirementValue(item, role).value !== c.checked) await setRequirement(item, role, c.checked);
+    }
+  },
+  async documents() {
+    const ov = _sg.picks.docOverrides || {};
+    for (const c of document.querySelectorAll('[data-sg-doc]')) {
+      const id = c.dataset.sgDoc;
+      const t = (docTypes || []).find(x => String(x.id) === String(id)); if (!t) continue;
+      if (effectiveRequired(t, ov) === c.checked) continue;
+      if (c.dataset.sgGlobal === '1') {
+        const { data: ex, error: re } = await sb.from('company_document_type_overrides').select('id').eq('company_id', currentCompany.id).eq('document_type_id', t.id).maybeSingle();
+        if (re) throw re;
+        const { data, error } = ex ? await sb.from('company_document_type_overrides').update({ is_required: c.checked }).eq('id', ex.id).select('id')
+          : await sb.from('company_document_type_overrides').insert({ company_id: currentCompany.id, document_type_id: t.id, is_required: c.checked }).select('id');
+        if (error) throw error;
+        if (!data || !data.length) throw new Error('Nothing was saved for ' + t.name + '.');
+      } else {
+        const { data, error } = await sb.from('document_types').update({ is_required: c.checked }).eq('id', t.id).select('id');
+        if (error) throw error;
+        if (!data || !data.length) throw new Error('Nothing was saved for ' + t.name + '.');
+      }
+    }
+    await loadDocTypes();
+  },
+  async notify() {
+    const mode = document.querySelector('input[name=sgMode]:checked')?.value, up = document.querySelector('input[name=sgUp]:checked')?.value;
+    const w1 = parseInt(document.getElementById('sgW1').value), w2 = parseInt(document.getElementById('sgW2').value);
+    if (!(w1 >= 1 && w1 <= 365) || !(w2 >= 1 && w2 <= 90)) throw new Error('Warning days must be between 1 and 365 (first) and 1 and 90 (second).');
+    if (w2 >= w1) throw new Error('The second warning should come after the first, so use fewer days than the first one.');
+    if (currentProfile?.role === 'admin' && !_superProfile && ADMIN_NOTIFY_MODES[mode]) {
+      const row = { company_id: currentCompany.id, email: adminNotifyEmail(), credential_mode: mode, upload_digest_mode: up, updated_at: new Date().toISOString(), updated_by: currentProfile.id };
+      let { error } = await sb.from('admin_notification_prefs').upsert(row, { onConflict: 'company_id,email' });
+      if (error) { delete row.upload_digest_mode; ({ error } = await sb.from('admin_notification_prefs').upsert(row, { onConflict: 'company_id,email' })); }
+      if (error) throw error;
+    }
+    const staffRem = document.getElementById('sgStaffRem').checked;
+    await sgMergeCustomVars((cv) => { cv.staffExpiryReminders = staffRem; cv.warn1 = w1; cv.warn2 = w2; return cv; });
+    _sg.picks.notifyLine = `Expiry emails: ${(ADMIN_NOTIFY_MODES[mode] || [''])[0].replace(' (recommended)', '')} · staff reminders ${staffRem ? 'on' : 'off'} · warnings at ${w1} and ${w2} days`;
+  },
+  async branding() {
+    const name = document.getElementById('sgBrandName').value.trim();
+    const branding = { ...(currentCompany.branding || {}), primary: _sg.picks.brandColor || BRAND_SWATCHES[0].hex, company_name: name };
+    const { data, error } = await sb.from('companies').update({ branding }).eq('id', currentCompany.id).select('id');
+    if (error) throw error;
+    if (!data || !data.length) throw new Error("Nothing was saved. You may not have permission to change this company's settings.");
+    currentCompany = { ...currentCompany, branding };
+    applyBranding(branding, currentCompany.logo_url);
+  },
+  async team() {},
+};
+
+async function sgNext(skip) {
+  const step = _sg.steps[_sg.step]; if (!step) return;
+  const btn = document.getElementById('sgNext');
+  if (!skip) {
+    btn.disabled = true;
+    try { await SG_SAVE[step.id](); }
+    catch (e) { const el = document.getElementById('sgErr'); el.textContent = (e && e.message) ? friendlyError(e) : 'Not saved.'; el.style.display = 'block'; btn.disabled = false; return; }
+    btn.disabled = false;
+  }
+  if (_sg.step >= _sg.steps.length - 1) { await sgFinish('overview'); return; }
+  _sg.step++;
+  sgSaveState({ step: _sg.step });
+  await sgRenderStep();
+}
+async function sgBack() { if (_sg.step > 0) { _sg.step--; await sgRenderStep(); } }
+async function sgFinish(goTo) {
+  await sgSaveState({ done: true, step: _sg.steps.length - 1 });
+  closeSetupGuide();
+  try { renderGettingStarted(); } catch (e) {}
+  if (goTo === 'staff') { switchTab('staff'); setTimeout(() => { try { showAddStaff(); } catch (e) {} }, 300); }
+  else switchTab('overview');
+}
+async function closeSetupGuideAndSave() { await sgSaveState({ step: _sg.step }); closeSetupGuide(); toast('Setup paused. Reopen it any time from Settings > Setup guide.'); }
+function closeSetupGuide() { document.getElementById('setupGuideModal')?.remove(); }
+
+async function openSetupGuide(fromStep) {
+  if (!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin))) { toast('Only an admin can run the setup guide.', true); return; }
+  closeSetupGuide();
+  await loadRequirements(true).catch(() => {});
+  _sg = { step: 0, steps: sgSteps(), picks: {} };
+  const saved = Number.isInteger(fromStep) ? fromStep : (sgState().done ? 0 : (sgState().step || 0));
+  _sg.step = Math.min(Math.max(saved, 0), _sg.steps.length - 1);
+  const m = document.createElement('div');
+  m.id = 'setupGuideModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:2100;display:flex;align-items:center;justify-content:center;padding:16px;';
+  m.innerHTML = `<div role="dialog" aria-modal="true" aria-labelledby="sgTitle" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:100%;max-width:640px;max-height:92vh;display:flex;flex-direction:column;">
+    <div style="padding:18px 22px 0;">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;">
+        <div id="sgCount" style="font-size:13px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--teal-l);"></div>
+        <button type="button" class="btn btn-sm btn-ghost" onclick="closeSetupGuideAndSave()" style="color:#fff;border-color:rgba(255,255,255,.2);">Finish later</button>
+      </div>
+      <div style="height:5px;background:rgba(255,255,255,.1);border-radius:3px;margin:10px 0 14px;overflow:hidden;"><div id="sgBar" style="height:100%;width:0;background:var(--teal);transition:width .2s;"></div></div>
+      <div id="sgTitle" style="font-size:22px;font-weight:700;color:#fff;"></div>
+      <div id="sgSub" style="font-size:15px;color:rgba(255,255,255,.62);margin:4px 0 14px;"></div>
+    </div>
+    <div id="sgBody" style="padding:0 22px;overflow:auto;flex:1;"></div>
+    <div id="sgErr" style="display:none;color:#f87171;font-size:14px;padding:8px 22px 0;"></div>
+    <div style="display:flex;gap:8px;align-items:center;padding:16px 22px 20px;">
+      <button type="button" class="btn btn-ghost" id="sgBack" onclick="sgBack()" style="color:#fff;border-color:rgba(255,255,255,.2);">Back</button>
+      <div style="flex:1;"></div>
+      <button type="button" class="btn btn-ghost" id="sgSkip" onclick="sgNext(true)" style="color:#fff;border-color:rgba(255,255,255,.2);">Skip this step</button>
+      <button type="button" class="btn btn-teal" id="sgNext" onclick="sgNext(false)">Save and continue</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  await sgRenderStep();
+}
+
+// New companies only: the first admin of a company that has never seen the guide and has no staff yet.
+let _sgAutoChecked = false;
+async function maybeAutoOpenSetupGuide() {
+  if (_sgAutoChecked) return; _sgAutoChecked = true;
+  try {
+    if (!currentProfile || currentProfile.role !== 'admin' || _superProfile) return;
+    if (sgState().done || sgState().skipped || sgState().step !== undefined) return;   // seen before: only a manual re-open from Settings
+    if ((typeof staffList !== 'undefined' ? staffList : []).length > 0) return;       // an established company
+    await openSetupGuide(0);
+  } catch (e) { console.warn('Setup guide did not open:', e); }
+}
+
+// ── Settings summaries ───────────────────────────────────────────────────────
+// Busy panels show one line of what is set now, with an Edit button. The full controls open only on Edit.
+// Anything listed in `keep` stays visible (for example a pending support-access request).
+const SUMMARY_PANELS = [
+  { id: 'companySettingsPanel', edit: 'Edit', summary: () => {
+      const v = (i) => (document.getElementById(i) || {}).value;
+      const n = [v('setAdminEmail'), ...String(v('setAdminEmailsExtra') || '').split(',')].map((x) => String(x || '').trim()).filter(Boolean).length;
+      const rem = document.getElementById('setStaffExpiryReminders');
+      return [v('setCoName') || 'Your company', n + (n === 1 ? ' admin email' : ' admin emails'),
+        'warnings at ' + (v('setWarn1') || 30) + ' and ' + (v('setWarn2') || 7) + ' days',
+        rem && !rem.checked ? 'staff reminders off' : 'staff reminders on'].join(' · '); } },
+  { id: 'adminNotificationsPanel', edit: 'Edit', summary: () => {
+      const pick = (name, modes) => { const r = document.querySelector('input[name=' + name + ']:checked'); return r && modes[r.value] ? modes[r.value][0].replace(' (recommended)', '') : null; };
+      const a = pick('adminNotifyMode', ADMIN_NOTIFY_MODES), b = pick('adminUploadMode', ADMIN_UPLOAD_MODES);
+      if (!a && !b) return 'Open to see your choices';
+      return ['Expiry emails: ' + (a || '—'), b ? 'Upload summary: ' + b : null].filter(Boolean).join(' · '); } },
+  { id: 'supportAccessPanel', edit: 'Manage access', keep: ['supportAccessStatus', 'supportAccessRequests'], summary: null },
+  { id: 'brandingPanel', edit: 'Edit', summary: () => {
+      const locked = document.getElementById('brandingLocked');
+      if (locked && locked.style.display !== 'none') return 'Not included in your plan';
+      const v = (i) => (document.getElementById(i) || {}).value;
+      return [v('setBrandName') ? 'Shown as ' + v('setBrandName') : 'Using Selko name', v('setBrandLogo') ? 'logo set' : 'no logo'].join(' · '); } },
+];
+function refreshSettingsSummaries() {
+  SUMMARY_PANELS.forEach((p) => {
+    const t = document.querySelector('#' + p.id + ' > .sum-row .sum-text');
+    if (t && p.summary) { try { t.textContent = p.summary(); } catch (e) { /* leave the old text */ } }
+  });
+}
+function toggleSettingsSummary(id) {
+  const panel = document.getElementById(id); if (!panel) return;
+  const body = panel.querySelector(':scope > .sum-body'), btn = panel.querySelector(':scope > .sum-row button');
+  const p = SUMMARY_PANELS.find((x) => x.id === id);
+  const open = body.style.display === 'none';
+  body.style.display = open ? '' : 'none';
+  btn.textContent = open ? 'Done' : p.edit;
+  if (!open) refreshSettingsSummaries();
+}
+function initSettingsSummaries() {
+  SUMMARY_PANELS.forEach((p) => {
+    const panel = document.getElementById(p.id);
+    if (!panel || panel.dataset.sumInit) return;
+    panel.dataset.sumInit = '1';
+    const title = panel.querySelector(':scope > h3');
+    const body = document.createElement('div');
+    body.className = 'sum-body'; body.style.display = 'none';
+    const keep = new Set(p.keep || []);
+    Array.from(panel.children).forEach((c) => {
+      if (c === title) return;
+      if (c.id && keep.has(c.id)) return;
+      if (c.tagName === 'P') return;          // the short description under the title stays
+      body.appendChild(c);
+    });
+    const row = document.createElement('div');
+    row.className = 'sum-row';
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;';
+    row.innerHTML = (p.summary ? '<span class="sum-text" style="font-size:15px;color:var(--teal-l);font-weight:600;"></span>' : '') +
+      '<button type="button" class="btn btn-sm btn-ghost" onclick="toggleSettingsSummary(\'' + p.id + '\')">' + p.edit + '</button>';
+    panel.appendChild(row);
+    panel.appendChild(body);
+    // Keep the line current when the form is filled in or changed.
+    const upd = () => refreshSettingsSummaries();
+    body.addEventListener('input', upd); body.addEventListener('change', upd);
+    new MutationObserver(upd).observe(body, { childList: true, subtree: true });
+  });
+  refreshSettingsSummaries();
+}
+setTimeout(initSettingsSummaries, 0);
 function jumpToSettingsGroup(id) {
   const el = document.getElementById(id);
   if (!el || getComputedStyle(el).display === 'none') { toast("That section isn't available for your plan or role.", true); return; }
@@ -27755,6 +28138,8 @@ function goToPanel(tab, targetId) {
   setTimeout(() => {
     const el = document.getElementById(targetId);
     if (!el) return;
+    const _sb = el.closest && el.closest('.sum-body');
+    if (_sb && _sb.style.display === 'none' && _sb.parentElement) toggleSettingsSummary(_sb.parentElement.id);
     // Sections can sit inside a bigger panel (e.g. Roles & documents), so open
     // every collapsed panel around the target, outermost first.
     const chain = [];
