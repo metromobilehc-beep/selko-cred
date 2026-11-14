@@ -2361,31 +2361,21 @@ body:has(#providerTabModal) { overflow: hidden; }
 
         <div id="billingNewPlanPicker">
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Choose a plan below and continue to a secure Stripe checkout page — card details are entered there directly, never inside this app.</p>
-          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-bottom:16px;max-width:640px;">
-            <div>
-              <label class="inline-label">Document tracking</label>
-              <select class="inline-select" id="billingDocTier" onchange="updateBundleHint()">
-                <option value="">— None —</option>
-                <option value="doc_standard_2026">Standard</option>
-                <option value="doc_pro_2026">Pro</option>
-              </select>
+          <div style="max-width:640px;margin-bottom:16px;">
+            <div style="background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:8px;padding:12px 14px;margin-bottom:10px;">
+              <div style="color:#fff;font-weight:700;">Selko Cred: Documents + Compliance</div>
+              <div id="billingBaseText" style="font-size:14px;color:rgba(255,255,255,.7);margin-top:2px;">Priced per clinician. Office and admin staff are free.</div>
             </div>
-            <div id="billingCredColumn">
-              <label class="inline-label">Credentialing</label>
-              <select class="inline-select" id="billingCredTier" onchange="updateBundleHint()">
-                <option value="">— None —</option>
-                <option value="cred_addon_2026">Credentialing</option>
-              </select>
-            </div>
-            <div id="billingHrColumn">
-              <label class="inline-label">HR Onboarding</label>
-              <select class="inline-select" id="billingHrTier" onchange="updateBundleHint()">
-                <option value="">— None —</option>
-                <option value="hr_addon_2026">HR Onboarding</option>
-              </select>
-            </div>
+            <label id="billingCredColumn" style="display:flex;align-items:flex-start;gap:8px;font-size:15px;color:#fff;margin-bottom:10px;cursor:pointer;">
+              <input type="checkbox" id="billingCredCheck" onchange="updateBillingEstimate()" style="margin-top:3px;" />
+              <span><strong>Credentialing + Health Care Network</strong> <span id="billingCredPrice" style="color:var(--gold);"></span><br><span style="font-size:13px;color:rgba(255,255,255,.58);">CAQH, NPI, DEA, licences, payer enrollment</span></span>
+            </label>
+            <label id="billingHrColumn" style="display:none;align-items:flex-start;gap:8px;font-size:15px;color:#fff;margin-bottom:10px;cursor:pointer;">
+              <input type="checkbox" id="billingHrCheck" onchange="updateBillingEstimate()" style="margin-top:3px;" />
+              <span><strong>HR Onboarding</strong> <span id="billingHrPrice" style="color:var(--gold);"></span></span>
+            </label>
+            <div id="billingEstimate" style="font-size:15px;color:var(--teal-l);font-weight:600;margin-top:6px;"></div>
           </div>
-          <div id="billingBundleHint" style="display:none;font-size:14px;color:var(--teal-l);margin-bottom:12px;">✓ 20% bundle discount applies automatically at checkout for choosing all three.</div>
           <div style="margin-bottom:14px;">
             <label class="inline-label">Promo code (optional)</label>
             <input class="inline-input" type="text" id="billingPromoCode" placeholder="Enter a promo code" style="max-width:220px;" />
@@ -4405,15 +4395,6 @@ function planOptionsHtml(selected) {
   if (selected && !known) opts.push(`<option value="${hrOnbEsc(selected)}" selected>${hrOnbEsc(selected)}</option>`);
   return opts.join('');
 }
-// Packages beyond Standard and Pro that are sold online show up in the self-serve picker (the select already lists those two).
-function fillBillingDocTierOptions() {
-  const sel = document.getElementById('billingDocTier'); if (!sel) return;
-  const chosen = sel.value;
-  sel.querySelectorAll('option[data-plan-extra]').forEach((o) => o.remove());
-  _planDefs.filter((d) => d.active !== false && d.stripe_lookup_key && !['doc_standard_2026', 'doc_pro_2026'].includes(d.stripe_lookup_key) && !['standard', 'pro', 'enterprise'].includes(d.slug))
-    .forEach((d) => { const o = document.createElement('option'); o.value = d.stripe_lookup_key; o.textContent = d.name; o.setAttribute('data-plan-extra', '1'); sel.appendChild(o); });
-  sel.value = chosen;
-}
 // Seat limit for a company: the package's limit plus any purchased blocks. null means no cap.
 function companySeatLimit(c) {
   const d = planDef(c && c.plan);
@@ -5866,7 +5847,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-n';
+const APP_VERSION = '2026-11-13-o';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -17692,29 +17673,20 @@ async function loadBillingStatus() {
 
   const { data: sub } = await sb.from('subscriptions').select('status, current_period_end').eq('company_id', currentCompany.id).maybeSingle();
 
-  const docLabel = currentCompany.plan ? planName(currentCompany.plan) : 'None';
-  fillBillingDocTierOptions();
-  // FIXED — was showing "Basic"/"Pro" based on credentialing_tier, which
-  // no longer reflects reality: Credentialing collapsed to a single tier.
-  // Any customer who signed up before that change still has 'basic'
-  // stored on their company row — this would have kept showing them as
-  // "Basic" indefinitely, even though the whole point of the collapse is
-  // that everyone now gets the same, full feature set.
-  const credLabel = currentCompany.has_credentialing_addon ? 'Credentialing' : 'None';
-
   const statusNote = sub?.status === 'past_due'
     ? ' — <span style="color:#f87171;">payment past due</span>'
     : sub?.status === 'cancelled'
       ? ' — <span style="color:rgba(255,255,255,.58);">cancelled</span>'
       : '';
-
-  // Credentialing now includes document tracking automatically, so a
-  // credentialing customer sees one line, not two confusing ones — the
-  // separate "Document tracking — X" line is only shown for someone
-  // who bought document tracking on its own, without Credentialing.
-  el.innerHTML = currentCompany.has_credentialing_addon
-    ? `Current plan: <strong>Credentialing — ${credLabel}</strong> <span style="color:rgba(255,255,255,.62);">(includes document tracking)</span>${statusNote}`
-    : `Current plan: <strong>Document tracking — ${docLabel}</strong>${statusNote}`;
+  const parts = ['Documents + Compliance'];
+  if (currentCompany.has_credentialing_addon) parts.push('Credentialing + Health Care Network');
+  if (currentCompany.has_hr_addon && hrVisible()) parts.push('HR Onboarding');
+  el.innerHTML = currentCompany.plan
+    ? `Current plan: <strong>${hrOnbEsc(planName(currentCompany.plan))}</strong> <span style="color:rgba(255,255,255,.62);">(${hrOnbEsc(parts.join(' + '))})</span>${statusNote}`
+    : `No plan yet${statusNote}`;
+  const hrCol = document.getElementById('billingHrColumn');
+  if (hrCol) hrCol.style.display = hrVisible() ? 'flex' : 'none';
+  updateBillingEstimate();
 
   // Same "Credentialing module option" toggle as Selko Admin's
   // Subscription Settings — if a company shouldn't be offered
@@ -17723,7 +17695,7 @@ async function loadBillingStatus() {
   const credColumn = document.getElementById('billingCredColumn');
   if (credColumn) {
     const moduleOptionHidden = _hiddenPanelsCache && _hiddenPanelsCache.has('credentialing_module_option');
-    credColumn.style.display = moduleOptionHidden ? 'none' : 'block';
+    credColumn.style.display = moduleOptionHidden ? 'none' : 'flex';
   }
 
   // Active or past_due both mean a real Stripe subscription already
@@ -17790,31 +17762,40 @@ async function verifyStripeBilling() {
   }
 }
 
-function updateBundleHint() {
-  const docTier = document.getElementById('billingDocTier').value;
-  const credTier = document.getElementById('billingCredTier').value;
-  const hrTier = document.getElementById('billingHrTier').value;
-  // Matches the decided pricing rule exactly: the 20% discount requires
-  // all three together — any partial combination gets no discount.
-  document.getElementById('billingBundleHint').style.display = (docTier && credTier && hrTier) ? 'block' : 'none';
+// Price estimate on the self-serve picker: base for the clinician count, plus each chosen extra section per clinician.
+let _billingClinicianCount = null;
+async function updateBillingEstimate() {
+  const est = document.getElementById('billingEstimate'); if (!est) return;
+  await loadPlanDefs();
+  const d = planDef('selko');
+  if (!d || !d.metered) { est.textContent = ''; return; }
+  const money = (c) => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
+  const sec = money(planSectionCents(d));
+  const credP = document.getElementById('billingCredPrice'); if (credP) credP.textContent = '+' + sec + ' per clinician';
+  const hrP = document.getElementById('billingHrPrice'); if (hrP) hrP.textContent = '+' + sec + ' per clinician';
+  const baseT = document.getElementById('billingBaseText'); if (baseT) baseT.textContent = planPriceText(d).split('. Base includes')[0] + '. Office and admin staff are free.';
+  if (_billingClinicianCount == null) _billingClinicianCount = await countBillableClinicians(currentCompany.id);
+  const n = _billingClinicianCount;
+  if (n == null) { est.textContent = ''; return; }
+  const sections = (document.getElementById('billingCredCheck')?.checked ? 1 : 0) + (document.getElementById('billingHrCheck')?.checked ? 1 : 0);
+  const billable = Math.max(1, n);
+  est.textContent = `${billable} clinician${billable === 1 ? '' : 's'} today: about ${money(planMonthlyCents(d, billable, sections))}/mo. Adjusts automatically as your clinician count changes.`;
 }
 
 async function startCheckout() {
   const errEl = document.getElementById('billingErr');
   errEl.style.display = 'none';
 
-  const docTier = document.getElementById('billingDocTier').value;
-  const credTier = document.getElementById('billingCredTier').value;
-  const hrTier = document.getElementById('billingHrTier').value;
+  const credentialing = !!document.getElementById('billingCredCheck')?.checked;
+  const hr = !!document.getElementById('billingHrCheck')?.checked;
   const promoCode = document.getElementById('billingPromoCode').value.trim();
-  if (!docTier && !credTier && !hrTier) { errEl.textContent = 'Select at least one plan component.'; errEl.style.display = 'block'; return; }
 
   try {
     const { data: { session } } = await sb.auth.getSession();
     const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/create-checkout-session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-      body: JSON.stringify({ company_id: currentCompany.id, doc_tier: docTier || null, cred_tier: credTier || null, hr_tier: hrTier || null, promo_code: promoCode || null }),
+      body: JSON.stringify({ company_id: currentCompany.id, credentialing, hr, promo_code: promoCode || null }),
     });
     const result = await res.json();
     if (result.error) throw new Error(result.error);
