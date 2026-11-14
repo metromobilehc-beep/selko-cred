@@ -26130,7 +26130,7 @@ async function openNetworkScanWindow() {
   if (document.getElementById('networkScanWindow')) return;
   const w = document.createElement('div'); w.id = 'networkScanWindow';
   w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Add network records from a screenshot or email" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(980px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Add network records from a screenshot or email" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(1274px,100%);height:min(936px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);">
       <div style="font-size:20px;font-weight:700;color:#fff;">Add from a screenshot or email</div>
       <button type="button" class="btn btn-sm btn-ghost" onclick="closeNetworkScanWindow()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
@@ -28836,7 +28836,7 @@ function openOrgProfileScan(focus) {
   if (document.getElementById('orgScanWindow')) return;
   const w = document.createElement('div'); w.id = 'orgScanWindow';
   w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Fill in from a document" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(980px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Fill in from a document" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(1274px,100%);height:min(936px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);"><div style="font-size:20px;font-weight:700;color:#fff;">Fill in from a document</div>
       <button type="button" class="btn btn-sm btn-ghost" onclick="closeOrgProfileScan()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
     <div class="osc-body" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;"></div>
@@ -29021,7 +29021,7 @@ function openSettingsCard(id, partIdx) {
   const first = Math.max(0, parts.findIndex(x => x.i === partIdx));
   const m = document.createElement('div'); m.id = 'settingsCardModal'; m.dataset.card = id;
   m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  m.innerHTML = `<div role="dialog" aria-modal="true" aria-label="${hrOnbEsc(card.title)}" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(980px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;">
+  m.innerHTML = `<div role="dialog" aria-modal="true" aria-label="${hrOnbEsc(card.title)}" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(1274px,100%);height:min(936px,92vh);display:flex;flex-direction:column;overflow:hidden;">
     <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);">
       <div style="font-size:20px;font-weight:700;color:#fff;">${hrOnbEsc(card.title)}</div>
       <button type="button" class="btn btn-sm btn-ghost" onclick="closeSettingsCard()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
