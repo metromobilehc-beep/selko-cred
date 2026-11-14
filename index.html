@@ -28109,14 +28109,34 @@ function refreshSettingsSummaries() {
     if (t && p.summary) { try { t.textContent = p.summary(); } catch (e) { /* leave the old text */ } }
   });
 }
+// The controls open in a pop-out window (like the staff profile). The panel's own form is moved into the window
+// and moved back on close, so every field keeps its id and handlers and the Settings loaders keep working.
+function closeSettingsSummaryModal() {
+  const m = document.getElementById('settingsSummaryModal'); if (!m) return;
+  const id = m.dataset.panel, panel = document.getElementById(id), body = m.querySelector('.sum-body');
+  if (panel && body) { body.style.display = 'none'; panel.appendChild(body); }
+  m.remove(); document.removeEventListener('keydown', _ssmEsc);
+  refreshSettingsSummaries();
+}
+function _ssmEsc(e) { if (e.key === 'Escape') closeSettingsSummaryModal(); }
 function toggleSettingsSummary(id) {
   const panel = document.getElementById(id); if (!panel) return;
-  const body = panel.querySelector(':scope > .sum-body'), btn = panel.querySelector(':scope > .sum-row button');
+  if (document.getElementById('settingsSummaryModal')) { const same = document.getElementById('settingsSummaryModal').dataset.panel === id; closeSettingsSummaryModal(); if (same) return; }
+  const body = panel.querySelector(':scope > .sum-body'); if (!body) return;
   const p = SUMMARY_PANELS.find((x) => x.id === id);
-  const open = body.style.display === 'none';
-  body.style.display = open ? '' : 'none';
-  btn.textContent = open ? 'Done' : p.edit;
-  if (!open) refreshSettingsSummaries();
+  const title = (panel.querySelector(':scope > h3') || {}).textContent || 'Settings';
+  const m = document.createElement('div');
+  m.id = 'settingsSummaryModal'; m.dataset.panel = id;
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  m.innerHTML = '<div role="dialog" aria-modal="true" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:100%;max-width:760px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.1);"><div style="font-size:20px;font-weight:700;color:#fff;">' + hrOnbEsc(title.replace(/\s+/g, ' ').trim()) + '</div>' +
+    '<button type="button" class="btn btn-sm btn-ghost" onclick="closeSettingsSummaryModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>' +
+    '<div class="ssm-content" style="padding:20px 24px;overflow-y:auto;"></div></div>';
+  m.addEventListener('mousedown', (ev) => { if (ev.target === m) closeSettingsSummaryModal(); });
+  m.querySelector('.ssm-content').appendChild(body);
+  body.style.display = '';
+  document.body.appendChild(m);
+  document.addEventListener('keydown', _ssmEsc);
 }
 function initSettingsSummaries() {
   SUMMARY_PANELS.forEach((p) => {
@@ -28135,9 +28155,15 @@ function initSettingsSummaries() {
     });
     const row = document.createElement('div');
     row.className = 'sum-row';
-    row.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;';
-    row.innerHTML = (p.summary ? '<span class="sum-text" style="font-size:15px;color:var(--teal-l);font-weight:600;"></span>' : '') +
-      '<button type="button" class="btn btn-sm btn-ghost" onclick="toggleSettingsSummary(\'' + p.id + '\')">' + p.edit + '</button>';
+    row.setAttribute('role', 'button'); row.tabIndex = 0;
+    row.setAttribute('aria-label', 'Open ' + (title ? title.textContent.trim() : 'settings'));
+    row.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;padding:12px 16px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(255,255,255,.04);cursor:pointer;transition:background .15s,border-color .15s;';
+    row.onmouseenter = () => { row.style.background = 'rgba(20,184,166,.12)'; row.style.borderColor = 'var(--teal)'; };
+    row.onmouseleave = () => { row.style.background = 'rgba(255,255,255,.04)'; row.style.borderColor = 'rgba(255,255,255,.18)'; };
+    row.onclick = () => toggleSettingsSummary(p.id);
+    row.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggleSettingsSummary(p.id); } };
+    row.innerHTML = (p.summary ? '<span class="sum-text" style="flex:1;min-width:200px;font-size:15px;color:var(--teal-l);font-weight:600;"></span>' : '<span style="flex:1;font-size:15px;color:rgba(255,255,255,.7);">Allow, limit or end access, and see the history</span>') +
+      '<span class="sum-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:700;color:#fff;background:var(--teal);border-radius:8px;padding:6px 14px;">' + p.edit + ' <span aria-hidden="true">›</span></span>';
     panel.appendChild(row);
     panel.appendChild(body);
     // Keep the line current when the form is filled in or changed.
