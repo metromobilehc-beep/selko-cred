@@ -2609,7 +2609,6 @@ body:has(#providerTabModal) { overflow: hidden; }
             <thead>
               <tr>
                 <th>Role</th>
-                <th class="rt-caqh">CAQH profile active? <span class="help-tip" tabindex="0" role="note" aria-label="About CAQH profile active" data-tip="Yes means this role needs a CAQH profile. Turn it off for roles like PTA or COTA working under a supervising clinician; they won't show as &quot;Missing CAQH ID&quot; anywhere in the app.">?</span></th>
                 <th class="rt-rx">DEA registration active? <span class="help-tip" tabindex="0" role="note" aria-label="About DEA registration active" data-tip="Yes means this role can hold a DEA registration, so it gets the DEA &amp; Controlled Substances section and prescriber fields on the profile. MD, DO, PA, NP and common NP spellings start on. Whatever you set here wins.">?</span></th>
                 <th class="rt-act"><span class="sr-only">Actions</span></th>
               </tr>
@@ -2622,12 +2621,13 @@ body:has(#providerTabModal) { overflow: hidden; }
           <button class="btn btn-sm btn-teal" onclick="addCompanyDiscipline()">+ Add role</button>
         </div>
 
-        <div id="profileChecksSection" class="set-block" style="margin-top:14px;">
+        <div id="credRequirementsSection" class="set-block" style="margin-top:14px;display:block;">
           <div class="set-text">
-            <div class="set-title">Profile items to check</div>
-            <p class="set-help">Which items the Credentialing overview flags as missing for clinicians. Uncheck anything your company doesn't collect. Office and admin staff are never flagged.</p>
+            <div class="set-title">Credentialing requirements</div>
+            <p class="set-help" style="max-width:none;">Choose which profile items your company requires, and for which roles. <strong>Everyone</strong> is the company default; a role column overrides it (for example NPI required for PT, not for PTA). Items marked No are not flagged as missing on the Credentialing overview, and the column disappears from that list if no role needs it. One person can also be exempted on their own profile.</p>
           </div>
-          <div class="set-controls" id="profileChecksList"></div>
+          <div class="roles-table-wrap" style="margin-top:8px;"><table class="roles-table" id="reqGridTable"><thead id="reqGridHead"></thead><tbody id="reqGridBody"></tbody></table></div>
+          <div id="reqGridMsg" class="set-msg"></div>
         </div>
 
         <div id="caqhExemptSection" class="set-block" style="margin-top:14px;">
@@ -5847,7 +5847,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-p';
+const APP_VERSION = '2026-11-13-r';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -8952,6 +8952,7 @@ async function initAdmin() {
   updateProFeatureButtons();
   loadSidebarMemo(); // fire-and-forget — sidebar widget, not tied to any specific tab
   await getHiddenPanels(); // populates _hiddenPanelsCache before anything that gates on it renders
+  await loadRequirements(true);
   if (currentCompany.has_credentialing_addon) await checkCredentialingExpirations();
 }
 
@@ -15869,7 +15870,7 @@ function showPreviewAccessLogPDF() {
 function loadDisciplinesPanel() {
   const body = document.getElementById('rolesTableBody');
   if (!body) return;
-  renderProfileChecksPanel();
+  renderRequirementsGrid();
   const disciplines = getCompanyDisciplines();
   const addon = !!currentCompany.has_credentialing_addon;
   const showCaqh = addon && !(_hiddenPanelsCache && _hiddenPanelsCache.has('caqh'));
@@ -15880,18 +15881,16 @@ function loadDisciplinesPanel() {
   const exemptList = getCaqhExemptDisciplines();
   const sw = (on, onclick, label) => `<button type="button" role="switch" aria-checked="${on}" class="role-switch${on ? ' on' : ''}" onclick="${onclick}" aria-label="${hrOnbEsc(label)}"><span class="rs-knob"></span><span class="rs-text">${on ? 'Yes' : 'No'}</span></button>`;
   body.innerHTML = disciplines.length ? disciplines.map(d => {
-    const needsCaqh = !exemptList.includes(d);
     const rx = isPrescribingDiscipline(d);
     return `<tr>
       <td class="rt-role">${hrOnbEsc(d)}</td>
-      <td class="rt-caqh">${sw(needsCaqh, `toggleCaqhExempt(${jsArg(d)}, ${needsCaqh})`, d + ' needs a CAQH profile')}</td>
       <td class="rt-rx">${sw(rx, `togglePrescriberDiscipline(${jsArg(d)}, ${!rx})`, d + ' can hold a DEA registration')}</td>
       <td class="rt-act">
         <button type="button" class="btn btn-sm btn-ghost" onclick="showRenameDisciplineForm(${jsArg(d)})" aria-label="Rename ${hrOnbEsc(d)}">Rename</button>
         <button type="button" class="btn btn-sm btn-ghost rt-remove" onclick="removeCompanyDiscipline(${jsArg(d)})" aria-label="Remove ${hrOnbEsc(d)}">Remove</button>
       </td>
     </tr>`;
-  }).join('') : '<tr><td colspan="4" class="empty-state" style="padding:18px;">No roles yet. Add the first one below, for example PT or RN.</td></tr>';
+  }).join('') : '<tr><td colspan="3" class="empty-state" style="padding:18px;">No roles yet. Add the first one below, for example PT or RN.</td></tr>';
 
   // The reminders box only means something when CAQH is in use.
   const caqhSection = document.getElementById('caqhExemptSection');
@@ -16053,6 +16052,7 @@ async function submitRenameDiscipline(oldName) {
     currentCompany.caqh_exempt_disciplines = updatedExempt;
   }
   await renamePrescriberOverride(oldName, newName);
+  await renameRequirementRole(oldName, newName);
   const scopeFix = await renameDisciplineInDocTypeScoping(oldName, newName);
 
   loadDisciplinesPanel();
@@ -16093,6 +16093,7 @@ async function removeCompanyDiscipline(discipline) {
   if (error) { toast(friendlyError(error), true); return; }
 
   currentCompany.available_disciplines = updated;
+  await dropRequirementRole(discipline);
   loadDisciplinesPanel();
   toast(`Removed "${discipline}"`);
 }
@@ -24460,37 +24461,118 @@ function usesCertificationWording(d) {
   return isPrescribingDiscipline(d) && !BOARD_WORDING_KEYS.has(normalizeDisciplineKey(d));
 }
 
-const PROFILE_CHECK_OPTIONS = [
+// ── Credentialing requirements: which profile items are required, and for which roles ──────────────────────────
+// Stored in company_requirements (sql/requirements-grid.sql). A row with no role is the company default; a row with a role
+// is an exception for that role. No row means required. One function, isRequiredFor(), answers the question everywhere.
+const REQUIREMENT_ITEMS = [
   { key: 'npi', label: 'NPI number' },
+  { key: 'caqh', label: 'CAQH ID', needs: 'caqh' },
   { key: 'address', label: 'Home address' },
   { key: 'phone', label: 'Phone number' },
   { key: 'employment_history', label: 'Employment history' },
 ];
-function getProfileChecksOff() {
-  const v = currentCompany && currentCompany.custom_vars && currentCompany.custom_vars.profileChecksOff;
-  return Array.isArray(v) ? v : [];
+let _reqRows = null;   // null = not loaded yet, or the table is not installed
+async function loadRequirements(force) {
+  if (_reqRows && !force) return _reqRows;
+  if (!currentCompany || !currentCompany.id) return null;
+  try {
+    const { data, error } = await sb.from('company_requirements').select('id, item_key, discipline, required').eq('company_id', currentCompany.id);
+    _reqRows = error ? null : (data || []);
+  } catch (e) { _reqRows = null; }
+  return _reqRows;
 }
-function renderProfileChecksPanel() {
-  const box = document.getElementById('profileChecksList');
-  if (!box) return;
-  const off = getProfileChecksOff();
-  box.innerHTML = PROFILE_CHECK_OPTIONS.map(o =>
-    `<label class="set-check"><input type="checkbox" ${off.includes(o.key) ? '' : 'checked'} onchange="toggleProfileCheck('${o.key}', this.checked)" /> ${hrOnbEsc(o.label)}</label>`
-  ).join('');
+// What the rules say for an item and a role. role = null asks for the company default.
+function requirementValue(item, discipline, rows) {
+  const list = rows === undefined ? _reqRows : rows;
+  const def = (list || []).find(r => r.item_key === item && !r.discipline);
+  const defaultValue = def ? !!def.required : true;
+  if (!discipline) return { value: defaultValue, inherited: !def, defaultValue };
+  const own = (list || []).find(r => r.item_key === item && r.discipline === discipline);
+  return own ? { value: !!own.required, inherited: false, defaultValue } : { value: defaultValue, inherited: true, defaultValue };
 }
-async function toggleProfileCheck(key, checkIt) {
-  // Re-read first so this can't overwrite another setting saved moments ago.
-  const { data: fresh, error: readErr } = await sb.from('companies').select('custom_vars').eq('id', currentCompany.id).maybeSingle();
-  if (readErr) { toast(friendlyError(readErr), true); renderProfileChecksPanel(); return; }
-  const cv = { ...((fresh && fresh.custom_vars) || {}) };
-  const cur = Array.isArray(cv.profileChecksOff) ? cv.profileChecksOff : [];
-  cv.profileChecksOff = checkIt ? cur.filter(k => k !== key) : [...new Set([...cur, key])];
-  const { data: changed, error } = await sb.from('companies').update({ custom_vars: cv }).eq('id', currentCompany.id).select('id');
-  if (error) { toast(friendlyError(error), true); renderProfileChecksPanel(); return; }
-  if (!changed || !changed.length) { toast("Nothing was saved. You may not have permission to edit this company's settings.", true); renderProfileChecksPanel(); return; }
-  currentCompany.custom_vars = cv;
-  renderProfileChecksPanel();
-  toast('Profile checks updated');
+// Before the table is installed (or if it cannot be read) the older settings still decide, so nothing flags differently.
+function legacyRequired(item, staff) {
+  const cv = (currentCompany && currentCompany.custom_vars) || {};
+  if (item === 'caqh') return !getCaqhExemptDisciplines().includes(staff.discipline);
+  if ((Array.isArray(cv.profileChecksOff) ? cv.profileChecksOff : []).includes(item)) return false;
+  if (item === 'npi' && (Array.isArray(cv.npiExemptDisciplines) ? cv.npiExemptDisciplines : []).includes(staff.discipline)) return false;
+  return true;
+}
+// Is this item required for this person? A person's own exemption wins, then the role's rule, then the company default.
+function isRequiredFor(item, staff) {
+  if ((staff.exempt_from_checks || []).includes(item)) return false;
+  if (_reqRows === null) return legacyRequired(item, staff);
+  return requirementValue(item, staff.discipline || null).value;
+}
+// True if at least one role (or the default) still needs this item, so a column with nobody to flag can be hidden.
+function itemRequiredAnywhere(item) {
+  if (_reqRows === null) return legacyRequired(item, { discipline: null }) || getCompanyDisciplines().some(d => legacyRequired(item, { discipline: d }));
+  const roles = getCompanyDisciplines();
+  return requirementValue(item, null).value || roles.some(d => requirementValue(item, d).value);
+}
+function renderRequirementsGrid() {
+  const head = document.getElementById('reqGridHead'), body = document.getElementById('reqGridBody');
+  if (!head || !body || !currentCompany) return;
+  const section = document.getElementById('credRequirementsSection');
+  const addon = !!currentCompany.has_credentialing_addon;
+  if (section) section.style.display = addon ? 'block' : 'none';
+  const msg = document.getElementById('reqGridMsg');
+  if (_reqRows === null) {
+    head.innerHTML = ''; body.innerHTML = '';
+    if (msg) { msg.style.color = '#fbbf24'; msg.textContent = 'The requirements table is not installed yet. Run requirements-grid.sql (checklist item 164). Until then your earlier settings keep applying.'; }
+    return;
+  }
+  if (msg) msg.textContent = '';
+  const roles = getCompanyDisciplines();
+  const items = REQUIREMENT_ITEMS.filter(i => !i.needs || !(_hiddenPanelsCache && _hiddenPanelsCache.has(i.needs)));
+  const sw = (on, inherited, onclick, label) => `<button type="button" role="switch" aria-checked="${on}" class="role-switch${on ? ' on' : ''}" style="${inherited ? 'opacity:.55;' : ''}" title="${inherited ? 'Follows the company default. Click to set this role on its own.' : 'Set for this role. Click to change.'}" onclick="${onclick}" aria-label="${hrOnbEsc(label)}"><span class="rs-knob"></span><span class="rs-text">${on ? 'Yes' : 'No'}</span></button>`;
+  head.innerHTML = `<tr><th>Item</th><th>Everyone</th>${roles.map(r => `<th>${hrOnbEsc(r)}</th>`).join('')}</tr>`;
+  body.innerHTML = items.map(it => {
+    const def = requirementValue(it.key, null);
+    return `<tr><td class="rt-role">${hrOnbEsc(it.label)}</td>
+      <td>${sw(def.value, false, `setRequirement('${it.key}', null, ${!def.value})`, it.label + ' required for everyone')}</td>
+      ${roles.map(r => { const v = requirementValue(it.key, r); return `<td>${sw(v.value, v.inherited, `setRequirement('${it.key}', ${jsArg(r)}, ${!v.value})`, it.label + ' required for ' + r)}</td>`; }).join('')}
+    </tr>`;
+  }).join('');
+}
+// The reminder emails still read companies.caqh_exempt_disciplines, so it is kept in step with the CAQH row until they move over.
+async function syncCaqhExemptColumn() {
+  const exempt = getCompanyDisciplines().filter(d => !requirementValue('caqh', d).value);
+  const { error } = await sb.from('companies').update({ caqh_exempt_disciplines: exempt }).eq('id', currentCompany.id);
+  if (error) { toast('Saved, but the CAQH reminder emails could not be updated yet: ' + friendlyError(error), true); return; }
+  currentCompany.caqh_exempt_disciplines = exempt;
+}
+async function setRequirement(item, discipline, required) {
+  if (currentProfile?.role !== 'admin' && !currentProfile?.is_super_admin) { toast('Only an admin can change this.', true); return; }
+  if (_reqRows === null) await loadRequirements(true);
+  if (_reqRows === null) { renderRequirementsGrid(); return; }
+  const role = discipline || null;
+  const existing = _reqRows.find(r => r.item_key === item && (r.discipline || null) === role);
+  const def = requirementValue(item, null).value;
+  let res;
+  if (role && required === def) {
+    // Same as the company default: no exception needed, so the role simply follows the default again.
+    res = existing ? await sb.from('company_requirements').delete().eq('id', existing.id).select('id') : { data: [{}], error: null };
+  } else if (existing) {
+    res = await sb.from('company_requirements').update({ required, updated_at: new Date().toISOString(), updated_by: currentProfile.id }).eq('id', existing.id).select('id');
+  } else {
+    res = await sb.from('company_requirements').insert({ company_id: currentCompany.id, item_key: item, discipline: role, required, updated_by: currentProfile.id }).select('id');
+  }
+  if (res.error) { toast(friendlyError(res.error), true); renderRequirementsGrid(); return; }
+  if (!res.data || !res.data.length) { toast("Nothing was saved. You may not have permission to change this company's settings.", true); renderRequirementsGrid(); return; }
+  await loadRequirements(true);
+  if (item === 'caqh') await syncCaqhExemptColumn();
+  renderRequirementsGrid();
+  try { if (document.getElementById('ovCredAttentionList')) loadCredentialingOverviewStats(); } catch (e) {}
+  const label = (REQUIREMENT_ITEMS.find(i => i.key === item) || {}).label || item;
+  toast(`${label}: ${required ? 'required' : 'not required'} for ${role || 'everyone'}`);
+}
+// Keeps role exceptions attached when a role is renamed or removed.
+async function renameRequirementRole(oldName, newName) {
+  try { await sb.from('company_requirements').update({ discipline: newName }).eq('company_id', currentCompany.id).eq('discipline', oldName); await loadRequirements(true); } catch (e) { console.warn(e); }
+}
+async function dropRequirementRole(name) {
+  try { await sb.from('company_requirements').delete().eq('company_id', currentCompany.id).eq('discipline', name); await loadRequirements(true); } catch (e) { console.warn(e); }
 }
 
 async function togglePrescriberDiscipline(discipline, turnOn) {
@@ -24563,7 +24645,7 @@ function caqhSetDue120() {
 }
 // Is this provider expected to have a CAQH profile? (Not exempt by discipline, nor marked exempt on their own profile.)
 function caqhRequired(s) {
-  return !getCaqhExemptDisciplines().includes(s.discipline) && !(s.exempt_from_checks || []).includes('caqh');
+  return isRequiredFor('caqh', s);
 }
 // Has a CAQH ID but no re-attestation date: nothing can remind anyone, so this is flagged instead of staying silent.
 function caqhDateMissing(s) {
@@ -27165,7 +27247,7 @@ async function viewAsAdmin(companyId, companyName) {
   updateProFeatureButtons();
   loadSidebarMemo();
   _partnerRecsCache = null; // invalidate — the previous company's cached recs don't apply here
-  _hiddenPanelsCache = null;
+  _hiddenPanelsCache = null; _reqRows = null;
 
   await loadStaffList();
   await loadAdminFilters();
@@ -27203,7 +27285,7 @@ async function exitViewAsAdmin() {
   updateProFeatureButtons();
   loadSidebarMemo();
   _partnerRecsCache = null;
-  _hiddenPanelsCache = null;
+  _hiddenPanelsCache = null; _reqRows = null;
   _superProfile  = null;
   _superCompany  = null;
 
@@ -27876,12 +27958,11 @@ async function loadCredentialingOverviewStats() {
   // Only active clinicians are credentialed. Office and admin logins, and
   // anyone marked excluded from compliance, never belong on this list.
   const activeProviders = staffList.filter(s => s.active && (s.staff_type || 'clinician') === 'clinician' && !s.exclude_from_compliance);
-  const checksOff = getProfileChecksOff();
+  await loadRequirements();
 
   document.getElementById('ovCredProviderCount').textContent = activeProviders.length;
 
-  const caqhExemptDisciplines = getCaqhExemptDisciplines();
-  const missingCaqh = activeProviders.filter(s => !s.caqh_id && !caqhExemptDisciplines.includes(s.discipline) && !(s.exempt_from_checks || []).includes('caqh'));
+  const missingCaqh = activeProviders.filter(s => !s.caqh_id && isRequiredFor('caqh', s));
   document.getElementById('ovCredMissingCaqh').textContent = missingCaqh.length;
 
   const withDays = (dateStr) => dateStr ? Math.ceil((new Date(dateStr) - new Date()) / 86400000) : null;
@@ -27914,10 +27995,10 @@ async function loadCredentialingOverviewStats() {
     : { data: [] };
   const staffWithEmployment = new Set((empRows || []).map(r => r.staff_id));
 
-  const missingNpi = activeProviders.filter(s => !checksOff.includes('npi') && !s.npi_number && !(s.exempt_from_checks || []).includes('npi'));
-  const missingAddress = activeProviders.filter(s => !checksOff.includes('address') && !s.address && !(s.exempt_from_checks || []).includes('address'));
-  const missingPhone = activeProviders.filter(s => !checksOff.includes('phone') && !s.phone && !(s.exempt_from_checks || []).includes('phone'));
-  const missingEmployment = activeProviders.filter(s => !checksOff.includes('employment_history') && !staffWithEmployment.has(s.id) && !(s.exempt_from_checks || []).includes('employment_history'));
+  const missingNpi = activeProviders.filter(s => isRequiredFor('npi', s) && !s.npi_number);
+  const missingAddress = activeProviders.filter(s => isRequiredFor('address', s) && !s.address);
+  const missingPhone = activeProviders.filter(s => isRequiredFor('phone', s) && !s.phone);
+  const missingEmployment = activeProviders.filter(s => isRequiredFor('employment_history', s) && !staffWithEmployment.has(s.id));
 
   // One consolidated stat — a provider missing any of these counts once,
   // not once per missing field, so this reads as "how many people need
@@ -27989,13 +28070,12 @@ function renderOvCredAttentionList() {
   // happened to come in — "Missing NPI" landed at a different x-position
   // per row depending on name length and which badges came before it,
   // so there was no way to scan a column and see who's missing what.
-  const _off = getProfileChecksOff();
   const STATIC_COLUMNS = [
-    { key: 'Missing CAQH ID', short: 'CAQH ID' },
-    { key: 'Missing NPI', short: 'NPI', off: _off.includes('npi') },
-    { key: 'Missing address', short: 'Address', off: _off.includes('address') },
-    { key: 'Missing phone', short: 'Phone', off: _off.includes('phone') },
-    { key: 'No employment history on file', short: 'Employment Hx', off: _off.includes('employment_history') },
+    { key: 'Missing CAQH ID', short: 'CAQH ID', off: !itemRequiredAnywhere('caqh') },
+    { key: 'Missing NPI', short: 'NPI', off: !itemRequiredAnywhere('npi') },
+    { key: 'Missing address', short: 'Address', off: !itemRequiredAnywhere('address') },
+    { key: 'Missing phone', short: 'Phone', off: !itemRequiredAnywhere('phone') },
+    { key: 'No employment history on file', short: 'Employment Hx', off: !itemRequiredAnywhere('employment_history') },
   ].filter(c => !c.off);
   const gridCols = `160px repeat(${STATIC_COLUMNS.length}, 1fr)`;
 
@@ -29135,7 +29215,7 @@ function showCompanyManageModal(companyId) {
 // Fictional staff and credentials for the sales demo company (slug: 'demo').
 // None of this is real Metro staff data — safe to show prospects.
 
-let _hiddenPanelsCache = null;
+let _hiddenPanelsCache = null; _reqRows = null;
 async function getHiddenPanels() {
   if (_hiddenPanelsCache) return _hiddenPanelsCache;
   const { data } = await sb.from('company_hidden_panels').select('panel_key').eq('company_id', currentCompany.id);
