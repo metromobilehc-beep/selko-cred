@@ -1502,16 +1502,10 @@ body:has(#providerTabModal) { overflow: hidden; }
           <h2>Accreditations</h2>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Organization-level accreditation(s) — not tied to any one staff member.</p>
           <div id="accreditationsListCred" style="margin-bottom:14px;"></div>
-          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
+          <div id="accFormWrap" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;">
             <div style="display:flex;flex-direction:column;gap:4px;">
               <label style="font-size:13px;color:rgba(255,255,255,.62);">Body</label>
-              <select class="inline-select" id="accBodySelect" onchange="onAccBodySelectChanged()" style="width:200px;">
-                <option value="ACHC">ACHC</option>
-                <option value="CHAP">CHAP</option>
-                <option value="Joint Commission">Joint Commission</option>
-                <option value="__custom__">+ Other (type name)...</option>
-              </select>
-              <input class="inline-input" type="text" id="accBodyCustom" placeholder="Accrediting body name" style="width:200px;display:none;" />
+              <input class="inline-input" type="text" id="accBodyCustom" list="accBodyList" autocomplete="off" placeholder="Start typing, e.g. ACHC" style="width:200px;" /><datalist id="accBodyList"></datalist>
             </div>
             <div style="display:flex;flex-direction:column;gap:4px;">
               <label style="font-size:13px;color:rgba(255,255,255,.62);">Accreditation number</label>
@@ -3569,21 +3563,24 @@ async function openLeieAuditLog(checkId, btn) {
   const label = btn ? btn.textContent : '';
   if (btn) { btn.disabled = true; btn.textContent = 'Preparing…'; }
   try {
-    const { data: row, error: rowErr } = await sb.from('leie_exclusion_checks').select('audit_log_path, checked_at').eq('id', checkId).single();
+    const { data: row, error: rowErr } = await sb.from('leie_exclusion_checks').select('audit_log_path, audit_log_created_at, checked_at').eq('id', checkId).single();
     if (rowErr || !row) throw new Error(rowErr ? extractErrorMessage(rowErr) : 'That check could not be found.');
     let path = row.audit_log_path;
-    if (!path) {
+    // A log made before clearances were counted (before 2026-11-13) is checked by the server, which re-makes it once if someone in that run was already cleared.
+    const oldLog = !!path && (!row.audit_log_created_at || new Date(row.audit_log_created_at) < new Date('2026-11-13T00:00:00Z'));
+    if (!path || oldLog) {
       const { data, error } = await sb.functions.invoke('check-leie-exclusions', { body: { action: 'audit_log', check_id: checkId } });
       if (error) throw new Error(await samInvokeError(error));
       if (data?.error) throw new Error(data.error);
       path = data.path;
+      if (data.reissued) toast('This log was updated to show names you had already cleared.');
     }
     const day = new Date(row.checked_at).toISOString().slice(0, 10);
     const fileName = `OIG-LEIE-audit-log-${String(currentCompany?.name || 'company').replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '')}-${day}.pdf`;
     const { data: signed, error: urlErr } = await sb.storage.from('compliance-audit-logs').createSignedUrl(path, 120, { download: fileName });
     if (urlErr || !signed?.signedUrl) throw new Error('The audit log file could not be opened' + (urlErr ? ' (' + extractErrorMessage(urlErr) + ')' : '') + '. Try again, and if it keeps happening contact Selko support.');
     const a = document.createElement('a'); a.href = signed.signedUrl; a.download = fileName; a.rel = 'noopener'; document.body.appendChild(a); a.click(); a.remove();
-    if (!row.audit_log_path) await loadMyLeieHistory();
+    if (!row.audit_log_path || oldLog) await loadMyLeieHistory();
   } catch (e) {
     toast(friendlyError(e, 'open the audit log'), true);
   } finally {
@@ -16287,10 +16284,6 @@ async function removeCompanyEntity(id, name) {
   toast(`✓ "${name}" deleted`);
 }
 
-function onAccBodySelectChanged() {
-  const isCustom = document.getElementById('accBodySelect').value === '__custom__';
-  document.getElementById('accBodyCustom').style.display = isCustom ? 'block' : 'none';
-}
 
 // ══ CREDENTIALING NOTES ══
 // A shared pop-out log — staffId null means an organization-level note,
@@ -17502,6 +17495,12 @@ function onAccLocScopeChanged() {
   if (some) box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.62);margin-bottom:4px;">Which locations does it cover?</div>' + accLocChecksHtml([], 'accLocChk');
 }
 
+const ACC_COMMON_BODIES = ['ACHC', 'CHAP', 'Joint Commission', 'DNV Healthcare', 'NCQA', 'URAC', 'AAAHC', 'CARF', 'COA', 'ABMS'];
+function openAccreditationForm() {
+  window._accFormOpen = true;
+  const w = document.getElementById('accFormWrap'); if (w) w.style.display = 'flex';
+  document.getElementById('accBodyCustom')?.focus();
+}
 async function loadAccreditationsPanel() {
   const container = document.getElementById('accreditationsListCred');
   const [{ data }, locs] = await Promise.all([
@@ -17509,11 +17508,19 @@ async function loadAccreditationsPanel() {
     getOrderedCompanyLocations(currentCompany.id),
   ]);
   _accLocations = locs || [];
+  window._accRows = data || [];
+  // Suggestions: common bodies plus any this company has already used (typed text is still accepted as-is).
+  const dl = document.getElementById('accBodyList');
+  if (dl) { const seen = new Set(); dl.innerHTML = [...ACC_COMMON_BODIES, ...(data || []).map(r => r.body_name)].filter(n => { const k = String(n || '').trim().toLowerCase(); if (!k || seen.has(k)) return false; seen.add(k); return true; }).map(n => `<option value="${hrOnbEsc(n)}"></option>`).join(''); }
+  const formWrap = document.getElementById('accFormWrap');
 
   if (!data?.length) {
-    container.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.58);">No accreditations on file yet.</div>';
+    // Nothing on file: stay out of the way. The form opens only when someone asks for it.
+    if (formWrap && !window._accFormOpen) formWrap.style.display = 'none';
+    container.innerHTML = '<div style="font-size:14px;color:rgba(255,255,255,.58);">Your agency has no accreditations on file. <a href="#" onclick="openAccreditationForm();return false;" style="color:var(--teal-l);font-weight:700;">+ Add one</a></div>';
     return;
   }
+  if (formWrap) formWrap.style.display = 'flex';
 
   container.innerHTML = data.map(a => {
     const expired = a.expiration_date && new Date(a.expiration_date) < new Date();
@@ -17525,8 +17532,7 @@ async function loadAccreditationsPanel() {
       <button class="btn btn-sm btn-danger" onclick="removeCompanyAccreditation('${a.id}',${jsArg(a.body_name)})" style="font-size:13px;">Remove</button>
     </div>`;
   }).join('');
-  window._accRows = data;
-}
+  }
 
 function editAccreditationLocations(id) {
   const a = (window._accRows || []).find(x => x.id === id);
@@ -17567,15 +17573,16 @@ async function saveAccreditationLocations(id) {
 }
 
 async function addCompanyAccreditation() {
-  const bodySelect = document.getElementById('accBodySelect').value;
-  const bodyName = bodySelect === '__custom__'
-    ? document.getElementById('accBodyCustom').value.trim()
-    : bodySelect;
+  const bodyName = document.getElementById('accBodyCustom').value.trim();
   const number = document.getElementById('accNumber').value.trim() || null;
   const effective = document.getElementById('accEffective').value || null;
   const expiry = document.getElementById('accExpiry').value || null;
 
   if (!bodyName) { toast('Enter the accrediting body name', true); return; }
+  const norm = v => String(v || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if ((window._accRows || []).some(r => norm(r.body_name) === norm(bodyName) && norm(r.accreditation_number) === norm(number))) {
+    if (!confirm(`${bodyName}${number ? ' (' + number + ')' : ''} is already on file. Add it again anyway?`)) return;
+  }
   const some = document.getElementById('accLocScope').value === 'some';
   const locIds = some ? [...document.querySelectorAll('.accLocChk:checked')].map(c => c.value) : [];
   if (some && !locIds.length) { toast('Pick at least one location, or choose All locations.', true); return; }
