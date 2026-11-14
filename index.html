@@ -2466,6 +2466,11 @@ body:has(#providerTabModal) { overflow: hidden; }
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsCardsCss">
+.op-desc { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; }
+.op-up { color:#fff !important; border-color:rgba(255,255,255,.4) !important; white-space:nowrap; }
+.op-upall { min-height:40px; font-size:14px !important; }
+.op-new { border-color:var(--teal) !important; box-shadow:0 0 0 2px rgba(20,184,166,.35); }
+
 #orgProfileGroups { margin-bottom:14px; }
 .op-top { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; font-size:14px; color:rgba(255,255,255,.75); }
 .op-total { font-weight:700; color:#fff; }
@@ -28707,10 +28712,10 @@ function initOrgProfileGroups() {
   const first = document.getElementById('setLegalName'); if (!first) return;
   const grid = first.closest('div').parentNode;                     // the old two-column grid that held every field
   const host = document.createElement('div'); host.id = 'orgProfileGroups';
-  host.innerHTML = `<div class="op-top"><span id="opTotal" class="op-total"></span><label class="op-only"><input type="checkbox" onchange="opSetOnlyEmpty(this.checked)"> Show only what is still empty</label></div>`;
+  host.innerHTML = `<div class="op-top"><span id="opTotal" class="op-total"></span><button type="button" class="btn btn-sm btn-teal op-upall" onclick="openOrgProfileScan('any')">📎 Fill in from a document</button><label class="op-only"><input type="checkbox" onchange="opSetOnlyEmpty(this.checked)"> Show only what is still empty</label></div>`;
   ORG_PROFILE_GROUPS.forEach(g => {
     const box = document.createElement('section'); box.className = 'op-group'; box.id = 'opg_' + g.key;
-    box.innerHTML = `<button type="button" class="op-head" aria-expanded="false" onclick="opToggleGroup('${g.key}')"><span class="op-title">${g.title}</span><span class="op-sum"></span><span class="op-caret" aria-hidden="true">▾</span></button><div class="op-body"><div class="op-desc">${g.desc}</div><div class="op-grid"></div></div>`;
+    box.innerHTML = `<button type="button" class="op-head" aria-expanded="false" onclick="opToggleGroup('${g.key}')"><span class="op-title">${g.title}</span><span class="op-sum"></span><span class="op-caret" aria-hidden="true">▾</span></button><div class="op-body"><div class="op-desc"><span>${g.desc}</span><button type="button" class="btn btn-sm btn-ghost op-up" onclick="openOrgProfileScan('${g.key}')">📎 Upload to fill in</button></div><div class="op-grid"></div></div>`;
     host.appendChild(box);
     const body = box.querySelector('.op-grid');
     g.ids.forEach(id => { const w = opFieldEl(id); if (w) body.appendChild(w); });
@@ -28723,6 +28728,94 @@ function initOrgProfileGroups() {
 }
 initOrgProfileGroups();
 // ══ END ORG PROFILE GROUPS ══
+
+// ══ ORG PROFILE SCAN ══
+// Upload a W-9, insurance certificate, license or similar and the AI (edge function scan-org-profile) reads the fields it can see.
+// A review window shows what was found next to what is there now; ticked values are put into the form. NOTHING is saved until the
+// admin presses the profile's Save button. A value that would replace one already filled in starts unticked.
+const ORGSCAN_HINT = {
+  any: 'a W-9, malpractice certificate of insurance, state license, CLIA or DEA certificate, Medicare or NPI letter',
+  identity: 'a W-9, state license or payer application', ids: 'a W-9, NPI letter, or a Medicare / Medicaid letter',
+  addr: 'a W-9 or a payer letter', contacts: 'a signed payer application or form',
+  licenses: 'a state license, CLIA or DEA certificate', malpractice: 'a certificate of insurance (COI) or the policy declarations page',
+};
+const ORGSCAN_LABELS = { any: 'the organization profile', identity: 'Business identity', ids: 'Tax and program IDs', addr: 'Addresses and phones', contacts: 'Contacts', licenses: 'Facility licenses and registrations', malpractice: 'Malpractice / liability insurance' };
+let _osc = null;
+function oscEsc(s) { return hrOnbEsc(s == null ? '' : String(s)); }
+function closeOrgProfileScan() { document.getElementById('orgScanWindow')?.remove(); document.removeEventListener('keydown', _oscKey); document.removeEventListener('paste', _oscPaste); _osc = null; }
+function _oscKey(e) { if (e.key === 'Escape' && !document.getElementById('customConfirmModal') && !document.getElementById('importBusyOverlay')) closeOrgProfileScan(); }
+function _oscPaste(e) { if (!_osc || _osc.step !== 'input') return; const it = [...(e.clipboardData?.items || [])].find(i => i.kind === 'file' && /^image\//.test(i.type)); if (it) { e.preventDefault(); const f = it.getAsFile(); if (f) oscPick(new File([f], 'pasted-screenshot.png', { type: f.type || 'image/png' })); } }
+function oscShell(body, foot) { const w = document.getElementById('orgScanWindow'); if (!w) return; w.querySelector('.osc-body').innerHTML = body; w.querySelector('.osc-foot').innerHTML = foot || ''; }
+function openOrgProfileScan(focus) {
+  focus = ORGSCAN_LABELS[focus] ? focus : 'any';
+  if (document.getElementById('orgScanWindow')) return;
+  const w = document.createElement('div'); w.id = 'orgScanWindow';
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Fill in from a document" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(980px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);"><div style="font-size:20px;font-weight:700;color:#fff;">Fill in from a document</div>
+      <button type="button" class="btn btn-sm btn-ghost" onclick="closeOrgProfileScan()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
+    <div class="osc-body" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;"></div>
+    <div class="osc-foot" style="display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:14px 24px;border-top:1px solid rgba(255,255,255,.1);"></div></div>`;
+  w.addEventListener('mousedown', e => { if (e.target === w) closeOrgProfileScan(); });
+  document.body.appendChild(w); document.addEventListener('keydown', _oscKey); document.addEventListener('paste', _oscPaste);
+  _osc = { focus, file: null, step: 'input', found: [] }; oscRenderInput();
+}
+function oscRenderInput(msg) {
+  if (!_osc) return; _osc.step = 'input'; const f = _osc.file;
+  oscShell(`<div style="font-size:14px;color:rgba(255,255,255,.72);line-height:1.55;margin-bottom:14px;">Upload ${oscEsc(ORGSCAN_HINT[_osc.focus])}. The AI reads what it can for <strong>${oscEsc(ORGSCAN_LABELS[_osc.focus])}</strong>. You check every value before it goes in the form, and nothing is saved until you press Save on the profile.</div>
+    <label id="oscDrop" for="oscInput" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,255,255,.3);border-radius:12px;padding:34px 16px;cursor:pointer;color:#fff;background:rgba(255,255,255,.03);"
+      ondragover="event.preventDefault();this.style.borderColor='var(--teal)'" ondragleave="this.style.borderColor='rgba(255,255,255,.3)'" ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,.3)';oscPick(event.dataTransfer.files[0])">
+      <div style="font-size:30px;">📎</div><div style="font-size:16px;font-weight:700;">${f ? '✓ ' + oscEsc(f.name) : 'Click to choose a file, or drop it here'}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.6);">PDF, JPG or PNG · up to 10 MB · or press Ctrl+V (Cmd+V) to paste a screenshot</div>
+      <input type="file" id="oscInput" accept="application/pdf,.pdf,image/png,image/jpeg,image/webp,.png,.jpg,.jpeg,.webp" style="display:none;" onchange="oscPick(this.files[0])"></label>
+    <div id="oscMsg" style="font-size:14px;margin-top:12px;color:#f87171;${msg ? '' : 'display:none;'}">${oscEsc(msg || '')}</div>`,
+    `<button type="button" class="btn btn-ghost" onclick="closeOrgProfileScan()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button><button type="button" class="btn btn-teal" onclick="oscRead()">Read it</button>`);
+}
+function oscPick(f) { if (!f || !_osc) return; const p = (typeof uploadFileProblem === 'function') ? uploadFileProblem(f, 'This file') : ''; if (p) { _osc.file = null; oscRenderInput(p); return; } _osc.file = f; oscRenderInput(); }
+function oscToBase64(file) { return new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1]); r.onerror = rej; r.readAsDataURL(file); }); }
+async function oscRead() {
+  if (!_osc) return; if (!_osc.file) { oscRenderInput('Choose a file, or paste a screenshot, first.'); return; }
+  const file = _osc.file, busy = startImportBusy('Reading the document');
+  try {
+    const low = file.name.toLowerCase(); const mediaType = file.type || (/\.pdf$/.test(low) ? 'application/pdf' : /\.png$/.test(low) ? 'image/png' : 'image/jpeg');
+    const base64 = await oscToBase64(file);
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/scan-org-profile', { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` }, body: JSON.stringify({ fileBase64: base64, mediaType, focus: _osc.focus }), signal: busy.signal });
+    let result = null; try { result = await res.json(); } catch (_e) { /* not JSON */ }
+    if (!result) throw new Error('The reading service did not answer properly. Please try again, or type the details in.');
+    if (result.error) throw new Error(result.error);
+    busy.stop(); if (!_osc) return;
+    if (!result.fields || !result.fields.length) { oscRenderInput('Nothing that fits ' + ORGSCAN_LABELS[_osc.focus] + ' was found in that. Try a clearer copy, or another document.'); return; }
+    _osc.docType = result.document_type || ''; _osc.found = result.fields.map(f => { const el = document.getElementById(f.id); const cur = el ? String(el.value || '').trim() : ''; const same = cur.toLowerCase() === f.value.toLowerCase(); return { ...f, cur, same, use: !same && (cur === '' || false) }; }).filter(f => document.getElementById(f.id)); oscRenderReview();
+  } catch (e) {
+    busy.stop(); let m;
+    if (busy.timedOut()) m = 'The scan took too long (over 2 minutes). Try a smaller or clearer file, or type the details in.';
+    else if (e && e.name === 'AbortError') m = 'Cancelled.';
+    else if (/failed to fetch|networkerror|load failed|network request failed/i.test(String((e && e.message) || e))) m = "Couldn't reach the server. Check your internet and try again.";
+    else m = (e && e.message) || String(e);
+    if (_osc) oscRenderInput(m);
+  }
+}
+function oscRenderReview() {
+  if (!_osc) return; _osc.step = 'review';
+  const rows = _osc.found.map((f, i) => `<tr><td style="width:36px;"><input type="checkbox" aria-label="Use ${oscEsc(f.label)}" ${f.use ? 'checked' : ''} ${f.same ? 'disabled' : ''} onchange="_osc.found[${i}].use=this.checked;oscCount()"></td>
+    <td>${oscEsc(f.label)}</td><td style="color:rgba(255,255,255,.62);">${f.cur ? oscEsc(f.cur) : '<span style="color:rgba(255,255,255,.4);">empty</span>'}</td>
+    <td style="font-weight:700;">${oscEsc(f.value)}${f.same ? ' <span style="font-weight:400;color:#4ade80;font-size:13px;">same as now</span>' : (f.cur ? ' <span style="font-weight:400;color:#fbbf24;font-size:13px;">replaces what is there</span>' : '')}</td></tr>`).join('');
+  oscShell(`<div style="font-size:14px;color:rgba(255,255,255,.72);margin-bottom:12px;">${_osc.docType ? 'Read as <strong>' + oscEsc(_osc.docType) + '</strong>. ' : ''}Tick what to put in the form. Values that would replace something already there start unticked. Nothing is saved until you press <strong>Save</strong> on the profile.</div>
+    <div class="tbl-wrap"><table><thead><tr><th></th><th>Field</th><th>Now</th><th>Found in the document</th></tr></thead><tbody>${rows}</tbody></table></div>`,
+    `<span id="oscCount" style="margin-right:auto;font-size:13px;color:rgba(255,255,255,.6);"></span><button type="button" class="btn btn-ghost" onclick="oscRenderInput()" style="color:#fff;border-color:rgba(255,255,255,.2);">← Back</button><button type="button" class="btn btn-teal" id="oscApply" onclick="oscApply()">Put in the form</button>`);
+  oscCount();
+}
+function oscCount() { const n = _osc.found.filter(f => f.use).length; const c = document.getElementById('oscCount'); if (c) c.textContent = n + ' selected'; const b = document.getElementById('oscApply'); if (b) { b.disabled = !n; b.textContent = n ? `Put ${n} in the form` : 'Put in the form'; } }
+function oscApply() {
+  if (!_osc) return; const use = _osc.found.filter(f => f.use); if (!use.length) return;
+  use.forEach(f => { const el = document.getElementById(f.id); if (!el) return; el.value = f.value; el.classList.add('op-new'); el.dispatchEvent(new Event('input', { bubbles: true })); });
+  const firstGroup = (typeof ORG_PROFILE_GROUPS !== 'undefined') && ORG_PROFILE_GROUPS.find(g => g.ids.includes(use[0].id));
+  closeOrgProfileScan();
+  if (firstGroup) { const box = document.getElementById('opg_' + firstGroup.key); if (box && !box.classList.contains('op-open')) opToggleGroup(firstGroup.key); }
+  toast(`${use.length} field${use.length === 1 ? '' : 's'} filled in. Check them, then press Save to keep them.`);
+}
+// ══ END ORG PROFILE SCAN ══
 
 // ══ SETTINGS CARDS ══
 // Settings opens to a grid of cards. Each card shows its current state in one line and opens its panels in a pop-out window.
