@@ -1109,6 +1109,10 @@ body:has(#providerTabModal) { overflow: hidden; }
 
       <div class="dark-panel" id="pnAddFormPanel" data-default-open="true">
         <h2>Add / update network record</h2>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:rgba(20,184,166,.1);border:1px solid rgba(20,184,166,.4);border-radius:10px;padding:12px 14px;margin-bottom:14px;">
+          <div style="flex:1;min-width:220px;font-size:14px;color:rgba(255,255,255,.8);line-height:1.45;"><strong style="color:#fff;">Have a screenshot or an email from the insurance company?</strong><br>Upload it and the providers, status and effective dates are read for you to check and save.</div>
+          <button type="button" id="pnScanBtn" class="btn btn-sm btn-teal" onclick="openNetworkScanWindow()">📎 Add from a screenshot or email</button>
+        </div>
           <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:12px;">Log or update one provider's (or one company entity's) status with a specific payer, step by step through enrollment.</p>
 
         <div style="font-size:13px;font-weight:700;color:var(--teal-l);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;">Who this is for</div>
@@ -5875,7 +5879,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-t';
+const APP_VERSION = '2026-11-13-u';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -25949,6 +25953,381 @@ async function savePayerNetwork() {
   await loadPayerBoard(); // also repopulates the payer dropdown, so a newly-added payer is there for next time
 }
 
+// ══ NETWORK SCAN ══
+// Add network records from a screenshot, PDF, saved email (.eml) or pasted email text. The AI reads it
+// (edge function scan-network-record), the admin reviews every record, and only then is anything saved.
+// The effective date goes to the record's In-network date. Nothing is written before the review step.
+const NSR_MAX_BYTES = 10 * 1024 * 1024;
+let _nsr = null; // { records, file, fileName, staff, payers, entities }
+
+function nsrNorm(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\b(inc|llc|llp|pllc|pc|corp|co|the|of)\b/g, ' ').replace(/\s+/g, ' ').trim(); }
+// "Smith, Jane" and "Jane Smith" and "Jane A. Smith, PT" all compare equal on first + last name.
+function nsrNameKey(s) {
+  let t = String(s || '').replace(/\b(pt|pta|ot|ota|slp|md|do|dpt|otr|otr\/l|cota|lcsw|lmft|rn|np|pa|phd)\b\.?/gi, ' ');
+  if (t.includes(',')) { const [last, first] = t.split(','); t = (first || '') + ' ' + last; }
+  const w = nsrNorm(t).split(' ').filter(x => x.length > 1);
+  return w.length >= 2 ? w[0] + ' ' + w[w.length - 1] : w.join(' ');
+}
+function nsrMatchStaff(rec, staff) {
+  const npi = String(rec.npi || '').replace(/\D/g, '');
+  if (npi.length === 10) { const m = staff.find(s => String(s.npi_number || '').replace(/\D/g, '') === npi); if (m) return m.id; }
+  const key = nsrNameKey(rec.provider_name);
+  if (key && key.includes(' ')) { const hits = staff.filter(s => nsrNameKey(s.full_name) === key); if (hits.length === 1) return hits[0].id; }
+  return '';
+}
+function nsrMatchEntity(rec, entities) {
+  const n = nsrNorm(rec.organization_name); if (!n) return '';
+  const hit = entities.find(e => nsrNorm(e) === n) || entities.find(e => nsrNorm(e) && (nsrNorm(e).includes(n) || n.includes(nsrNorm(e))));
+  return hit || '';
+}
+function nsrMatchPayer(name, payers) {
+  const n = nsrNorm(name); if (!n) return '';
+  const hit = payers.find(p => nsrNorm(p.name) === n) || payers.find(p => { const m = nsrNorm(p.name); return m && (m.includes(n) || n.includes(m)); });
+  return hit ? hit.id : '';
+}
+// What to save for one reviewed record. An effective date in the future is NOT in-network yet: it saves as Pending,
+// with the date kept in the note, so the board never shows someone as covered before the coverage starts.
+function nsrPlanRecord(r, today) {
+  const out = { status: r.status || 'pending', inNetwork: r.effective || null, submitted: r.submitted || null, confirmed: r.confirmed || null,
+    expires: r.expires || null, providerId: r.providerId || null, groupId: r.groupId || null, code: r.code || null, notes: r.notes || null, warnings: [] };
+  if (out.submitted && out.submitted > today) { out.warnings.push('Submitted date is in the future and was left out.'); out.submitted = null; }
+  if (out.confirmed && out.confirmed > today) { out.warnings.push('Confirmed date is in the future and was left out.'); out.confirmed = null; }
+  if (out.inNetwork && out.inNetwork > today) {
+    const eff = out.inNetwork;
+    out.warnings.push('Effective date is in the future, so this saves as Pending with the date in the note.');
+    out.futureEffective = eff; out.inNetwork = null;
+    if (out.status === 'in_network') out.status = 'pending';
+    const line = 'Effective ' + eff;
+    out.notes = out.notes ? (out.notes.includes(line) ? out.notes : out.notes + ' · ' + line) : line;
+  }
+  if (out.status === 'in_network' && !out.inNetwork) out.inNetwork = today;
+  if (out.inNetwork && out.expires && out.expires < out.inNetwork) out.warnings.push('Expires is before the effective date.');
+  return out;
+}
+
+// Plain text out of a saved email (.eml): headers, then the readable part (decoded), HTML tags removed.
+function nsrDecodeQP(s) { return s.replace(/=\r?\n/g, '').replace(/=([0-9A-Fa-f]{2})/g, (_m, h) => String.fromCharCode(parseInt(h, 16))); }
+function nsrHtmlToText(h) { return h.replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>|<\/t[dh]>/gi, '\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;|&apos;/g, "'").replace(/&quot;/g, '"').replace(/[ \t]+/g, ' ').replace(/\n\s*\n+/g, '\n').trim(); }
+function nsrHeaderMap(block) {
+  const lines = block.replace(/\r?\n[ \t]+/g, ' ').split(/\r?\n/), map = {};
+  lines.forEach(l => { const i = l.indexOf(':'); if (i > 0) map[l.slice(0, i).toLowerCase()] = l.slice(i + 1).trim(); });
+  return map;
+}
+function nsrDecodePart(body, enc) {
+  const e = String(enc || '').toLowerCase();
+  if (e.includes('quoted-printable')) return nsrDecodeQP(body);
+  if (e.includes('base64')) { try { const bin = atob(body.replace(/\s+/g, '')); return decodeURIComponent(escape(bin)); } catch (_e) { try { return atob(body.replace(/\s+/g, '')); } catch (_e2) { return ''; } } }
+  return body;
+}
+function nsrEmlToText(raw) {
+  const split = (s) => { const m = s.match(/\r?\n\r?\n/); return m ? [s.slice(0, m.index), s.slice(m.index + m[0].length)] : [s, '']; };
+  const [head, body] = split(String(raw || ''));
+  const h = nsrHeaderMap(head);
+  const lines = ['From: ' + (h['from'] || ''), 'Date: ' + (h['date'] || ''), 'Subject: ' + (h['subject'] || '')];
+  const walk = (headers, content) => {
+    const ct = String(headers['content-type'] || 'text/plain'), bm = ct.match(/boundary="?([^";]+)"?/i);
+    if (/multipart\//i.test(ct) && bm) {
+      const parts = content.split('--' + bm[1]).slice(1).filter(p => !/^--/.test(p.trim()));
+      const texts = parts.map(p => { const [ph, pb] = split(p.replace(/^\r?\n/, '')); return { ph: nsrHeaderMap(ph), pb }; });
+      const plain = [], html = [];
+      texts.forEach(t => { const c = walk(t.ph, t.pb); if (c.plain) plain.push(c.plain); if (c.html) html.push(c.html); });
+      return { plain: plain.join('\n'), html: html.join('\n') };
+    }
+    const dec = nsrDecodePart(content, headers['content-transfer-encoding']);
+    if (/text\/html/i.test(ct)) return { plain: '', html: nsrHtmlToText(dec) };
+    if (/text\/plain/i.test(ct)) return { plain: dec, html: '' };
+    return { plain: '', html: '' };
+  };
+  const c = walk(h, body);
+  return (lines.join('\n') + '\n\n' + (c.plain.trim() || c.html || body)).trim();
+}
+
+function nsrEsc(s) { return hrOnbEsc(s == null ? '' : String(s)); }
+function closeNetworkScanWindow() {
+  document.getElementById('networkScanWindow')?.remove();
+  document.removeEventListener('keydown', _nsrEsc);
+  document.removeEventListener('paste', _nsrPaste);
+  _nsr = null;
+}
+function _nsrEsc(e) { if (e.key === 'Escape' && !document.getElementById('customConfirmModal') && !document.getElementById('importBusyOverlay')) closeNetworkScanWindow(); }
+function _nsrPaste(e) {
+  const w = document.getElementById('networkScanWindow'); if (!w || !document.getElementById('nsrInput')) return;
+  const items = [...(e.clipboardData?.items || [])];
+  const img = items.find(i => i.kind === 'file' && /^image\//.test(i.type));
+  if (img) { e.preventDefault(); const f = img.getAsFile(); if (f) nsrPickFile(new File([f], 'pasted-screenshot.png', { type: f.type || 'image/png' })); }
+}
+function nsrShell(inner, footer) {
+  const w = document.getElementById('networkScanWindow'); if (!w) return;
+  w.querySelector('.nsr-body').innerHTML = inner;
+  w.querySelector('.nsr-foot').innerHTML = footer || '';
+}
+async function openNetworkScanWindow() {
+  if (document.getElementById('networkScanWindow')) return;
+  const w = document.createElement('div'); w.id = 'networkScanWindow';
+  w.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
+  w.innerHTML = `<div role="dialog" aria-modal="true" aria-label="Add network records from a screenshot or email" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:min(980px,100%);height:min(720px,92vh);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div style="font-size:20px;font-weight:700;color:#fff;">Add from a screenshot or email</div>
+      <button type="button" class="btn btn-sm btn-ghost" onclick="closeNetworkScanWindow()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
+    <div class="nsr-body" style="padding:20px 24px;overflow-y:auto;flex:1;min-height:0;"></div>
+    <div class="nsr-foot" style="display:flex;gap:8px;justify-content:flex-end;align-items:center;padding:14px 24px;border-top:1px solid rgba(255,255,255,.1);"></div></div>`;
+  w.addEventListener('mousedown', (e) => { if (e.target === w) closeNetworkScanWindow(); });
+  document.body.appendChild(w);
+  document.addEventListener('keydown', _nsrEsc);
+  document.addEventListener('paste', _nsrPaste);
+  _nsr = { records: [], file: null, fileName: '', staff: staffList || [], payers: [], entities: [] };
+  nsrRenderInput();
+  // Fresh pick-lists, so a payer or entity added a minute ago is matched.
+  try {
+    const [pr, en] = await Promise.all([
+      sb.from('payers').select('id, name').or(`company_id.is.null,company_id.eq.${currentCompany.id}`).order('name'),
+      sb.from('company_entities').select('name').eq('company_id', currentCompany.id).eq('active', true).order('name')]);
+    if (_nsr) { _nsr.payers = pr.data || []; _nsr.entities = (en.data || []).map(e => e.name); }
+  } catch (_e) { /* matching just finds fewer */ }
+}
+function nsrRenderInput(msg) {
+  const f = _nsr && _nsr.file;
+  nsrShell(`
+    <div style="font-size:14px;color:rgba(255,255,255,.72);line-height:1.55;margin-bottom:14px;">Drop in what the insurance company sent you: a <strong>screenshot</strong> of a portal or approval page, a <strong>PDF</strong>, a saved <strong>email</strong> (.eml), or paste the email text. The AI reads the providers, insurance, status and <strong>effective date</strong>. You review everything before anything is saved.</div>
+    <label id="nsrDrop" for="nsrInput" style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;border:2px dashed rgba(255,255,255,.3);border-radius:12px;padding:26px 16px;cursor:pointer;color:#fff;background:rgba(255,255,255,.03);"
+      ondragover="event.preventDefault();this.style.borderColor='var(--teal)'" ondragleave="this.style.borderColor='rgba(255,255,255,.3)'" ondrop="event.preventDefault();this.style.borderColor='rgba(255,255,255,.3)';nsrPickFile(event.dataTransfer.files[0])">
+      <div style="font-size:30px;">📎</div>
+      <div style="font-size:16px;font-weight:700;">${f ? '✓ ' + nsrEsc(f.name) : 'Click to choose a file, or drop it here'}</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.6);">Image, PDF, .eml or .txt · up to 10 MB · you can also press Ctrl+V (Cmd+V) to paste a screenshot</div>
+      <input type="file" id="nsrInput" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf,.pdf,.eml,.txt,.msg" style="display:none;" onchange="nsrPickFile(this.files[0])">
+    </label>
+    <div style="text-align:center;font-size:13px;color:rgba(255,255,255,.5);margin:12px 0;">or paste the email text</div>
+    <textarea id="nsrText" class="inline-input" rows="7" placeholder="Paste the email or message here…" style="width:100%;box-sizing:border-box;" oninput="nsrTextChanged()"></textarea>
+    <div id="nsrMsg" style="font-size:14px;margin-top:10px;color:#f87171;${msg ? '' : 'display:none;'}">${nsrEsc(msg || '')}</div>`,
+    `<button type="button" class="btn btn-ghost" onclick="closeNetworkScanWindow()" style="color:#fff;border-color:rgba(255,255,255,.2);">Cancel</button>
+     <button type="button" class="btn btn-teal" id="nsrReadBtn" onclick="nsrRead()">Read it</button>`);
+}
+function nsrTextChanged() { /* typing text means "use the text"; a chosen file is kept until Read it picks one */ }
+function nsrFileProblem(f) {
+  const low = String(f.name || '').toLowerCase(), type = String(f.type || '').toLowerCase();
+  if (f.size > NSR_MAX_BYTES) return `"${f.name}" is larger than 10 MB. Use a smaller file or a cropped screenshot.`;
+  if (/\.msg$/.test(low)) return `"${f.name}" is an Outlook .msg file, which can't be read directly. In Outlook choose Save As and pick .eml, or just copy the email text and paste it below.`;
+  if (/\.(heic|heif)$/.test(low) || /image\/hei[cf]/.test(type)) return `"${f.name}" is an iPhone HEIC photo. Take a screenshot instead (it saves as PNG), or change the iPhone camera format to Most Compatible.`;
+  const ok = /\.(pdf|png|jpe?g|webp|gif|eml|txt)$/.test(low) || /^(application\/pdf|image\/(png|jpeg|webp|gif)|message\/rfc822|text\/plain)$/.test(type);
+  if (!ok) return `"${f.name}" can't be read. Use a screenshot (PNG/JPG), a PDF, a saved email (.eml) or a .txt file, or paste the text.`;
+  return '';
+}
+function nsrPickFile(f) {
+  if (!f || !_nsr) return;
+  const p = nsrFileProblem(f);
+  if (p) { _nsr.file = null; nsrRenderInput(p); return; }
+  _nsr.file = f; _nsr.fileName = f.name;
+  const keep = document.getElementById('nsrText')?.value || '';
+  nsrRenderInput();
+  const t = document.getElementById('nsrText'); if (t && keep) t.value = keep;
+}
+function nsrFileToBase64(file) {
+  return new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(String(r.result).split(',')[1]); r.onerror = reject; r.readAsDataURL(file); });
+}
+async function nsrRead() {
+  if (!_nsr) return;
+  const pasted = (document.getElementById('nsrText')?.value || '').trim();
+  const file = _nsr.file;
+  if (!file && !pasted) { nsrRenderInput('Choose a file, paste a screenshot, or paste the email text first.'); return; }
+  const busy = startImportBusy('Reading the record');
+  try {
+    let payload;
+    const low = file ? file.name.toLowerCase() : '';
+    if (file && (/\.(eml|txt)$/.test(low) || /^(message\/rfc822|text\/plain)$/.test(file.type))) {
+      const raw = await file.text();
+      payload = { text: /\.eml$/.test(low) || /^from:|^received:|^mime-version:/im.test(raw.slice(0, 600)) ? nsrEmlToText(raw) : raw };
+    } else if (file) {
+      let mediaType = file.type || (/\.pdf$/.test(low) ? 'application/pdf' : /\.png$/.test(low) ? 'image/png' : 'image/jpeg');
+      payload = { fileBase64: await nsrFileToBase64(file), mediaType };
+    } else payload = { text: pasted };
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch('https://zxserlkhwkfoqiepurdr.supabase.co/functions/v1/scan-network-record', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+      body: JSON.stringify(payload), signal: busy.signal });
+    let result = null; try { result = await res.json(); } catch (_e) { /* not JSON */ }
+    if (!result) throw new Error('The reading service did not answer properly. Please try again, or enter the record by hand.');
+    if (result.error) throw new Error(result.error);
+    busy.stop();
+    if (!_nsr) return;
+    if (!result.records || !result.records.length) { nsrRenderInput('Nothing about network enrollment was found in that. Try a clearer or larger screenshot, or paste the text of the email.'); return; }
+    nsrBuildReview(result.records);
+  } catch (e) {
+    busy.stop();
+    let msg;
+    if (busy.timedOut()) msg = 'The scan took too long (over 2 minutes). Try a smaller or clearer file, or enter the record by hand.';
+    else if (e && e.name === 'AbortError') msg = 'Cancelled.';
+    else if (/failed to fetch|networkerror|load failed|network request failed/i.test(String((e && e.message) || e))) msg = "Couldn't reach the server. Check your internet and try again.";
+    else msg = (e && e.message) || String(e);
+    if (_nsr) nsrRenderInput(msg);
+  }
+}
+
+function nsrBuildReview(recs) {
+  _nsr.records = recs.map((x, i) => {
+    const staffId = nsrMatchStaff(x, _nsr.staff);
+    const entity = staffId ? '' : nsrMatchEntity(x, _nsr.entities);
+    const who = staffId ? 's:' + staffId : entity ? 'e:' + entity : (x.organization_name && !x.provider_name ? 'n:' + x.organization_name : '');
+    const payerId = nsrMatchPayer(x.payer_name, _nsr.payers);
+    return { i, include: true, who, payer: payerId || (x.payer_name ? 'new:' + x.payer_name : ''), status: x.status || 'pending',
+      effective: x.effective_date || '', submitted: x.submitted_date || '', confirmed: x.confirmed_date || '', expires: x.termination_date || '',
+      providerId: x.provider_id || '', groupId: x.group_id || '', code: x.confirmation_code || '', notes: x.notes || '',
+      printed: x.effective_date_printed || '', readName: x.provider_name || x.organization_name || '', readPayer: x.payer_name || '', statusText: x.status_text || '' };
+  });
+  nsrRenderReview();
+}
+function nsrExisting(r) {
+  const rows = (typeof _lastPayerBoardData !== 'undefined' && _lastPayerBoardData) || [];
+  let payerId = r.payer.startsWith('new:') ? null : r.payer;
+  if (!payerId || !r.who) return null;
+  const [k, v] = [r.who[0], r.who.slice(2)];
+  return rows.find(x => x.payer_id === payerId && (k === 's' ? x.staff_id === v : (!x.staff_id && x.entity_name === v))) || null;
+}
+function nsrWhoOptions(sel) {
+  const staff = [..._nsr.staff].sort((a, b) => String(a.full_name).localeCompare(String(b.full_name)));
+  let h = `<option value="">Choose who this is for…</option><optgroup label="Staff">` + staff.map(s => `<option value="s:${s.id}"${sel === 's:' + s.id ? ' selected' : ''}>${nsrEsc(s.full_name)}</option>`).join('') + '</optgroup>';
+  if (_nsr.entities.length) h += `<optgroup label="Company / agency">` + _nsr.entities.map(e => `<option value="e:${nsrEsc(e)}"${sel === 'e:' + e ? ' selected' : ''}>${nsrEsc(e)}</option>`).join('') + '</optgroup>';
+  if (sel.startsWith('n:')) h += `<option value="${nsrEsc(sel)}" selected>+ New entity: ${nsrEsc(sel.slice(2))}</option>`;
+  return h;
+}
+function nsrPayerOptions(sel) {
+  let h = `<option value="">Choose insurance…</option>` + _nsr.payers.map(p => `<option value="${p.id}"${sel === p.id ? ' selected' : ''}>${nsrEsc(p.name)}</option>`).join('');
+  if (sel.startsWith('new:')) h += `<option value="${nsrEsc(sel)}" selected>+ Add new insurance: ${nsrEsc(sel.slice(4))}</option>`;
+  return h;
+}
+function nsrRenderReview() {
+  const today = todayLocalIso();
+  const inp = (i, k, label, type, val, extra = '') => `<div><label style="font-size:12px;color:rgba(255,255,255,.6);display:block;margin-bottom:2px;">${label}</label><input class="inline-input" type="${type}" value="${nsrEsc(val)}" ${extra} ${type === 'date' ? 'onchange' : 'oninput'}="nsrSet(${i},'${k}',this.value)" style="width:100%;box-sizing:border-box;"></div>`;
+  const cards = _nsr.records.map(r => {
+    const ex = nsrExisting(r), plan = nsrPlanRecord(r, today);
+    const badge = !r.who || !r.payer ? '<span style="color:#fbbf24;">Choose who and which insurance</span>'
+      : ex ? `<span style="color:#fbbf24;">Updates the record on file (now ${nsrEsc(PAYER_NETWORK_BADGE_LABEL[ex.status] || ex.status)}${ex.date_in_network ? ', in-network ' + nsrEsc(fmtNetDate(ex.date_in_network)) : ''})</span>` : '<span style="color:var(--teal-l);">New record</span>';
+    return `<div style="border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 16px;margin-bottom:14px;${r.include ? '' : 'opacity:.5;'}" data-nsr="${r.i}">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;">
+        <label style="display:flex;align-items:center;gap:8px;color:#fff;font-weight:700;font-size:15px;"><input type="checkbox" ${r.include ? 'checked' : ''} onchange="nsrSet(${r.i},'include',this.checked)"> Save this record</label>
+        <span style="font-size:13px;color:rgba(255,255,255,.55);">Read as: ${nsrEsc(r.readName || '—')} · ${nsrEsc(r.readPayer || '—')}${r.statusText ? ' · "' + nsrEsc(r.statusText) + '"' : ''}</span>
+        <span style="margin-left:auto;font-size:13px;">${badge}</span></div>
+      <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px 12px;margin-bottom:10px;">
+        <div><label style="font-size:12px;color:rgba(255,255,255,.6);display:block;margin-bottom:2px;">Who</label><select class="inline-select" onchange="nsrSet(${r.i},'who',this.value)" style="width:100%;">${nsrWhoOptions(r.who)}</select></div>
+        <div><label style="font-size:12px;color:rgba(255,255,255,.6);display:block;margin-bottom:2px;">Insurance</label><select class="inline-select" onchange="nsrSet(${r.i},'payer',this.value)" style="width:100%;">${nsrPayerOptions(r.payer)}</select></div>
+        <div><label style="font-size:12px;color:rgba(255,255,255,.6);display:block;margin-bottom:2px;">Status</label><select class="inline-select" onchange="nsrSet(${r.i},'status',this.value)" style="width:100%;">${Object.keys(PAYER_NETWORK_BADGE_LABEL).map(k => `<option value="${k}"${r.status === k ? ' selected' : ''}>${PAYER_NETWORK_BADGE_LABEL[k]}</option>`).join('')}</select></div>
+        ${inp(r.i, 'effective', 'Effective date (in-network)', 'date', r.effective)}
+        ${inp(r.i, 'submitted', 'Submitted', 'date', r.submitted)}
+        ${inp(r.i, 'confirmed', 'Confirmed', 'date', r.confirmed)}
+        ${inp(r.i, 'expires', 'Expires / ends', 'date', r.expires)}
+        ${inp(r.i, 'providerId', 'Provider ID', 'text', r.providerId, 'maxlength="120"')}
+        ${inp(r.i, 'groupId', 'Group ID', 'text', r.groupId, 'maxlength="120"')}
+        ${inp(r.i, 'code', 'Confirmation code', 'text', r.code, 'maxlength="120"')}
+        <div style="grid-column:span 2;">${inp(r.i, 'notes', 'Note', 'text', r.notes, 'maxlength="600"')}</div></div>
+      ${r.printed && !r.effective ? `<div style="font-size:13px;color:#fbbf24;">The effective date was printed as "${nsrEsc(r.printed)}" and could not be turned into a date. Type it in above.</div>` : ''}
+      ${!r.effective && !r.printed ? '<div style="font-size:13px;color:rgba(255,255,255,.55);">No effective date was found. Add it above if you know it.</div>' : ''}
+      ${plan.warnings.map(w => `<div style="font-size:13px;color:#fbbf24;margin-top:4px;">⚠ ${nsrEsc(w)}</div>`).join('')}</div>`;
+  }).join('');
+  const n = _nsr.records.filter(r => r.include).length;
+  nsrShell(`<div style="font-size:14px;color:rgba(255,255,255,.72);margin-bottom:14px;">${_nsr.records.length} record${_nsr.records.length === 1 ? '' : 's'} found${_nsr.fileName ? ' in ' + nsrEsc(_nsr.fileName) : ''}. Check each one. Nothing is saved until you press Save.</div>${cards}<div id="nsrMsg" style="font-size:14px;color:#f87171;display:none;"></div>`,
+    `<span id="nsrCount" style="margin-right:auto;font-size:13px;color:rgba(255,255,255,.6);">${n} selected</span>
+     <button type="button" class="btn btn-ghost" onclick="nsrRenderInput()" style="color:#fff;border-color:rgba(255,255,255,.2);">← Back</button>
+     <button type="button" class="btn btn-teal" id="nsrSaveBtn" onclick="nsrSave()">Save ${n} record${n === 1 ? '' : 's'}</button>`);
+}
+function nsrSet(i, k, v) {
+  if (!_nsr || !_nsr.records[i]) return;
+  _nsr.records[i][k] = v;
+  // Re-draw only when something other than typing changed (selects, checkbox, dates), so text fields keep focus.
+  if (['include', 'who', 'payer', 'status', 'effective', 'confirmed', 'submitted', 'expires'].includes(k)) {
+    const el = document.querySelector('#networkScanWindow .nsr-body'), top = el ? el.scrollTop : 0;
+    nsrRenderReview();
+    const el2 = document.querySelector('#networkScanWindow .nsr-body'); if (el2) el2.scrollTop = top;
+  }
+}
+
+async function nsrSave() {
+  if (!_nsr) return;
+  const msg = document.getElementById('nsrMsg'), btn = document.getElementById('nsrSaveBtn');
+  const fail = (m) => { if (msg) { msg.textContent = m; msg.style.display = 'block'; msg.scrollIntoView({ block: 'nearest' }); } };
+  const chosen = _nsr.records.filter(r => r.include);
+  if (!chosen.length) { fail('Tick at least one record to save.'); return; }
+  const bad = chosen.filter(r => !r.who || !r.payer);
+  if (bad.length) { fail(`${bad.length} selected record${bad.length === 1 ? ' is' : 's are'} missing who it is for or the insurance. Choose them, or untick the record.`); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+  const today = todayLocalIso(), nowIso = new Date().toISOString();
+  let saved = 0, created = 0, updated = 0; const problems = [];
+  // Keep the file as proof, once. If the storage or column is not there, the records still save.
+  let srcPath = null, srcName = null;
+  if (_nsr.file) {
+    try {
+      const safe = _nsr.file.name.replace(/[^A-Za-z0-9._-]+/g, '_');
+      const path = `${currentCompany.id}/network-evidence/${Date.now()}_${safe}`;
+      const { error: upErr } = await sb.storage.from(STORAGE_BUCKET).upload(path, _nsr.file);
+      if (!upErr) { srcPath = path; srcName = _nsr.file.name; }
+    } catch (_e) { /* proof is optional */ }
+  }
+  const payerCache = {}, entityDone = {};
+  for (const r of chosen) {
+    const label = `${r.readName || 'Record'} · ${r.readPayer || 'payer'}`;
+    try {
+      let payerId = r.payer;
+      if (payerId.startsWith('new:')) {
+        const name = payerId.slice(4).trim(), key = nsrNorm(name);
+        if (payerCache[key]) payerId = payerCache[key];
+        else {
+          const have = _nsr.payers.find(p => nsrNorm(p.name) === key);
+          if (have) payerId = have.id;
+          else {
+            const { data: cp, error: pe } = await sb.from('payers').insert({ name, company_id: currentCompany.id, active: true }).select('id').single();
+            if (pe) throw new Error('Could not add the insurance "' + name + '": ' + pe.message);
+            payerId = cp.id; _nsr.payers.push({ id: cp.id, name });
+          }
+          payerCache[key] = payerId;
+        }
+      }
+      const kind = r.who[0], val = r.who.slice(2), staffId = kind === 's' ? val : null, entityName = kind === 's' ? null : val;
+      if (kind === 'n' && !entityDone[val]) {
+        const { error: ee } = await sb.from('company_entities').insert({ company_id: currentCompany.id, name: val });
+        if (ee && ee.code !== '23505') console.warn('Entity registration failed:', ee);
+        entityDone[val] = true; if (!_nsr.entities.includes(val)) _nsr.entities.push(val);
+      }
+      const plan = nsrPlanRecord(r, today);
+      let q = sb.from('staff_payer_networks').select('id, status, enrollment_steps, date_submitted, date_confirmed, date_in_network, expiration_date, confirmation_code, network_provider_id, group_id, notes, verified_at').eq('payer_id', payerId).eq('company_id', currentCompany.id);
+      q = staffId ? q.eq('staff_id', staffId) : q.is('staff_id', null).eq('entity_name', entityName);
+      const { data: ex } = await q.maybeSingle();
+      const pick = (nv, ov) => (nv != null && nv !== '' ? nv : (ov ?? null));
+      const dSub = pick(plan.submitted, ex && ex.date_submitted), dConf = pick(plan.confirmed, ex && ex.date_confirmed), dNet = pick(plan.inNetwork, ex && ex.date_in_network);
+      const payload = {
+        company_id: currentCompany.id, staff_id: staffId, entity_name: entityName, payer_id: payerId, status: plan.status,
+        date_submitted: dSub, date_confirmed: dConf, date_in_network: dNet,
+        expiration_date: pick(plan.expires, ex && ex.expiration_date),
+        confirmation_code: pick(plan.code, ex && ex.confirmation_code), network_provider_id: pick(plan.providerId, ex && ex.network_provider_id), group_id: pick(plan.groupId, ex && ex.group_id),
+        notes: pick(plan.notes, ex && ex.notes),
+        verified_at: plan.status === 'in_network' ? ((ex && ex.verified_at) || nowIso) : null,
+        ...(staffId ? { enrollment_steps: buildEnrollmentStepsFromForm(ex ? ex.enrollment_steps : null, { submitted: dSub, confirmed: dConf, inNetwork: plan.status === 'in_network' ? dNet : null, status: plan.status }, today, nowIso) } : {}),
+      };
+      const withSrc = srcPath && _nsrHasSourceCols !== false ? { ...payload, source_file_path: srcPath, source_file_name: srcName } : payload;
+      const run = (p) => ex ? sb.from('staff_payer_networks').update(p).eq('id', ex.id).select('id') : sb.from('staff_payer_networks').insert(p).select('id');
+      let { data: done, error } = await run(withSrc);
+      if (error && withSrc !== payload && /source_file/.test(error.message || '')) { _nsrHasSourceCols = false; ({ data: done, error } = await run(payload)); }
+      if (error) throw new Error(friendlyError(error, 'save this record'));
+      if (!done || !done.length) throw new Error('Nothing was saved. You may not have permission to edit this record.');
+      saved++; ex ? updated++ : created++;
+    } catch (e) { problems.push(label + ': ' + ((e && e.message) || e)); }
+  }
+  if (btn) { btn.disabled = false; btn.textContent = 'Save'; }
+  if (problems.length) {
+    fail(`${saved} saved, ${problems.length} did not:\n` + problems.join('\n'));
+    if (msg) msg.style.whiteSpace = 'pre-wrap';
+    if (saved) await loadPayerBoard();
+    return;
+  }
+  closeNetworkScanWindow();
+  toast(`✓ ${saved} network record${saved === 1 ? '' : 's'} saved (${created} new, ${updated} updated)`);
+  await loadPayerBoard();
+}
+let _nsrHasSourceCols = null;
+async function viewNetworkSourceFile(path) {
+  const { data, error } = await sb.storage.from(STORAGE_BUCKET).createSignedUrl(path, 60);
+  if (error || !data) { toast('Could not open the saved file.', true); return; }
+  window.open(data.signedUrl, '_blank', 'noopener');
+}
+// ══ END NETWORK SCAN ══
+
 // ── Edit a network record from the board (status, dates, codes, note) ─────────
 // Works on the record by its id, so fixing a wrong date or taking back an approval never needs a delete and
 // re-add. Every change is kept in Notes & history (who, when, old value).
@@ -25986,6 +26365,7 @@ function showPayerNetworkEditModal(id) {
       </div>
       <label for="pneNotes" style="font-size:13px;color:rgba(255,255,255,.62);display:block;margin-bottom:3px;">Note on the board <span style="color:rgba(255,255,255,.45);">(the earlier wording stays in Notes &amp; history)</span></label>
       <textarea class="inline-input" id="pneNotes" rows="2" maxlength="600" style="width:100%;box-sizing:border-box;">${hrOnbEsc(row.notes || '')}</textarea>
+      ${row.source_file_path ? `<div style="font-size:13px;margin-top:8px;"><a href="#" onclick="viewNetworkSourceFile('${hrOnbEsc(String(row.source_file_path).replace(/'/g, ''))}');return false;" style="color:var(--teal-l);">📎 View the screenshot or email this came from${row.source_file_name ? ' (' + hrOnbEsc(row.source_file_name) + ')' : ''}</a></div>` : ''}
       <div id="pneErr" style="color:#f87171;font-size:14px;margin:10px 0 0;display:none;"></div>
       <div style="display:flex;gap:8px;margin-top:14px;">
         <button class="btn btn-teal" id="pneSaveBtn" onclick="savePayerNetworkEdit('${row.id}')" style="flex:1;justify-content:center;">Save changes</button>
