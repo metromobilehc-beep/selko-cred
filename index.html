@@ -2466,6 +2466,26 @@ body:has(#providerTabModal) { overflow: hidden; }
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsCardsCss">
+#orgProfileGroups { margin-bottom:14px; }
+.op-top { display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:10px; font-size:14px; color:rgba(255,255,255,.75); }
+.op-total { font-weight:700; color:#fff; }
+.op-only { display:flex; align-items:center; gap:8px; cursor:pointer; }
+.op-group { border:1px solid rgba(255,255,255,.16); border-radius:12px; margin-bottom:10px; overflow:hidden; background:rgba(255,255,255,.03); }
+.op-head { width:100%; display:flex; align-items:center; gap:12px; text-align:left; background:transparent; border:0; color:#fff; font:inherit; padding:14px 18px; cursor:pointer; min-height:52px; }
+.op-head:hover, .op-head:focus-visible { background:rgba(20,184,166,.1); outline:none; }
+.op-title { font-size:16px; font-weight:700; flex:1; }
+.op-sum { font-size:13px; padding:3px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.25); color:rgba(255,255,255,.75); white-space:nowrap; }
+.op-sum.op-all { color:#4ade80; border-color:rgba(74,222,128,.5); }
+.op-sum.op-some { color:var(--teal-l); border-color:rgba(94,234,212,.5); }
+.op-caret { font-size:16px; color:var(--teal-l); transition:transform .15s; }
+.op-open .op-caret { transform:rotate(180deg); }
+.op-body { display:none; padding:4px 18px 16px; border-top:1px solid rgba(255,255,255,.1); }
+.op-open .op-body { display:block; }
+.op-desc { font-size:14px; color:rgba(255,255,255,.6); margin:10px 0 12px; }
+.op-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+.op-hide { display:none !important; }
+@media (max-width:700px) { .op-grid { grid-template-columns:1fr; } }
+
 .fp-wrap { position:relative; display:inline-block; }
 .fp-btn { font-size:16px !important; font-weight:700 !important; padding:10px 20px !important; min-height:44px; color:#fff !important; border:1px solid rgba(255,255,255,.5) !important; background:rgba(255,255,255,.07) !important; border-radius:8px !important; }
 .fp-btn:hover, .fp-btn:focus-visible { border-color:var(--teal) !important; background:rgba(20,184,166,.15) !important; outline:none; }
@@ -5898,7 +5918,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-v';
+const APP_VERSION = '2026-11-13-w';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -19879,6 +19899,7 @@ async function loadCredentialingTab() {
   document.getElementById('setMalpracticeLimits').value     = c.malpractice_coverage_limits || '';
   document.getElementById('setMalpracticeEffective').value  = c.malpractice_effective_date || '';
   document.getElementById('setMalpracticeExpiration').value = c.malpractice_expiration_date || '';
+  if (typeof opRefresh === 'function') opRefresh();   // the group counts follow what just loaded
 
   // Contextual partner link — only shown when the field is genuinely empty
   // (a company already covered has no reason to see it), never a banner.
@@ -28636,6 +28657,72 @@ document.addEventListener('click', () => Object.keys(_fpState).forEach(fpClose))
 document.addEventListener('keydown', e => { if (e.key === 'Escape') Object.keys(_fpState).forEach(fpClose); });
 initFilterPanels();
 // ══ END FILTER PANELS ══
+
+// ══ ORG PROFILE GROUPS ══
+// The organization credentialing profile has 36 fields. They are folded into six short groups, each showing how many of its fields are
+// filled in, and only one group is open at a time. The fields themselves are MOVED (not copied) into the groups, so every id, the loader
+// and the single Save button work exactly as before. A switch shows only the fields that are still empty.
+const ORG_PROFILE_GROUPS = [
+  { key: 'identity', title: 'Business identity', desc: 'Legal and directory names, type of organization, specialty.', ids: ['setLegalName', 'setDirectoryName', 'setDbaName', 'setOrgType', 'setGroupSpecialty', 'setVirtualOnly', 'setTaxonomyCode'] },
+  { key: 'ids', title: 'Tax and program IDs', desc: 'EIN, organizational NPI, Medicaid and Medicare numbers.', ids: ['setTaxId', 'setOrgNpi', 'setMedicaidId', 'setMedicareNumber'] },
+  { key: 'addr', title: 'Addresses and phones', desc: 'Fax, payment remittance, billing and notice addresses.', ids: ['setOrgFax', 'setRemitAddress', 'setBillingPhone', 'setNoticeAddress', 'setNoticePhone'] },
+  { key: 'contacts', title: 'Contacts', desc: 'Who payers contact, and who signs applications.', ids: ['setCredContactName', 'setCredContactEmail', 'setCredContactPhone', 'setSignatoryName', 'setSignatoryTitle', 'setSignatoryEmail'] },
+  { key: 'licenses', title: 'Facility licenses and registrations', desc: "The organization's own credentials, separate from any individual professional license.", ids: ['setOrgStateLicenseNumber', 'setOrgStateLicenseState', 'setOrgStateRegistrationNumber', 'setOrgStateRegistrationState', 'setOrgStateCertificationNumber', 'setOrgStateCertificationState', 'setOrgDeaNumber', 'setOrgDeaState', 'setOrgCliaNumber', 'setOrgCliaState'] },
+  { key: 'malpractice', title: 'Malpractice / liability insurance', desc: 'Carrier, policy number, limits and dates.', ids: ['setMalpracticeCarrier', 'setMalpracticePolicy', 'setMalpracticeLimits', 'setMalpracticeEffective', 'setMalpracticeExpiration'], extra: 'malpracticePartnerLink' },
+];
+let _opInit = false, _opOnlyEmpty = false;
+function opFieldEl(id) { const el = document.getElementById(id); return el ? el.closest('div') : null; }
+function opCountable(id) { const el = document.getElementById(id); return !!el && el.tagName !== 'SELECT'; }
+function opFilled(id) { const el = document.getElementById(id); return !!el && String(el.value || '').trim() !== ''; }
+function opRefresh() {
+  if (!_opInit) return;
+  let totalFilled = 0, total = 0;
+  ORG_PROFILE_GROUPS.forEach(g => {
+    const box = document.getElementById('opg_' + g.key); if (!box) return;
+    const ids = g.ids.filter(opCountable);
+    const wraps = g.ids.map(opFieldEl).filter(Boolean);
+    const hiddenByCompany = wraps.length && wraps.every(w => w.style.display === 'none');
+    const filled = ids.filter(opFilled).length;
+    totalFilled += hiddenByCompany ? 0 : filled; total += hiddenByCompany ? 0 : ids.length;
+    g.ids.forEach(id => { const w = opFieldEl(id); if (w) w.classList.toggle('op-hide', _opOnlyEmpty && opCountable(id) && opFilled(id)); });
+    const emptyLeft = ids.length - filled;
+    box.style.display = hiddenByCompany || (_opOnlyEmpty && emptyLeft === 0) ? 'none' : '';
+    const sum = box.querySelector('.op-sum');
+    sum.textContent = filled === 0 ? 'Nothing filled in yet' : filled === ids.length ? `All ${ids.length} filled in` : `${filled} of ${ids.length} filled in`;
+    sum.className = 'op-sum ' + (filled === 0 ? 'op-none' : filled === ids.length ? 'op-all' : 'op-some');
+  });
+  const t = document.getElementById('opTotal'); if (t) t.textContent = `${totalFilled} of ${total} fields filled in`;
+}
+function opToggleGroup(key) {
+  ORG_PROFILE_GROUPS.forEach(g => {
+    const box = document.getElementById('opg_' + g.key); if (!box) return;
+    const open = g.key === key && !box.classList.contains('op-open');
+    box.classList.toggle('op-open', open);
+    box.querySelector('.op-head').setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+}
+function opSetOnlyEmpty(on) { _opOnlyEmpty = !!on; if (on) { const first = ORG_PROFILE_GROUPS.find(g => { const ids = g.ids.filter(opCountable); return ids.some(i => !opFilled(i)); }); if (first) { opRefresh(); const box = document.getElementById('opg_' + first.key); if (box && !box.classList.contains('op-open')) opToggleGroup(first.key); } } opRefresh(); }
+function initOrgProfileGroups() {
+  if (_opInit) return;
+  const first = document.getElementById('setLegalName'); if (!first) return;
+  const grid = first.closest('div').parentNode;                     // the old two-column grid that held every field
+  const host = document.createElement('div'); host.id = 'orgProfileGroups';
+  host.innerHTML = `<div class="op-top"><span id="opTotal" class="op-total"></span><label class="op-only"><input type="checkbox" onchange="opSetOnlyEmpty(this.checked)"> Show only what is still empty</label></div>`;
+  ORG_PROFILE_GROUPS.forEach(g => {
+    const box = document.createElement('section'); box.className = 'op-group'; box.id = 'opg_' + g.key;
+    box.innerHTML = `<button type="button" class="op-head" aria-expanded="false" onclick="opToggleGroup('${g.key}')"><span class="op-title">${g.title}</span><span class="op-sum"></span><span class="op-caret" aria-hidden="true">▾</span></button><div class="op-body"><div class="op-desc">${g.desc}</div><div class="op-grid"></div></div>`;
+    host.appendChild(box);
+    const body = box.querySelector('.op-grid');
+    g.ids.forEach(id => { const w = opFieldEl(id); if (w) body.appendChild(w); });
+    if (g.extra) { const ex = document.getElementById(g.extra); if (ex) box.querySelector('.op-body').appendChild(ex); }
+  });
+  grid.parentNode.insertBefore(host, grid);
+  grid.style.display = 'none';                                      // only the old group headings are left in it
+  host.addEventListener('input', opRefresh); host.addEventListener('change', opRefresh);
+  _opInit = true; opRefresh();
+}
+initOrgProfileGroups();
+// ══ END ORG PROFILE GROUPS ══
 
 // ══ SETTINGS CARDS ══
 // Settings opens to a grid of cards. Each card shows its current state in one line and opens its panels in a pop-out window.
