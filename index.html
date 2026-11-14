@@ -27792,6 +27792,28 @@ function sgSteps() {
   ];
 }
 
+const SG_TIPS = {
+  company: ['These addresses receive expiry warnings, enrollment updates, exclusion check results (OIG and SAM) and sensitive data alerts.', 'Use an inbox someone actually watches, and add a second person so nothing is missed when one of you is out.'],
+  sections: ['Each section is a tab in the menu. Documents and the Expiration tracker hold staff documents and their expiry dates. Credentialing holds CAQH, NPI, DEA and enrollment records. Compliance holds exclusion checks and the audit log.', 'Turning one off only hides its tab. Nothing is deleted, and you can turn it back on in Settings.'],
+  roles: ['A role (PT, PTA, OT and so on) decides how each person is filed, and which documents and checks apply to them.', 'A PT and a PTA usually need different licenses, which is why the next steps ask per role. A role with staff filed under it can\'t be removed here.'],
+  requirements: ['A ticked item is flagged as missing on the Credentialing overview and board until it is filled in for that person. An unticked item is never flagged for that role.', 'NPI: a provider\'s national ID number. CAQH ID: the provider\'s credentialing profile ID that payers use. Both can still be filled in for anyone, ticked or not.'],
+  documents: ['A required document shows as missing on a person\'s record until it is uploaded, and its expiry date drives the reminder emails.', 'Untick anything you do not collect here (for example a W-4 that payroll tracks). To require a document only for certain roles, use Applies To in Settings > Document types.'],
+  notify: ['Weekly summary is one email each Monday. Daily is one email each morning, only when something is expiring. Every item sends a separate email for each document and can be a lot of mail.', 'The first and second warnings are how many days before a document expires that staff and admins are reminded. Exclusion check results and sensitive data alerts are always sent.'],
+  branding: ['Your name and color replace the Selko look in the header, the login screen and emails your staff receive.', 'Pick a color that suits your agency. The background stays a fixed dark navy, so any choice is safe, and you can change it later.'],
+  team: ['Adding a person is the fastest way to see everything you just chose at work: their role decides what they are asked for, and missing items show up on your Overview.'],
+};
+let _sgTipsOff = null;   // in-memory copy, so it still works when the browser blocks storage
+function sgTipsHidden() { if (_sgTipsOff === null) { try { _sgTipsOff = localStorage.getItem('sg_tips_hidden') === '1'; } catch (e) { _sgTipsOff = false; } } return _sgTipsOff; }
+function sgToggleTips() { _sgTipsOff = !sgTipsHidden(); try { localStorage.setItem('sg_tips_hidden', _sgTipsOff ? '1' : '0'); } catch (e) {} sgRenderTips(); }
+function sgRenderTips() {
+  const el = document.getElementById('sgLearn'); if (!el) return;
+  const step = _sg.steps[_sg.step]; const tip = step && SG_TIPS[step.id];
+  if (!tip) { el.style.display = 'none'; return; }
+  el.style.display = 'block';
+  el.innerHTML = sgTipsHidden()
+    ? '<a href="#" onclick="sgToggleTips();return false;" style="color:var(--teal-l);font-size:13px;">Show tips</a>'
+    : '<div style="background:rgba(20,184,166,.08);border:1px solid rgba(20,184,166,.28);border-radius:10px;padding:10px 14px;font-size:14px;line-height:1.55;color:rgba(255,255,255,.82);"><div style="display:flex;justify-content:space-between;gap:10px;"><strong style="color:var(--teal-l);font-size:12px;letter-spacing:.06em;text-transform:uppercase;">What this does</strong><a href="#" onclick="sgToggleTips();return false;" style="color:rgba(255,255,255,.55);font-size:12px;">Hide tips</a></div>' + tip.map(t => '<div style="margin-top:4px;">' + sgEsc(t) + '</div>').join('') + '</div>';
+}
 function sgEsc(s) { return hrOnbEsc(String(s == null ? '' : s)); }
 function sgRoleList() { return _sg.picks.roles || getCompanyDisciplines(); }
 
@@ -27808,6 +27830,7 @@ async function sgRenderStep() {
   document.getElementById('sgBack').style.visibility = _sg.step === 0 ? 'hidden' : 'visible';
   document.getElementById('sgSkip').style.display = last ? 'none' : '';
   document.getElementById('sgNext').textContent = last ? 'Finish' : 'Save and continue';
+  sgRenderTips();
   box.innerHTML = '<div style="color:rgba(255,255,255,.55);">Loading…</div>';
   box.innerHTML = await SG_RENDER[step.id]();
 }
@@ -28030,7 +28053,8 @@ async function openSetupGuide(fromStep) {
       </div>
       <div style="height:5px;background:rgba(255,255,255,.1);border-radius:3px;margin:10px 0 14px;overflow:hidden;"><div id="sgBar" style="height:100%;width:0;background:var(--teal);transition:width .2s;"></div></div>
       <div id="sgTitle" style="font-size:22px;font-weight:700;color:#fff;"></div>
-      <div id="sgSub" style="font-size:15px;color:rgba(255,255,255,.62);margin:4px 0 14px;"></div>
+      <div id="sgSub" style="font-size:15px;color:rgba(255,255,255,.62);margin:4px 0 12px;"></div>
+      <div id="sgLearn" style="margin-bottom:14px;"></div>
     </div>
     <div id="sgBody" style="padding:0 22px;overflow:auto;flex:1;"></div>
     <div id="sgErr" style="display:none;color:#f87171;font-size:14px;padding:8px 22px 0;"></div>
