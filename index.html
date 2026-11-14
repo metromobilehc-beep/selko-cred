@@ -4388,11 +4388,20 @@ async function countBillableClinicians(companyId) {
     .not('exclude_from_compliance', 'is', true);
   return error ? null : (count || 0);
 }
+// Short one-line version for dropdowns (the full sentence is too long for a select).
+function planShortText(d) {
+  if (d.price_cents == null) return 'custom quote';
+  const money = (c) => '$' + (c / 100).toFixed(c % 100 ? 2 : 0);
+  if (d.metered) return 'from ' + money(d.price_cents) + '/mo, ' + money(d.per_clinician_cents || 0) + ' per extra clinician';
+  return money(d.price_cents) + '/mo';
+}
 // Options for a plan <select>: every active package, plus the company's current one even if it has since been switched off.
 function planOptionsHtml(selected) {
-  const list = _planDefs.filter((d) => d.active !== false || d.slug === selected);
+  // Offered plans first, then any switched-off plan the company is still on.
+  const list = _planDefs.filter((d) => d.active !== false || d.slug === selected)
+    .sort((a, b) => ((a.active === false) - (b.active === false)) || ((a.sort_order || 0) - (b.sort_order || 0)));
   const known = list.some((d) => d.slug === selected);
-  const opts = list.map((d) => `<option value="${hrOnbEsc(d.slug)}" ${d.slug === selected || (!selected && d.slug === 'standard') ? 'selected' : ''}>${hrOnbEsc(d.name)} — ${hrOnbEsc(planPriceText(d))}${d.active === false ? ' (inactive)' : ''}</option>`);
+  const opts = list.map((d) => `<option value="${hrOnbEsc(d.slug)}" ${d.slug === selected || (!selected && d.slug === 'selko') ? 'selected' : ''}>${hrOnbEsc(d.name)} — ${hrOnbEsc(planShortText(d))}${d.active === false ? ' (no longer offered)' : ''}</option>`);
   if (selected && !known) opts.push(`<option value="${hrOnbEsc(selected)}" selected>${hrOnbEsc(selected)}</option>`);
   return opts.join('');
 }
@@ -5857,7 +5866,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-l';
+const APP_VERSION = '2026-11-13-m';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
