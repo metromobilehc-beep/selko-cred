@@ -2506,13 +2506,14 @@ body:has(#providerTabModal) { overflow: hidden; }
 
 #tabSettings.cards-mode > *:not(.settings-keep):not(.cards-home):not(style), #tabSuper.cards-mode > *:not(.settings-keep):not(.cards-home):not(style) { display: none !important; }
 .cards-home .sc-guide { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:rgba(20,184,166,.12); border:1px solid rgba(20,184,166,.45); border-radius:12px; padding:16px 20px; margin:6px 0 18px; }
-.cards-home .sc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; }
+.cards-home .sc-grid { display:flex; flex-wrap:wrap; justify-content:center; gap:16px; }   /* column count is chosen in scFitGrid so rows come out even; a short last row is centered */
+.cards-home .sc-grid > .sc-card { flex:0 0 calc((100% - (var(--sc-cols,3) - 1) * 16px) / var(--sc-cols,3)); box-sizing:border-box; min-width:0; }
 .cards-home .sc-card { text-align:left; display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:18px 20px; color:#fff; cursor:pointer; font:inherit; transition:background .15s,border-color .15s; }
 .cards-home .sc-card:hover, .cards-home .sc-card:focus-visible { background:rgba(20,184,166,.12); border-color:var(--teal); outline:none; }
 .cards-home .sc-tag { font-size:12px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--teal-l); }
 .cards-home .sc-title { font-size:17px; font-weight:700; }
 .cards-home .sc-sum { font-size:14px; color:rgba(255,255,255,.72); min-height:40px; line-height:1.4; }
-.cards-home .sc-open { font-size:14px; font-weight:700; color:var(--teal-l); margin-top:4px; }
+.cards-home .sc-open { font-size:14px; font-weight:700; color:var(--teal-l); margin-top:auto; padding-top:4px; }   /* pinned to the bottom so every card's Open lines up */
 #adminUploadWindow .inline-form { border:0; background:transparent; padding:0; margin:0; }
 #adminUploadWindow .inline-form div[style*="grid-template-columns"] { grid-template-columns:1fr 1fr !important; }
 #adminUploadWindow #auBtnRow { display:none !important; }
@@ -29072,6 +29073,23 @@ function scPartVisible(part) { return part.ids.some((id) => { const el = documen
 function scCardVisible(card) { return card.parts.some(scPartVisible); }
 let _scMoved = [];   // [{ el, parent, next }] currently inside the pop-out window
 
+// Picks how many cards go on each row so the grid looks even: a column count that divides the cards exactly if there is one, otherwise
+// the most columns that still leave the last row at least half full. The short last row is centered by the CSS.
+function scPickCols(n, maxCols) {
+  maxCols = Math.max(1, Math.min(maxCols, 5, n || 1));
+  if (n <= maxCols) return Math.max(1, n);
+  for (let c = maxCols; c >= 3; c--) if (n % c === 0) return c;
+  for (let c = maxCols; c >= 2; c--) { const last = n % c || c; if (last >= Math.ceil(c / 2)) return c; }
+  return maxCols >= 2 ? 2 : 1;
+}
+const _scFitObserved = new WeakSet();
+function scFitGrid(grid) {
+  if (!grid) return;
+  const n = grid.querySelectorAll('.sc-card').length, w = grid.clientWidth || grid.parentElement?.clientWidth || 1000;
+  const maxCols = Math.max(1, Math.floor((w + 16) / (270 + 16)));
+  grid.style.setProperty('--sc-cols', String(scPickCols(n, maxCols)));
+  if (typeof ResizeObserver !== 'undefined' && !_scFitObserved.has(grid)) { _scFitObserved.add(grid); new ResizeObserver(() => scFitGrid(grid)).observe(grid); }
+}
 function renderSettingsCards() {
   document.querySelectorAll('.cards-home').forEach((home) => {
     const tabKey = home.dataset.tab || 'settings';
@@ -29081,6 +29099,7 @@ function renderSettingsCards() {
     grid.innerHTML = cards.map(c => `<button type="button" class="sc-card" onclick="openSettingsCard('${c.id}')">
       <span class="sc-tag">${hrOnbEsc(c.tag)}</span><span class="sc-title">${hrOnbEsc(c.title)}</span>
       <span class="sc-sum" data-sc-sum="${c.id}">${hrOnbEsc(safeSummary(c))}</span><span class="sc-open">Open ›</span></button>`).join('');
+    scFitGrid(grid);
     const banner = home.querySelector('.sc-guide'); if (banner) banner.style.display = admin ? '' : 'none';
   });
 }
