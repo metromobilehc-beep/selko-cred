@@ -930,7 +930,7 @@ body:has(#providerTabModal) { overflow: hidden; }
       </div>
       <div class="dark-panel" id="missingDocsProLock">
         <h2>Missing documents by staff member <span style="font-size:12px;color:var(--gold);margin-left:6px;">PRO</span></h2>
-        <p style="font-size:15px;color:rgba(255,255,255,.62);">Available on the Pro plan — see exactly who's missing what, and export a PDF report anytime. Contact Selko to upgrade.</p>
+        <p style="font-size:15px;color:rgba(255,255,255,.62);">See exactly who's missing what, and export a PDF report anytime.</p>
       </div>
       </div>
     </div>
@@ -5866,7 +5866,7 @@ function showGenerationGuidance(fileLabel) {
 }
 
 // Shown bottom-right of every screen and added to every logged error, so "which version is this?" is never a guess.
-const APP_VERSION = '2026-11-13-m';
+const APP_VERSION = '2026-11-13-n';
 window.SELKO_VERSION = APP_VERSION;
 { const t = document.getElementById('appVersionTag'); if (t) t.textContent = 'Selko Cred v' + APP_VERSION; }   // the footer follows the constant, so it can never show an old stamp
 
@@ -20321,9 +20321,9 @@ const SETTINGS_HELP = [
     html: `<p>The credential types your company tracks (licenses, certifications, etc.), including which disciplines each one applies to. If a document type is being demanded of staff it shouldn't apply to, this is where that's scoped. <strong>Document type categories</strong> nearby groups these into organized sections rather than one long flat list.</p>
       <ul>
         <li>The box above the table explains the columns. Click a badge to change it: <strong>Required / Optional</strong>, <strong>Applies to</strong> (which roles), <strong>Self-upload</strong> (whether staff can upload it themselves) and <strong>Hide</strong> (take it off your list).</li>
-        <li><strong>+ Add document type</strong> (Pro plan) creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
+        <li><strong>+ Add document type</strong> creates one of your own, from here or from the Documents tab. If the name is the same as, or very close to, one you already have, you are warned first.</li>
         <li>The agency-partner <strong>Visible / Hidden</strong> setting can't be changed for built-in types. They show a lock.</li>
-        <li><strong>Your own categories</strong> (above the table) are section headings only your company sees, in addition to the shared ones. Add one, then pick it in the Category column. On a Pro plan that works for built-in types too: it files that type under your heading for your company only. A category can't be deleted while any type is filed under it.</li>
+        <li><strong>Your own categories</strong> (above the table) are section headings only your company sees, in addition to the shared ones. Add one, then pick it in the Category column. That works for built-in types too: it files that type under your heading for your company only. A category can't be deleted while any type is filed under it.</li>
       </ul>`,
   },
   {
