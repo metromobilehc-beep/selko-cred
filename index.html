@@ -17496,7 +17496,13 @@ function onAccLocScopeChanged() {
   if (some) box.innerHTML = '<div style="font-size:13px;color:rgba(255,255,255,.62);margin-bottom:4px;">Which locations does it cover?</div>' + accLocChecksHtml([], 'accLocChk');
 }
 
-const ACC_COMMON_BODIES = ['ACHC', 'CHAP', 'Joint Commission', 'DNV Healthcare', 'NCQA', 'URAC', 'AAAHC', 'CARF', 'COA', 'ABMS'];
+// Suggestions for the Body box: [name saved, longer description shown beside it]. The first group is what Metro itself holds, so any agency can pick the same ones.
+const ACC_COMMON_BODIES = [
+  ['ACHC', 'Accreditation Commission for Health Care'], ['CHAP', 'Community Health Accreditation Partner'], ['Joint Commission', 'The Joint Commission'],
+  ['NCQA', 'National Committee for Quality Assurance'], ['American Board of Medical Specialties', 'ABMS board certification'], ['ABPMR', 'American Board of Physical Medicine and Rehabilitation'],
+  ['APTA', 'American Physical Therapy Association'], ['AMA', 'American Medical Association'],
+  ['DNV Healthcare', 'DNV Healthcare'], ['URAC', 'URAC'], ['AAAHC', 'Accreditation Association for Ambulatory Health Care'], ['CARF', 'CARF International'], ['COA', 'Council on Accreditation'],
+];
 function openAccreditationForm() {
   window._accFormOpen = true;
   const w = document.getElementById('accFormWrap'); if (w) w.style.display = 'flex';
@@ -17512,7 +17518,7 @@ async function loadAccreditationsPanel() {
   window._accRows = data || [];
   // Suggestions: common bodies plus any this company has already used (typed text is still accepted as-is).
   const dl = document.getElementById('accBodyList');
-  if (dl) { const seen = new Set(); dl.innerHTML = [...ACC_COMMON_BODIES, ...(data || []).map(r => r.body_name)].filter(n => { const k = String(n || '').trim().toLowerCase(); if (!k || seen.has(k)) return false; seen.add(k); return true; }).map(n => `<option value="${hrOnbEsc(n)}"></option>`).join(''); }
+  if (dl) { const seen = new Set(); dl.innerHTML = [...ACC_COMMON_BODIES, ...(data || []).map(r => [r.body_name, ''])].filter(([n]) => { const k = String(n || '').trim().toLowerCase(); if (!k || seen.has(k)) return false; seen.add(k); return true; }).map(([n, d]) => `<option value="${hrOnbEsc(n)}"${d && d !== n ? ` label="${hrOnbEsc(d)}"` : ''}></option>`).join(''); }
   const formWrap = document.getElementById('accFormWrap');
 
   if (!data?.length) {
