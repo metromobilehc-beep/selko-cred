@@ -21519,7 +21519,7 @@ async function loadCredentialingTemplates() {
           ? `<button class="btn btn-sm btn-teal" onclick="showRosterGenerateModal('${t.id}')">👥 Generate roster</button>`
           : `<button class="btn btn-sm btn-teal" onclick="revealGenerateInput('${t.id}')">📄 Generate</button>`}
       </span>
-      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}',${jsArg(t.name)})">Delete</button>` : ''}
+      ${(t.company_id === currentCompany.id || currentProfile.is_super_admin) ? `<button class="btn btn-sm btn-ghost" onclick="editCredentialingTemplate('${t.id}',${jsArg(t.name)})" title="Change which of your data fills each field on this form" style="color:#fff;border-color:rgba(255,255,255,.2);">Edit mapping</button><button class="btn btn-sm btn-danger" onclick="deleteCredentialingTemplate('${t.id}',${jsArg(t.name)})">Delete</button>` : ''}
     </div>`;
 
   const groupKeys = Object.keys(groups);
@@ -21692,6 +21692,7 @@ let _pendingTemplateFile = null;
 let _pendingTemplateFieldNames = [];
 
 async function startTemplateUpload() {
+  _editingCredTemplateId = null;   // a genuinely new upload, not editing an existing template
   const name = document.getElementById('newTemplateName').value.trim();
   const fileInput = document.getElementById('newTemplateFile');
   const err = document.getElementById('templateUploadErr');
@@ -21723,6 +21724,7 @@ async function startHrTemplateUpload() {
 // a direct client-side fetch would get silently blocked by CORS on most
 // payer websites. The Edge Function has no such restriction.
 async function startTemplateUploadFromUrl() {
+  _editingCredTemplateId = null;   // a genuinely new upload, not editing an existing template
   const name = document.getElementById('newTemplateName').value.trim();
   const url = document.getElementById('newTemplateUrl').value.trim();
   const err = document.getElementById('templateUploadErr');
@@ -21782,6 +21784,7 @@ let _pendingRosterSheetName = null;
 let _pendingRosterHeaderRow = null;
 
 async function startRosterTemplateUpload() {
+  _editingCredTemplateId = null;   // a genuinely new upload, not editing an existing template
   const name = document.getElementById('newRosterName').value.trim();
   const sheetName = document.getElementById('newRosterSheetName').value.trim();
   const headerRow = parseInt(document.getElementById('newRosterHeaderRow').value, 10);
@@ -23882,6 +23885,65 @@ function locateFieldOnPreview(fieldName) {
   setTimeout(() => { overlay.style.background = original; }, 1400);
 }
 
+// Set while editing an existing credentialing template's mapping (vs. uploading a new one): saveTemplateMapping then UPDATES that row
+// and keeps its stored file, instead of uploading a new file and inserting a new row.
+let _editingCredTemplateId = null;
+
+// Re-opens an uploaded template's mapping so it can be corrected. The saved file is downloaded from storage (no re-upload), the same
+// mapping window opens, and every field is set to what is saved now rather than a fresh guess, so a wrong guess is not silently re-made.
+async function editCredentialingTemplate(id, name) {
+  try {
+    const { data: tmpl, error: fetchErr } = await sb.from('credentialing_templates').select('*').eq('id', id).single();
+    if (fetchErr) throw fetchErr;
+    const { data: blob, error: dlErr } = await sb.storage.from('credentialing-templates').download(tmpl.storage_path);
+    if (dlErr) throw dlErr;
+    const isRoster = tmpl.template_type === 'roster';
+    const file = new File([blob], (tmpl.name || name || 'template') + (isRoster ? '.xlsx' : '.pdf'));
+    _editingCredTemplateId = id;
+    if (isRoster) {
+      const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const sheet = wb.Sheets[tmpl.roster_sheet_name];
+      if (!sheet) throw new Error(`The saved file has no sheet named "${tmpl.roster_sheet_name}".`);
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      const head = rows[(tmpl.roster_header_row || 1) - 1] || [];
+      const fieldNames = head.map((v, i) => ({ name: String(v).trim(), colIndex: i, isCheckbox: false })).filter(f => f.name);
+      _pendingTemplateFile = file; _pendingTemplateFieldNames = fieldNames; _pendingRosterSheetName = tmpl.roster_sheet_name; _pendingRosterHeaderRow = tmpl.roster_header_row;
+      await loadFieldMappingMemory();
+      showTemplateFieldMappingModal(name, fieldNames);
+    } else {
+      _pendingRosterSheetName = null; _pendingRosterHeaderRow = null;
+      const fakeErr = document.createElement('div');   // processTemplateFile writes its errors here; they are shown by toast below
+      await processTemplateFile(name, file, fakeErr);
+      if (fakeErr.style.display === 'block') { toast(fakeErr.textContent, true); _editingCredTemplateId = null; return; }
+    }
+    // Put back what is saved (the point of editing is to correct a guess, so re-guessing would undo it).
+    const modal = document.getElementById('templateMappingModal');
+    if (modal) {
+      Object.entries(tmpl.field_mapping || {}).forEach(([fieldName, value]) => {
+        const row = modal.querySelector(`.template-mapping-row[data-field-name="${CSS.escape(fieldName)}"]`); if (!row) return;
+        const sel = row.querySelector('.template-mapping-select');
+        if (typeof value === 'string' && value.startsWith('__TEMPLATE__:')) {
+          toggleFieldTemplateMode(fieldName, true);
+          const inp = row.querySelector('.template-combine-input'); if (inp) inp.value = value.slice('__TEMPLATE__:'.length);
+        } else if (typeof value === 'string' && value.startsWith('__FIXED_TEXT__:')) {
+          if (sel) sel.value = '__FIXED_TEXT__';
+          const t = row.querySelector('.template-fixed-text-input'); if (t) { t.value = value.slice('__FIXED_TEXT__:'.length); t.style.display = 'block'; }
+        } else if (sel) { sel.value = value; }
+      });
+      // Fields that were left unmapped when saved stay unmapped (not re-guessed).
+      modal.querySelectorAll('.template-mapping-row').forEach(row => {
+        const fn = row.dataset.fieldName; if (Object.prototype.hasOwnProperty.call(tmpl.field_mapping || {}, fn)) return;
+        const sel = row.querySelector('.template-mapping-select'); if (sel) sel.value = '';
+      });
+      const ssn = document.getElementById('templateRequiresSsnEntry'); if (ssn) ssn.checked = !!tmpl.requires_ssn_entry;
+      updateMappingProgress();
+    } else { _editingCredTemplateId = null; }
+  } catch (e) {
+    toast('Could not open this template for editing: ' + friendlyError(e), true);
+    _editingCredTemplateId = null;
+  }
+}
+
 async function saveTemplateMapping(name) {
   const errEl = document.getElementById('templateSaveErr');
   errEl.style.display = 'none';
@@ -23916,6 +23978,27 @@ async function saveTemplateMapping(name) {
       mapping[fieldName] = sel.value;
     }
   });
+
+  // Editing an existing template: update its mapping in place. The file stays where it is and nothing is re-uploaded.
+  if (_editingCredTemplateId) {
+    try {
+      const { data: upd, error: updErr } = await sb.from('credentialing_templates')
+        .update({ field_mapping: mapping, requires_ssn_entry: document.getElementById('templateRequiresSsnEntry')?.checked || false })
+        .eq('id', _editingCredTemplateId).select('id');
+      if (updErr) throw updErr;
+      if (!upd || !upd.length) throw new Error('Not saved. Your account may not be allowed to change this template.');
+      document.getElementById('templateMappingModal')?.remove();
+      _editingCredTemplateId = null; _pendingTemplateFile = null; _pendingTemplateFieldNames = []; _pendingRosterSheetName = null; _pendingRosterHeaderRow = null;
+      toast(`✓ "${name}" mapping updated`);
+      _credTemplatesCache = null;
+      await loadCredentialingTemplates();
+      recordFieldMappingMemory(Object.fromEntries(Object.entries(mapping).filter(([, v]) => !v.startsWith('__FIXED_') && !v.startsWith('__TEMPLATE__'))));
+    } catch (e) {
+      errEl.textContent = 'Error: ' + (e.message || e);
+      errEl.style.display = 'block';
+    }
+    return;
+  }
 
   try {
     const path = `${currentCompany.id}/${Date.now()}_${_pendingTemplateFile.name.replace(/[^a-zA-Z0-9.\-]/g, '_')}`;
