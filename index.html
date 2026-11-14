@@ -25980,9 +25980,9 @@ function nsrMatchEntity(rec, entities) {
   const hit = entities.find(e => nsrNorm(e) === n) || entities.find(e => nsrNorm(e) && (nsrNorm(e).includes(n) || n.includes(nsrNorm(e))));
   return hit || '';
 }
-function nsrMatchPayer(name, payers) {
+function nsrMatchPayer(name, payers, exact) {
   const n = nsrNorm(name); if (!n) return '';
-  const hit = payers.find(p => nsrNorm(p.name) === n) || payers.find(p => { const m = nsrNorm(p.name); return m && (m.includes(n) || n.includes(m)); });
+  const hit = payers.find(p => nsrNorm(p.name) === n) || (exact ? null : payers.find(p => { const m = nsrNorm(p.name); return m && (m.includes(n) || n.includes(m)); }));
   return hit ? hit.id : '';
 }
 // What to save for one reviewed record. An effective date in the future is NOT in-network yet: it saves as Pending,
@@ -26162,12 +26162,25 @@ async function nsrRead() {
   }
 }
 
+// A payer table with several networks (BCBSTX: BlueChoice PPO, Blue Advantage HMO, ...) becomes one record per network,
+// each with its own name and effective date. A network is stored as its own insurance entry, "Payer – Network", so the
+// board, filters and history treat each network like any other insurance.
+function nsrExpandNetworks(recs) {
+  const out = [];
+  recs.forEach(x => {
+    const nets = Array.isArray(x.networks) ? x.networks.filter(n => n && n.name) : [];
+    if (!nets.length || !x.payer_name) { out.push(x); return; }
+    nets.forEach(n => out.push({ ...x, payer_name: x.payer_name + ' – ' + n.name, network_name: n.name, effective_date: n.date || x.effective_date || null, effective_date_printed: n.date ? null : x.effective_date_printed, networks: [] }));
+  });
+  return out;
+}
 function nsrBuildReview(recs) {
+  recs = nsrExpandNetworks(recs);
   _nsr.records = recs.map((x, i) => {
     const staffId = nsrMatchStaff(x, _nsr.staff);
     const entity = staffId ? '' : nsrMatchEntity(x, _nsr.entities);
     const who = staffId ? 's:' + staffId : entity ? 'e:' + entity : (x.organization_name && !x.provider_name ? 'n:' + x.organization_name : '');
-    const payerId = nsrMatchPayer(x.payer_name, _nsr.payers);
+    const payerId = nsrMatchPayer(x.payer_name, _nsr.payers, !!x.network_name);
     return { i, include: true, who, payer: payerId || (x.payer_name ? 'new:' + x.payer_name : ''), status: x.status || 'pending',
       effective: x.effective_date || '', submitted: x.submitted_date || '', confirmed: x.confirmed_date || '', expires: x.termination_date || '',
       providerId: x.provider_id || '', groupId: x.group_id || '', code: x.confirmation_code || '', notes: x.notes || '',
