@@ -2333,7 +2333,7 @@ body:has(#providerTabModal) { overflow: hidden; }
            fixes things going forward — it can't retroactively update
            records that already captured the old name as text, since
            those aren't live-linked back to this profile. -->
-      <div class="dark-panel" data-default-open="true" style="margin-bottom:16px;">
+      <div class="dark-panel" id="myAccountPanel" data-default-open="true" style="margin-bottom:16px;">
         <h2>My account</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">Your display name — shown in the header and attributed on anything you create going forward. Records already created under your old name won't retroactively update, since your name is captured as text at the time, not a live link back to your account.</p>
         <div style="display:flex;gap:10px;max-width:400px;">
@@ -2461,7 +2461,24 @@ body:has(#providerTabModal) { overflow: hidden; }
       </div>
 
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
-      <style id="settingsGroupedCss">.set-subhead{display:none}html.settings-grouped .set-subhead{display:block;grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-l);margin:10px 0 0;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}html.settings-grouped .set-subhead:first-child{margin-top:0}</style>
+      <style id="settingsCardsCss">
+#tabSettings.cards-mode > *:not(.settings-keep):not(#settingsCardsHome):not(style) { display: none !important; }
+#settingsCardsHome .sc-guide { display:flex; align-items:center; gap:12px; flex-wrap:wrap; background:rgba(20,184,166,.12); border:1px solid rgba(20,184,166,.45); border-radius:12px; padding:16px 20px; margin:6px 0 18px; }
+#settingsCardsHome .sc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:16px; }
+#settingsCardsHome .sc-card { text-align:left; display:flex; flex-direction:column; gap:6px; background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.16); border-radius:12px; padding:18px 20px; color:#fff; cursor:pointer; font:inherit; transition:background .15s,border-color .15s; }
+#settingsCardsHome .sc-card:hover, #settingsCardsHome .sc-card:focus-visible { background:rgba(20,184,166,.12); border-color:var(--teal); outline:none; }
+#settingsCardsHome .sc-tag { font-size:12px; font-weight:700; letter-spacing:.07em; text-transform:uppercase; color:var(--teal-l); }
+#settingsCardsHome .sc-title { font-size:17px; font-weight:700; }
+#settingsCardsHome .sc-sum { font-size:14px; color:rgba(255,255,255,.72); min-height:40px; line-height:1.4; }
+#settingsCardsHome .sc-open { font-size:14px; font-weight:700; color:var(--teal-l); margin-top:4px; }
+#settingsCardModal .dark-panel { margin:0 0 16px; padding:0; border:0; background:transparent; box-shadow:none; }
+#settingsCardModal .dark-panel > h2 { display:none; }
+#settingsCardModal .set-sub { margin-bottom:0 !important; }
+#settingsCardModal .scm-tabs { display:flex; gap:8px; flex-wrap:wrap; padding:12px 24px 0; }
+#settingsCardModal .scm-tab { font:inherit; font-size:14px; font-weight:600; color:rgba(255,255,255,.8); background:transparent; border:1px solid rgba(255,255,255,.22); border-radius:8px; padding:7px 14px; cursor:pointer; }
+#settingsCardModal .scm-tab.on { background:var(--teal); border-color:var(--teal); color:#fff; font-weight:700; }
+</style>
+<style id="settingsGroupedCss">.set-subhead{display:none}html.settings-grouped .set-subhead{display:block;grid-column:1/-1;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal-l);margin:10px 0 0;padding-bottom:6px;border-bottom:1px solid rgba(255,255,255,.1)}html.settings-grouped .set-subhead:first-child{margin-top:0}</style>
       <div class="dark-panel" id="companyProfilePanel" style="margin-bottom:16px;">
   <h2>Company profile</h2>
 <div class="set-sub" style="margin-bottom:16px;" id="companySettingsPanel">
@@ -2864,7 +2881,7 @@ body:has(#providerTabModal) { overflow: hidden; }
            insurance, CE credits, background checks) shown at the natural
            point of need, not display ads. Platform-wide by default; a
            company can opt out entirely in their own Settings. -->
-      <div class="dark-panel" data-super-setting style="display:none;margin-bottom:16px;">
+      <div class="dark-panel" id="partnerRecsAdminPanel" data-super-setting style="display:none;margin-bottom:16px;">
         <h2>🤝 Partner recommendations</h2>
         <p style="font-size:14px;color:rgba(255,255,255,.58);margin-bottom:14px;">One quiet, contextual link per category — shown right where a company would actually need it (e.g. an empty malpractice field), never as a banner or graphic. Applies to every company unless they turn it off in their own Settings.</p>
         <div id="partnerRecsList" style="margin-bottom:14px;"></div>
@@ -27512,7 +27529,7 @@ function switchTab(tab) {
   if (tab === 'credentialing') loadCredentialingTab();
   if (tab === 'compliance') loadCompliance();
   if (tab === 'hr')        { loadHrTab(); loadAllRemindersFor('hr_employee'); }
-  if (tab === 'settings')  { loadSettings(); setTimeout(refreshSettingsJumpBar, 600); }
+  if (tab === 'settings')  { loadSettings(); setTimeout(refreshSettingsJumpBar, 600); [500, 1500, 3500].forEach(ms => setTimeout(refreshSettingsCards, ms)); }
   if (tab === 'super')     loadSuperAdmin();
 }
 
@@ -28080,100 +28097,146 @@ async function maybeAutoOpenSetupGuide() {
   } catch (e) { console.warn('Setup guide did not open:', e); }
 }
 
-// ── Settings summaries ───────────────────────────────────────────────────────
-// Busy panels show one line of what is set now, with an Edit button. The full controls open only on Edit.
-// Anything listed in `keep` stays visible (for example a pending support-access request).
-const SUMMARY_PANELS = [
-  { id: 'companySettingsPanel', edit: 'Edit', summary: () => {
+// ══ SETTINGS CARDS ══
+// Settings opens to a grid of cards. Each card shows its current state in one line and opens its panels in a pop-out window.
+// The panels themselves stay in the page (hidden) and are moved into the window while it is open and put back on close, so every
+// field keeps its id and handlers and the existing loaders and savers keep working unchanged.
+const SETTINGS_CARDS = [
+  { id: 'company', tag: 'Company', title: 'Company & branding', parts: [
+      { label: 'Company', ids: ['companySettingsPanel'] }, { label: 'Branding', ids: ['brandingPanel'] }],
+    summary: () => {
       const v = (i) => (document.getElementById(i) || {}).value;
       const n = [v('setAdminEmail'), ...String(v('setAdminEmailsExtra') || '').split(',')].map((x) => String(x || '').trim()).filter(Boolean).length;
       const rem = document.getElementById('setStaffExpiryReminders');
-      return [v('setCoName') || 'Your company', n + (n === 1 ? ' admin email' : ' admin emails'),
-        'warnings at ' + (v('setWarn1') || 30) + ' and ' + (v('setWarn2') || 7) + ' days',
-        rem && !rem.checked ? 'staff reminders off' : 'staff reminders on'].join(' · '); } },
-  { id: 'adminNotificationsPanel', edit: 'Edit', summary: () => {
+      if (!v('setCoName') && !n) return 'Name, emails, reminder timing and branding';
+      return [v('setCoName') || 'Your company', n + (n === 1 ? ' admin email' : ' admin emails'), 'warnings at ' + (v('setWarn1') || 30) + ' and ' + (v('setWarn2') || 7) + ' days', rem && !rem.checked ? 'staff reminders off' : 'staff reminders on'].join(' · '); } },
+  { id: 'team', tag: 'Team setup', title: 'Sections & roles', wide: true, parts: [
+      { label: 'Sections', ids: ['sectionsPanel'] }, { label: 'Roles & requirements', ids: ['rolesPanelSettings'] }],
+    summary: () => {
+      if (!currentCompany) return 'Sections, roles and what each role needs';
+      const opts = SECTION_OPTIONS.filter(o => !o.needs || currentCompany[o.needs]); const off = getSectionsOff(currentCompany);
+      return opts.length - opts.filter(o => off.includes(o.key)).length + ' of ' + opts.length + ' sections on · ' + getCompanyDisciplines().length + ' roles'; } },
+  { id: 'docs', tag: 'Team setup', title: 'Document types', wide: true, parts: [{ label: 'Document types', ids: ['docTypesPanelSettings'] }],
+    summary: () => {
+      const list = (typeof docTypes !== 'undefined' && docTypes) || []; if (!list.length) return 'Which documents you collect and which are required';
+      const ov = (typeof _docTypeRequiredOverrides !== 'undefined' && _docTypeRequiredOverrides) || {};
+      return list.length + ' types · ' + list.filter(t => effectiveRequired(t, ov)).length + ' required'; } },
+  { id: 'notify', tag: 'Alerts', title: 'Notifications & alerts', parts: [
+      { label: 'My emails', ids: ['adminNotificationsPanel'] }, { label: 'Sensitive data alerts', ids: ['sensitiveAlertsPanel'] }],
+    summary: () => {
       const pick = (name, modes) => { const r = document.querySelector('input[name=' + name + ']:checked'); return r && modes[r.value] ? modes[r.value][0].replace(' (recommended)', '') : null; };
       const a = pick('adminNotifyMode', ADMIN_NOTIFY_MODES), b = pick('adminUploadMode', ADMIN_UPLOAD_MODES);
-      if (!a && !b) return 'Open to see your choices';
-      return ['Expiry emails: ' + (a || '—'), b ? 'Upload summary: ' + b : null].filter(Boolean).join(' · '); } },
-  { id: 'supportAccessPanel', edit: 'Manage access', keep: ['supportAccessStatus', 'supportAccessRequests'], summary: null },
-  { id: 'brandingPanel', edit: 'Edit', summary: () => {
-      const locked = document.getElementById('brandingLocked');
-      if (locked && locked.style.display !== 'none') return 'Not included in your plan';
-      const v = (i) => (document.getElementById(i) || {}).value;
-      return [v('setBrandName') ? 'Shown as ' + v('setBrandName') : 'Using Selko name', v('setBrandLogo') ? 'logo set' : 'no logo'].join(' · '); } },
+      return (a || b) ? ['Expiry emails: ' + (a || '—'), b ? 'Upload summary: ' + b : null].filter(Boolean).join(' · ') : 'Your email choices and sensitive-data alerts'; } },
+  { id: 'privacy', tag: 'Security', title: 'Privacy & support access', parts: [{ label: 'Support access', ids: ['supportAccessPanel'] }],
+    summary: () => { const t = ((document.getElementById('supportAccessStatus') || {}).textContent || '').replace(/\s+/g, ' ').trim(); return t ? t.slice(0, 90) : 'Who can open your account, and for how long'; } },
+  { id: 'account', tag: 'Account', title: 'My account & sign-in', parts: [{ label: 'My account', ids: ['myAccountPanel'] }],
+    summary: () => 'Your login, password and two-step sign-in' },
+  { id: 'billing', tag: 'Billing', title: 'Plan & billing', parts: [{ label: 'Plan & billing', ids: ['planBillingPanel'] }],
+    summary: () => { const t = ((document.getElementById('billingCurrentStatus') || {}).textContent || '').replace(/\s+/g, ' ').replace(/^Current plan:\s*/, '').trim(); return t ? t.slice(0, 90) : 'Your plan, usage and payment'; } },
+  { id: 'network', tag: 'Network', title: 'Health Care Network', wide: true, parts: [
+      { label: 'Entities & payers', ids: ['hcnSetupPanel'] }, { label: 'Agency partner access', ids: ['partnerAccessPanel', 'partnerAccessTeaser'] }],
+    summary: () => 'Company entities, payers you track and agency partner access' },
+  { id: 'extras', tag: 'More', title: 'Partners & storage', parts: [
+      { label: 'Recommended partners', ids: ['partnerRecsStaticPanel'] }, { label: 'Partner recommendations', ids: ['partnerRecsAdminPanel'] }, { label: 'Storage', ids: ['storageGroupPanel'] }],
+    summary: () => 'Partner offers and storage use' },
+  { id: 'checklist', hidden: true, tag: '', title: 'Getting-started checklist', parts: [{ label: 'Checklist', ids: ['gettingStartedSettingsPanel'] }], summary: () => '' },
 ];
-function refreshSettingsSummaries() {
-  SUMMARY_PANELS.forEach((p) => {
-    const t = document.querySelector('#' + p.id + ' > .sum-row .sum-text');
-    if (t && p.summary) { try { t.textContent = p.summary(); } catch (e) { /* leave the old text */ } }
+// An element is on offer only if it and everything above it, up to the Settings tab, is not switched off by the page's own rules.
+function scVisible(el) {
+  const tab = document.getElementById('tabSettings');
+  for (let n = el; n && n !== tab; n = n.parentElement) { if (n.classList && n.classList.contains('panel-body')) continue; if (n.style && n.style.display === 'none') return false; }   // a collapsed panel body is only the old fold-away state, not a reason to hide
+  return true;
+}
+function scPartVisible(part) { return part.ids.some((id) => { const el = document.getElementById(id); return el && (el.dataset.scMoved ? true : scVisible(el)); }); }
+function scCardVisible(card) { return card.parts.some(scPartVisible); }
+let _scMoved = [];   // [{ el, parent, next }] currently inside the pop-out window
+
+function renderSettingsCards() {
+  const home = document.getElementById('settingsCardsHome'); if (!home) return;
+  const admin = !!(currentProfile && (currentProfile.role === 'admin' || currentProfile.is_super_admin));
+  const cards = SETTINGS_CARDS.filter(c => !c.hidden && scCardVisible(c));
+  home.querySelector('.sc-grid').innerHTML = cards.map(c => `<button type="button" class="sc-card" onclick="openSettingsCard('${c.id}')">
+      <span class="sc-tag">${hrOnbEsc(c.tag)}</span><span class="sc-title">${hrOnbEsc(c.title)}</span>
+      <span class="sc-sum" data-sc-sum="${c.id}">${hrOnbEsc(safeSummary(c))}</span><span class="sc-open">Open ›</span></button>`).join('');
+  const banner = home.querySelector('.sc-guide'); if (banner) banner.style.display = admin ? '' : 'none';
+}
+function safeSummary(c) { try { return c.summary() || ''; } catch (e) { return ''; } }
+function refreshSettingsCards() {
+  const home = document.getElementById('settingsCardsHome'); if (!home) return;
+  renderSettingsCards();
+}
+function scRestore() {
+  _scMoved.reverse().forEach(({ el, parent, next }) => { delete el.dataset.scMoved; parent.insertBefore(el, next && next.parentNode === parent ? next : null); });
+  _scMoved = [];
+}
+function scShowPart(card, idx) {
+  scRestore();
+  const part = card.parts[idx], box = document.querySelector('#settingsCardModal .scm-content'); if (!box) return;
+  box.innerHTML = '';
+  part.ids.forEach((id) => {
+    const el = document.getElementById(id); if (!el || !scVisible(el)) return;
+    _scMoved.push({ el, parent: el.parentNode, next: el.nextSibling });
+    el.dataset.scMoved = '1'; box.appendChild(el);
+    if (el._setPanelOpen) el._setPanelOpen(true, false);
   });
+  document.querySelectorAll('#settingsCardModal .scm-tab').forEach((b) => b.classList.toggle('on', Number(b.dataset.part) === idx));
+  box.scrollTop = 0;
 }
-// The controls open in a pop-out window (like the staff profile). The panel's own form is moved into the window
-// and moved back on close, so every field keeps its id and handlers and the Settings loaders keep working.
-function closeSettingsSummaryModal() {
-  const m = document.getElementById('settingsSummaryModal'); if (!m) return;
-  const id = m.dataset.panel, panel = document.getElementById(id), body = m.querySelector('.sum-body');
-  if (panel && body) { body.style.display = 'none'; panel.appendChild(body); }
-  m.remove(); document.removeEventListener('keydown', _ssmEsc);
-  refreshSettingsSummaries();
-}
-function _ssmEsc(e) { if (e.key === 'Escape') closeSettingsSummaryModal(); }
-function toggleSettingsSummary(id) {
-  const panel = document.getElementById(id); if (!panel) return;
-  if (document.getElementById('settingsSummaryModal')) { const same = document.getElementById('settingsSummaryModal').dataset.panel === id; closeSettingsSummaryModal(); if (same) return; }
-  const body = panel.querySelector(':scope > .sum-body'); if (!body) return;
-  const p = SUMMARY_PANELS.find((x) => x.id === id);
-  const title = (panel.querySelector(':scope > h3') || {}).textContent || 'Settings';
-  const m = document.createElement('div');
-  m.id = 'settingsSummaryModal'; m.dataset.panel = id;
+function openSettingsCard(id, partIdx) {
+  const card = SETTINGS_CARDS.find(c => c.id === id); if (!card) return false;
+  closeSettingsCard();
+  const parts = card.parts.map((p, i) => ({ p, i })).filter(x => scPartVisible(x.p));
+  if (!parts.length) { toast("That section isn't available for your plan or role.", true); return false; }
+  const first = Math.max(0, parts.findIndex(x => x.i === partIdx));
+  const m = document.createElement('div'); m.id = 'settingsCardModal'; m.dataset.card = id;
   m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.72);z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px;';
-  m.innerHTML = '<div role="dialog" aria-modal="true" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:100%;max-width:760px;max-height:90vh;display:flex;flex-direction:column;overflow:hidden;">' +
-    '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:18px 24px;border-bottom:1px solid rgba(255,255,255,.1);"><div style="font-size:20px;font-weight:700;color:#fff;">' + hrOnbEsc(title.replace(/\s+/g, ' ').trim()) + '</div>' +
-    '<button type="button" class="btn btn-sm btn-ghost" onclick="closeSettingsSummaryModal()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>' +
-    '<div class="ssm-content" style="padding:20px 24px;overflow-y:auto;"></div></div>';
-  m.addEventListener('mousedown', (ev) => { if (ev.target === m) closeSettingsSummaryModal(); });
-  m.querySelector('.ssm-content').appendChild(body);
-  body.style.display = '';
+  m.innerHTML = `<div role="dialog" aria-modal="true" aria-label="${hrOnbEsc(card.title)}" style="background:var(--navy2);border:1px solid rgba(255,255,255,.12);border-radius:14px;width:100%;max-width:${card.wide ? 1040 : 780}px;max-height:92vh;display:flex;flex-direction:column;overflow:hidden;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid rgba(255,255,255,.1);">
+      <div style="font-size:20px;font-weight:700;color:#fff;">${hrOnbEsc(card.title)}</div>
+      <button type="button" class="btn btn-sm btn-ghost" onclick="closeSettingsCard()" style="color:#fff;border-color:rgba(255,255,255,.2);">Close ✕</button></div>
+    ${parts.length > 1 ? `<div class="scm-tabs">${parts.map((x, k) => `<button type="button" class="scm-tab" data-part="${x.i}" onclick="scShowPart(SETTINGS_CARDS.find(c=>c.id==='${id}'), ${x.i})">${hrOnbEsc(x.p.label)}</button>`).join('')}</div>` : ''}
+    <div class="scm-content" style="padding:20px 24px;overflow-y:auto;"></div></div>`;
+  m.addEventListener('mousedown', (e) => { if (e.target === m) closeSettingsCard(); });
   document.body.appendChild(m);
-  document.addEventListener('keydown', _ssmEsc);
+  document.addEventListener('keydown', scEsc);
+  scShowPart(card, parts[first].i);
+  return true;
 }
-function initSettingsSummaries() {
-  SUMMARY_PANELS.forEach((p) => {
-    const panel = document.getElementById(p.id);
-    if (!panel || panel.dataset.sumInit) return;
-    panel.dataset.sumInit = '1';
-    const title = panel.querySelector(':scope > h3');
-    const body = document.createElement('div');
-    body.className = 'sum-body'; body.style.display = 'none';
-    const keep = new Set(p.keep || []);
-    Array.from(panel.children).forEach((c) => {
-      if (c === title) return;
-      if (c.id && keep.has(c.id)) return;
-      if (c.tagName === 'P') return;          // the short description under the title stays
-      body.appendChild(c);
-    });
-    const row = document.createElement('div');
-    row.className = 'sum-row';
-    row.setAttribute('role', 'button'); row.tabIndex = 0;
-    row.setAttribute('aria-label', 'Open ' + (title ? title.textContent.trim() : 'settings'));
-    row.style.cssText = 'display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:8px 0 4px;padding:12px 16px;border:1px solid rgba(255,255,255,.18);border-radius:10px;background:rgba(255,255,255,.04);cursor:pointer;transition:background .15s,border-color .15s;';
-    row.onmouseenter = () => { row.style.background = 'rgba(20,184,166,.12)'; row.style.borderColor = 'var(--teal)'; };
-    row.onmouseleave = () => { row.style.background = 'rgba(255,255,255,.04)'; row.style.borderColor = 'rgba(255,255,255,.18)'; };
-    row.onclick = () => toggleSettingsSummary(p.id);
-    row.onkeydown = (ev) => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggleSettingsSummary(p.id); } };
-    row.innerHTML = (p.summary ? '<span class="sum-text" style="flex:1;min-width:200px;font-size:15px;color:var(--teal-l);font-weight:600;"></span>' : '<span style="flex:1;font-size:15px;color:rgba(255,255,255,.7);">Allow, limit or end access, and see the history</span>') +
-      '<span class="sum-btn" style="display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:700;color:#fff;background:var(--teal);border-radius:8px;padding:6px 14px;">' + p.edit + ' <span aria-hidden="true">›</span></span>';
-    panel.appendChild(row);
-    panel.appendChild(body);
-    // Keep the line current when the form is filled in or changed.
-    const upd = () => refreshSettingsSummaries();
-    body.addEventListener('input', upd); body.addEventListener('change', upd);
-    new MutationObserver(upd).observe(body, { childList: true, subtree: true });
-  });
-  refreshSettingsSummaries();
+function scEsc(e) { if (e.key === 'Escape' && !document.getElementById('customConfirmModal')) closeSettingsCard(); }
+function closeSettingsCard() {
+  const m = document.getElementById('settingsCardModal'); if (!m) return;
+  scRestore(); m.remove(); document.removeEventListener('keydown', scEsc);
+  refreshSettingsCards();
 }
-setTimeout(initSettingsSummaries, 0);
+// Opens the card holding a given panel or field (used by "Open settings" buttons elsewhere). Returns true if one was found.
+function openSettingsCardFor(targetId) {
+  const el = document.getElementById(targetId); if (!el) return false;
+  for (const card of SETTINGS_CARDS) for (let i = 0; i < card.parts.length; i++) {
+    if (card.parts[i].ids.some((id) => { const p = document.getElementById(id); return p && (p === el || p.contains(el)); })) {
+      const cur = document.getElementById('settingsCardModal');
+      if (!(cur && cur.dataset.card === card.id)) openSettingsCard(card.id, i);
+      else scShowPart(card, i);
+      return true;
+    }
+  }
+  return false;
+}
+function initSettingsCards() {
+  const tab = document.getElementById('tabSettings'); if (!tab || document.getElementById('settingsCardsHome')) return;
+  const kids = Array.from(tab.children);
+  kids.slice(0, 2).forEach(k => k.classList.add('settings-keep'));   // the "Settings" title and its description
+  const home = document.createElement('div'); home.id = 'settingsCardsHome';
+  home.innerHTML = `<div class="sc-guide"><div style="flex:1;min-width:220px;"><div style="font-size:17px;font-weight:700;color:#fff;">Setup guide</div>
+      <div style="font-size:14px;color:rgba(255,255,255,.7);margin-top:2px;">Walk through your company one choice at a time. Reopen it whenever you like.</div></div>
+      <button type="button" class="btn btn-teal" onclick="openSetupGuide(0)">Open the guide ›</button>
+      <button type="button" class="btn btn-ghost" onclick="openSettingsCard('checklist')" style="color:#fff;border-color:rgba(255,255,255,.25);">Checklist options</button></div>
+    <div class="sc-grid"></div>`;
+  tab.insertBefore(home, kids[2] || null);
+  tab.classList.add('cards-mode');
+  renderSettingsCards();
+}
+setTimeout(initSettingsCards, 0);
+
 function jumpToSettingsGroup(id) {
   const el = document.getElementById(id);
   if (!el || getComputedStyle(el).display === 'none') { toast("That section isn't available for your plan or role.", true); return; }
@@ -28188,8 +28251,10 @@ function goToPanel(tab, targetId) {
   setTimeout(() => {
     const el = document.getElementById(targetId);
     if (!el) return;
-    const _sb = el.closest && el.closest('.sum-body');
-    if (_sb && _sb.style.display === 'none' && _sb.parentElement) toggleSettingsSummary(_sb.parentElement.id);
+    if (tab === 'settings' && openSettingsCardFor(targetId)) {
+      setTimeout(() => { const t = document.getElementById(targetId); if (t) { t.scrollIntoView({ behavior: 'smooth', block: 'start' }); t.classList.add('flash-highlight'); setTimeout(() => t.classList.remove('flash-highlight'), 2400); } }, 150);
+      return;
+    }
     // Sections can sit inside a bigger panel (e.g. Roles & documents), so open
     // every collapsed panel around the target, outermost first.
     const chain = [];
