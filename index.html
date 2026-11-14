@@ -2467,6 +2467,11 @@ body:has(#providerTabModal) { overflow: hidden; }
       <!-- Company settings. The small headings inside are switched on/off by SETTINGS_GROUPED in the script (set it to false to go back to the plain layout). -->
       <style id="settingsCardsCss">
 .fp-wrap { position:relative; display:inline-block; }
+.fp-btn { font-size:16px !important; font-weight:700 !important; padding:10px 20px !important; min-height:44px; color:#fff !important; border:1px solid rgba(255,255,255,.5) !important; background:rgba(255,255,255,.07) !important; border-radius:8px !important; }
+.fp-btn:hover, .fp-btn:focus-visible { border-color:var(--teal) !important; background:rgba(20,184,166,.15) !important; outline:none; }
+.fp-search { flex:1 1 280px; min-width:220px; max-width:440px; min-height:44px; box-sizing:border-box; font:inherit; font-size:16px; color:#fff; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.35); border-radius:8px; padding:10px 14px; }
+.fp-search::placeholder { color:rgba(255,255,255,.6); }
+.fp-search:focus { outline:none; border-color:var(--teal); }
 .fp-btn.fp-on { background:rgba(20,184,166,.18) !important; border-color:var(--teal) !important; color:var(--teal-l) !important; font-weight:700; }
 .fp-pop { position:absolute; top:100%; left:0; margin-top:6px; z-index:60; width:min(360px,86vw); background:var(--navy2); border:1px solid rgba(255,255,255,.18); border-radius:12px; padding:14px 16px; box-shadow:0 18px 40px rgba(0,0,0,.5); text-align:left; }
 .fp-head { display:flex; align-items:baseline; justify-content:space-between; color:#fff; font-size:15px; margin-bottom:10px; }
@@ -9703,8 +9708,10 @@ async function loadAdminDocs() {
     q = q.gte('created_at', since.toISOString());
   }
 
-  const { data, error } = await q;
+  const { data: dataAll, error } = await q;
   const tbody = document.getElementById('adminDocsTbody');
+  const nameTerm = fpTerm('fDocSearch');
+  const data = nameTerm && dataAll ? dataAll.filter(r => fpMatches(nameTerm, r.credtrack_staff?.full_name, docDisplayName(r), r.label)) : dataAll;
 
   if (error) {
     tbody.innerHTML = `<tr><td colspan="8" style="color:#f87171;padding:20px;">${error.message}</td></tr>`;
@@ -9714,6 +9721,10 @@ async function loadAdminDocs() {
   _docsLastLoadedAt = new Date();
   updateDocsLastUpdatedLabel();
 
+  if (!data?.length && nameTerm) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No documents match "${hrOnbEsc(nameTerm)}" with the filters now on. <button class="btn btn-sm btn-ghost" onclick="document.getElementById('fDocSearch').value='';loadAdminDocs();" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear search</button></td></tr>`;
+    return;
+  }
   if (!data?.length) {
     tbody.innerHTML = windowDays > 0
       ? `<tr><td colspan="8" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No documents uploaded in the last ${windowDays} days. <button class="btn btn-sm btn-ghost" onclick="document.getElementById('fUploaded').value='';loadAdminDocs();" style="color:#fff;border-color:rgba(255,255,255,.2);margin-left:6px;">Show all time</button></td></tr>`
@@ -10377,9 +10388,13 @@ async function loadExpTracker() {
     });
   }
 
+  const expTerm = fpTerm('fExpSearch');
+  if (expTerm) rows = rows.filter(r => fpMatches(expTerm, r.credtrack_staff?.full_name, docDisplayName(r), r.label));
   const tbody = document.getElementById('expTbody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No records found.</td></tr>';
+    tbody.innerHTML = expTerm
+      ? `<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No records match "${hrOnbEsc(expTerm)}" in this view. <button class="btn btn-sm btn-ghost" onclick="document.getElementById('fExpSearch').value='';loadExpTracker();" style="color:#fff;border-color:rgba(255,255,255,.2);">Clear search</button></td></tr>`
+      : '<tr><td colspan="6" style="text-align:center;color:rgba(255,255,255,.55);padding:24px;">No records found.</td></tr>';
     return;
   }
 
@@ -10578,8 +10593,10 @@ async function loadStaffTable() {
   const personFilter = document.getElementById('fStaffPerson')?.value || '';
   const licTypeFilter = document.getElementById('fStaffLicType')?.value || '';
 
+  const staffTerm = fpTerm('fStaffSearch');
   const applyStaffFilters = (list) => {
     let out = list;
+    if (staffTerm) out = out.filter(s => fpMatches(staffTerm, s.full_name));
     if (personFilter) out = out.filter(s => s.id === personFilter);
     if (licTypeFilter) out = out.filter(s => licTypeFilter === 'OTHER' ? !s.discipline : s.discipline === licTypeFilter);
     return out;
@@ -28542,9 +28559,9 @@ async function maybeAutoOpenSetupGuide() {
 // lists the active ones as chips that can be removed. A filter that quietly limits the list even at its default (Documents: uploaded in
 // the last 30 days) is shown as a plain note so nothing is hidden. To use it on another list, add an entry to FILTER_PANELS.
 const FILTER_PANELS = [
-  { key: 'docs', fields: [{ id: 'fEmp', label: 'Staff', def: '' }, { id: 'fType', label: 'Document type', def: '' }, { id: 'fArchived', label: 'Show', def: 'active' }, { id: 'fUploaded', label: 'Uploaded', def: '30', note: true }] },
-  { key: 'exp', fields: [{ id: 'fExpEmp', label: 'Staff', def: '' }, { id: 'fExpDiscipline', label: 'Discipline', def: '' }] },
-  { key: 'staff', fields: [{ id: 'fStaffPerson', label: 'Staff', def: '' }, { id: 'fStaffLicType', label: 'Discipline', def: '' }] },
+  { key: 'docs', search: { id: 'fDocSearch', placeholder: 'Search by staff name or document…', reload: 'loadAdminDocs' }, fields: [{ id: 'fEmp', label: 'Staff', def: '' }, { id: 'fType', label: 'Document type', def: '' }, { id: 'fArchived', label: 'Show', def: 'active' }, { id: 'fUploaded', label: 'Uploaded', def: '30', note: true }] },
+  { key: 'exp', search: { id: 'fExpSearch', placeholder: 'Search by staff name or document…', reload: 'loadExpTracker' }, fields: [{ id: 'fExpEmp', label: 'Staff', def: '' }, { id: 'fExpDiscipline', label: 'Discipline', def: '' }] },
+  { key: 'staff', search: { id: 'fStaffSearch', placeholder: 'Search staff by name…', reload: 'loadStaffTable' }, fields: [{ id: 'fStaffPerson', label: 'Staff', def: '' }, { id: 'fStaffLicType', label: 'Discipline', def: '' }] },
 ];
 const _fpState = {};
 function fpActive(cfg) {
@@ -28567,6 +28584,9 @@ function fpRender(key) {
   st.chips.innerHTML = chips.join('');
   st.chips.style.display = chips.length ? 'flex' : 'none';
 }
+// The always-visible search: lower case, trimmed. A row matches when every word typed appears somewhere in its text.
+function fpTerm(id) { return String((document.getElementById(id) || {}).value || '').trim().toLowerCase(); }
+function fpMatches(term, ...texts) { if (!term) return true; const hay = texts.map(t => String(t || '').toLowerCase()).join(' '); return term.split(/\s+/).every(w => hay.includes(w)); }
 function fpFire(el) { el.dispatchEvent(new Event('change', { bubbles: true })); }
 function fpClear(key, id) { const el = document.getElementById(id), f = _fpState[key].cfg.fields.find(x => x.id === id); if (!el || !f) return; el.value = f.def; fpFire(el); fpRender(key); }
 function fpClearAll(key) { _fpState[key].cfg.fields.forEach(f => { const el = document.getElementById(f.id); if (el && el.value !== f.def) { el.value = f.def; fpFire(el); } }); fpRender(key); }
@@ -28592,6 +28612,12 @@ function initFilterPanels() {
     pop.appendChild(head);
     const state = { cfg, btn, pop, chips: document.createElement('div') };
     state.chips.className = 'fp-chips'; state.chips.style.display = 'none';
+    if (cfg.search) {
+      const sIn = document.createElement('input'); sIn.type = 'search'; sIn.id = cfg.search.id; sIn.className = 'fp-search'; sIn.placeholder = cfg.search.placeholder; sIn.autocomplete = 'off'; sIn.setAttribute('aria-label', cfg.search.placeholder.replace('…', ''));
+      let t = null; sIn.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => { const fn = window[cfg.search.reload]; if (typeof fn === 'function') fn(); }, 250); });
+      sIn.addEventListener('keydown', e => { if (e.key === 'Enter') { clearTimeout(t); const fn = window[cfg.search.reload]; if (typeof fn === 'function') fn(); } });
+      bar.insertBefore(sIn, first);
+    }
     bar.insertBefore(wrap, first); wrap.appendChild(btn); wrap.appendChild(pop);
     cfg.fields.forEach(f => {
       const el = document.getElementById(f.id); if (!el) return;
